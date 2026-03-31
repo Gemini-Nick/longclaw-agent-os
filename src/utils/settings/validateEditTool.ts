@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { ValidationResult } from 'src/Tool.js'
+import type { ValidationResult } from '../../Tool.js'
 import { isClaudeSettingsPath } from '../permissions/filesystem.js'
 import { validateSettingsFileContent } from './validation.js'
 

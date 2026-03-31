@@ -1,6 +1,6 @@
 import { c as _c } from '../shims/react-compiler-runtime.js';
 import React from 'react';
-import { envDynamic } from 'src/utils/envDynamic.js';
+import { envDynamic } from '../utils/envDynamic.js';
 import { Box, Text } from '../ink.js';
 import { useKeybindings } from '../keybindings/useKeybinding.js';
 import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js';

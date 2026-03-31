@@ -1,6 +1,6 @@
 import { c as _c } from '../shims/react-compiler-runtime.js';
 import React from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics/index.js';
 import { Box, Link, Text } from '../ink.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';
 import { Select } from './CustomSelect/index.js';

@@ -1,6 +1,6 @@
 import { c as _c } from '../../shims/react-compiler-runtime.js';
 import React from 'react';
-import { Box, Text, useTheme } from 'src/ink.js';
+import { Box, Text, useTheme } from '../../ink.js';
 import { env } from '../../utils/env.js';
 const WELCOME_V2_WIDTH = 58;
 export function WelcomeV2() {

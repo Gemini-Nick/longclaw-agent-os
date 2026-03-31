@@ -1,7 +1,7 @@
 import { c as _c } from '../../../shims/react-compiler-runtime.js';
 import * as React from 'react';
-import { Markdown } from 'src/components/Markdown.js';
-import { MessageResponse } from 'src/components/MessageResponse.js';
+import { Markdown } from '../../Markdown.js';
+import { MessageResponse } from '../../MessageResponse.js';
 import { Box, Text } from '../../../ink.js';
 type Props = {
   plan: string;

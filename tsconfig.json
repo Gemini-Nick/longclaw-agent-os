@@ -22,9 +22,6 @@
     "noFallthroughCasesInSwitch": false,
     "allowJs": true,
     "jsx": "react-jsx",
-    "paths": {
-      "src/*": ["./src/*"]
-    },
     "baseUrl": "."
   },
   "include": ["src/**/*"],

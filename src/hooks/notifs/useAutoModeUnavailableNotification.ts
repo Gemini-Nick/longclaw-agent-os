@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { feature } from '../../bun-shim.js'
 import { useEffect, useRef } from 'react'
-import { useNotifications } from 'src/context/notifications.js'
+import { useNotifications } from '../../context/notifications.js'
 import { getIsRemoteMode } from '../../bootstrap/state.js'
 import { useAppState } from '../../state/AppState.js'
 import type { PermissionMode } from '../../utils/permissions/PermissionMode.js'

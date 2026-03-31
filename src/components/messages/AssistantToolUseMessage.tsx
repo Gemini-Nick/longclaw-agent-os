@@ -2,8 +2,8 @@
 import { c as _c } from '../../shims/react-compiler-runtime.js';
 import type { ToolUseBlockParam } from '@anthropic-ai/sdk/resources/index.mjs';
 import React, { useMemo } from 'react';
-import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
-import type { ThemeName } from 'src/utils/theme.js';
+import { useTerminalSize } from '../../hooks/useTerminalSize.js';
+import type { ThemeName } from '../../utils/theme.js';
 import type { Command } from '../../commands.js';
 import { BLACK_CIRCLE } from '../../constants/figures.js';
 import { stringWidth } from '../../ink/stringWidth.js';

@@ -1,6 +1,6 @@
 import { c as _c } from '../shims/react-compiler-runtime.js';
 import React, { useCallback } from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics/index.js';
 import { Box, Link, Newline, Text } from '../ink.js';
 import { gracefulShutdownSync } from '../utils/gracefulShutdown.js';
 import { updateSettingsForSource } from '../utils/settings/settings.js';

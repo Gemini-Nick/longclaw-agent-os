@@ -1,7 +1,7 @@
 import { c as _c } from '../shims/react-compiler-runtime.js';
 import partition from 'lodash-es/partition.js';
 import React, { useCallback } from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics/index.js';
 import { Box, Text } from '../ink.js';
 import { getSettings_DEPRECATED, updateSettingsForSource } from '../utils/settings/settings.js';
 import { ConfigurableShortcutHint } from './ConfigurableShortcutHint.js';

@@ -1,6 +1,6 @@
 import { c as _c } from '../shims/react-compiler-runtime.js';
 import React from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../services/analytics/index.js';
 // eslint-disable-next-line custom-rules/prefer-use-keybindings -- enter to continue
 import { Box, Link, Newline, Text, useInput } from '../ink.js';
 import { isChromeExtensionInstalled } from '../utils/claudeInChrome/setup.js';

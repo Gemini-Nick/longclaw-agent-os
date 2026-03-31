@@ -3,7 +3,7 @@ import { c as _c } from '../shims/react-compiler-runtime.js';
 import { feature } from '../bun-shim.js';
 import { dirname } from 'path';
 import React from 'react';
-import { useTerminalSize } from 'src/hooks/useTerminalSize.js';
+import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { getOriginalCwd, switchSession } from '../bootstrap/state.js';
 import type { Command } from '../commands.js';
 import { LogSelector } from '../components/LogSelector.js';

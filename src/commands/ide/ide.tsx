@@ -3,7 +3,7 @@ import { c as _c } from '../../shims/react-compiler-runtime.js';
 import chalk from 'chalk';
 import * as path from 'path';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { logEvent } from 'src/services/analytics/index.js';
+import { logEvent } from '../../services/analytics/index.js';
 import type { CommandResultDisplay, LocalJSXCommandContext } from '../../commands.js';
 import { Select } from '../../components/CustomSelect/index.js';
 import { Dialog } from '../../components/design-system/Dialog.js';
