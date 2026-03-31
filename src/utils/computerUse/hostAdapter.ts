@@ -1,7 +1,7 @@
-import type {
-  ComputerUseHostAdapter,
-  Logger,
-} from '@ant/computer-use-mcp/types'
+// Types – declared locally so the file compiles even when the optional
+// @ant/computer-use-mcp package is not installed.
+type ComputerUseHostAdapter = any
+type Logger = any
 import { format } from 'util'
 import { logForDebugging } from '../debug.js'
 import { COMPUTER_USE_MCP_SERVER_NAME } from './common.js'

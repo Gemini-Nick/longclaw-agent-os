@@ -248,19 +248,23 @@ export class Agent {
 
   /**
    * Resolve options from env map (compatible with @anthropic-ai/claude-agent-sdk)
+   * and fall back to process.env for standard environment variables.
    */
   private resolveEnvOptions(): void {
     const env = this.options.env
-    if (!env) return
 
     if (!this.options.apiKey) {
-      this.options.apiKey = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN
+      this.options.apiKey =
+        env?.ANTHROPIC_API_KEY || env?.ANTHROPIC_AUTH_TOKEN ||
+        process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN
     }
-    if (!this.options.baseURL && env.ANTHROPIC_BASE_URL) {
-      this.options.baseURL = env.ANTHROPIC_BASE_URL
+    if (!this.options.baseURL) {
+      this.options.baseURL =
+        env?.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL
     }
-    if (!this.options.model && env.ANTHROPIC_MODEL) {
-      this.options.model = env.ANTHROPIC_MODEL
+    if (!this.options.model) {
+      this.options.model =
+        env?.ANTHROPIC_MODEL || process.env.ANTHROPIC_MODEL
     }
   }
 

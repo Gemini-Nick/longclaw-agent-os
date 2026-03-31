@@ -1,7 +1,7 @@
-import type {
-  ComputerUseInput,
-  ComputerUseInputAPI,
-} from '@ant/computer-use-input'
+// Types – declared locally so the file compiles even when the optional
+// @ant/computer-use-input package is not installed.
+type ComputerUseInput = any
+type ComputerUseInputAPI = any
 
 let cached: ComputerUseInputAPI | undefined
 
@@ -21,8 +21,13 @@ let cached: ComputerUseInputAPI | undefined
  */
 export function requireComputerUseInput(): ComputerUseInputAPI {
   if (cached) return cached
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const input = require('@ant/computer-use-input') as ComputerUseInput
+  let input: ComputerUseInput
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    input = require('@ant/computer-use-input') as ComputerUseInput
+  } catch {
+    throw new Error('@ant/computer-use-input is not available')
+  }
   if (!input.isSupported) {
     throw new Error('@ant/computer-use-input is not supported on this platform')
   }

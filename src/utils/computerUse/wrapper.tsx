@@ -17,7 +17,47 @@
  * GrowthBook gate `tengu_malort_pedway` (see gates.ts).
  */
 
-import { bindSessionContext, type ComputerUseSessionContext, type CuCallToolResult, type CuPermissionRequest, type CuPermissionResponse, DEFAULT_GRANT_FLAGS, type ScreenshotDims } from '@ant/computer-use-mcp';
+// Types – declared locally so the file compiles even when the optional
+// @ant/computer-use-mcp package is not installed.
+type ComputerUseSessionContext = any
+type CuCallToolResult = any
+type CuPermissionRequest = any
+type CuPermissionResponse = any
+type ScreenshotDims = any
+
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/computer-use-mcp (optional dependency)
+// ---------------------------------------------------------------------------
+let _computerUseMcpModule: any = null
+let _computerUseMcpLoadAttempted = false
+
+function getComputerUseMcpModule(): any {
+  if (!_computerUseMcpLoadAttempted) {
+    _computerUseMcpLoadAttempted = true
+    try {
+      _computerUseMcpModule = require('@ant/computer-use-mcp')
+    } catch {
+      _computerUseMcpModule = null
+    }
+  }
+  return _computerUseMcpModule
+}
+
+function bindSessionContext(...args: any[]): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.bindSessionContext) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.bindSessionContext(...args)
+}
+
+function getDEFAULT_GRANT_FLAGS(): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.DEFAULT_GRANT_FLAGS) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.DEFAULT_GRANT_FLAGS
+}
 import * as React from 'react';
 import { getSessionId } from '../../bootstrap/state.js';
 import { ComputerUseApproval } from '../../components/permissions/ComputerUseApproval/ComputerUseApproval.js';
@@ -61,7 +101,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
   return {
     // ── Read state fresh via the per-call ref ─────────────────────────────
     getAllowedApps: () => tuc().getAppState().computerUseMcpState?.allowedApps ?? [],
-    getGrantFlags: () => tuc().getAppState().computerUseMcpState?.grantFlags ?? DEFAULT_GRANT_FLAGS,
+    getGrantFlags: () => tuc().getAppState().computerUseMcpState?.grantFlags ?? getDEFAULT_GRANT_FLAGS(),
     // cc-2 has no Settings page for user-denied apps yet.
     getUserDeniedBundleIds: () => [],
     getSelectedDisplayId: () => tuc().getAppState().computerUseMcpState?.selectedDisplayId,
@@ -302,7 +342,7 @@ async function runPermissionDialog(req: CuPermissionRequest): Promise<CuPermissi
     return {
       granted: [],
       denied: [],
-      flags: DEFAULT_GRANT_FLAGS
+      flags: getDEFAULT_GRANT_FLAGS()
     };
   }
   try {

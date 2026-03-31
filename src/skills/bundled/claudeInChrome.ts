@@ -1,4 +1,27 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/claude-for-chrome-mcp (optional dependency)
+// ---------------------------------------------------------------------------
+let _chromeModule: any = null
+let _chromeLoadAttempted = false
+
+function getChromeModule(): any {
+  if (!_chromeLoadAttempted) {
+    _chromeLoadAttempted = true
+    try {
+      _chromeModule = require('@ant/claude-for-chrome-mcp')
+    } catch {
+      _chromeModule = null
+    }
+  }
+  return _chromeModule
+}
+
+function getBROWSER_TOOLS(): any[] {
+  const mod = getChromeModule()
+  return mod?.BROWSER_TOOLS ?? []
+}
+
+const BROWSER_TOOLS = getBROWSER_TOOLS()
 import { BASE_CHROME_PROMPT } from '../../utils/claudeInChrome/prompt.js'
 import { shouldAutoEnableClaudeInChrome } from '../../utils/claudeInChrome/setup.js'
 import { registerBundledSkill } from '../bundledSkills.js'

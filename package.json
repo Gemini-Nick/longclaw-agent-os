@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/shipany-ai/open-agent-sdk/issues"
   },
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Open-source Agent SDK inspired by @anthropic-ai/claude-agent-sdk. Runs the agent loop in-process — no local CLI required. Deploy anywhere: cloud, serverless, Docker, CI/CD.",
   "type": "module",
   "main": "./dist/sdk.js",
@@ -38,6 +38,7 @@
     "dev:watch": "tsc --watch",
     "test": "node --experimental-vm-modules node_modules/.bin/vitest run",
     "lint": "tsc --noEmit",
+    "postinstall": "node scripts/create-shims.mjs",
     "prepublishOnly": "npm run build"
   },
   "engines": {
@@ -57,6 +58,7 @@
     "@opentelemetry/sdk-metrics": "^2.6.1",
     "@opentelemetry/sdk-trace-base": "^2.6.1",
     "@opentelemetry/semantic-conventions": "^1.40.0",
+    "@shipany/open-agent-sdk": "^0.1.4",
     "ajv": "^8.17.0",
     "asciichart": "^1.5.25",
     "auto-bind": "^5.0.1",
@@ -64,6 +66,7 @@
     "bidi-js": "^1.0.0",
     "chalk": "^5.3.0",
     "chokidar": "^4.0.0",
+    "cli-boxes": "^4.0.1",
     "cli-highlight": "^2.1.11",
     "code-excerpt": "^4.0.0",
     "commander": "^12.1.0",
@@ -87,6 +90,7 @@
     "p-map": "^7.0.0",
     "picomatch": "^4.0.0",
     "proper-lockfile": "^4.1.2",
+    "qrcode": "^1.5.4",
     "react": "^19.2.4",
     "react-reconciler": "^0.32.0",
     "semver": "^7.6.0",

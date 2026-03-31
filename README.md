@@ -18,6 +18,14 @@ Set your API key:
 export ANTHROPIC_API_KEY=your-api-key
 ```
 
+Or use a third-party provider like [OpenRouter](https://openrouter.ai/):
+
+```sh
+export ANTHROPIC_BASE_URL=https://openrouter.ai/api
+export ANTHROPIC_API_KEY=your-openrouter-api-key
+export ANTHROPIC_MODEL=anthropic/claude-sonnet-4-6
+```
+
 ## Quick start
 
 ### One-shot query (compatible with official SDK)
@@ -311,6 +319,16 @@ npx tsx examples/01-simple-query.ts
 ## Reporting bugs
 
 File issues at [github.com/shipany-ai/open-agent-sdk/issues](https://github.com/shipany-ai/open-agent-sdk/issues).
+
+## Contributors
+
+<a href="https://github.com/shipany-ai/open-agent-sdk/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=shipany-ai/open-agent-sdk" />
+</a>
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=shipany-ai/open-agent-sdk&type=Timeline)](https://star-history.com/#shipany-ai/open-agent-sdk&Timeline)
 
 ## License
 

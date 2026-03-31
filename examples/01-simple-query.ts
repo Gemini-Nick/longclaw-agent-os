@@ -12,7 +12,7 @@ async function main() {
   console.log('--- Example 1: Simple Query ---\n')
 
   const agent = createAgent({
-    model: 'claude-sonnet-4-6',
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
     maxTurns: 10,
   })
 

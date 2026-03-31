@@ -1,5 +1,30 @@
 // @ts-nocheck
-import { buildComputerUseTools } from '@ant/computer-use-mcp'
+
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/computer-use-mcp (optional dependency)
+// ---------------------------------------------------------------------------
+let _computerUseMcpModule: any = null
+let _computerUseMcpLoadAttempted = false
+
+function getComputerUseMcpModule(): any {
+  if (!_computerUseMcpLoadAttempted) {
+    _computerUseMcpLoadAttempted = true
+    try {
+      _computerUseMcpModule = require('@ant/computer-use-mcp')
+    } catch {
+      _computerUseMcpModule = null
+    }
+  }
+  return _computerUseMcpModule
+}
+
+function buildComputerUseTools(...args: any[]): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.buildComputerUseTools) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.buildComputerUseTools(...args)
+}
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { buildMcpToolName } from '../../services/mcp/mcpStringUtils.js'

@@ -1,9 +1,34 @@
-import {
-  type ClaudeForChromeContext,
-  createClaudeForChromeMcpServer,
-  type Logger,
-  type PermissionMode,
-} from '@ant/claude-for-chrome-mcp'
+// Types – declared locally so the file compiles even when the optional
+// @ant/claude-for-chrome-mcp package is not installed.
+type ClaudeForChromeContext = any
+type Logger = any
+type PermissionMode = any
+
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/claude-for-chrome-mcp (optional dependency)
+// ---------------------------------------------------------------------------
+let _chromeModule: any = null
+let _chromeLoadAttempted = false
+
+function getChromeModule(): any {
+  if (!_chromeLoadAttempted) {
+    _chromeLoadAttempted = true
+    try {
+      _chromeModule = require('@ant/claude-for-chrome-mcp')
+    } catch {
+      _chromeModule = null
+    }
+  }
+  return _chromeModule
+}
+
+function createClaudeForChromeMcpServer(...args: any[]): any {
+  const mod = getChromeModule()
+  if (!mod?.createClaudeForChromeMcpServer) {
+    throw new Error('@ant/claude-for-chrome-mcp is not available')
+  }
+  return mod.createClaudeForChromeMcpServer(...args)
+}
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { format } from 'util'
 import { shutdownDatadog } from '../../services/analytics/datadog.js'

@@ -1,8 +1,38 @@
 // @ts-nocheck
-import {
-  buildComputerUseTools,
-  createComputerUseMcpServer,
-} from '@ant/computer-use-mcp'
+
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/computer-use-mcp (optional dependency)
+// ---------------------------------------------------------------------------
+let _computerUseMcpModule: any = null
+let _computerUseMcpLoadAttempted = false
+
+function getComputerUseMcpModule(): any {
+  if (!_computerUseMcpLoadAttempted) {
+    _computerUseMcpLoadAttempted = true
+    try {
+      _computerUseMcpModule = require('@ant/computer-use-mcp')
+    } catch {
+      _computerUseMcpModule = null
+    }
+  }
+  return _computerUseMcpModule
+}
+
+function buildComputerUseTools(...args: any[]): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.buildComputerUseTools) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.buildComputerUseTools(...args)
+}
+
+function createComputerUseMcpServer(...args: any[]): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.createComputerUseMcpServer) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.createComputerUseMcpServer(...args)
+}
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { homedir } from 'os'

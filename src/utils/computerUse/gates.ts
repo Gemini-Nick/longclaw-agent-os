@@ -1,4 +1,7 @@
-import type { CoordinateMode, CuSubGates } from '@ant/computer-use-mcp/types'
+// Types – declared locally so the file compiles even when the optional
+// @ant/computer-use-mcp package is not installed.
+type CoordinateMode = any
+type CuSubGates = any
 
 import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { getSubscriptionType } from '../auth.js'

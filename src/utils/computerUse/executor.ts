@@ -28,17 +28,49 @@
  * Clipboard via `pbcopy`/`pbpaste`. No Electron `clipboard` module.
  */
 
-import type {
-  ComputerExecutor,
-  DisplayGeometry,
-  FrontmostApp,
-  InstalledApp,
-  ResolvePrepareCaptureResult,
-  RunningApp,
-  ScreenshotResult,
-} from '@ant/computer-use-mcp'
+// Types – declared locally so the file compiles even when the optional
+// @ant/computer-use-mcp package is not installed.
+type ComputerExecutor = any
+type DisplayGeometry = any
+type FrontmostApp = any
+type InstalledApp = any
+type ResolvePrepareCaptureResult = any
+type RunningApp = any
+type ScreenshotResult = any
 
-import { API_RESIZE_PARAMS, targetImageSize } from '@ant/computer-use-mcp'
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/computer-use-mcp (optional dependency)
+// ---------------------------------------------------------------------------
+let _computerUseMcpModule: any = null
+let _computerUseMcpLoadAttempted = false
+
+function getComputerUseMcpModule(): any {
+  if (!_computerUseMcpLoadAttempted) {
+    _computerUseMcpLoadAttempted = true
+    try {
+      _computerUseMcpModule = require('@ant/computer-use-mcp')
+    } catch {
+      _computerUseMcpModule = null
+    }
+  }
+  return _computerUseMcpModule
+}
+
+function getApiResizeParams(): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.API_RESIZE_PARAMS) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.API_RESIZE_PARAMS
+}
+
+function getTargetImageSize(): any {
+  const mod = getComputerUseMcpModule()
+  if (!mod?.targetImageSize) {
+    throw new Error('@ant/computer-use-mcp is not available')
+  }
+  return mod.targetImageSize
+}
 import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { execFileNoThrow } from '../execFileNoThrow.js'
@@ -65,7 +97,7 @@ function computeTargetDims(
 ): [number, number] {
   const physW = Math.round(logicalW * scaleFactor)
   const physH = Math.round(logicalH * scaleFactor)
-  return targetImageSize(physW, physH, API_RESIZE_PARAMS)
+  return getTargetImageSize()(physW, physH, getApiResizeParams())
 }
 
 async function readClipboardViaPbpaste(): Promise<string> {

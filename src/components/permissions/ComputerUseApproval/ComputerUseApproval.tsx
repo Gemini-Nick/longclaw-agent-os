@@ -1,7 +1,58 @@
 import { c as _c } from '../../../shims/react-compiler-runtime.js';
-import { getSentinelCategory } from '@ant/computer-use-mcp/sentinelApps';
-import type { CuPermissionRequest, CuPermissionResponse } from '@ant/computer-use-mcp/types';
-import { DEFAULT_GRANT_FLAGS } from '@ant/computer-use-mcp/types';
+
+// Types – declared locally so the file compiles even when the optional
+// @ant/computer-use-mcp package is not installed.
+type CuPermissionRequest = any
+type CuPermissionResponse = any
+
+// ---------------------------------------------------------------------------
+// Lazy-load @ant/computer-use-mcp sub-modules (optional dependency)
+// ---------------------------------------------------------------------------
+let _sentinelAppsModule: any = null
+let _sentinelAppsLoadAttempted = false
+
+function getSentinelAppsModule(): any {
+  if (!_sentinelAppsLoadAttempted) {
+    _sentinelAppsLoadAttempted = true
+    try {
+      _sentinelAppsModule = require('@ant/computer-use-mcp/sentinelApps')
+    } catch {
+      _sentinelAppsModule = null
+    }
+  }
+  return _sentinelAppsModule
+}
+
+function getSentinelCategory(...args: any[]): any {
+  const mod = getSentinelAppsModule()
+  return mod?.getSentinelCategory?.(...args) ?? null
+}
+
+let _computerUseMcpTypesModule: any = null
+let _computerUseMcpTypesLoadAttempted = false
+
+function getComputerUseMcpTypesModule(): any {
+  if (!_computerUseMcpTypesLoadAttempted) {
+    _computerUseMcpTypesLoadAttempted = true
+    try {
+      _computerUseMcpTypesModule = require('@ant/computer-use-mcp/types')
+    } catch {
+      _computerUseMcpTypesModule = null
+    }
+  }
+  return _computerUseMcpTypesModule
+}
+
+function getDEFAULT_GRANT_FLAGS(): any {
+  const mod = getComputerUseMcpTypesModule()
+  if (!mod?.DEFAULT_GRANT_FLAGS) {
+    // Provide a sensible fallback
+    return { clipboardRead: false, clipboardWrite: false, systemKeyCombos: false }
+  }
+  return mod.DEFAULT_GRANT_FLAGS
+}
+
+const DEFAULT_GRANT_FLAGS = getDEFAULT_GRANT_FLAGS();
 import figures from 'figures';
 import * as React from 'react';
 import { useMemo, useState } from 'react';
