@@ -554,12 +554,17 @@ export async function runHeadless(
   // Start headless profiler for first turn
   headlessProfilerStartTurn()
   headlessProfilerCheckpoint('runHeadless_entry')
+  console.error('[DEBUG:print] runHeadless entered')
 
   // Check Grove requirements for non-interactive consumer subscribers
+  console.error('[DEBUG:print] before isQualifiedForGrove')
   if (await isQualifiedForGrove()) {
+    console.error('[DEBUG:print] grove qualified, checking...')
     await checkGroveForNonInteractive()
   }
+  console.error('[DEBUG:print] after grove check')
   headlessProfilerCheckpoint('after_grove_check')
+  console.error('[DEBUG:print] before structuredIO/sandbox');
 
   // Initialize GrowthBook so feature flags take effect in headless mode.
   // Without this, the disk cache is empty and all flags fall back to defaults.
@@ -679,6 +684,7 @@ export async function runHeadless(
   }
 
   headlessProfilerCheckpoint('before_loadInitialMessages')
+  console.error('[DEBUG:print] before loadInitialMessages')
   const appState = getAppState()
   const {
     messages: initialMessages,

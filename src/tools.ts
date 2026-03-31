@@ -58,20 +58,14 @@ import { ExitPlanModeV2Tool } from './tools/ExitPlanModeTool/ExitPlanModeV2Tool.
 import { TestingPermissionTool } from './tools/testing/TestingPermissionTool.js'
 import { GrepTool } from './tools/GrepTool/GrepTool.js'
 import { TungstenTool } from './tools/TungstenTool/TungstenTool.js'
-// Lazy require to break circular dependency: tools.ts -> TeamCreateTool/TeamDeleteTool -> ... -> tools.ts
-import { createRequire } from 'module'
-const _require = createRequire(import.meta.url)
-/* eslint-disable @typescript-eslint/no-require-imports */
-const getTeamCreateTool = () =>
-  _require('./tools/TeamCreateTool/TeamCreateTool.js')
-    .TeamCreateTool as typeof import('./tools/TeamCreateTool/TeamCreateTool.js').TeamCreateTool
-const getTeamDeleteTool = () =>
-  _require('./tools/TeamDeleteTool/TeamDeleteTool.js')
-    .TeamDeleteTool as typeof import('./tools/TeamDeleteTool/TeamDeleteTool.js').TeamDeleteTool
-const getSendMessageTool = () =>
-  _require('./tools/SendMessageTool/SendMessageTool.js')
-    .SendMessageTool as typeof import('./tools/SendMessageTool/SendMessageTool.js').SendMessageTool
-/* eslint-enable @typescript-eslint/no-require-imports */
+// Direct imports instead of lazy require (esbuild bundles everything into one file,
+// so createRequire-based relative paths don't resolve at runtime)
+import { TeamCreateTool as _TeamCreateTool } from './tools/TeamCreateTool/TeamCreateTool.js'
+import { TeamDeleteTool as _TeamDeleteTool } from './tools/TeamDeleteTool/TeamDeleteTool.js'
+import { SendMessageTool as _SendMessageTool } from './tools/SendMessageTool/SendMessageTool.js'
+const getTeamCreateTool = () => _TeamCreateTool
+const getTeamDeleteTool = () => _TeamDeleteTool
+const getSendMessageTool = () => _SendMessageTool
 import { AskUserQuestionTool } from './tools/AskUserQuestionTool/AskUserQuestionTool.js'
 import { LSPTool } from './tools/LSPTool/LSPTool.js'
 import { ListMcpResourcesTool } from './tools/ListMcpResourcesTool/ListMcpResourcesTool.js'

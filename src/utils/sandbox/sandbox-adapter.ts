@@ -5,22 +5,62 @@
  * settings system, tool integration, and additional features.
  */
 
-import type {
-  FsReadRestrictionConfig,
-  FsWriteRestrictionConfig,
-  IgnoreViolationsConfig,
-  NetworkHostPattern,
-  NetworkRestrictionConfig,
-  SandboxAskCallback,
-  SandboxDependencyCheck,
-  SandboxRuntimeConfig,
-  SandboxViolationEvent,
-} from '@anthropic-ai/sandbox-runtime'
-import {
-  SandboxManager as BaseSandboxManager,
-  SandboxRuntimeConfigSchema,
-  SandboxViolationStore,
-} from '@anthropic-ai/sandbox-runtime'
+// Types – declared locally so the file compiles even when the optional
+// @anthropic-ai/sandbox-runtime package is not installed.
+type FsReadRestrictionConfig = any
+type FsWriteRestrictionConfig = any
+type IgnoreViolationsConfig = any
+type NetworkHostPattern = any
+type NetworkRestrictionConfig = any
+type SandboxAskCallback = any
+type SandboxDependencyCheck = any
+type SandboxRuntimeConfig = any
+type SandboxViolationEvent = any
+
+// ---------------------------------------------------------------------------
+// Lazy-load @anthropic-ai/sandbox-runtime (optional dependency)
+// ---------------------------------------------------------------------------
+let _sandboxModule: any = null
+let _sandboxLoadAttempted = false
+
+function getSandboxModule(): any {
+  if (!_sandboxLoadAttempted) {
+    _sandboxLoadAttempted = true
+    try {
+      // Use require so the module is resolved at call-time, not import-time.
+      // This keeps the SDK functional when the package is absent.
+      _sandboxModule = require('@anthropic-ai/sandbox-runtime')
+    } catch {
+      _sandboxModule = null
+    }
+  }
+  return _sandboxModule
+}
+
+// Proxy that forwards every property access to the real BaseSandboxManager if
+// available, or returns a no-op / safe default when the package is missing.
+const BaseSandboxManager: any = new Proxy({}, {
+  get(_target, prop) {
+    const mod = getSandboxModule()
+    if (mod?.SandboxManager) {
+      return mod.SandboxManager[prop]
+    }
+    // Fallback: return a no-op function for any method access
+    return (..._args: any[]) => undefined
+  },
+})
+
+const SandboxRuntimeConfigSchema: any = new Proxy({}, {
+  get(_target, prop) {
+    const mod = getSandboxModule()
+    return mod?.SandboxRuntimeConfigSchema?.[prop]
+  },
+})
+
+const SandboxViolationStore: any = (() => {
+  const mod = getSandboxModule()
+  return mod?.SandboxViolationStore ?? class SandboxViolationStoreStub {}
+})()
 import { rmSync, statSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { memoize } from 'lodash-es'
@@ -983,4 +1023,4 @@ export type {
   IgnoreViolationsConfig,
 }
 
-export { SandboxViolationStore, SandboxRuntimeConfigSchema }
+export { SandboxViolationStore, SandboxRuntimeConfigSchema, getSandboxModule }

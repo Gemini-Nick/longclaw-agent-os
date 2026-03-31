@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { feature } from '../bun-shim.js';
+import { feature, MACRO } from '../bun-shim.js';
 
 // Bugfix for corepack auto-pinning, which adds yarnpkg to peoples' package.jsons
 // eslint-disable-next-line custom-rules/no-top-level-side-effects

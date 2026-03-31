@@ -66,6 +66,7 @@ export async function setup(
   messagingSocketPath?: string,
 ): Promise<void> {
   logForDiagnosticsNoPII('info', 'setup_started')
+  console.error('[DEBUG:setup] entered')
 
   // Check for Node.js version < 18
   const nodeVersion = process.version.match(/^v(\d+)\./)?.[1]
@@ -110,13 +111,17 @@ export async function setup(
     captureTeammateModeSnapshot()
   }
 
+  console.error('[DEBUG:setup] before terminal backup checks, isNonInteractive:', getIsNonInteractiveSession())
   // Terminal backup restoration — interactive only. Print mode doesn't
   // interact with terminal settings; the next interactive session will
   // detect and restore any interrupted setup.
   if (!getIsNonInteractiveSession()) {
+    console.error('[DEBUG:setup] interactive mode - checking backups, swarmsEnabled:', isAgentSwarmsEnabled())
     // iTerm2 backup check only when swarms enabled
     if (isAgentSwarmsEnabled()) {
+      console.error('[DEBUG:setup] before iTerm2 backup check')
       const restoredIterm2Backup = await checkAndRestoreITerm2Backup()
+      console.error('[DEBUG:setup] after iTerm2 backup check')
       if (restoredIterm2Backup.status === 'restored') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.log(
@@ -135,8 +140,10 @@ export async function setup(
     }
 
     // Check and restore Terminal.app backup if setup was interrupted
+    console.error('[DEBUG:setup] before Terminal.app backup check')
     try {
       const restoredTerminalBackup = await checkAndRestoreTerminalBackup()
+      console.error('[DEBUG:setup] after Terminal.app backup check')
       if (restoredTerminalBackup.status === 'restored') {
         // biome-ignore lint/suspicious/noConsole:: intentional console output
         console.log(
@@ -158,13 +165,17 @@ export async function setup(
     }
   }
 
+  console.error('[DEBUG:setup] before setCwd')
   // IMPORTANT: setCwd() must be called before any other code that depends on the cwd
   setCwd(cwd)
+  console.error('[DEBUG:setup] after setCwd')
 
+  console.error('[DEBUG:setup] before captureHooksConfigSnapshot')
   // Capture hooks configuration snapshot to avoid hidden hook modifications.
   // IMPORTANT: Must be called AFTER setCwd() so hooks are loaded from the correct directory
   const hooksStart = Date.now()
   captureHooksConfigSnapshot()
+  console.error('[DEBUG:setup] after captureHooksConfigSnapshot')
   logForDiagnosticsNoPII('info', 'setup_hooks_captured', {
     duration_ms: Date.now() - hooksStart,
   })

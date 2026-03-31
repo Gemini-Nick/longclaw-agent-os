@@ -17,7 +17,7 @@ export function embed(_path: string): any {
 }
 
 export const MACRO: any = {
-  VERSION: '0.1.0',
+  VERSION: '2.1.88',
   VERSION_CHANGELOG: '',
   ISSUES_EXPLAINER: 'report the issue at https://github.com/shipany-ai/open-agent-sdk/issues',
   BUILD_TIME: new Date().toISOString(),

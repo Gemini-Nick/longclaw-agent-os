@@ -19,7 +19,7 @@ import { ensureKeychainPrefetchCompleted, startKeychainPrefetch } from './utils/
 
 // eslint-disable-next-line custom-rules/no-top-level-side-effects
 startKeychainPrefetch();
-import { feature } from './bun-shim.js';
+import { feature, MACRO } from './bun-shim.js';
 import { Command as CommanderCommand, InvalidArgumentError, Option } from '@commander-js/extra-typings';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -907,15 +907,19 @@ async function run(): Promise<CommanderCommand> {
   // not when displaying help. This avoids the need for env variable signaling.
   program.hook('preAction', async thisCommand => {
     profileCheckpoint('preAction_start');
+    console.error('[DEBUG] preAction start');
     // Await async subprocess loads started at module evaluation (lines 12-20).
     // Nearly free — subprocesses complete during the ~135ms of imports above.
     // Must resolve before init() which triggers the first settings read
     // (applySafeConfigEnvironmentVariables → getSettingsForSource('policySettings')
     // → isRemoteManagedSettingsEligible → sync keychain reads otherwise ~65ms).
+    console.error('[DEBUG] before MDM/keychain');
     await Promise.all([ensureMdmSettingsLoaded(), ensureKeychainPrefetchCompleted()]);
     profileCheckpoint('preAction_after_mdm');
+    console.error('[DEBUG] before init()');
     await init();
     profileCheckpoint('preAction_after_init');
+    console.error('[DEBUG] after init()');
 
     // process.title on Windows sets the console title directly; on POSIX,
     // terminal shell integration may mirror the process name to the tab.
@@ -1006,6 +1010,7 @@ async function run(): Promise<CommanderCommand> {
   // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
   .option('--plugin-dir <path>', 'Load plugins from a directory for this session only (repeatable: --plugin-dir A --plugin-dir B)', (val: string, prev: string[]) => [...prev, val], [] as string[]).option('--disable-slash-commands', 'Disable all skills', () => true).option('--chrome', 'Enable Claude in Chrome integration').option('--no-chrome', 'Disable Claude in Chrome integration').option('--file <specs...>', 'File resources to download at startup. Format: file_id:relative_path (e.g., --file file_abc:doc.txt file_def:img.png)').action(async (prompt, options) => {
     profileCheckpoint('action_handler_start');
+    console.error('[DEBUG] action_handler_start');
 
     // --bare = one-switch minimal mode. Sets SIMPLE so all the existing
     // gates fire (CLAUDE.md, skills, hooks inside executeHooks, agent
@@ -1742,6 +1747,7 @@ async function run(): Promise<CommanderCommand> {
       }
     }
 
+    console.error('[DEBUG] before initializeToolPermissionContext');
     // This await replaces blocking existsSync/statSync calls that were already in
     // the startup path. Wall-clock time is unchanged; we just yield to the event
     // loop during the fs I/O instead of blocking it. See #19661.
@@ -1776,6 +1782,7 @@ async function run(): Promise<CommanderCommand> {
       // biome-ignore lint/suspicious/noConsole:: intentional console output
       console.error(warning);
     });
+    console.error('[DEBUG] after initializeToolPermissionContext');
     void assertMinVersion();
 
     // claude.ai config fetch: -p mode only (interactive uses useManageMCPConnections
@@ -1859,14 +1866,24 @@ async function run(): Promise<CommanderCommand> {
       process.exit(1);
     }
     const effectivePrompt = prompt || '';
+    console.error('[DEBUG] before getInputPrompt, effectivePrompt=', JSON.stringify(effectivePrompt), 'isTTY=', process.stdin.isTTY);
     let inputPrompt = await getInputPrompt(effectivePrompt, (inputFormat ?? 'text') as 'text' | 'stream-json');
+    console.error('[DEBUG] after getInputPrompt');
     profileCheckpoint('action_after_input_prompt');
 
     // Activate proactive mode BEFORE getTools() so SleepTool.isEnabled()
     // (which returns isProactiveActive()) passes and Sleep is included.
     // The later REPL-path maybeActivateProactive() calls are idempotent.
+    console.error('[DEBUG] before getTools');
     maybeActivateProactive(options);
-    let tools = getTools(toolPermissionContext);
+    let tools: any;
+    try {
+      tools = getTools(toolPermissionContext);
+      console.error('[DEBUG] after getTools, count=', tools.length);
+    } catch (e: any) {
+      console.error('[DEBUG] getTools ERROR:', e.message, e.stack?.slice(0, 500));
+      throw e;
+    }
 
     // Apply coordinator mode tool filtering for headless path
     // (mirrors useMergedTools.ts filtering for REPL/interactive path)
@@ -1904,6 +1921,7 @@ async function run(): Promise<CommanderCommand> {
     // IMPORTANT: setup() must be called before any other code that depends on the cwd or worktree setup
     profileCheckpoint('action_before_setup');
     logForDebugging('[STARTUP] Running setup()...');
+    console.error('[DEBUG] before setup()');
     const setupStart = Date.now();
     const {
       setup
@@ -1933,6 +1951,7 @@ async function run(): Promise<CommanderCommand> {
     commandsPromise?.catch(() => {});
     agentDefsPromise?.catch(() => {});
     await setupPromise;
+    console.error('[DEBUG] after setup()');
     logForDebugging(`[STARTUP] setup() completed in ${Date.now() - setupStart}ms`);
     profileCheckpoint('action_after_setup');
 
@@ -2028,6 +2047,7 @@ async function run(): Promise<CommanderCommand> {
     // Join the promises kicked before setup() (or start fresh if
     // worktreeEnabled gated the early kick). Both memoized by cwd.
     const [commands, agentDefinitionsResult] = await Promise.all([commandsPromise ?? getCommands(currentCwd), agentDefsPromise ?? getAgentDefinitionsWithOverrides(currentCwd)]);
+    console.error('[DEBUG] commands and agents loaded');
     logForDebugging(`[STARTUP] Commands and agents loaded in ${Date.now() - commandsStart}ms`);
     profileCheckpoint('action_commands_loaded');
 
@@ -2238,8 +2258,10 @@ async function run(): Promise<CommanderCommand> {
         durationMs: Math.round(process.uptime() * 1000)
       });
       logForDebugging('[STARTUP] Running showSetupScreens()...');
+      console.error('[DEBUG] before showSetupScreens() - isNonInteractive:', getIsNonInteractiveSession());
       const setupScreensStart = Date.now();
       const onboardingShown = await showSetupScreens(root, permissionMode, allowDangerouslySkipPermissions, commands, enableClaudeInChrome, devChannels);
+      console.error('[DEBUG] after showSetupScreens()');
       logForDebugging(`[STARTUP] showSetupScreens() completed in ${Date.now() - setupScreensStart}ms`);
 
       // Now that trust is established and GrowthBook has auth headers,
@@ -2557,7 +2579,9 @@ async function run(): Promise<CommanderCommand> {
       // skip — no-op
     } else if (isNonInteractiveSession) {
       // In headless mode, await to ensure plugin sync completes before CLI exits
+      console.error('[DEBUG] before initializeVersionedPlugins');
       await initializeVersionedPlugins();
+      console.error('[DEBUG] after initializeVersionedPlugins');
       profileCheckpoint('action_after_plugins_init');
       void cleanupOrphanedPluginVersionsInBackground().then(() => getGlobExclusionsForPluginCache());
     } else {
@@ -2611,8 +2635,10 @@ async function run(): Promise<CommanderCommand> {
       // rejection — this just prevents the spurious global handler fire.
       sessionStartHooksPromise?.catch(() => {});
       profileCheckpoint('before_validateForceLoginOrg');
+      console.error('[DEBUG] before validateForceLoginOrg');
       // Validate org restriction for non-interactive sessions
       const orgValidation = await validateForceLoginOrg();
+      console.error('[DEBUG] after validateForceLoginOrg');
       if (!orgValidation.valid) {
         process.stderr.write(orgValidation.message + '\n');
         process.exit(1);
@@ -2727,7 +2753,9 @@ async function run(): Promise<CommanderCommand> {
       // fetch was kicked off early (line ~2558) so only residual time blocks
       // here. --bare skips claude.ai entirely for perf-sensitive scripts.
       profileCheckpoint('before_connectMcp');
+      console.error('[DEBUG] before connectMcpBatch regular, count:', Object.keys(regularMcpConfigs).length);
       await connectMcpBatch(regularMcpConfigs, 'regular');
+      console.error('[DEBUG] after connectMcpBatch regular');
       profileCheckpoint('after_connectMcp');
       // Dedup: suppress plugin MCP servers that duplicate a claude.ai
       // connector (connector wins), then connect claude.ai servers.
@@ -2822,10 +2850,12 @@ async function run(): Promise<CommanderCommand> {
         }
       }
       logSessionTelemetry();
+      console.error('[DEBUG] before print import');
       profileCheckpoint('before_print_import');
       const {
         runHeadless
       } = await import('./cli/print.js');
+      console.error('[DEBUG] after print import, calling runHeadless');
       profileCheckpoint('after_print_import');
       void runHeadless(inputPrompt, () => headlessStore.getState(), headlessStore.setState, commandsHeadless, tools, sdkMcpConfigs, agentDefinitions.activeAgents, {
         continue: options.continue,
