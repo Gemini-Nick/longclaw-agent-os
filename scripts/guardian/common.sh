@@ -83,6 +83,11 @@ bootstrap_gui_plist() {
   launchctl bootstrap "gui/$uid" "$plist"
 }
 
+bootout_system_label() {
+  local label="$1"
+  launchctl bootout "system/$label" >/dev/null 2>&1 || true
+}
+
 list_matching_labels() {
   launchctl list | rg -n "$(printf '%s|' "$@" | sed 's/|$//')" || true
 }

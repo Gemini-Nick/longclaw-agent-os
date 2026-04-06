@@ -7,6 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 
 for label in "${NEW_LABELS[@]}"; do
   bootout_gui_label "$label"
+  bootout_system_label "$label"
   rm -f "$LAUNCH_AGENTS_DIR/$label.plist"
 done
 
@@ -24,5 +25,9 @@ rm -f \
   "$WECLAW_BIN_DIR/weclaw" \
   "$WECLAW_BIN_DIR/weguard" \
   "$WECLAW_BIN_DIR/weclaw-guardian"
+
+rm -f \
+  "$RUNTIME_INSTALL_DIR/launchd/com.zhangqilong.ai.codex.appserver.plist" \
+  "$RUNTIME_INSTALL_DIR/launchd/com.zhangqilong.ai.guardian.monitor.plist"
 
 echo "runtime services removed; weclaw credentials and weclaw-real preserved"

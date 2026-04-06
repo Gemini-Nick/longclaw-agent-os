@@ -1,101 +1,111 @@
 # 隆小虾 Agent OS
 
-AI 时代的 Wind/同花顺 — 金融业务 Agent 桌面应用。
+当前阶段先收敛为一套 runtime-first 的 Agent OS：优先提供微信 `weclaw` 桥接与常驻服务的一键安装、卸载和运维能力。GUI 与其他桌面功能后续再继续补齐。
 
-基于 [Open Agent SDK](https://github.com/shipany-ai/open-agent-sdk) fork，Electron + React + TypeScript。
+## 当前交付范围
 
-## 特性
+- 单包安装入口：仓库根目录 `install.sh` / `uninstall.sh`
+- runtime 安装/卸载：`scripts/guardian/install-v2.sh` / `uninstall-v2.sh`
+- `weclaw` wrapper：统一 `status` / `stop` / `restart` 与真实二进制透传
+- `weclaw.bridge` 前台托管：由 launchd 托管 bridge 进程
+- guardian / scheduler：统一状态检查、重启和定时任务协调
 
-- Electron 桌面应用，Claude Desktop App 风格 UI（暖色调）
-- 双模式 agent backend：ACP（连接 CC CLI）+ SDK（直连 API）
-- 59 个内置工具（文件读写/编辑/Bash/Glob/Grep/WebSearch 等）
-- MCP 原生支持（Signals 缠论分析 / aippt PPT 生成 / 尽调工具）
-- Skills 系统（自动发现 `.claude/skills/` 下的技能）
-- 流式输出 + Markdown 渲染 + 代码语法高亮
-- 多入口：桌面端 / 微信（weclaw）/ 语音（Chanless）
+当前不作为本轮重点：
 
-## 快速开始
+- GUI 体验与桌面端产品化
+- 非 runtime 相关的上游同步整理
+- 其他未并入这套 runtime 的子系统
 
-```bash
-git clone https://github.com/Gemini-Nick/longxiaoxia-agent-os.git
-cd longxiaoxia-agent-os
-npm install
-npm run build
-npm run electron:start
-```
+## 一键安装微信与常驻服务
 
-环境变量：
+### 前置条件
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `ANTHROPIC_API_KEY` | Anthropic API 密钥 | — |
-| `AGENT_MODE` | agent 模式 | `acp` |
-| `AGENT_CWD` | agent 工作目录 | `$HOME` |
+- macOS，且可使用 `launchctl`
+- 可选 Go 环境：用于构建 `weclaw-guardian`
+- `weclaw-real` 来源按以下顺序自动回退：
+  1. `bundle/weclaw-real`
+  2. 环境变量 `WECLAW_REPO_DIR` 指向的本地 `weclaw` 源码仓库
+  3. 已存在的 `~/.weclaw/bin/weclaw-real`
+  4. 旧的 `~/.weclaw/bin/weclaw`
 
-## 项目结构
-
-```
-src/          # OAS 核心（尽量不改，保持上游同步）
-electron/     # Electron 入口 & 主进程
-mcp-servers/  # Python MCP 服务（缠论、PPT、尽调等）
-apps/runtime/ # weclaw guardian v2 runtime（launchd + guardian core）
-scripts/guardian/ # 迁移、验证、退役脚本
-```
-
-## Runtime 重构（Guardian v2）
-
-旧的 `weclaw/watchdog/guardian` 心跳循环已迁移到统一控制面方案：
-
-- `weclaw-guardian`：统一监控与重启控制（Go 核心）
-- `weguard`：guardian 运维命令入口（`status/restart/monitor`）
-- `codex` / `claude` / `weclaw` / `repo-scheduler`：独立 launchd 服务
-- `weclaw` 保留给 fastclaw 微信桥，不再由 guardian 覆盖
-
-常用命令：
-
-```bash
-npm run guardian:inventory
-npm run guardian:build
-npm run guardian:install
-npm run guardian:verify
-npm run guardian:retire
-```
-
-## 单包安装边界
-
-这套后台服务产品化后，建议按两层打包：
-
-- 产品层：`apps/runtime/` + `scripts/guardian/`
-- 内核层：`weclaw-real`
-
-目标是让另一台 Mac 只执行一次安装入口，例如：
+### 安装
 
 ```bash
 bash install.sh
 ```
 
-安装包内部负责：
+如需混合模式额外渲染 daemon plist：
 
-- 安装 `weclaw-real`
-- 安装 runtime
-- 写入 `LaunchAgents`
-- 启动 `guardian/codex/claude/weclaw/repo-scheduler`
+```bash
+bash install.sh --mixed
+```
 
-首次仍需用户手工执行：
+安装过程会自动完成：
+
+- 清理旧版 watchdog / guardian 残留
+- 尝试构建 `weclaw-guardian`
+- 安装 runtime scripts 到 `~/.longclaw/runtime-v2/`
+- 安装 `~/.weclaw/bin/weclaw` 与 `~/.weclaw/bin/weguard`
+- 写入 `~/.weclaw/services.json`
+- 渲染 `~/Library/LaunchAgents/com.zhangqilong.ai.*.plist`
+- 拉起 `codex` / `claude` / `weclaw.bridge` / `repo-scheduler` / `guardian.monitor`
+
+首次安装后仍需手工登录微信：
 
 ```bash
 ~/.weclaw/bin/weclaw login
 ```
 
-## 上游同步
-
-本项目 fork 自 Open Agent SDK，定期同步上游更新：
+如果本机没有 Go，安装会继续执行，但会跳过 `guardian.monitor` 的自动装载；后续安装 Go 后可补跑：
 
 ```bash
-git fetch upstream
-git merge upstream/main
+bash scripts/guardian/build-core.sh
+bash scripts/guardian/install-v2.sh
 ```
 
-## License
+### 卸载
 
-MIT
+```bash
+bash uninstall.sh
+```
+
+卸载会删除 runtime 文件、wrapper 和 launch agents，但保留：
+
+- `~/.weclaw` 下的账号与配置
+- `~/.weclaw/bin/weclaw-real`
+
+## 常用运维命令
+
+```bash
+~/.weclaw/bin/weclaw status
+~/.weclaw/bin/weclaw restart
+~/.weclaw/bin/weguard status
+~/.weclaw/bin/weguard restart --service weclaw
+bash scripts/guardian/verify-v2.sh
+```
+
+## 服务清单
+
+- `com.zhangqilong.ai.weclaw.bridge`
+  `weclaw` 微信桥，前台模式运行，由 launchd 托管
+- `com.zhangqilong.ai.repo.scheduler`
+  仓库相关定时任务调度，并在必要时补拉起 `weclaw`
+- `com.zhangqilong.ai.guardian.monitor`
+  `weclaw-guardian` 监控入口，统一检查服务状态与重启
+- `com.zhangqilong.ai.codex.appserver`
+  Codex 常驻服务入口
+- `com.zhangqilong.ai.claude.worker`
+  Claude worker 常驻服务入口
+
+## 目录说明
+
+```text
+apps/runtime/       runtime 脚本、launchd 模板与 guardian 源码
+scripts/guardian/   构建、安装、验证、卸载脚本
+install.sh          仓库内正式安装入口
+uninstall.sh        仓库内正式卸载入口
+```
+
+## GUI 说明
+
+这个仓库后续仍会继续承载 Agent OS GUI 与其他桌面能力，但当前 README 和安装入口以 runtime 能力为主。GUI 开发与运行流程等 runtime 稳定后再单独整理。
