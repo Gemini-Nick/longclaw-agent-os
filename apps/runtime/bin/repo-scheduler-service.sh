@@ -252,6 +252,8 @@ def git_toplevel(path: Path):
 config = {
     "scan_roots": ["~/Desktop", "~/Documents", "~/github代码仓库"],
     "explicit_workspaces": ["~/Documents/Playground"],
+    "tool_mapping_ignored_names": [],
+    "unresolved_mapping_alert_threshold": 3,
     "ignored_path_patterns": [],
     "tool_mappings": {},
 }
@@ -263,6 +265,8 @@ if config_path.exists():
 
 scan_roots = [expand(p) for p in config.get("scan_roots", [])]
 explicit_workspaces = [expand(p) for p in config.get("explicit_workspaces", [])]
+ignored_tool_mapping_names = set(config.get("tool_mapping_ignored_names", []) or [])
+unresolved_mapping_alert_threshold = int(config.get("unresolved_mapping_alert_threshold", 3) or 3)
 tool_mappings = config.get("tool_mappings", {}) or {}
 scan_root_set = {str(path) for path in scan_roots}
 explicit_workspace_set = {str(path) for path in explicit_workspaces}
@@ -309,6 +313,29 @@ def is_broad_non_git_path(path: Path) -> bool:
         return True
     if path_str in scan_root_set:
         return True
+    return False
+
+def is_container_only_path(path: Path) -> bool:
+    if git_toplevel(path) is not None:
+        return False
+    try:
+        children = [child for child in path.iterdir() if child.is_dir()]
+    except Exception:
+        return False
+    for child in children:
+        if child.name in {".git", "node_modules", ".cache", ".Trash", ".claude", ".codex", ".weclaw"}:
+            continue
+        if child.joinpath(".git").exists():
+            return True
+        try:
+            grandchildren = [grandchild for grandchild in child.iterdir() if grandchild.is_dir()]
+        except Exception:
+            continue
+        for grandchild in grandchildren:
+            if grandchild.name in {".git", "node_modules", ".cache", ".Trash", ".claude", ".codex", ".weclaw"}:
+                continue
+            if grandchild.joinpath(".git").exists():
+                return True
     return False
 
 for root in scan_roots:
@@ -409,6 +436,8 @@ if claude_dir_raw:
         for project_dir in claude_dir.iterdir():
             if not project_dir.is_dir():
                 continue
+            if project_dir.name in ignored_tool_mapping_names:
+                continue
             resolved = None
             for candidate in decode_claude_project(project_dir.name):
                 candidate_path = Path(candidate).expanduser()
@@ -416,10 +445,13 @@ if claude_dir_raw:
                     resolved = candidate_path.resolve()
                     break
             if resolved is None:
-                tool_only_logs.append(f"tool_mapping_only source=claude_project path={project_dir} reason=unresolved_project_dir")
+                tool_only_logs.append(("claude_project", str(project_dir), "unresolved_project_dir", ""))
                 continue
             if git_toplevel(resolved) is None and is_broad_non_git_path(resolved):
-                tool_only_logs.append(f"tool_mapping_only source=claude_project path={project_dir} reason=broad_non_git_path resolved={resolved}")
+                tool_only_logs.append(("claude_project", str(project_dir), "broad_non_git_path", f"resolved={resolved}"))
+                continue
+            if git_toplevel(resolved) is None and is_container_only_path(resolved):
+                tool_only_logs.append(("claude_project", str(project_dir), "container_only", f"resolved={resolved}"))
                 continue
             tool_mapping_count += 1
             add_workspace(resolved, f"claude_project:{project_dir.name}", "tool_mapping_only")
@@ -428,9 +460,9 @@ weclaw_dir_raw = tool_mappings.get("weclaw_workspace_dir")
 if weclaw_dir_raw:
     weclaw_dir = expand(weclaw_dir_raw)
     if weclaw_dir.exists():
-        tool_only_logs.append(f"tool_mapping_only source=weclaw_workspace path={weclaw_dir} reason=no_real_workspace_mapping")
+        tool_only_logs.append(("weclaw_workspace", str(weclaw_dir), "tool_runtime_dir", ""))
 
-print(f"SUMMARY\t{len(workspaces)}\t{tool_mapping_count}")
+print(f"SUMMARY\t{len(workspaces)}\t{tool_mapping_count}\t{unresolved_mapping_alert_threshold}")
 for workspace in sorted(workspaces.values(), key=lambda item: item["path"]):
     print(
         "WORKSPACE\t{path}\t{category}\t{sources}".format(
@@ -439,15 +471,16 @@ for workspace in sorted(workspaces.values(), key=lambda item: item["path"]):
             sources=",".join(workspace["sources"]),
         )
     )
-for line in tool_only_logs:
-    print(f"TOOL_ONLY\t{line}")
+for source, path, reason, detail in tool_only_logs:
+    print(f"TOOL_ONLY\t{source}\t{path}\t{reason}\t{detail}")
 PY
 }
 
 main() {
   local trigger dep_updates auto_commits cloud_syncs cloud_pushes workspace_total tool_mappings
   local result_text commit_made discovery_file line path category sources source_display
-  local tool_only_count obsidian_raw obsidian_line
+  local tool_only_count unresolved_tool_only_count broad_tool_only_count container_tool_only_count runtime_tool_only_count
+  local unresolved_mapping_alert_threshold obsidian_raw obsidian_line source reason detail
 
   trap cleanup EXIT
 
@@ -464,6 +497,11 @@ main() {
   workspace_total=0
   tool_mappings=0
   tool_only_count=0
+  unresolved_tool_only_count=0
+  broad_tool_only_count=0
+  container_tool_only_count=0
+  runtime_tool_only_count=0
+  unresolved_mapping_alert_threshold=3
 
   log "scheduler tick version=$RUNTIME_VERSION trigger=$trigger repo_root=$REPO_ROOT bootstrap=$BOOTSTRAP workspace_config=$WORKSPACE_CONFIG"
 
@@ -478,11 +516,12 @@ main() {
     return 0
   fi
 
-  while IFS=$'\t' read -r line path category sources; do
+  while IFS=$'\t' read -r line path category sources detail; do
     case "$line" in
       SUMMARY)
         workspace_total="${path:-0}"
         tool_mappings="${category:-0}"
+        unresolved_mapping_alert_threshold="${sources:-3}"
         ;;
       WORKSPACE)
         source_display="${sources:-scan}"
@@ -554,7 +593,29 @@ main() {
         ;;
       TOOL_ONLY)
         tool_only_count=$((tool_only_count + 1))
-        log "$path"
+        source="${path:-unknown}"
+        path="${category:-}"
+        reason="${sources:-unknown}"
+        detail="${detail:-}"
+        case "$reason" in
+          unresolved_project_dir)
+            unresolved_tool_only_count=$((unresolved_tool_only_count + 1))
+            ;;
+          broad_non_git_path)
+            broad_tool_only_count=$((broad_tool_only_count + 1))
+            ;;
+          container_only)
+            container_tool_only_count=$((container_tool_only_count + 1))
+            ;;
+          tool_runtime_dir)
+            runtime_tool_only_count=$((runtime_tool_only_count + 1))
+            ;;
+        esac
+        if [[ -n "$detail" ]]; then
+          log "tool_mapping_only source=$source path=$path reason=$reason $detail"
+        else
+          log "tool_mapping_only source=$source path=$path reason=$reason"
+        fi
         ;;
     esac
   done <"$discovery_file"
@@ -573,11 +634,11 @@ main() {
     fi
   fi
 
-  if [[ "$tool_only_count" -ge 5 ]]; then
+  if [[ "$unresolved_tool_only_count" -ge "$unresolved_mapping_alert_threshold" ]]; then
     result_text="$result_text"$'\n'"⚠️ 部分工具目录未映射到真实工作区，请看日志"
   fi
 
-  log "summary counters workspaces=$workspace_total dependency_updates=$dep_updates auto_commits=$auto_commits cloud_syncs=$cloud_syncs cloud_pushes=$cloud_pushes tool_mapping_only=$tool_only_count"
+  log "summary counters workspaces=$workspace_total dependency_updates=$dep_updates auto_commits=$auto_commits cloud_syncs=$cloud_syncs cloud_pushes=$cloud_pushes tool_mapping_only=$tool_only_count unresolved_tool_only=$unresolved_tool_only_count broad_tool_only=$broad_tool_only_count container_tool_only=$container_tool_only_count runtime_tool_only=$runtime_tool_only_count"
   send_summary "$(build_summary_message "$workspace_total" "$dep_updates" "$auto_commits" "$cloud_syncs" "$cloud_pushes" "$result_text")"
   CURRENT_DISCOVERY_FILE=""
   write_state "$trigger"
