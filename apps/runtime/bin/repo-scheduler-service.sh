@@ -380,10 +380,26 @@ if codex_dir_raw:
 
 def decode_claude_project(name: str):
     candidates = []
-    if name.startswith("-"):
-        candidates.append("/" + name[1:].replace("-", "/"))
-        placeholder = "\0"
-        candidates.append("/" + name[1:].replace("--", placeholder).replace("-", "/").replace(placeholder, "-"))
+    if not name.startswith("-"):
+        return candidates
+
+    raw = name[1:]
+    candidates.append("/" + raw.replace("-", "/"))
+
+    placeholder = "\0"
+    candidates.append("/" + raw.replace("--", placeholder).replace("-", "/").replace(placeholder, "-"))
+
+    desktop_root = f"Users-{home.name}-Desktop-"
+    if raw == f"Users-{home.name}-Desktop-github----":
+        candidates.append(str(home / "Desktop" / "github代码仓库"))
+    if raw.startswith(f"Users-{home.name}-Desktop-github-----"):
+        suffix = raw[len(f"Users-{home.name}-Desktop-github-----"):]
+        if suffix:
+            candidates.append(str(home / "Desktop" / "github代码仓库" / suffix))
+    if raw.startswith(desktop_root) and "github代码仓库-" in raw:
+        suffix = raw.split("github代码仓库-", 1)[1]
+        if suffix:
+            candidates.append(str(home / "Desktop" / "github代码仓库" / suffix))
     return candidates
 
 claude_dir_raw = tool_mappings.get("claude_projects_dir")
