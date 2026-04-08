@@ -31,6 +31,7 @@ cp "$RUNTIME_SRC_DIR/bin/weclaw-bridge.sh" "$RUNTIME_INSTALL_DIR/bin/weclaw-brid
 cp "$RUNTIME_SRC_DIR/bin/repo-scheduler-service.sh" "$RUNTIME_INSTALL_DIR/bin/repo-scheduler-service.sh"
 cp "$RUNTIME_SRC_DIR/bin/guardian-monitor.sh" "$RUNTIME_INSTALL_DIR/bin/guardian-monitor.sh"
 cp "$RUNTIME_SRC_DIR/config/workspace-watchdog.json" "$RUNTIME_INSTALL_DIR/config/workspace-watchdog.json"
+cp "$RUNTIME_SRC_DIR/config/repo-sync-policy.json" "$RUNTIME_INSTALL_DIR/config/repo-sync-policy.json"
 chmod +x "$RUNTIME_INSTALL_DIR/bin/"*
 
 log "install weclaw core binary"

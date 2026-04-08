@@ -1,0 +1,27 @@
+{
+  "scan_roots": [
+    "~/github代码仓库"
+  ],
+  "explicit_workspaces": [],
+  "tool_mapping_ignored_names": [
+    "-Users-zhangqilong--weclaw-chat",
+    "-Users-zhangqilong--weclaw-workspace",
+    "-Users-zhangqilong-Downloads-src"
+  ],
+  "unresolved_mapping_alert_threshold": 3,
+  "ignored_path_patterns": [
+    "*/.git/*",
+    "*/node_modules/*",
+    "*/.cache/*",
+    "*/.Trash/*",
+    "*/Library/*",
+    "*/.claude/*",
+    "*/.codex/*",
+    "*/.weclaw/*"
+  ],
+  "tool_mappings": {
+    "claude_projects_dir": "~/.claude/projects",
+    "codex_worktrees_dir": "~/.codex/worktrees",
+    "weclaw_workspace_dir": "~/.weclaw/workspace"
+  }
+}

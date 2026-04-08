@@ -1,0 +1,59 @@
+{
+  "default": {
+    "mode": "mirror_origin",
+    "canonical_remote": "origin",
+    "branch": "main",
+    "allow_local_commits": false,
+    "allow_dependency_updates": false,
+    "upstream_remote": ""
+  },
+  "repos": {
+    "Chanless": {
+      "mode": "owned_push_main",
+      "allow_local_commits": true
+    },
+    "Signals": {
+      "mode": "mirror_origin"
+    },
+    "aippt/PPTAgent": {
+      "mode": "mirror_origin"
+    },
+    "aippt/odin-slides": {
+      "mode": "mirror_origin"
+    },
+    "aippt/ppt-master": {
+      "mode": "mirror_origin"
+    },
+    "aippt/presenton": {
+      "mode": "mirror_origin"
+    },
+    "clash-verge-repair": {
+      "mode": "local_git_pending_remote",
+      "canonical_remote": "",
+      "branch": "main",
+      "allow_local_commits": true,
+      "allow_dependency_updates": false
+    },
+    "compound-engineering-plugin": {
+      "mode": "mirror_origin"
+    },
+    "czsc": {
+      "mode": "mirror_origin"
+    },
+    "gstack": {
+      "mode": "mirror_origin"
+    },
+    "longclaw-agent-os": {
+      "mode": "owned_push_main",
+      "allow_local_commits": true
+    },
+    "superpowers": {
+      "mode": "mirror_origin"
+    },
+    "weclaw": {
+      "mode": "fork_origin_with_upstream",
+      "allow_local_commits": true,
+      "upstream_remote": "upstream"
+    }
+  }
+}

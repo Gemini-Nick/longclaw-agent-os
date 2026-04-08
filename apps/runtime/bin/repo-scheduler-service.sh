@@ -13,8 +13,11 @@ WECLAW_ACCOUNTS_DIR="${WECLAW_ACCOUNTS_DIR:-$HOME/.weclaw/accounts}"
 WECLAW_LOG_FILE="${WECLAW_LOG_FILE:-$HOME/.weclaw/weclaw.log}"
 WECLAW_PORT="${WECLAW_PORT:-18011}"
 WORKSPACE_CONFIG="${LONGCLAW_WORKSPACE_CONFIG:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/workspace-watchdog.json}"
+POLICY_CONFIG="${LONGCLAW_POLICY_CONFIG:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/repo-sync-policy.json}"
 AUTO_COMMIT_MESSAGE="${LONGCLAW_AUTO_COMMIT_MESSAGE:-chore(watchdog): auto-commit tracked workspace changes}"
+AUTO_COMMIT="${LONGCLAW_AUTO_COMMIT:-0}"
 DRY_RUN="${LONGCLAW_DRY_RUN:-0}"
+AUTO_PUSH="${LONGCLAW_AUTO_PUSH:-0}"
 RUNTIME_VERSION="workspace-v2-2026-04-06"
 mkdir -p "$LOG_DIR"
 
@@ -121,9 +124,17 @@ send_summary() {
   return 0
 }
 
-has_origin_remote() {
+has_remote() {
   local repo="$1"
-  git -C "$repo" remote get-url origin >/dev/null 2>&1
+  local remote_name="$2"
+  [[ -n "$remote_name" ]] || return 1
+  git -C "$repo" remote get-url "$remote_name" >/dev/null 2>&1
+}
+
+repo_has_tracked_file() {
+  local repo="$1"
+  local pathspec="$2"
+  git -C "$repo" ls-files --error-unmatch "$pathspec" >/dev/null 2>&1
 }
 
 repo_has_tracked_changes() {
@@ -137,11 +148,76 @@ repo_has_tracked_changes() {
   return 1
 }
 
+load_repo_policy() {
+  local repo="$1"
+  python3 - "$POLICY_CONFIG" "$REPO_ROOT" "$repo" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+policy_path = Path(os.path.expanduser(sys.argv[1]))
+repo_root = Path(os.path.expanduser(sys.argv[2])).resolve()
+repo_path = Path(os.path.expanduser(sys.argv[3])).resolve()
+
+config = {
+    "default": {
+        "mode": "mirror_origin",
+        "canonical_remote": "origin",
+        "branch": "main",
+        "allow_local_commits": False,
+        "allow_dependency_updates": False,
+        "upstream_remote": "",
+    },
+    "repos": {},
+}
+
+if policy_path.exists():
+    with policy_path.open("r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    if isinstance(loaded, dict):
+        config.update(loaded)
+
+default = dict(config.get("default") or {})
+repos = dict(config.get("repos") or {})
+
+repo_key = repo_path.name
+try:
+    repo_key = repo_path.relative_to(repo_root).as_posix()
+except ValueError:
+    pass
+
+selected = dict(default)
+selected.update(repos.get(repo_key, {}))
+
+print(
+    "\t".join(
+        [
+            repo_key,
+            str(selected.get("mode", "mirror_origin")),
+            str(selected.get("canonical_remote", "origin") or ""),
+            str(selected.get("branch", "main") or ""),
+            "1" if selected.get("allow_local_commits") else "0",
+            "1" if selected.get("allow_dependency_updates") else "0",
+            str(selected.get("upstream_remote", "") or ""),
+        ]
+    )
+)
+PY
+}
+
 run_dependency_updates() {
   local repo="$1"
+  local policy_mode="${2:-mirror_origin}"
+  local allow_dependency_updates="${3:-0}"
   local changed=1
   local attempted=0
   local before_status after_status
+
+  if [[ "$allow_dependency_updates" != "1" ]]; then
+    log "workspace=$repo dependency_update skipped=policy_disabled policy_mode=$policy_mode"
+    return 1
+  fi
 
   before_status="$(git -C "$repo" status --porcelain --untracked-files=all 2>/dev/null || true)"
 
@@ -155,12 +231,16 @@ run_dependency_updates() {
   fi
 
   if [[ -f "$repo/package.json" ]] && command -v npm >/dev/null 2>&1; then
-    attempted=1
-    log "workspace=$repo dependency_update ecosystem=node command=npm update --package-lock-only --ignore-scripts"
-    (
-      cd "$repo"
-      npm update --package-lock-only --ignore-scripts
-    ) >>"$LOG_FILE" 2>&1 || log "workspace=$repo dependency_update_failed ecosystem=node"
+    if repo_has_tracked_file "$repo" "package-lock.json"; then
+      attempted=1
+      log "workspace=$repo dependency_update ecosystem=node command=npm update --package-lock-only --ignore-scripts"
+      (
+        cd "$repo"
+        npm update --package-lock-only --ignore-scripts
+      ) >>"$LOG_FILE" 2>&1 || log "workspace=$repo dependency_update_failed ecosystem=node"
+    else
+      log "workspace=$repo dependency_update skipped=requires_tracked_lockfile ecosystem=node policy_mode=$policy_mode"
+    fi
   fi
 
   if [[ -f "$repo/pyproject.toml" ]] && [[ -f "$repo/uv.lock" ]] && command -v uv >/dev/null 2>&1; then
@@ -250,8 +330,8 @@ def git_toplevel(path: Path):
     return Path(out).resolve() if out else None
 
 config = {
-    "scan_roots": ["~/Desktop", "~/Documents", "~/github代码仓库"],
-    "explicit_workspaces": ["~/Documents/Playground"],
+    "scan_roots": ["~/github代码仓库"],
+    "explicit_workspaces": [],
     "tool_mapping_ignored_names": [],
     "unresolved_mapping_alert_threshold": 3,
     "ignored_path_patterns": [],
@@ -338,6 +418,13 @@ def is_container_only_path(path: Path) -> bool:
                 return True
     return False
 
+def is_within_repo_root(path: Path) -> bool:
+    try:
+        path.relative_to(repo_root)
+        return True
+    except ValueError:
+        return False
+
 for root in scan_roots:
     if not root.exists():
         continue
@@ -387,23 +474,23 @@ if codex_dir_raw:
             try:
                 first = gitfile.read_text(encoding="utf-8").splitlines()[0]
             except Exception:
-                tool_only_logs.append(f"tool_mapping_only source=codex_worktree path={gitfile.parent} reason=unreadable_gitfile")
+                tool_only_logs.append(("codex_worktree", str(gitfile.parent), "unreadable_gitfile", ""))
                 continue
             if not first.startswith("gitdir: "):
-                tool_only_logs.append(f"tool_mapping_only source=codex_worktree path={gitfile.parent} reason=unsupported_gitfile")
+                tool_only_logs.append(("codex_worktree", str(gitfile.parent), "unsupported_gitfile", ""))
                 continue
             gitdir = Path(first[8:].strip()).expanduser()
             gitdir_str = str(gitdir)
             marker = "/.git/worktrees/"
             if marker not in gitdir_str:
-                tool_only_logs.append(f"tool_mapping_only source=codex_worktree path={gitfile.parent} reason=no_worktree_marker")
+                tool_only_logs.append(("codex_worktree", str(gitfile.parent), "no_worktree_marker", ""))
                 continue
             real = Path(gitdir_str.split(marker, 1)[0]).resolve()
-            if real.exists():
+            if real.exists() and is_within_repo_root(real):
                 tool_mapping_count += 1
                 add_workspace(real, f"codex_worktree:{gitfile.parent}", "tool_mapping_only")
             else:
-                tool_only_logs.append(f"tool_mapping_only source=codex_worktree path={gitfile.parent} reason=resolved_path_missing")
+                tool_only_logs.append(("codex_worktree", str(gitfile.parent), "resolved_path_missing", ""))
 
 def decode_claude_project(name: str):
     candidates = []
@@ -446,6 +533,8 @@ if claude_dir_raw:
                     break
             if resolved is None:
                 tool_only_logs.append(("claude_project", str(project_dir), "unresolved_project_dir", ""))
+                continue
+            if not is_within_repo_root(resolved):
                 continue
             if git_toplevel(resolved) is None and is_broad_non_git_path(resolved):
                 tool_only_logs.append(("claude_project", str(project_dir), "broad_non_git_path", f"resolved={resolved}"))
@@ -525,28 +614,30 @@ main() {
         ;;
       WORKSPACE)
         source_display="${sources:-scan}"
-        log "workspace category=$category path=$path sources=$source_display"
+        local repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote
+        IFS=$'\t' read -r repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote <<<"$(load_repo_policy "$path")"
+        log "workspace category=$category path=$path repo_key=$repo_key policy_mode=$policy_mode sources=$source_display"
 
         if [[ "$category" != "git_repo" ]]; then
           log "workspace path=$path skipped=non_git_workspace"
           continue
         fi
 
-        if has_origin_remote "$path"; then
+        if has_remote "$path" "$canonical_remote"; then
           cloud_syncs=$((cloud_syncs + 1))
           if [[ "$DRY_RUN" == "1" ]]; then
-            log "workspace=$path cloud_sync skipped=dry_run"
+            log "workspace=$path cloud_sync skipped=dry_run remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
           else
-            log "workspace=$path cloud_sync action=pull"
-            if ! git -C "$path" pull --ff-only >>"$LOG_FILE" 2>&1; then
-              log "workspace=$path cloud_sync_failed action=pull"
+            log "workspace=$path cloud_sync action=pull remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
+            if ! git -C "$path" pull --ff-only "$canonical_remote" "$branch" >>"$LOG_FILE" 2>&1; then
+              log "workspace=$path cloud_sync_failed action=pull remote=$canonical_remote branch=$branch"
             fi
           fi
         else
-          log "workspace=$path cloud_sync skipped=no_origin_remote"
+          log "workspace=$path cloud_sync skipped=no_canonical_remote remote=${canonical_remote:-none} policy_mode=$policy_mode"
         fi
 
-        if run_dependency_updates "$path"; then
+        if run_dependency_updates "$path" "$policy_mode" "$allow_dependency_updates"; then
           dep_updates=$((dep_updates + 1))
           log "workspace=$path dependency_update_result=changed"
         else
@@ -556,6 +647,10 @@ main() {
         commit_made=0
         if [[ "$DRY_RUN" == "1" ]]; then
           log "workspace=$path auto_commit skipped=dry_run"
+        elif [[ "$AUTO_COMMIT" != "1" ]]; then
+          log "workspace=$path auto_commit skipped=disabled"
+        elif [[ "$allow_local_commits" != "1" ]]; then
+          log "workspace=$path auto_commit skipped=policy_disallow_local_commits policy_mode=$policy_mode"
         elif repo_has_tracked_changes "$path"; then
           log "workspace=$path auto_commit action=git_add_u"
           git -C "$path" add -u >>"$LOG_FILE" 2>&1 || true
@@ -575,11 +670,13 @@ main() {
         fi
 
         if [[ "$commit_made" -eq 1 ]]; then
-          if has_origin_remote "$path"; then
+          if has_remote "$path" "$canonical_remote"; then
             if [[ "$DRY_RUN" == "1" ]]; then
               log "workspace=$path cloud_push skipped=dry_run"
+            elif [[ "$AUTO_PUSH" != "1" ]]; then
+              log "workspace=$path cloud_push skipped=disabled"
             else
-              if git -C "$path" push >>"$LOG_FILE" 2>&1; then
+              if git -C "$path" push "$canonical_remote" "$branch" >>"$LOG_FILE" 2>&1; then
                 cloud_pushes=$((cloud_pushes + 1))
                 log "workspace=$path cloud_push_result=pushed"
               else
@@ -587,7 +684,7 @@ main() {
               fi
             fi
           else
-            log "workspace=$path cloud_push skipped=no_origin_remote"
+            log "workspace=$path cloud_push skipped=no_canonical_remote remote=${canonical_remote:-none}"
           fi
         fi
         ;;
