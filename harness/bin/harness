@@ -1,0 +1,2492 @@
+#!/usr/bin/env node
+
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
+const harnessRoot = path.join(repoRoot, "harness");
+const generatedRoot = path.join(harnessRoot, "generated");
+const stateRoot = path.join(harnessRoot, "state");
+const projectsFile = path.join(harnessRoot, "projects", "projects.yaml");
+const failuresFile = path.join(stateRoot, "failures.json");
+const scheduleFile = path.join(stateRoot, "schedule.json");
+const notificationsFile = path.join(stateRoot, "notifications.json");
+const activityFile = path.join(stateRoot, "activity.json");
+const venvRoot = path.join(stateRoot, "venvs");
+const snapshotRoot = path.join(stateRoot, "snapshots");
+const dashboardDir = path.join(generatedRoot, "dashboard");
+const outboxDir = path.join(generatedRoot, "outbox");
+const LOOP_INTERVAL_MS = Number(process.env.HARNESS_LOOP_INTERVAL_MS || 60_000);
+const HOURLY_MS = 60 * 60 * 1000;
+const DAILY_MS = 24 * HOURLY_MS;
+const WEEKLY_MS = 7 * DAILY_MS;
+const PROGRESS_RETRY_MS = 10 * 60 * 1000;
+const PIP_TIMEOUT_MS = Number(process.env.HARNESS_PIP_TIMEOUT_MS || 180_000);
+const SIGNALS_BASE_DEPENDENCIES = [
+  "pytest",
+  "fastapi>=0.104",
+  "uvicorn[standard]>=0.24",
+  "pydantic",
+  "httpx",
+];
+const SIGNALS_OPTIONAL_DEPENDENCIES = {
+  pandas: ["pandas", "PyYAML", "python-dotenv", "rich", "tenacity>=8.2"],
+  yaml: ["PyYAML"],
+  dotenv: ["python-dotenv"],
+  akshare: ["akshare", "pandas"],
+  czsc: ["czsc", "pandas"],
+  pymongo: ["pymongo>=4.6"],
+  PIL: ["Pillow"],
+  yfinance: ["yfinance"],
+  alpaca: ["alpaca-py"],
+};
+
+main();
+
+function main() {
+  ensureDir(generatedRoot);
+  ensureDir(stateRoot);
+  ensureDir(venvRoot);
+  ensureDir(snapshotRoot);
+  ensureDir(dashboardDir);
+  ensureDir(outboxDir);
+
+  const [command, target] = process.argv.slice(2);
+  const projects = loadProjects();
+
+  switch (command) {
+    case "list":
+      listProjects(projects);
+      return;
+    case "doctor":
+      runAcrossProjects(projects, runDoctor);
+      return;
+    case "eval":
+      requireTarget(command, target);
+      exitFromResult(runEval(findProject(projects, target)));
+      return;
+    case "report":
+      requireTarget(command, target);
+      printLatestReport(target);
+      return;
+    case "fix-plan":
+      requireTarget(command, target);
+      exitFromResult(runFixPlan(findProject(projects, target)));
+      return;
+    case "autofix":
+      requireTarget(command, target);
+      exitFromResult(runAutofix(findProject(projects, target)));
+      return;
+    case "autorefactor":
+      requireTarget(command, target);
+      exitFromResult(runAutorefactor(findProject(projects, target)));
+      return;
+    case "hold":
+      requireTarget(command, target);
+      exitFromResult(runHold(findProject(projects, target)));
+      return;
+    case "status":
+      printStatus(projects);
+      return;
+    case "brief":
+      {
+        const send = target === "send";
+        const result = runBrief(projects, { send });
+        if (send) {
+          const schedule = loadSchedule();
+          const now = new Date().toISOString();
+          schedule.last_progress_attempt_at = now;
+          if (result.status === "pass") {
+            schedule.last_progress_at = now;
+          }
+          saveSchedule(schedule);
+        }
+        exitFromResult(result);
+      }
+      return;
+      return;
+    case "tick":
+      exitFromResult(runTick(projects));
+      return;
+    case "loop":
+      runLoop(projects);
+      return;
+    case "notify":
+      requireTarget(command, target);
+      exitFromResult(runNotify(target));
+      return;
+    case "resolve":
+      requireTarget(command, target);
+      exitFromResult(runResolve(target));
+      return;
+    default:
+      printUsage();
+      process.exit(1);
+  }
+}
+
+function printUsage() {
+  console.log("Usage:");
+  console.log("  node harness/bin/harness list");
+  console.log("  node harness/bin/harness doctor");
+  console.log("  node harness/bin/harness eval <project>");
+  console.log("  node harness/bin/harness fix-plan <project>");
+  console.log("  node harness/bin/harness autofix <project>");
+  console.log("  node harness/bin/harness autorefactor <project>");
+  console.log("  node harness/bin/harness hold <project>");
+  console.log("  node harness/bin/harness brief [send]");
+  console.log("  node harness/bin/harness tick");
+  console.log("  node harness/bin/harness loop");
+  console.log("  node harness/bin/harness notify <failure_id>");
+  console.log("  node harness/bin/harness resolve <failure_id>");
+  console.log("  node harness/bin/harness report <project>");
+  console.log("  node harness/bin/harness status");
+}
+
+function loadProjects() {
+  return JSON.parse(fs.readFileSync(projectsFile, "utf8")).projects;
+}
+
+function findProject(projects, id) {
+  const project = projects.find((item) => item.id === id);
+  if (!project) {
+    console.error(`Unknown project: ${id}`);
+    process.exit(1);
+  }
+  return project;
+}
+
+function requireTarget(command, target) {
+  if (!target) {
+    console.error(`Missing project id for ${command}.`);
+    printUsage();
+    process.exit(1);
+  }
+}
+
+function runAcrossProjects(projects, fn) {
+  const results = projects.map(fn);
+  results.forEach(printResultSummary);
+  const shouldFail = results.some((item) => item.status === "fail");
+  process.exit(shouldFail ? 1 : 0);
+}
+
+function exitFromResult(result) {
+  printResultSummary(result);
+  process.exit(result.status === "fail" ? 1 : 0);
+}
+
+function listProjects(projects) {
+  for (const project of projects) {
+    const location = project.kind === "remote" ? project.repo_url : project.root;
+    console.log(`${project.id}\t${project.kind}\t${location}`);
+  }
+}
+
+function printStatus(projects) {
+  for (const project of projects) {
+    const payload = latestPayloadForProject(project.id);
+    if (!payload) {
+      console.log(`${project.id}\tunknown\t(no report)`);
+      continue;
+    }
+    console.log(`${project.id}\t${payload.status}\t${payload.workflow}\t${payload.timestamp}`);
+  }
+}
+
+function printLatestReport(projectId) {
+  const latest = latestMarkdownPath(projectId, "latest");
+  const autofix = latestMarkdownPath(projectId, "autofix-latest");
+  const fixPlan = latestMarkdownPath(projectId, "fix-plan-latest");
+  const held = latestMarkdownPath(projectId, "hold-latest");
+  const candidates = [latest, autofix, fixPlan, held].filter((file) => fs.existsSync(file));
+  if (candidates.length === 0) {
+    console.error(`No report found for ${projectId}.`);
+    process.exit(1);
+  }
+  const newest = candidates
+    .map((file) => ({ file, mtime: fs.statSync(file).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)[0].file;
+  process.stdout.write(fs.readFileSync(newest, "utf8"));
+}
+
+function runLoop(projects) {
+  const runOnce = () => {
+    const result = runTick(projects);
+    const summary = `${new Date().toISOString()} ${result.status} ${result.workflow}`;
+    console.log(summary);
+    if (result.reportPath) {
+      console.log(`report: ${result.reportPath}`);
+    }
+  };
+
+  runOnce();
+  setInterval(runOnce, LOOP_INTERVAL_MS);
+}
+
+function runTick(projects) {
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+  const schedule = loadSchedule();
+  const now = Date.now();
+  const details = { actionable_failure: null };
+  let status = "pass";
+
+  if (shouldRunSchedule(schedule.last_doctor_at, HOURLY_MS, now)) {
+    for (const project of projects) runDoctor(project);
+    schedule.last_doctor_at = new Date(now).toISOString();
+    checks.push("Refreshed hourly doctor reports.");
+  }
+
+  if (shouldRunSchedule(schedule.last_eval_at, DAILY_MS, now)) {
+    for (const project of projects) runEval(project);
+    schedule.last_eval_at = new Date(now).toISOString();
+    checks.push("Refreshed daily eval reports.");
+  }
+
+  if (shouldRunSchedule(schedule.last_weekly_at, WEEKLY_MS, now)) {
+    const knowledgeBase = projects.find((item) => item.id === "knowledge-base");
+    if (knowledgeBase) runAutorefactor(knowledgeBase);
+    schedule.last_weekly_at = new Date(now).toISOString();
+    checks.push("Ran weekly autorefactor pass.");
+  }
+
+  for (let sweep = 0; sweep < 12; sweep += 1) {
+    const pendingNotification = nextPendingNotificationFailure(projects);
+    if (pendingNotification) {
+      const notification = runNotify(pendingNotification.failure_id);
+      checks.push(`Pending notification delivered: ${pendingNotification.failure_id}`);
+      failures.push(...systemFailureLines(pendingNotification, notification.failures));
+      nextActions.push(...notification.nextActions);
+      details.actionable_failure = pendingNotification.failure_id;
+      details.risk_level = pendingNotification.risk_level;
+      status = mergeTickStatus(status, notification.status);
+      continue;
+    }
+
+    const escalation = nextEscalationFailure(projects);
+    if (escalation) {
+      const project = findProject(projects, escalation.project);
+      const held = runHold(project, escalation, "Automatic repair exhausted its retry budget and now requires manual review.");
+      const notification = runNotify(escalation.failure_id);
+      checks.push(`Escalated failure: ${escalation.failure_id}`);
+      checks.push(`Escalation reason: ${escalation.status}`);
+      checks.push(`Notification status: ${notification.status}`);
+      failures.push(...systemFailureLines(escalation, held.failures));
+      nextActions.push(...held.nextActions);
+      details.actionable_failure = escalation.failure_id;
+      details.risk_level = escalation.risk_level || riskLevelForCategory(escalation.category);
+      details.notification_report = notification.reportPath;
+      status = mergeTickStatus(status, held.status);
+      continue;
+    }
+
+    const outstanding = nextActionableFailure(projects);
+    if (!outstanding) break;
+
+    checks.push(`Selected failure: ${outstanding.failure_id}`);
+    const project = findProject(projects, outstanding.project);
+    const riskLevel = riskLevelForCategory(outstanding.category);
+    checks.push(`Risk level: ${riskLevel}`);
+    details.actionable_failure = outstanding.failure_id;
+    details.risk_level = riskLevel;
+
+    const planResult = runFixPlan(project);
+    checks.push(`Fix-plan status: ${planResult.status}`);
+
+    if (riskLevel !== "low") {
+      const held = runHold(project, outstanding, `${riskLevel} risk failure requires manual review before mutation.`);
+      const notification = runNotify(outstanding.failure_id);
+      checks.push(`Notification status: ${notification.status}`);
+      failures.push(...systemFailureLines(outstanding, held.failures));
+      nextActions.push(...held.nextActions);
+      details.notification_report = notification.reportPath;
+      status = mergeTickStatus(status, held.status);
+      continue;
+    }
+
+    if (planResult.status !== "autofix_planned") {
+      const notification = planResult.status === "held" && outstanding.failure_id ? runNotify(outstanding.failure_id) : null;
+      if (notification) {
+        checks.push(`Notification status: ${notification.status}`);
+        details.notification_report = notification.reportPath;
+      }
+      failures.push(...systemFailureLines(outstanding, planResult.failures));
+      nextActions.push(...planResult.nextActions);
+      status = mergeTickStatus(status, planResult.status);
+      continue;
+    }
+
+    const autofixResult = runAutofix(project);
+    checks.push(`Autofix status: ${autofixResult.status}`);
+
+    if (autofixResult.status === "autofix_pass" && outstanding.failure_id) {
+      const resolved = runResolve(outstanding.failure_id);
+      checks.push(`Resolved failure: ${outstanding.failure_id}`);
+      nextActions.push(...resolved.nextActions);
+      status = mergeTickStatus(status, "pass");
+      continue;
+    }
+
+    if (["autofix_failed", "rolled_back", "held"].includes(autofixResult.status)) {
+      const held = autofixResult.status === "held" ? autofixResult : runHold(project, outstanding, "Automatic repair failed and has been escalated.");
+      const notification = runNotify(outstanding.failure_id);
+      checks.push(`Notification status: ${notification.status}`);
+      failures.push(...systemFailureLines(outstanding, held.failures));
+      nextActions.push(...held.nextActions);
+      details.notification_report = notification.reportPath;
+      status = mergeTickStatus(status, held.status);
+      continue;
+    }
+
+    failures.push(...systemFailureLines(outstanding, autofixResult.failures));
+    nextActions.push("Autofix completed without resolution. Inspect the latest project report.");
+    status = mergeTickStatus(status, autofixResult.status);
+    break;
+  }
+
+  if (checks.length === 0 && failures.length === 0 && nextActions.length === 0) {
+    nextActions.push("No actionable failures. Wait for the next schedule tick or a new failure record.");
+  }
+
+  const progressDue = shouldRunSchedule(schedule.last_progress_at, HOURLY_MS, now);
+  const progressRetryDue = shouldRunSchedule(schedule.last_progress_attempt_at, PROGRESS_RETRY_MS, now);
+  const shouldSendProgress = progressDue && progressRetryDue;
+  const brief = runBrief(projects, { send: shouldSendProgress });
+  checks.push(`Progress summary: ${brief.status}`);
+  details.progress_report = brief.reportPath;
+  if (brief.details?.outbox_path) details.progress_outbox = brief.details.outbox_path;
+  if (brief.details?.channel) details.progress_channel = brief.details.channel;
+  if (brief.details?.sent_at) details.progress_sent_at = brief.details.sent_at;
+  if (shouldSendProgress) {
+    schedule.last_progress_attempt_at = new Date(now).toISOString();
+    if (brief.status === "pass") {
+      schedule.last_progress_at = new Date(now).toISOString();
+    }
+  }
+  saveSchedule(schedule);
+
+  return persistSystemReport("tick-latest", {
+    workflow: "tick",
+    status: mergeTickStatus(status, brief.status === "held" ? "held" : "pass"),
+    checks,
+    failures: uniqueLines(failures),
+    nextActions,
+    details,
+  });
+}
+
+function runBrief(projects, options = {}) {
+  const payload = buildProgressSummary(projects);
+  const reportPath = writeProgressSummary(payload);
+  const details = {
+    report_path: reportPath,
+    headline: payload.headline,
+  };
+  let checks = [`Projects tracked: ${projects.length}`];
+  let failures = [];
+  let nextActions = [...payload.next_steps];
+  let status = "pass";
+
+  if (options.send) {
+    const outboxPath = writeProgressOutbox(payload);
+    const channelResult = sendProgressBrief(payload);
+    checks.push(`Progress broadcast channel: ${channelResult.channel}`);
+    failures = uniqueLines(channelResult.failures || []);
+    details.outbox_path = outboxPath;
+    details.channel = channelResult.channel;
+    details.sent_at = payload.timestamp;
+    status = channelResult.status === "pass" ? "pass" : "held";
+    if (channelResult.nextActions?.length) {
+      nextActions = [...channelResult.nextActions, ...nextActions];
+    }
+  }
+
+  return persistSystemReport("brief-latest", {
+    workflow: "brief",
+    status,
+    checks,
+    failures,
+    nextActions: uniqueLines(nextActions),
+    details,
+  });
+}
+
+function runNotify(failureId) {
+  const failure = loadFailures().failures.find((item) => item.failure_id === failureId);
+  if (!failure) {
+    return persistSystemReport("notify-latest", {
+      workflow: "notify",
+      status: "held",
+      checks: [`Failure not found: ${failureId}`],
+      failures: [],
+      nextActions: ["Verify the failure id and rerun notify."],
+      details: {
+        failure_id: failureId,
+      },
+    });
+  }
+
+  const notificationPayload = buildNotificationPayload(failure);
+  const outboxPath = writeNotificationOutbox(notificationPayload);
+  const shouldSend = shouldSendExternalNotification(failure);
+
+  if (failure.notification_delivered && failure.notified_at) {
+    const existing = loadNotifications().notifications.find((item) => item.failure_id === failureId);
+    const channelResult = {
+      status: existing?.delivered ? "pass" : "held",
+      channel: existing?.channel || (failure.notification_delivered ? "weclaw" : "local_only"),
+      failures: existing?.failures || [],
+      nextActions: ["Existing notification is still valid. Local outbox was refreshed using the latest template."],
+    };
+    upsertNotificationRecord(notificationPayload, outboxPath, channelResult);
+    updateNotificationDashboard();
+    return persistSystemReport("notify-latest", {
+      workflow: "notify",
+      status: "pass",
+      checks: [
+        `Failure id: ${failureId}`,
+        `Already notified at: ${failure.notified_at}`,
+        `Outbox refreshed: ${outboxPath}`,
+      ],
+      failures: [],
+      nextActions: ["Existing notification is still valid. No duplicate message was sent."],
+      details: {
+        failure_id: failureId,
+        report_path: notificationPayload.report_path,
+        summary: notificationPayload.summary,
+      },
+    });
+  }
+
+  const channelResult = shouldSend
+    ? sendViaWeclaw(notificationPayload)
+    : {
+        status: "pass",
+        channel: "dashboard_only",
+        failures: [],
+        nextActions: ["Low-risk notification was retained in the dashboard only."],
+      };
+  markFailureNotified(failureId, channelResult.status === "pass");
+  upsertNotificationRecord(notificationPayload, outboxPath, channelResult);
+  updateNotificationDashboard();
+
+  return persistSystemReport("notify-latest", {
+    workflow: "notify",
+    status: channelResult.status,
+    checks: [
+      `Failure id: ${failureId}`,
+      `Risk level: ${notificationPayload.risk_level}`,
+      `Outbox: ${outboxPath}`,
+      `Channel: ${channelResult.channel}`,
+    ],
+    failures: channelResult.failures,
+    nextActions: channelResult.nextActions,
+    details: {
+      failure_id: failureId,
+      report_path: notificationPayload.report_path,
+      summary: notificationPayload.summary,
+    },
+  });
+}
+
+function runResolve(failureId) {
+  const db = loadFailures();
+  const failure = db.failures.find((item) => item.failure_id === failureId);
+  if (!failure) {
+    return persistSystemReport("resolve-latest", {
+      workflow: "resolve",
+      status: "held",
+      checks: [`Failure not found: ${failureId}`],
+      failures: [],
+      nextActions: ["Verify the failure id before resolving."],
+      details: {
+        failure_id: failureId,
+      },
+    });
+  }
+
+  failure.status = "resolved";
+  failure.last_seen_at = new Date().toISOString();
+  failure.next_allowed_action = "none";
+  failure.resolved_at = failure.last_seen_at;
+  saveFailures(db);
+
+  return persistSystemReport("resolve-latest", {
+    workflow: "resolve",
+    status: "pass",
+    checks: [`Resolved failure: ${failureId}`],
+    failures: [],
+    nextActions: ["Failure closed. The loop can continue with the next actionable record."],
+    details: {
+      failure_id: failureId,
+    },
+  });
+}
+
+function runDoctor(project) {
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+
+  if (project.kind === "remote") {
+    checks.push(`Remote placeholder registered: ${project.repo_url}`);
+    nextActions.push("Add a local checkout before enabling eval or autofix.");
+    return persistWorkflowResult(project, {
+      reportName: "latest",
+      workflow: "doctor",
+      status: "not_checked",
+      checks,
+      failures,
+      nextActions,
+      category: null,
+      failureId: null,
+    });
+  }
+
+  if (fs.existsSync(project.root)) {
+    checks.push(`Root exists: ${project.root}`);
+  } else {
+    failures.push(`Missing root path: ${project.root}`);
+  }
+
+  for (const relPath of project.required_paths) {
+    if (fs.existsSync(path.join(project.root, relPath))) {
+      checks.push(`Path ok: ${relPath}`);
+    } else {
+      failures.push(`Missing path: ${relPath}`);
+    }
+  }
+
+  for (const cmd of project.required_commands) {
+    if (commandExists(cmd)) {
+      checks.push(`Command available: ${cmd}`);
+    } else {
+      failures.push(`Missing command: ${cmd}`);
+    }
+  }
+
+  const status = failures.length > 0 ? "fail" : "pass";
+  if (status === "pass") {
+    nextActions.push(`Run: node harness/bin/harness eval ${project.id}`);
+  } else {
+    nextActions.push("Install missing commands or restore missing files before running eval.");
+  }
+  const category = status === "fail" ? "environment_missing" : null;
+
+  return persistWorkflowResult(project, {
+    reportName: "latest",
+    workflow: "doctor",
+    status,
+    checks,
+    failures,
+    nextActions,
+    category,
+  });
+}
+
+function runEval(project) {
+  switch (project.eval.type) {
+    case "knowledge-base":
+      return evalKnowledgeBase(project);
+    case "agent-os":
+      return evalAgentOs(project);
+    case "weclaw":
+      return evalWeclaw(project);
+    case "signals":
+      return evalSignals(project);
+    case "watchdog-runtime":
+      return evalWatchdogRuntime(project);
+    case "remote-placeholder":
+      return persistWorkflowResult(project, {
+        reportName: "latest",
+        workflow: "eval",
+        status: "not_checked",
+        checks: [`Remote placeholder registered: ${project.repo_url}`],
+        failures: [],
+        nextActions: ["Create a local checkout before enabling eval or autofix."],
+        category: null,
+      });
+    default:
+      return persistWorkflowResult(project, {
+        reportName: "latest",
+        workflow: "eval",
+        status: "fail",
+        checks: [],
+        failures: [`Unknown eval type: ${project.eval.type}`],
+        nextActions: ["Fix the project registration in harness/projects/projects.yaml."],
+        category: "runtime_config_drift",
+      });
+  }
+}
+
+function evalKnowledgeBase(project) {
+  const lintCommand = runShell(project.eval.command, project.root);
+  const toolsDir = path.join(project.root, "tools");
+  const tools = fs.existsSync(toolsDir)
+    ? fs.readdirSync(toolsDir).filter((name) => name.endsWith(".py")).sort()
+    : [];
+  const checks = [
+    `Vault root: ${project.root}`,
+    `Lint command: ${project.eval.command}`,
+    `Available tools: ${tools.join(", ") || "(none)"}`,
+  ];
+  const failures = [];
+  const nextActions = [];
+  let status = "pass";
+  let category = null;
+
+  if (lintCommand.status === 0) {
+    checks.push(`Lint output: ${firstNonEmptyLine(lintCommand.stdout) || "completed"}`);
+  } else {
+    status = "fail";
+    category = "format_or_schema_violation";
+    failures.push(...collectOutput(lintCommand));
+  }
+
+  const evalCommand = runShell("python3 tools/eval_notes.py", project.root);
+  if (evalCommand.status === 0) {
+    checks.push(`Eval output: ${firstNonEmptyLine(evalCommand.stdout) || "completed"}`);
+  } else {
+    if (status === "pass") status = "fail";
+    category = "format_or_schema_violation";
+    failures.push(...collectOutput(evalCommand));
+  }
+
+  if (status === "pass") {
+    nextActions.push("Knowledge base structure is clean. Safe to promote notes or run autorefactor.");
+  } else {
+    nextActions.push("Run fix-plan or autofix to repair low-risk structure issues.");
+  }
+
+  return persistWorkflowResult(project, {
+    reportName: "latest",
+    workflow: "eval",
+    status,
+    checks,
+    failures,
+    nextActions,
+    category,
+  });
+}
+
+function evalAgentOs(project) {
+  const command = runShell(project.eval.command, project.root);
+  const output = collectOutput(command);
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+
+  for (const line of output) {
+    if (/^OK\s+/.test(line) || /^OK\s{2,}/.test(line) || /^WARN /.test(line)) {
+      checks.push(line);
+    } else if (/^MISS /.test(line) || /^FAIL /.test(line) || /^LEGACY_RUNNING /.test(line)) {
+      failures.push(line);
+    }
+  }
+
+  if (checks.length === 0 && command.stdout.trim()) {
+    checks.push(...command.stdout.trim().split(/\r?\n/).slice(0, 8));
+  }
+
+  const status = command.status === 0 ? "pass" : "fail";
+  const category = status === "pass" ? null : "runtime_config_drift";
+  if (status === "pass") {
+    nextActions.push("Keep guardian verify green before layering more automation on top.");
+  } else {
+    if (failures.length === 0) failures.push(...output.slice(0, 12));
+    nextActions.push("Use fix-plan or hold; runtime failures are not auto-mutated beyond approved recipes.");
+  }
+
+  return persistWorkflowResult(project, {
+    reportName: "latest",
+    workflow: "eval",
+    status,
+    checks,
+    failures,
+    nextActions,
+    category,
+  });
+}
+
+function evalWeclaw(project) {
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+  let status = "pass";
+  let category = null;
+
+  if (!commandExists("go")) {
+    checks.push("Repository is registered for build eval.");
+    failures.push("Go is not available in PATH.");
+    nextActions.push("Install Go, then rerun the weclaw build eval.");
+    status = "partial";
+    category = "environment_missing";
+    return persistWorkflowResult(project, {
+      reportName: "latest",
+      workflow: "eval",
+      status,
+      checks,
+      failures,
+      nextActions,
+      category,
+    });
+  }
+
+  const goVersion = runShell("go version", project.root);
+  if (goVersion.status === 0) {
+    checks.push(`Go environment: ${firstNonEmptyLine(goVersion.stdout)}`);
+  }
+
+  const buildCommand = runShell("go build ./...", project.root);
+  if (buildCommand.status === 0) {
+    checks.push("Build passed: go build ./...");
+  } else {
+    status = "fail";
+    category = "build_failure";
+    failures.push(...collectOutput(buildCommand));
+  }
+
+  const verifyCommand = runShell("bash scripts/verify-fork-core.sh", project.root);
+  if (verifyCommand.status === 0) {
+    checks.push(`Fork core verification: ${firstNonEmptyLine(verifyCommand.stdout) || "passed"}`);
+  } else {
+    if (status === "pass") status = "fail";
+    if (!category) category = "doc_drift";
+    failures.push(...collectOutput(verifyCommand));
+  }
+
+  if (status === "pass") {
+    nextActions.push("WeClaw build and fork boundary checks are green.");
+  } else {
+    nextActions.push("Use fix-plan or hold; automatic mutation is limited for bridge-core safety.");
+  }
+
+  return persistWorkflowResult(project, {
+    reportName: "latest",
+    workflow: "eval",
+    status,
+    checks,
+    failures,
+    nextActions,
+    category,
+  });
+}
+
+function evalSignals(project) {
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+  const python = preferredSignalsPython();
+  checks.push(`Python command: ${python}`);
+
+  if (!commandExists("python3")) {
+    failures.push("python3 is not available in PATH.");
+    nextActions.push("Install Python 3 before attempting the signals smoke test.");
+    return persistWorkflowResult(project, {
+      reportName: "latest",
+      workflow: "eval",
+      status: "partial",
+      checks,
+      failures,
+      nextActions,
+      category: "environment_missing",
+    });
+  }
+
+  const pytestProbe = runShell(`${python} -c "import pytest"`, project.root);
+  if (pytestProbe.status !== 0) {
+    checks.push(`Smoke test file exists: ${path.join(project.root, "tests/test_web_smoke.py")}`);
+    failures.push("pytest is not installed in the current Python environment.");
+    nextActions.push("Run autofix to provision a dedicated signals test environment.");
+    return persistWorkflowResult(project, {
+      reportName: "latest",
+      workflow: "eval",
+      status: "partial",
+      checks,
+      failures,
+      nextActions,
+      category: "dependency_missing",
+    });
+  }
+
+  const testCommand = runShell(`${python} -m pytest tests/test_web_smoke.py`, project.root);
+  if (testCommand.status === 0) {
+    checks.push("Smoke test passed: pytest tests/test_web_smoke.py");
+    nextActions.push("Signals smoke path is green. Extend to more mode-specific checks next.");
+    return persistWorkflowResult(project, {
+      reportName: "latest",
+      workflow: "eval",
+      status: "pass",
+      checks,
+      failures,
+      nextActions,
+      category: null,
+    });
+  }
+
+  const moduleMissing = detectMissingModule(collectOutput(testCommand));
+  if (moduleMissing) {
+    failures.push(...collectOutput(testCommand));
+    nextActions.push(`Run autofix to provision the missing smoke dependency: ${moduleMissing}.`);
+    return persistWorkflowResult(project, {
+      reportName: "latest",
+      workflow: "eval",
+      status: "partial",
+      checks,
+      failures,
+      nextActions,
+      category: "dependency_missing",
+    });
+  }
+
+  failures.push(...collectOutput(testCommand));
+  nextActions.push("Use fix-plan to classify whether this is structural or business logic.");
+  return persistWorkflowResult(project, {
+    reportName: "latest",
+    workflow: "eval",
+    status: "fail",
+    checks,
+    failures,
+    nextActions,
+    category: "test_failure_structural",
+  });
+}
+
+function evalWatchdogRuntime(project) {
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+  const weguardBin = path.join(project.root, "bin", "weguard");
+  const schedulerLabel = "com.zhangqilong.ai.repo.scheduler";
+  const guardianLabel = "com.zhangqilong.ai.guardian.monitor";
+  const servicesFile = path.join(process.env.HOME || "", ".weclaw", "services.json");
+
+  if (fs.existsSync(servicesFile)) {
+    checks.push(`Services config present: ${servicesFile}`);
+  } else {
+    failures.push(`Missing services config: ${servicesFile}`);
+  }
+
+  const weguardStatus = runShell(`${shellQuote(weguardBin)} status`, repoRoot);
+  if (weguardStatus.status === 0) {
+    const output = collectOutput(weguardStatus);
+    checks.push("weguard status returned 0.");
+    const schedulerLine = output.find((line) => line.includes("repo-scheduler"));
+    const weclawLine = output.find((line) => line.includes("weclaw"));
+    if (schedulerLine) checks.push(`weguard: ${schedulerLine}`);
+    if (weclawLine) checks.push(`weguard: ${weclawLine}`);
+  } else {
+    failures.push(...collectOutput(weguardStatus));
+  }
+
+  const schedulerPrint = runShell(`launchctl print gui/$(id -u)/${schedulerLabel}`, repoRoot);
+  if (schedulerPrint.status === 0) {
+    const output = collectOutput(schedulerPrint);
+    const stateLine = output.find((line) => line.includes("state ="));
+    const exitLine = output.find((line) => line.includes("last exit code ="));
+    const intervalLine = output.find((line) => line.includes("run interval ="));
+    if (stateLine) checks.push(`scheduler: ${stateLine}`);
+    if (exitLine) {
+      checks.push(`scheduler: ${exitLine}`);
+      if (!/last exit code = 0\b/.test(exitLine)) {
+        failures.push(`scheduler unhealthy: ${exitLine}`);
+      }
+    }
+    if (intervalLine) checks.push(`scheduler: ${intervalLine}`);
+  } else {
+    failures.push(`Missing launchd label: ${schedulerLabel}`);
+  }
+
+  const guardianPrint = runShell(`launchctl print gui/$(id -u)/${guardianLabel}`, repoRoot);
+  if (guardianPrint.status === 0) {
+    const output = collectOutput(guardianPrint);
+    const stateLine = output.find((line) => line.includes("state ="));
+    const pidLine = output.find((line) => line.includes("pid ="));
+    if (stateLine) {
+      checks.push(`guardian: ${stateLine}`);
+      if (!/state = running\b/.test(stateLine)) {
+        failures.push(`guardian unhealthy: ${stateLine}`);
+      }
+    }
+    if (pidLine) checks.push(`guardian: ${pidLine}`);
+  } else {
+    failures.push(`Missing launchd label: ${guardianLabel}`);
+  }
+
+  const status = failures.length === 0 ? "pass" : "fail";
+  const category = status === "pass" ? null : "runtime_config_drift";
+  if (status === "pass") {
+    nextActions.push("Watchdog control plane is healthy. Keep scheduler and guardian monitor under launchd.");
+  } else {
+    nextActions.push("Repair watchdog runtime labels or weguard state before relying on control-plane automation.");
+  }
+
+  return persistWorkflowResult(project, {
+    reportName: "latest",
+    workflow: "eval",
+    status,
+    checks,
+    failures,
+    nextActions,
+    category,
+  });
+}
+
+function runFixPlan(project) {
+  const failure = latestActiveFailure(project.id);
+  if (!failure) {
+    return persistWorkflowResult(project, {
+      reportName: "fix-plan-latest",
+      workflow: "fix-plan",
+      status: "held",
+      checks: ["No active failure was found for this project."],
+      failures: [],
+      nextActions: ["Run eval first, or inspect the latest green report."],
+      category: null,
+      failureId: null,
+      details: {
+        writablePaths: project.autofix_writable_paths || [],
+        deniedPaths: project.autofix_denied_paths || [],
+      },
+    });
+  }
+
+  const eligible = isAutofixEligible(project, failure.category);
+  const checks = [
+    `Failure id: ${failure.failure_id}`,
+    `Category: ${failure.category}`,
+    `Writable paths: ${(project.autofix_writable_paths || []).join(", ") || "(none)"}`,
+    `Denied paths: ${(project.autofix_denied_paths || []).join(", ") || "(none)"}`,
+    `Rollback mode: ${project.rollback_mode || "none"}`,
+    `Autofix strategy: ${project.autofix_strategy || "none"}`,
+    `Recheck commands: ${(project.recheck_commands || []).join(" ; ") || "(none)"}`,
+  ];
+  const failures = failure.failures || [];
+  const nextActions = [];
+  let status = "autofix_planned";
+
+  if (!project.autofix_enabled) {
+    status = "held";
+    nextActions.push("Autofix is disabled for this project.");
+  } else if (!eligible.ok) {
+    status = "held";
+    nextActions.push(eligible.reason);
+  } else if ((failure.attempt_count || 0) >= (project.max_autofix_attempts || 1)) {
+    status = "held";
+    nextActions.push("Failure exceeded the maximum automatic repair attempts.");
+  } else {
+    nextActions.push(`Run: node harness/bin/harness autofix ${project.id}`);
+  }
+
+  return persistWorkflowResult(project, {
+    reportName: "fix-plan-latest",
+    workflow: "fix-plan",
+    status,
+    checks,
+    failures,
+    nextActions,
+    category: failure.category,
+    failureId: failure.failure_id,
+    details: {
+      attemptCount: failure.attempt_count || 0,
+      signature: failure.signature,
+    },
+  });
+}
+
+function runAutofix(project) {
+  const failure = latestActiveFailure(project.id);
+  if (!failure) {
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autofix",
+      status: "held",
+      checks: ["No active failure is available for autofix."],
+      failures: [],
+      nextActions: ["Run eval first, then rerun autofix."],
+      category: null,
+      failureId: null,
+    });
+  }
+
+  const plan = isAutofixEligible(project, failure.category);
+  if (!project.autofix_enabled || !plan.ok) {
+    return runHold(project, failure, plan.reason);
+  }
+  if ((failure.attempt_count || 0) >= (project.max_autofix_attempts || 1)) {
+    return runHold(project, failure, "Automatic repair attempts exceeded the configured limit.");
+  }
+
+  switch (project.autofix_strategy) {
+    case "knowledge_base_notes":
+      return autofixKnowledgeBase(project, failure);
+    case "signals_pytest_env":
+      return autofixSignals(project, failure);
+    case "manual_hold":
+      return runHold(project, failure, "This project is registered for guarded autofix, but no automated recipe is implemented yet.");
+    case "remote_placeholder":
+      return runHold(project, failure, "Remote placeholder projects cannot be auto-mutated without a local checkout.");
+    default:
+      return runHold(project, failure, "Unknown autofix strategy.");
+  }
+}
+
+function runAutorefactor(project) {
+  if (project.id === "knowledge-base") {
+    const planResult = runShell("python3 tools/autofix_notes.py --refactor-only", project.root);
+    const changes = parseChangeLines(planResult.stdout);
+    if (changes.length === 0) {
+      return persistWorkflowResult(project, {
+        reportName: "autofix-latest",
+        workflow: "autorefactor",
+        status: "pass",
+        checks: ["No low-risk structure drift found for knowledge articles."],
+        failures: [],
+        nextActions: ["Knowledge base is already normalized."],
+        category: "doc_drift",
+        failureId: null,
+      });
+    }
+
+    const snapshot = snapshotFiles(project.id, changes.map((item) => item.file));
+    const apply = runShell("python3 tools/autofix_notes.py --refactor-only --write", project.root);
+    const recheck = runRechecks(project, []);
+    const failures = [...collectOutput(apply), ...recheck.failures];
+    if (apply.status === 0 && recheck.ok) {
+      return persistWorkflowResult(project, {
+        reportName: "autofix-latest",
+        workflow: "autorefactor",
+        status: "autofix_pass",
+        checks: [
+          `Snapshot: ${snapshot.snapshotDir}`,
+          ...changes.map((item) => `Changed: ${item.file}`),
+          ...recheck.checks,
+        ],
+        failures: [],
+        nextActions: ["Knowledge base low-risk structural refactor completed."],
+        category: "doc_drift",
+        failureId: null,
+        details: {
+          files_changed: changes.map((item) => item.file),
+          rolled_back: false,
+        },
+      });
+    }
+    restoreSnapshot(snapshot);
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autorefactor",
+      status: "rolled_back",
+      checks: [`Snapshot restored: ${snapshot.snapshotDir}`],
+      failures,
+      nextActions: ["Inspect the generated failures before retrying autorefactor."],
+      category: "doc_drift",
+      failureId: null,
+      details: {
+        files_changed: changes.map((item) => item.file),
+        rolled_back: true,
+      },
+    });
+  }
+
+  return persistWorkflowResult(project, {
+    reportName: "autofix-latest",
+    workflow: "autorefactor",
+    status: "held",
+    checks: ["No low-risk autorefactor recipe is implemented for this project yet."],
+    failures: [],
+    nextActions: ["Use fix-plan to capture the desired refactor before adding a recipe."],
+    category: "doc_drift",
+    failureId: null,
+  });
+}
+
+function runHold(project, failure = latestActiveFailure(project.id), reason = null) {
+  const checks = [];
+  const failures = [];
+  const nextActions = [];
+  let category = null;
+  let failureId = null;
+
+  if (failure) {
+    category = failure.category;
+    failureId = failure.failure_id;
+    checks.push(`Failure id: ${failure.failure_id}`);
+    checks.push(`Category: ${failure.category}`);
+    failures.push(...(failure.failures || []));
+  } else {
+    checks.push("No active failure record was found.");
+  }
+
+  nextActions.push(reason || "Manual review required before mutating this project.");
+
+  const result = persistWorkflowResult(project, {
+    reportName: "hold-latest",
+    workflow: "hold",
+    status: "held",
+    checks,
+    failures,
+    nextActions,
+    category,
+    failureId,
+  });
+
+  if (failure) updateFailureStatus(failure.failure_id, "held");
+  return result;
+}
+
+function autofixKnowledgeBase(project, failure) {
+  const planCommand = runShell("python3 tools/autofix_notes.py", project.root);
+  const changes = parseChangeLines(planCommand.stdout);
+  if (changes.length === 0) {
+    updateFailureStatus(failure.failure_id, "autofix_failed");
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autofix",
+      status: "autofix_failed",
+      checks: [`Failure id: ${failure.failure_id}`],
+      failures: ["Autofix recipe found no low-risk changes to apply."],
+      nextActions: ["Review the failure manually or add a richer repair recipe."],
+      category: failure.category,
+      failureId: failure.failure_id,
+      details: {
+        files_changed: [],
+        re_eval_result: "not_run",
+        rolled_back: false,
+      },
+    });
+  }
+
+  const snapshot = snapshotFiles(project.id, changes.map((item) => item.file));
+  updateFailureStatus(failure.failure_id, "autofix_running");
+  const apply = runShell("python3 tools/autofix_notes.py --write", project.root);
+  const recheck = runRechecks(project, []);
+
+  if (apply.status === 0 && recheck.ok) {
+    updateFailureStatus(failure.failure_id, "autofix_pass");
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autofix",
+      status: "autofix_pass",
+      checks: [
+        `Failure id: ${failure.failure_id}`,
+        `Snapshot: ${snapshot.snapshotDir}`,
+        ...changes.map((item) => `Changed: ${item.file}`),
+        ...recheck.checks,
+      ],
+      failures: [],
+      nextActions: ["Knowledge base structure repaired and revalidated."],
+      category: failure.category,
+      failureId: failure.failure_id,
+      details: {
+        files_changed: changes.map((item) => item.file),
+        re_eval_result: "pass",
+        rolled_back: false,
+      },
+    });
+  }
+
+  restoreSnapshot(snapshot);
+  updateFailureStatus(failure.failure_id, "rolled_back");
+  return persistWorkflowResult(project, {
+    reportName: "autofix-latest",
+    workflow: "autofix",
+    status: "rolled_back",
+    checks: [`Failure id: ${failure.failure_id}`, `Snapshot restored: ${snapshot.snapshotDir}`],
+    failures: [...collectOutput(apply), ...recheck.failures],
+    nextActions: ["Autofix was rolled back after recheck failed. Inspect the report before retrying."],
+    category: failure.category,
+    failureId: failure.failure_id,
+    details: {
+      files_changed: changes.map((item) => item.file),
+      re_eval_result: "fail",
+      rolled_back: true,
+    },
+  });
+}
+
+function autofixSignals(project, failure) {
+  updateFailureStatus(failure.failure_id, "autofix_running");
+  const python = path.join(venvRoot, "signals", "bin", "python");
+  ensureDir(path.dirname(path.dirname(python)));
+  const requirementsFile = path.join(project.root, "requirements.txt");
+  const steps = [];
+  const installedSpecs = [];
+  const venvPath = path.join(venvRoot, "signals");
+  steps.push(runShell(`python3 -m venv ${shellQuote(venvPath)}`, project.root, { timeoutMs: PIP_TIMEOUT_MS }));
+  steps.push(runShell(`${shellQuote(python)} -m pip install --upgrade pip setuptools wheel`, project.root, { timeoutMs: PIP_TIMEOUT_MS }));
+  let failedStep = steps.find((step) => step.status !== 0);
+  if (failedStep) {
+    updateFailureStatus(failure.failure_id, "autofix_failed");
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autofix",
+      status: "autofix_failed",
+      checks: [`Failure id: ${failure.failure_id}`, `Managed Python: ${python}`],
+      failures: collectOutput(failedStep),
+      nextActions: ["Inspect the Python environment bootstrap failure before retrying."],
+      category: failure.category,
+      failureId: failure.failure_id,
+      details: {
+        files_changed: [],
+        re_eval_result: "not_run",
+        rolled_back: false,
+      },
+    });
+  }
+
+  const plan = buildSignalsDependencyPlan(failure, requirementsFile);
+  for (const spec of plan) {
+    const install = runShell(`${shellQuote(python)} -m pip install ${shellQuote(spec)}`, project.root, { timeoutMs: PIP_TIMEOUT_MS });
+    steps.push(install);
+    if (install.status !== 0) {
+      failedStep = install;
+      break;
+    }
+    installedSpecs.push(spec);
+  }
+
+  if (failedStep) {
+    updateFailureStatus(failure.failure_id, "autofix_failed");
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autofix",
+      status: "autofix_failed",
+      checks: [
+        `Failure id: ${failure.failure_id}`,
+        `Managed Python: ${python}`,
+        `Attempted packages: ${installedSpecs.join(", ") || "(none)"}`,
+      ],
+      failures: collectOutput(failedStep),
+      nextActions: ["Inspect the Python package install failure before retrying the smoke environment repair."],
+      category: failure.category,
+      failureId: failure.failure_id,
+      details: {
+        files_changed: [],
+        re_eval_result: "not_run",
+        rolled_back: false,
+      },
+    });
+  }
+
+  let reevaluated = evalSignals(project);
+  for (let i = 0; i < 3 && reevaluated.category === "dependency_missing"; i += 1) {
+    const missingModule = detectMissingModule(reevaluated.failures || []);
+    const extraSpecs = uniquePackageSpecs(specsForMissingModule(missingModule)).filter((spec) => !installedSpecs.includes(spec));
+    if (extraSpecs.length === 0) break;
+    for (const spec of extraSpecs) {
+      const install = runShell(`${shellQuote(python)} -m pip install ${shellQuote(spec)}`, project.root, { timeoutMs: PIP_TIMEOUT_MS });
+      steps.push(install);
+      if (install.status !== 0) {
+        failedStep = install;
+        break;
+      }
+      installedSpecs.push(spec);
+    }
+    if (failedStep) break;
+    reevaluated = evalSignals(project);
+  }
+
+  if (failedStep) {
+    updateFailureStatus(failure.failure_id, "autofix_failed");
+    return persistWorkflowResult(project, {
+      reportName: "autofix-latest",
+      workflow: "autofix",
+      status: "autofix_failed",
+      checks: [
+        `Failure id: ${failure.failure_id}`,
+        `Managed Python: ${python}`,
+        `Attempted packages: ${installedSpecs.join(", ") || "(none)"}`,
+      ],
+      failures: collectOutput(failedStep),
+      nextActions: ["A follow-up dependency install failed. Inspect the package constraints before retrying."],
+      category: failure.category,
+      failureId: failure.failure_id,
+      details: {
+        files_changed: [],
+        re_eval_result: "not_run",
+        rolled_back: false,
+      },
+    });
+  }
+
+  const success = reevaluated.status === "pass";
+  updateFailureStatus(failure.failure_id, success ? "autofix_pass" : "autofix_failed");
+  return persistWorkflowResult(project, {
+    reportName: "autofix-latest",
+    workflow: "autofix",
+    status: success ? "autofix_pass" : "autofix_failed",
+    checks: [
+      `Failure id: ${failure.failure_id}`,
+      `Managed Python: ${python}`,
+      `Installed packages: ${installedSpecs.join(", ") || "(none)"}`,
+    ],
+    failures: success ? [] : reevaluated.failures,
+    nextActions: success
+      ? ["Signals test environment is ready. Continue with broader smoke coverage."]
+      : ["Signals still fails after environment repair. Freeze or inspect the smoke failure manually."],
+    category: failure.category,
+    failureId: failure.failure_id,
+    details: {
+      files_changed: [],
+      re_eval_result: reevaluated.status,
+      rolled_back: false,
+    },
+  });
+}
+
+function runRechecks(project, checksPrefix) {
+  const checks = [...checksPrefix];
+  const failures = [];
+  for (const command of project.recheck_commands || []) {
+    const normalized = normalizeCommand(project, command);
+    const result = runShell(normalized, project.root);
+    if (result.status === 0) {
+      checks.push(`Recheck passed: ${normalized}`);
+    } else {
+      failures.push(`Recheck failed: ${normalized}`);
+      failures.push(...collectOutput(result));
+      return { ok: false, checks, failures };
+    }
+  }
+  return { ok: true, checks, failures };
+}
+
+function normalizeCommand(project, command) {
+  if (project.id === "signals") {
+    return command.replace(/^python3\b/g, shellQuote(preferredSignalsPython()));
+  }
+  return command;
+}
+
+function preferredSignalsPython() {
+  const managed = path.join(venvRoot, "signals", "bin", "python");
+  return fs.existsSync(managed) ? managed : "python3";
+}
+
+function parseChangeLines(text) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => line.startsWith("CHANGE\t"))
+    .map((line) => {
+      const [, file, actions] = line.split("\t");
+      return {
+        file,
+        actions: actions ? actions.split(",") : [],
+      };
+    });
+}
+
+function isAutofixEligible(project, category) {
+  if (!category) {
+    return { ok: false, reason: "No repairable failure category was recorded." };
+  }
+  const allowed = new Set(project.autofix_categories || []);
+  if (!allowed.has(category)) {
+    return { ok: false, reason: `Category ${category} is outside the approved autofix matrix.` };
+  }
+  const denied = new Set([
+    "business_logic_failure",
+    "cross_boundary_violation",
+  ]);
+  if (denied.has(category)) {
+    return { ok: false, reason: `Category ${category} is explicitly blocked from automatic mutation.` };
+  }
+  return { ok: true, reason: null };
+}
+
+function riskLevelForCategory(category) {
+  switch (category) {
+    case "dependency_missing":
+    case "format_or_schema_violation":
+    case "doc_drift":
+      return "low";
+    case "runtime_config_drift":
+    case "build_failure":
+    case "test_failure_structural":
+      return "medium";
+    case "business_logic_failure":
+    case "cross_boundary_violation":
+      return "high";
+    default:
+      return "medium";
+  }
+}
+
+function nextAllowedActionForStatus(status, category) {
+  if (status === "resolved") return "none";
+  if (["held", "rolled_back"].includes(status)) return "manual_review";
+  if (status === "autofix_pass") return "resolve";
+  if (status === "autofix_failed") return "hold";
+  if (status === "autofix_planned") return "autofix";
+  if (["fail", "partial"].includes(status)) {
+    return riskLevelForCategory(category) === "low" ? "fix-plan" : "hold";
+  }
+  return "wait";
+}
+
+function shouldRunSchedule(lastRunAt, intervalMs, nowMs) {
+  if (!lastRunAt) return true;
+  return nowMs - Date.parse(lastRunAt) >= intervalMs;
+}
+
+function loadSchedule() {
+  if (!fs.existsSync(scheduleFile)) {
+    return {};
+  }
+  return JSON.parse(fs.readFileSync(scheduleFile, "utf8"));
+}
+
+function saveSchedule(schedule) {
+  fs.writeFileSync(scheduleFile, JSON.stringify(schedule, null, 2) + "\n", "utf8");
+}
+
+function nextActionableFailure(projects) {
+  const knownProjects = new Set(projects.map((item) => item.id));
+  return loadFailures().failures
+    .filter((item) => knownProjects.has(item.project))
+    .filter((item) => ["fail", "partial", "autofix_planned"].includes(item.status))
+    .filter((item) => (item.attempt_count || 0) < getProjectMaxAttempts(projects, item.project))
+    .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at))[0] || null;
+}
+
+function nextPendingNotificationFailure(projects) {
+  const knownProjects = new Set(projects.map((item) => item.id));
+  return loadFailures().failures
+    .filter((item) => knownProjects.has(item.project))
+    .filter((item) => ["held", "rolled_back"].includes(item.status))
+    .filter((item) => !item.notification_delivered)
+    .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at))[0] || null;
+}
+
+function nextEscalationFailure(projects) {
+  const knownProjects = new Set(projects.map((item) => item.id));
+  return loadFailures().failures
+    .filter((item) => knownProjects.has(item.project))
+    .filter((item) => item.status === "autofix_failed" || (["fail", "partial"].includes(item.status) && (item.attempt_count || 0) >= getProjectMaxAttempts(projects, item.project)))
+    .filter((item) => !["held", "rolled_back", "resolved", "autofix_pass"].includes(item.status))
+    .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at))[0] || null;
+}
+
+function getProjectMaxAttempts(projects, projectId) {
+  const project = projects.find((item) => item.id === projectId);
+  return project?.max_autofix_attempts || 1;
+}
+
+function buildNotificationPayload(failure) {
+  const actionLabel = notificationActionLabel(failure);
+  const riskLevel = riskLevelForCategory(failure.category);
+  const title = riskLevel === "high"
+    ? "🚨 Harness 高风险汇报"
+    : riskLevel === "medium"
+      ? "⚠️ Harness 介入通知"
+      : "📦 Harness 状态记录";
+  const summary = notificationSummaryLine(failure);
+  const reportName =
+    failure.status === "held" || failure.status === "rolled_back"
+      ? "hold-latest"
+      : failure.status === "autofix_failed"
+        ? "autofix-latest"
+        : "latest";
+  return {
+    project: failure.project,
+    failure_id: failure.failure_id,
+    status: failure.status,
+    category: failure.category,
+    risk_level: riskLevel,
+    title,
+    summary,
+    next_action: failure.next_allowed_action || nextAllowedActionForStatus(failure.status, failure.category),
+    action_label: actionLabel,
+    report_path: latestMarkdownPath(failure.project, reportName),
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function shouldSendExternalNotification(failure) {
+  const riskLevel = riskLevelForCategory(failure.category);
+  return riskLevel !== "low";
+}
+
+function writeNotificationOutbox(payload) {
+  ensureDir(outboxDir);
+  const file = path.join(outboxDir, `${payload.failure_id}.md`);
+  fs.writeFileSync(
+    file,
+    [
+      `# ${payload.title}`,
+      "",
+      "━━━━━━━━━━━━━━━━━━━━",
+      "",
+      `- 项目：${payload.project}`,
+      `- Failure：${payload.failure_id}`,
+      `- 状态：${payload.status}`,
+      `- 分类：${payload.category}`,
+      `- 风险：${payload.risk_level}`,
+      `- 时间：${payload.timestamp}`,
+      "",
+      "## 摘要",
+      "",
+      `- ${payload.summary}`,
+      "",
+      "## 建议动作",
+      "",
+      `- ${payload.action_label}`,
+      `- 下一步：${payload.next_action}`,
+      "",
+      "## 报告",
+      "",
+      `- ${payload.report_path}`,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return file;
+}
+
+function loadNotifications() {
+  if (!fs.existsSync(notificationsFile)) {
+    return { notifications: [] };
+  }
+  return normalizeNotificationsDb(JSON.parse(fs.readFileSync(notificationsFile, "utf8")));
+}
+
+function saveNotifications(db) {
+  fs.writeFileSync(notificationsFile, JSON.stringify(normalizeNotificationsDb(db), null, 2) + "\n", "utf8");
+}
+
+function normalizeNotificationsDb(db) {
+  const latestByFailureId = new Map();
+  for (const item of db.notifications || []) {
+    latestByFailureId.set(item.failure_id, item);
+  }
+  return {
+    notifications: Array.from(latestByFailureId.values()).sort(
+      (a, b) => Date.parse(a.timestamp || 0) - Date.parse(b.timestamp || 0),
+    ),
+  };
+}
+
+function upsertNotificationRecord(payload, outboxPath, channelResult) {
+  const db = loadNotifications();
+  const record = {
+    ...payload,
+    outbox_path: outboxPath,
+    channel: channelResult.channel,
+    delivered: channelResult.status === "pass",
+    failures: channelResult.failures,
+  };
+  const index = db.notifications.findIndex((item) => item.failure_id === payload.failure_id);
+  if (index >= 0) {
+    db.notifications[index] = record;
+  } else {
+    db.notifications.push(record);
+  }
+  saveNotifications(db);
+}
+
+function updateNotificationDashboard() {
+  const db = loadNotifications();
+  const activeFailureIds = new Set(
+    loadFailures().failures
+      .filter((item) => !["resolved", "autofix_pass"].includes(item.status))
+      .map((item) => item.failure_id),
+  );
+  const notifications = [...db.notifications]
+    .filter((item) => activeFailureIds.has(item.failure_id))
+    .sort((a, b) => Date.parse(b.timestamp || 0) - Date.parse(a.timestamp || 0))
+    .slice(0, 20);
+  const lines = notifications.map((item) => {
+    const icon = riskEmoji(item.risk_level || "low");
+    const delivery = item.delivered ? "已送达" : "待处理";
+    return `${icon} ${item.project} · ${item.failure_id} · ${item.channel} · ${delivery} · ${item.summary}`;
+  });
+  fs.writeFileSync(
+    path.join(dashboardDir, "notifications.md"),
+    [
+      "# 📬 Harness 通知面板",
+      "",
+      "━━━━━━━━━━━━━━━━━━━━",
+      "",
+      ...(lines.length > 0
+        ? renderBullets(lines)
+        : ["- 当前没有待处理的介入通知，历史通知已归档。"]),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+function buildProgressSummary(projects) {
+  const timestamp = new Date().toISOString();
+  const latestRows = projects.map((project) => ({
+    id: project.id,
+    payload: latestPayloadForProject(project.id),
+  }));
+  const localProjects = projects.filter((project) => project.kind !== "remote");
+  const watchdogHealthy = latestRows.find((row) => row.id === "watchdog")?.payload?.status === "pass";
+  const harnessLoopInstalled = launchctlHasLabel("com.zhangqilong.ai.harness.loop");
+  const activeFailures = loadFailures().failures
+    .filter((item) => !["resolved", "autofix_pass"].includes(item.status))
+    .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at));
+  const recentResolved = loadFailures().failures
+    .filter((item) => item.resolved_at)
+    .sort((a, b) => Date.parse(b.resolved_at) - Date.parse(a.resolved_at))
+    .slice(0, 5);
+  const recentActions = recentActivityLines(8);
+
+  const passingLocal = latestRows
+    .filter((row) => localProjects.some((project) => project.id === row.id))
+    .filter((row) => row.payload?.status === "pass")
+    .map((row) => row.id);
+  const currentWork = activeFailures.length > 0
+    ? `正在处理 ${activeFailures[0].project} 的 ${activeFailures[0].category} 问题`
+    : `当前 ${passingLocal.length} 个本地试点项目已绿，正在维持 loop 并推进更完整的控制面整理`;
+  const blockers = activeFailures.length > 0
+    ? activeFailures.slice(0, 3).map((failure) =>
+        `${riskEmoji(failure.risk_level || riskLevelForCategory(failure.category))} ${failure.project} · ${failure.category} · ${notificationSummaryLine(failure)}`,
+      )
+    : ["无阻塞项，系统处于绿色巡航状态。"];
+  const completed = recentResolved.length > 0
+    ? recentResolved.map((failure) =>
+        `${failure.project} · ${failure.category} 已解决`,
+      )
+    : ["近期没有新关闭的问题。"];
+  const uniqueCompleted = uniqueLines(completed);
+  const nextSteps = activeFailures.length > 0
+    ? activeFailures.slice(0, 3).map((failure) =>
+        `${failure.project}: ${failure.next_allowed_action || "manual_review"}`,
+      )
+    : !harnessLoopInstalled
+      ? ["把 harness loop 接入 launchd，摆脱终端会话依赖。"]
+      : !watchdogHealthy
+        ? ["把 watchdog 控制面从占位项目切到本机现有 runtime 服务。"]
+        : [
+            "清理历史通知与旧 failure 视图，避免绿色状态下继续展示陈旧告警。",
+            "准备正式 watchdog 仓库 checkout 和更深的控制面接入。",
+          ];
+
+  return {
+    timestamp,
+    headline: activeFailures.length > 0
+      ? `当前有 ${activeFailures.length} 个待处理问题，最高风险 ${riskEmoji(riskLevelForCategory(activeFailures[0].category))}`
+      : `当前 ${passingLocal.length}/${localProjects.length} 个本地试点项目为 pass，系统处于绿色状态`,
+    project_rows: latestRows.map((row) =>
+      `${row.id}: ${row.payload?.status || "unknown"} (${row.payload?.workflow || "no report"})`,
+    ),
+    completed: uniqueCompleted,
+    recent_actions: recentActions.length > 0 ? recentActions : ["最近暂无新的结构化动作记录。"],
+    current_work: currentWork,
+    blockers,
+    next_steps: nextSteps,
+  };
+}
+
+function writeProgressSummary(summary) {
+  const file = path.join(dashboardDir, "progress.md");
+  fs.writeFileSync(
+    file,
+    [
+      "# 🧭 Harness 管理汇报",
+      "",
+      `- 时间：${summary.timestamp}`,
+      `- 总体判断：${summary.headline}`,
+      "",
+      "## 当前状态",
+      "",
+      ...renderBullets(summary.project_rows),
+      "",
+      "## 已完成事项",
+      "",
+      ...renderBullets(summary.completed),
+      "",
+      "## 最近动作",
+      "",
+      ...renderBullets(summary.recent_actions),
+      "",
+      "## 正在推进",
+      "",
+      ...renderBullets([summary.current_work]),
+      "",
+      "## 风险与阻塞",
+      "",
+      ...renderBullets(summary.blockers),
+      "",
+      "## 下一步动作",
+      "",
+      ...renderBullets(summary.next_steps),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return file;
+}
+
+function writeProgressOutbox(summary) {
+  const file = path.join(outboxDir, "progress-latest.md");
+  fs.writeFileSync(
+    file,
+    [
+      "# 🧭 Harness 管理汇报",
+      "",
+      "━━━━━━━━━━━━━━━━━━━━",
+      "",
+      `- 时间：${summary.timestamp}`,
+      `- 总结：${summary.headline}`,
+      "",
+      "## 已完成事项",
+      "",
+      ...renderBullets(summary.completed),
+      "",
+      "## 最近动作",
+      "",
+      ...renderBullets(summary.recent_actions.slice(0, 4)),
+      "",
+      "## 正在推进",
+      "",
+      ...renderBullets([summary.current_work]),
+      "",
+      "## 风险与阻塞",
+      "",
+      ...renderBullets(summary.blockers),
+      "",
+      "## 下一步动作",
+      "",
+      ...renderBullets(summary.next_steps),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return file;
+}
+
+function sendProgressBrief(summary) {
+  const target = discoverWeclawNotificationTarget();
+  if (!target) {
+    return {
+      status: "held",
+      channel: "local_only",
+      failures: ["没有发现可用的 weclaw 目标账号。"],
+      nextActions: ["没有可用的 weclaw 账户，进度播报只写入本地 outbox。"],
+    };
+  }
+  const bin = resolveWeclawBin();
+  if (!bin) {
+    return {
+      status: "held",
+      channel: "local_only",
+      failures: ["weclaw 二进制不可用。"],
+      nextActions: ["weclaw 不可用，进度播报只写入本地 outbox。"],
+    };
+  }
+  if (!lookupWeclawContextToken(target)) {
+    return {
+      status: "held",
+      channel: "local_only",
+      failures: [`还没有 ${target} 的可用微信回复上下文。`],
+      nextActions: ["先从微信给 bot 发一条任意消息，建立新的 reply context 后，harness 会自动继续播报。"],
+    };
+  }
+  ensureWeclawRunning(bin);
+  const text = [
+    "🧭 Harness 管理汇报",
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `  · 总体判断：${summary.headline}`,
+    `  · 已完成：${summary.completed[0] || "无"}`,
+    `  · 最近动作：${summary.recent_actions[0] || "无"}`,
+    `  · 正在推进：${summary.current_work}`,
+    `  · 风险阻塞：${summary.blockers[0] || "无"}`,
+    "",
+    "👉 下一步动作",
+    `  1. ${summary.next_steps[0] || "继续 loop 并观察新 failure"}`,
+    `  2. 查看进度面板：${path.join(dashboardDir, "progress.md")}`,
+  ].join("\n");
+  const result = runShell(`${shellQuote(bin)} send --to ${shellQuote(target)} --text ${shellQuote(text)}`, repoRoot);
+  return {
+    status: result.status === 0 ? "pass" : "held",
+    channel: result.status === 0 ? "weclaw" : "local_only",
+    failures: result.status === 0 ? [] : collectOutput(result),
+    nextActions: result.status === 0
+      ? ["进度播报已通过 weclaw 发送。"]
+      : ["weclaw 发送失败，进度播报保留在本地 outbox。"],
+  };
+}
+
+function markFailureNotified(failureId, delivered) {
+  const db = loadFailures();
+  const failure = db.failures.find((item) => item.failure_id === failureId);
+  if (!failure) return;
+  failure.notified_at = new Date().toISOString();
+  failure.notification_delivered = delivered;
+  saveFailures(db);
+}
+
+function sendViaWeclaw(payload) {
+  const target = discoverWeclawNotificationTarget();
+  if (!target) {
+    return {
+      status: "held",
+      channel: "local_only",
+      failures: ["No usable weclaw notification target was discovered."],
+      nextActions: ["Inspect the outbox report or configure a valid weclaw account."],
+    };
+  }
+
+  const bin = resolveWeclawBin();
+  if (!bin) {
+    return {
+      status: "held",
+      channel: "local_only",
+      failures: ["weclaw binary is not available."],
+      nextActions: ["Inspect the outbox report or restore the canonical weclaw binary."],
+    };
+  }
+
+  ensureWeclawRunning(bin);
+  const text = [
+    payload.title,
+    "━━━━━━━━━━━━━━━━━━━━",
+    "",
+    `  · 项目：${payload.project}`,
+    `  · Failure：${payload.failure_id}`,
+    `  · 分类：${payload.category}`,
+    `  · 风险：${payload.risk_level}`,
+    `  · 摘要：${payload.summary}`,
+    "",
+    "👉 建议动作",
+    `  1. ${payload.action_label}`,
+    `  2. 查看报告：${payload.report_path}`,
+  ].join("\n");
+  const result = runShell(`${shellQuote(bin)} send --to ${shellQuote(target)} --text ${shellQuote(text)}`, repoRoot);
+  if (result.status === 0) {
+    return {
+      status: "pass",
+      channel: "weclaw",
+      failures: [],
+      nextActions: ["Notification sent through weclaw."],
+    };
+  }
+  return {
+    status: "held",
+    channel: "local_only",
+    failures: collectOutput(result),
+    nextActions: ["Weclaw send failed. Check the outbox report and weclaw account state."],
+  };
+}
+
+function discoverWeclawNotificationTarget() {
+  const home = process.env.HOME;
+  if (!home) return null;
+  const accountsDir = path.join(home, ".weclaw", "accounts");
+  if (!fs.existsSync(accountsDir)) return null;
+  const files = fs.readdirSync(accountsDir)
+    .filter((name) => name.endsWith(".json"))
+    .sort();
+  for (const name of files) {
+    try {
+      const payload = JSON.parse(fs.readFileSync(path.join(accountsDir, name), "utf8"));
+      if (payload.ilink_user_id) return payload.ilink_user_id;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function resolveWeclawBin() {
+  const home = process.env.HOME || "";
+  const canonical = path.join(home, ".weclaw", "bin", "weclaw");
+  if (fs.existsSync(canonical)) return canonical;
+  const probe = spawnSync("bash", ["-lc", "command -v weclaw"], { encoding: "utf8" });
+  if (probe.status === 0) return probe.stdout.trim();
+  return "";
+}
+
+function lookupWeclawContextToken(userId) {
+  const home = process.env.HOME || "";
+  if (!home || !userId) return "";
+  const file = path.join(home, ".weclaw", "runtime", "context_tokens.json");
+  if (!fs.existsSync(file)) return "";
+  try {
+    const payload = JSON.parse(fs.readFileSync(file, "utf8"));
+    return payload?.tokens?.[userId]?.context_token || "";
+  } catch {
+    return "";
+  }
+}
+
+function ensureWeclawRunning(bin) {
+  const status = runShell(`${shellQuote(bin)} status`, repoRoot);
+  const output = `${status.stdout || ""}\n${status.stderr || ""}`;
+  if (status.status === 0 && /is running/i.test(output)) {
+    return;
+  }
+  runShell(`${shellQuote(bin)} start`, repoRoot);
+}
+
+function riskEmoji(riskLevel) {
+  switch (riskLevel) {
+    case "high":
+      return "🚨";
+    case "medium":
+      return "⚠️";
+    default:
+      return "📦";
+  }
+}
+
+function notificationActionLabel(failure) {
+  if (riskLevelForCategory(failure.category) === "high") {
+    return "请立即确认是否人工接管";
+  }
+  if (failure.status === "rolled_back") {
+    return "自动修复已回滚，请人工检查原因";
+  }
+  if (failure.status === "held") {
+    return "自动流程已暂停，等待人工介入";
+  }
+  if (failure.status === "autofix_failed") {
+    return "自动修复失败，请确认是否继续推进";
+  }
+  return "请检查当前 failure 并决定是否人工接管";
+}
+
+function notificationSummaryLine(failure) {
+  const lines = (failure.failures || []).filter(Boolean);
+  if (lines.length === 0) {
+    return "Harness 检测到需要人工介入的事件。";
+  }
+
+  const moduleMissing = lines.find((line) => /ModuleNotFoundError: No module named/.test(line));
+  if (moduleMissing) {
+    const match = moduleMissing.match(/No module named '([^']+)'/);
+    if (match) return `测试环境缺少依赖：${match[1]}`;
+  }
+
+  const frontmatterMissing = lines.find((line) => /missing frontmatter/i.test(line));
+  if (frontmatterMissing) {
+    return `知识库结构不完整：${frontmatterMissing.replace(/^-\s*/, "")}`.slice(0, 120);
+  }
+
+  const useful = lines.find((line) =>
+    !/^(=+|!+|Traceback:|platform |rootdir:|collected \d+ items|ERROR tests\/|Hint:)/.test(line),
+  );
+  return (useful || lines[0]).replace(/\s+/g, " ").slice(0, 120);
+}
+
+function systemFailureLines(failure, fallback = []) {
+  if (failure) {
+    return [
+      `${failure.project}/${failure.category}: ${notificationSummaryLine(failure)}`,
+      `Failure status: ${failure.status}`,
+    ];
+  }
+  return fallback.length > 0 ? fallback.slice(0, 3) : [];
+}
+
+function uniqueLines(items) {
+  return [...new Set((items || []).filter(Boolean))];
+}
+
+function loadActivity() {
+  if (!fs.existsSync(activityFile)) {
+    return { entries: [] };
+  }
+  return normalizeActivityDb(JSON.parse(fs.readFileSync(activityFile, "utf8")));
+}
+
+function saveActivity(db) {
+  fs.writeFileSync(activityFile, JSON.stringify(normalizeActivityDb(db), null, 2) + "\n", "utf8");
+}
+
+function normalizeActivityDb(db) {
+  const ordered = (db.entries || [])
+    .filter((item) => item && item.timestamp && item.summary)
+    .sort((a, b) => Date.parse(a.timestamp || 0) - Date.parse(b.timestamp || 0))
+    .slice(-200);
+  const entries = [];
+  for (const item of ordered) {
+    const last = entries[entries.length - 1];
+    if (
+      last &&
+      last.summary === item.summary &&
+      last.project === item.project &&
+      last.workflow === item.workflow
+    ) {
+      entries[entries.length - 1] = item;
+      continue;
+    }
+    entries.push(item);
+  }
+  return { entries };
+}
+
+function shouldRecordActivity(payload) {
+  if (payload.project !== "system") return true;
+  if (payload.workflow !== "tick") return true;
+  const meaningfulChecks = (payload.checks || []).filter((item) => item !== "Progress summary: pass");
+  return payload.status !== "pass" || payload.failures.length > 0 || meaningfulChecks.length > 0;
+}
+
+function activitySummaryForPayload(payload) {
+  const label = payload.project === "system" ? "system" : payload.project;
+  if (payload.workflow === "brief") {
+    return `${label} · 管理汇报已刷新 (${payload.status})`;
+  }
+  if (payload.workflow === "notify") {
+    return `${label} · 已发送介入通知 (${payload.status})`;
+  }
+  if (payload.workflow === "tick") {
+    return `${label} · loop 执行一轮 (${payload.status})`;
+  }
+  if (payload.workflow === "eval" && payload.status === "pass") {
+    return `${label} · 完成健康检查并通过`;
+  }
+  if (payload.workflow === "doctor" && payload.status === "pass") {
+    return `${label} · 完成环境体检并通过`;
+  }
+  return `${label} · ${payload.workflow} · ${payload.status}`;
+}
+
+function recordActivity(payload, reportPath) {
+  if (!shouldRecordActivity(payload)) return;
+  const db = loadActivity();
+  const entry = {
+    timestamp: payload.timestamp,
+    project: payload.project,
+    workflow: payload.workflow,
+    status: payload.status,
+    risk_level: payload.risk_level || null,
+    failure_id: payload.failure_id || null,
+    report_path: reportPath || null,
+    summary: activitySummaryForPayload(payload),
+  };
+  const last = db.entries[db.entries.length - 1];
+  if (
+    last &&
+    last.summary === entry.summary &&
+    last.project === entry.project &&
+    last.workflow === entry.workflow &&
+    Math.abs(Date.parse(entry.timestamp) - Date.parse(last.timestamp)) < 60_000
+  ) {
+    db.entries[db.entries.length - 1] = entry;
+  } else {
+    db.entries.push(entry);
+  }
+  saveActivity(db);
+}
+
+function formatUiTimestamp(timestamp) {
+  if (!timestamp) return "";
+  return new Date(timestamp).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function recentActivityLines(limit = 8) {
+  return loadActivity().entries
+    .slice(-limit)
+    .reverse()
+    .map((entry) => `${formatUiTimestamp(entry.timestamp)} · ${entry.summary}`);
+}
+
+function mergeTickStatus(current, next) {
+  const rank = {
+    pass: 0,
+    partial: 1,
+    autofix_planned: 1,
+    autofix_running: 1,
+    not_checked: 1,
+    autofix_pass: 1,
+    held: 2,
+    rolled_back: 2,
+    fail: 3,
+    autofix_failed: 3,
+  };
+  return (rank[next] || 0) > (rank[current] || 0) ? next : current;
+}
+
+function latestActiveFailure(projectId) {
+  const db = loadFailures();
+  return db.failures
+    .filter((item) => item.project === projectId)
+    .filter((item) => !["autofix_pass", "resolved"].includes(item.status))
+    .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at))[0] || null;
+}
+
+function loadFailures() {
+  if (!fs.existsSync(failuresFile)) {
+    return { failures: [] };
+  }
+  return normalizeFailuresDb(JSON.parse(fs.readFileSync(failuresFile, "utf8")));
+}
+
+function saveFailures(db) {
+  fs.writeFileSync(failuresFile, JSON.stringify(normalizeFailuresDb(db), null, 2) + "\n", "utf8");
+}
+
+function normalizeFailuresDb(db) {
+  for (const failure of db.failures || []) {
+    if (!failure.category) continue;
+    failure.risk_level = riskLevelForCategory(failure.category);
+    failure.next_allowed_action = nextAllowedActionForStatus(failure.status, failure.category);
+  }
+  return db;
+}
+
+function resolveProjectFailures(projectId, timestamp = new Date().toISOString()) {
+  const db = loadFailures();
+  let changed = false;
+  for (const failure of db.failures || []) {
+    if (failure.project !== projectId) continue;
+    if (failure.status === "resolved") continue;
+    failure.status = "resolved";
+    failure.last_seen_at = timestamp;
+    failure.resolved_at = timestamp;
+    failure.next_allowed_action = "none";
+    changed = true;
+  }
+  if (changed) saveFailures(db);
+}
+
+function upsertFailureRecord(project, payload) {
+  if (!payload.category || !["fail", "partial"].includes(payload.status)) {
+    return null;
+  }
+
+  const signatureBase = [
+    project.id,
+    payload.workflow,
+    payload.category,
+    ...(payload.failures || []).slice(0, 5),
+  ].join("\n");
+  const signature = hashText(signatureBase);
+  const failureId = `${project.id}-${payload.category}-${signature.slice(0, 10)}`;
+  const timestamp = payload.timestamp;
+  const db = loadFailures();
+  const existing = db.failures.find((item) => item.failure_id === failureId);
+
+  if (existing) {
+    existing.last_seen_at = timestamp;
+    existing.status = payload.status;
+    existing.attempt_count = existing.attempt_count || 0;
+    existing.risk_level = riskLevelForCategory(payload.category);
+    existing.next_allowed_action = nextAllowedActionForStatus(payload.status, payload.category);
+    existing.failures = payload.failures;
+    existing.checks = payload.checks;
+    saveFailures(db);
+    return failureId;
+  }
+
+  db.failures.push({
+    failure_id: failureId,
+    project: project.id,
+    workflow: payload.workflow,
+    category: payload.category,
+    signature,
+    first_seen_at: timestamp,
+    last_seen_at: timestamp,
+    attempt_count: 0,
+    status: payload.status,
+    risk_level: riskLevelForCategory(payload.category),
+    next_allowed_action: nextAllowedActionForStatus(payload.status, payload.category),
+    failures: payload.failures,
+    checks: payload.checks,
+  });
+  saveFailures(db);
+  return failureId;
+}
+
+function updateFailureStatus(failureId, status) {
+  const db = loadFailures();
+  const failure = db.failures.find((item) => item.failure_id === failureId);
+  if (!failure) return;
+  failure.status = status;
+  failure.last_seen_at = new Date().toISOString();
+  failure.risk_level = riskLevelForCategory(failure.category);
+  failure.next_allowed_action = nextAllowedActionForStatus(status, failure.category);
+  if (["autofix_running", "autofix_failed", "autofix_pass", "rolled_back", "held"].includes(status)) {
+    failure.attempt_count = (failure.attempt_count || 0) + (status === "autofix_running" ? 1 : 0);
+  }
+  saveFailures(db);
+}
+
+function persistWorkflowResult(project, result) {
+  const timestamp = new Date().toISOString();
+  const payload = {
+    project: project.id,
+    name: project.name,
+    workflow: result.workflow,
+    status: result.status,
+    timestamp,
+    checks: result.checks || [],
+    failures: result.failures || [],
+    nextActions: result.nextActions || [],
+    category: result.category || null,
+    risk_level: result.category ? riskLevelForCategory(result.category) : null,
+    failure_id: result.failureId || null,
+    details: result.details || {},
+  };
+
+  if (!payload.failure_id) {
+    payload.failure_id = upsertFailureRecord(project, payload);
+  }
+
+  if (payload.workflow === "eval" && payload.status === "pass") {
+    resolveProjectFailures(project.id, timestamp);
+  }
+
+  const reportName = result.reportName || "latest";
+  ensureDir(path.join(generatedRoot, project.id));
+  fs.writeFileSync(latestMarkdownPath(project.id, reportName), renderReport(payload), "utf8");
+  fs.writeFileSync(latestJsonPath(project.id, reportName), JSON.stringify(payload, null, 2) + "\n", "utf8");
+  recordActivity(payload, latestMarkdownPath(project.id, reportName));
+  updateDashboardSummary(loadProjects());
+
+  return {
+    ...payload,
+    project,
+    reportPath: latestMarkdownPath(project.id, reportName),
+  };
+}
+
+function persistSystemReport(reportName, result) {
+  const timestamp = new Date().toISOString();
+  const payload = {
+    project: "system",
+    name: "Harness System",
+    workflow: result.workflow,
+    status: result.status,
+    timestamp,
+    checks: result.checks || [],
+    failures: result.failures || [],
+    nextActions: result.nextActions || [],
+    category: result.category || null,
+    risk_level: result.category ? riskLevelForCategory(result.category) : null,
+    failure_id: result.failureId || null,
+    details: result.details || {},
+  };
+  ensureDir(path.join(generatedRoot, "system"));
+  fs.writeFileSync(latestMarkdownPath("system", reportName), renderReport(payload), "utf8");
+  fs.writeFileSync(latestJsonPath("system", reportName), JSON.stringify(payload, null, 2) + "\n", "utf8");
+  recordActivity(payload, latestMarkdownPath("system", reportName));
+  updateDashboardSummary(loadProjects());
+  return {
+    ...payload,
+    project: { id: "system" },
+    reportPath: latestMarkdownPath("system", reportName),
+  };
+}
+
+function renderReport(payload) {
+  const lines = [
+    `# ${payload.name} ${payload.workflow} report`,
+    "",
+    `- Project: ${payload.project}`,
+    `- Workflow: ${payload.workflow}`,
+    `- Status: ${payload.status}`,
+    `- Timestamp: ${payload.timestamp}`,
+  ];
+  if (payload.category) lines.push(`- Category: ${payload.category}`);
+  if (payload.risk_level) lines.push(`- Risk Level: ${payload.risk_level}`);
+  if (payload.failure_id) lines.push(`- Failure ID: ${payload.failure_id}`);
+  lines.push("", "## Checks", "", ...renderBullets(payload.checks), "", "## Failures", "", ...renderBullets(payload.failures), "", "## Next Actions", "", ...renderBullets(payload.nextActions));
+  if (payload.details && Object.keys(payload.details).length > 0) {
+    lines.push("", "## Details", "");
+    for (const [key, value] of Object.entries(payload.details)) {
+      lines.push(`- ${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderBullets(items) {
+  return items.length > 0 ? items.map((item) => `- ${item}`) : ["- None"];
+}
+
+function printResultSummary(result) {
+  console.log(`${result.project.id}: ${result.status} (${result.workflow})`);
+  console.log(`report: ${result.reportPath}`);
+}
+
+function latestMarkdownPath(projectId, reportName) {
+  return path.join(generatedRoot, projectId, `${reportName}.md`);
+}
+
+function latestJsonPath(projectId, reportName) {
+  return path.join(generatedRoot, projectId, `${reportName}.json`);
+}
+
+function updateDashboardSummary(projects) {
+  updateNotificationDashboard();
+  const rows = [];
+  for (const project of projects) {
+    const payload = latestPayloadForProject(project.id);
+    if (!payload) continue;
+    rows.push(`${project.id}: ${payload.status} (${payload.workflow}) at ${payload.timestamp}`);
+  }
+  const activeFailureIds = new Set(
+    loadFailures().failures
+      .filter((item) => !["resolved", "autofix_pass"].includes(item.status))
+      .map((item) => item.failure_id),
+  );
+  const notifications = loadNotifications().notifications
+    .filter((item) => activeFailureIds.has(item.failure_id))
+    .slice(-5)
+    .reverse()
+    .map((item) => `${riskEmoji(item.risk_level || "low")} ${item.project}: ${item.summary}`);
+  const activity = recentActivityLines(6);
+  fs.writeFileSync(
+    path.join(dashboardDir, "latest.md"),
+    [
+      "# Harness Dashboard",
+      "",
+      "## Projects",
+      "",
+      ...renderBullets(rows),
+      "",
+      "## Recent Actions",
+      "",
+      ...renderBullets(activity),
+      "",
+      "## Active Notifications",
+      "",
+      ...(notifications.length > 0
+        ? renderBullets(notifications)
+        : ["- No active intervention notifications. Historical alerts have been archived."]),
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+function latestPayloadForProject(projectId) {
+  const candidates = ["latest", "autofix-latest", "fix-plan-latest", "hold-latest"]
+    .map((name) => latestJsonPath(projectId, name))
+    .filter((file) => fs.existsSync(file))
+    .map((file) => ({ file, mtime: fs.statSync(file).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  if (candidates.length === 0) return null;
+  return JSON.parse(fs.readFileSync(candidates[0].file, "utf8"));
+}
+
+function commandExists(command) {
+  return spawnSync("bash", ["-lc", `command -v ${shellQuote(command)}`], { encoding: "utf8" }).status === 0;
+}
+
+function launchctlHasLabel(label) {
+  return runShell(`launchctl print gui/$(id -u)/${shellQuote(label)}`, repoRoot).status === 0;
+}
+
+function runShell(command, cwd, options = {}) {
+  return spawnSync("bash", ["-lc", command], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: options.timeoutMs || 0,
+  });
+}
+
+function detectMissingModule(lines) {
+  const text = Array.isArray(lines) ? lines.join("\n") : String(lines || "");
+  const match = text.match(/No module named '([^']+)'/);
+  return match ? match[1] : null;
+}
+
+function specsForMissingModule(moduleName) {
+  if (!moduleName) return [];
+  if (moduleName === "fastapi" || moduleName === "starlette" || moduleName === "httpx") {
+    return [...SIGNALS_BASE_DEPENDENCIES];
+  }
+  return SIGNALS_OPTIONAL_DEPENDENCIES[moduleName] || [];
+}
+
+function uniquePackageSpecs(specs) {
+  return [...new Set(specs.filter(Boolean))];
+}
+
+function buildSignalsDependencyPlan(failure, requirementsFile) {
+  const missingModule = detectMissingModule(failure.failures || []);
+  const plan = [...SIGNALS_BASE_DEPENDENCIES, ...specsForMissingModule(missingModule)];
+  if (!missingModule && failure.category === "dependency_missing" && fs.existsSync(requirementsFile)) {
+    const requirementLines = fs.readFileSync(requirementsFile, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !line.startsWith("#"))
+      .filter((line) => line !== "ib_async");
+    plan.push(...requirementLines.slice(0, 12));
+  }
+  return uniquePackageSpecs(plan);
+}
+
+function firstNonEmptyLine(text) {
+  return text.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+}
+
+function collectOutput(result) {
+  return `${result.stdout || ""}\n${result.stderr || ""}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+function snapshotFiles(projectId, files) {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const snapshotDir = path.join(snapshotRoot, projectId, timestamp);
+  ensureDir(snapshotDir);
+  const manifest = [];
+  for (const file of files) {
+    const source = path.resolve(file);
+    const relative = source.replace(/^\//, "");
+    const backup = path.join(snapshotDir, relative);
+    ensureDir(path.dirname(backup));
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, backup);
+      manifest.push({ source, backup, existed: true });
+    } else {
+      manifest.push({ source, backup, existed: false });
+    }
+  }
+  fs.writeFileSync(path.join(snapshotDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  return { snapshotDir, manifest };
+}
+
+function restoreSnapshot(snapshot) {
+  for (const entry of snapshot.manifest) {
+    if (entry.existed) {
+      ensureDir(path.dirname(entry.source));
+      fs.copyFileSync(entry.backup, entry.source);
+    } else if (fs.existsSync(entry.source)) {
+      fs.rmSync(entry.source);
+    }
+  }
+}
+
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function hashText(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}

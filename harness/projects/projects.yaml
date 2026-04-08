@@ -1,0 +1,228 @@
+{
+  "projects": [
+    {
+      "id": "knowledge-base",
+      "name": "Knowledge Base",
+      "kind": "local",
+      "root": "/Users/zhangqilong/Desktop/知识库",
+      "repo_url": "",
+      "required_commands": ["python3"],
+      "required_paths": [
+        "CLAUDE.md",
+        "tools/lint_notes.py",
+        "tools/eval_notes.py",
+        "tools/autofix_notes.py",
+        "tools/search.py",
+        "tools/promote.py",
+        "tools/rebuild_index.py"
+      ],
+      "entry_commands": [
+        "python3 tools/search.py \"<keyword>\"",
+        "python3 tools/promote.py \"10 Inbox/WeChat/<note>.md\"",
+        "python3 tools/rebuild_index.py",
+        "python3 tools/lint_notes.py",
+        "python3 tools/eval_notes.py"
+      ],
+      "eval": {
+        "type": "knowledge-base",
+        "command": "python3 tools/lint_notes.py"
+      },
+      "recheck_commands": [
+        "python3 tools/lint_notes.py",
+        "python3 tools/eval_notes.py"
+      ],
+      "autofix_enabled": true,
+      "autofix_categories": [
+        "format_or_schema_violation",
+        "doc_drift"
+      ],
+      "autofix_writable_paths": [
+        "10 Inbox/WeChat",
+        "20 Knowledge",
+        "00 Dashboard",
+        "tools"
+      ],
+      "autofix_denied_paths": [
+        "30 Sources",
+        "90 Legacy"
+      ],
+      "rollback_mode": "file_snapshot",
+      "max_autofix_attempts": 1,
+      "autofix_strategy": "knowledge_base_notes"
+    },
+    {
+      "id": "agent-os",
+      "name": "Longclaw Agent OS",
+      "kind": "local",
+      "root": "/Users/zhangqilong/github代码仓库/longclaw-agent-os",
+      "repo_url": "https://github.com/Gemini-Nick/longclaw-agent-os",
+      "required_commands": ["bash", "node"],
+      "required_paths": [
+        "README.md",
+        "scripts/guardian/verify-v2.sh",
+        "scripts/guardian/build-core.sh"
+      ],
+      "entry_commands": [
+        "npm run guardian:install",
+        "bash scripts/guardian/install-v2.sh",
+        "bash scripts/guardian/build-core.sh",
+        "bash scripts/guardian/verify-v2.sh"
+      ],
+      "eval": {
+        "type": "agent-os",
+        "command": "bash scripts/guardian/verify-v2.sh"
+      },
+      "recheck_commands": [
+        "bash scripts/guardian/verify-v2.sh"
+      ],
+      "autofix_enabled": true,
+      "autofix_categories": [
+        "doc_drift",
+        "runtime_config_drift"
+      ],
+      "autofix_writable_paths": [
+        "harness",
+        "docs",
+        "scripts/guardian",
+        "README.md"
+      ],
+      "autofix_denied_paths": [
+        "src/bridge",
+        "src/remote",
+        "electron"
+      ],
+      "rollback_mode": "file_snapshot",
+      "max_autofix_attempts": 1,
+      "autofix_strategy": "manual_hold"
+    },
+    {
+      "id": "weclaw",
+      "name": "WeClaw",
+      "kind": "local",
+      "root": "/Users/zhangqilong/github代码仓库/weclaw",
+      "repo_url": "https://github.com/Gemini-Nick/weclaw",
+      "required_commands": ["go"],
+      "required_paths": [
+        "README.md",
+        "go.mod",
+        "scripts/verify-fork-core.sh"
+      ],
+      "entry_commands": [
+        "go build ./...",
+        "bash scripts/verify-fork-core.sh"
+      ],
+      "eval": {
+        "type": "weclaw",
+        "command": "go build ./..."
+      },
+      "recheck_commands": [
+        "go build ./...",
+        "bash scripts/verify-fork-core.sh"
+      ],
+      "autofix_enabled": true,
+      "autofix_categories": [
+        "build_failure",
+        "doc_drift"
+      ],
+      "autofix_writable_paths": [
+        "README.md",
+        "docs",
+        "scripts",
+        "cmd",
+        "internal"
+      ],
+      "autofix_denied_paths": [
+        "pkg/bridge/schema",
+        "internal/archive",
+        "internal/session"
+      ],
+      "rollback_mode": "file_snapshot",
+      "max_autofix_attempts": 1,
+      "autofix_strategy": "manual_hold"
+    },
+    {
+      "id": "signals",
+      "name": "Signals",
+      "kind": "local",
+      "root": "/Users/zhangqilong/github代码仓库/Signals",
+      "repo_url": "https://github.com/Gemini-Nick/signals",
+      "required_commands": ["python3"],
+      "required_paths": [
+        "README.md",
+        "tests/test_web_smoke.py",
+        "requirements.txt"
+      ],
+      "entry_commands": [
+        "python3 -m pytest tests/test_web_smoke.py"
+      ],
+      "eval": {
+        "type": "signals",
+        "command": "python3 -m pytest tests/test_web_smoke.py"
+      },
+      "recheck_commands": [
+        "python3 -m pytest tests/test_web_smoke.py"
+      ],
+      "autofix_enabled": true,
+      "autofix_categories": [
+        "dependency_missing",
+        "test_failure_structural",
+        "doc_drift"
+      ],
+      "autofix_writable_paths": [
+        "tests",
+        "deploy",
+        "README.md",
+        "requirements.txt",
+        "scripts"
+      ],
+      "autofix_denied_paths": [
+        "signals/core",
+        "signals/layers",
+        "signals/research"
+      ],
+      "rollback_mode": "environment_snapshot",
+      "max_autofix_attempts": 3,
+      "autofix_strategy": "signals_pytest_env"
+    },
+    {
+      "id": "watchdog",
+      "name": "Watchdog",
+      "kind": "local",
+      "root": "/Users/zhangqilong/.longclaw/runtime-v2",
+      "repo_url": "https://github.com/Gemini-Nick/watchdog",
+      "required_commands": ["bash", "launchctl"],
+      "required_paths": [
+        "bin/repo-scheduler-service.sh",
+        "bin/guardian-monitor.sh",
+        "bin/weguard"
+      ],
+      "entry_commands": [
+        "~/.longclaw/runtime-v2/bin/weguard status",
+        "launchctl print gui/$(id -u)/com.zhangqilong.ai.repo.scheduler",
+        "launchctl print gui/$(id -u)/com.zhangqilong.ai.guardian.monitor"
+      ],
+      "eval": {
+        "type": "watchdog-runtime",
+        "command": "~/.longclaw/runtime-v2/bin/weguard status"
+      },
+      "recheck_commands": [
+        "~/.longclaw/runtime-v2/bin/weguard status"
+      ],
+      "autofix_enabled": false,
+      "autofix_categories": [
+        "doc_drift",
+        "runtime_config_drift"
+      ],
+      "autofix_writable_paths": [
+        "scheduler",
+        "reports",
+        "configs",
+        "rules"
+      ],
+      "autofix_denied_paths": [],
+      "rollback_mode": "none",
+      "max_autofix_attempts": 1,
+      "autofix_strategy": "manual_hold"
+    }
+  ]
+}

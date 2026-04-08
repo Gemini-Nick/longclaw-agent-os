@@ -79,6 +79,12 @@ npm run guardian:retire
 - 产品层：`apps/runtime/` + `scripts/guardian/`
 - 内核层：`weclaw-real`
 
+安装入口已经固定在仓库根目录：
+
+- `bash install.sh`
+- `bash uninstall.sh`
+- `bash apply-live.sh`
+
 目标是让另一台 Mac 只执行一次安装入口，例如：
 
 ```bash
@@ -97,6 +103,8 @@ bash install.sh
 ```bash
 ~/.weclaw/bin/weclaw login
 ```
+
+边界和打包约束见 [docs/PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md)。
 
 ## 上游同步
 
