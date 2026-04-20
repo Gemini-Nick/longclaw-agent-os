@@ -1,28 +1,111 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import { createBackend, AgentBackend, AgentMode } from './agent-backend.js'
+import { inspectConfiguredAcpBridge } from './acp-client.js'
+import {
+  dispatchToLocalRuntimeApi,
+  probeLocalRuntimeSeat,
+  resolveLocalRuntimeSeat,
+  type LocalRuntimeSeat,
+  type LocalRuntimeSeatResolution,
+} from './local-runtime-seat.js'
+import { createLongclawControlPlaneClientFromEnv } from '../../src/services/longclawControlPlane/client.js'
+import {
+  LongclawCapabilitySubstrateSummarySchema,
+  type LongclawCapabilityEntry,
+  type LongclawCapabilitySubstrateSummary,
+  type LongclawDomainPackDescriptor,
+  type LongclawLaunchIntent,
+  type LongclawLaunchMention,
+  type LongclawTask,
+  LongclawLaunchIntentSchema,
+  LongclawLaunchReceiptSchema,
+  LongclawRunSchema,
+  LongclawTaskSchema,
+  LongclawWorkItemSchema,
+} from '../../src/services/longclawControlPlane/models.js'
 
 function log(...args: any[]) {
   const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
   process.stderr.write(`[longxiaoxia] ${msg}\n`)
 }
 
+const STACK_ENV_PATH = path.join(os.homedir(), '.longclaw', 'runtime-v2', 'stack.env')
+
+function stripShellQuotes(value: string): string {
+  const trimmed = value.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+function loadRuntimeStackEnv(): { loaded: boolean; path: string; appliedKeys: string[] } {
+  if (!fs.existsSync(STACK_ENV_PATH)) {
+    return { loaded: false, path: STACK_ENV_PATH, appliedKeys: [] }
+  }
+
+  const appliedKeys: string[] = []
+  try {
+    const raw = fs.readFileSync(STACK_ENV_PATH, 'utf-8')
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const separatorIndex = trimmed.indexOf('=')
+      if (separatorIndex <= 0) continue
+      const key = trimmed.slice(0, separatorIndex).trim()
+      const value = stripShellQuotes(trimmed.slice(separatorIndex + 1))
+      if (!key || process.env[key]) continue
+      process.env[key] = value
+      appliedKeys.push(key)
+    }
+  } catch (error) {
+    log('failed to load stack env', STACK_ENV_PATH, error)
+    return { loaded: false, path: STACK_ENV_PATH, appliedKeys: [] }
+  }
+
+  if (!process.env.LONGCLAW_AGENT_OS_BASE_URL && process.env.LONGCLAW_HERMES_AGENT_OS_BASE_URL) {
+    process.env.LONGCLAW_AGENT_OS_BASE_URL = process.env.LONGCLAW_HERMES_AGENT_OS_BASE_URL
+  }
+  if (!process.env.LONGCLAW_AGENT_OS_API_KEY && process.env.LONGCLAW_HERMES_API_KEY) {
+    process.env.LONGCLAW_AGENT_OS_API_KEY = process.env.LONGCLAW_HERMES_API_KEY
+  }
+
+  return { loaded: true, path: STACK_ENV_PATH, appliedKeys }
+}
+
+const runtimeStackEnv = loadRuntimeStackEnv()
+
 let mainWindow: BrowserWindow | null = null
 let backend: AgentBackend | null = null
+let controlPlaneClient = createLongclawControlPlaneClientFromEnv()
 let currentCwd = process.env.AGENT_CWD || app.getPath('home')
+const DEFAULT_LOCALE = 'zh-CN'
 
 function getAgentMode(): AgentMode {
   return (process.env.AGENT_MODE as AgentMode) || 'acp'
 }
 
+function windowTitleForLocale(locale: string): string {
+  return locale === 'en-US' ? 'Longclaw Agent OS' : '隆小侠 Agent OS'
+}
+
+function applyWindowLocale(locale: string) {
+  if (!mainWindow) return
+  mainWindow.setTitle(windowTitleForLocale(locale))
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1100,
-    height: 700,
+    width: 1280,
+    height: 820,
     y: 30,
-    title: '隆小虾 Agent OS',
+    title: windowTitleForLocale(DEFAULT_LOCALE),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -36,6 +119,25 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   }
+
+  mainWindow.webContents.on('did-fail-load', (_event, code, description, validatedURL) => {
+    log('renderer did-fail-load', { code, description, validatedURL })
+  })
+
+  mainWindow.webContents.on(
+    'console-message',
+    (_event, level, message, line, sourceId) => {
+      log('renderer console', { level, message, line, sourceId })
+    },
+  )
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log('renderer process gone', details)
+  })
+
+  mainWindow.webContents.on('unresponsive', () => {
+    log('renderer unresponsive')
+  })
 }
 
 async function ensureBackend(): Promise<AgentBackend> {
@@ -58,6 +160,161 @@ async function ensureBackend(): Promise<AgentBackend> {
   return backend
 }
 
+function getControlPlaneClient() {
+  return controlPlaneClient
+}
+
+function currentRuntimeProfile(
+  workMode: LongclawLaunchIntent['work_mode'],
+  seatResolution?: LocalRuntimeSeatResolution,
+): string {
+  if (process.env.LONGCLAW_RUNTIME_PROFILE?.trim()) {
+    return process.env.LONGCLAW_RUNTIME_PROFILE.trim()
+  }
+  if (workMode === 'cloud_sandbox') {
+    return 'dev_local_acp_bridge'
+  }
+  return seatResolution?.runtimeProfile ?? 'dev_local_acp_bridge'
+}
+
+function resolveLaunchSeat(
+  workMode: LongclawLaunchIntent['work_mode'],
+): LocalRuntimeSeatResolution {
+  if (workMode === 'cloud_sandbox') {
+    return {
+      seat: 'unavailable',
+      available: false,
+      runtimeProfile: 'dev_local_acp_bridge',
+      runtimeTarget: 'local_runtime',
+      modelPlane: 'cloud_provider',
+      localRuntimeApiKeyConfigured: Boolean(process.env.LONGCLAW_LOCAL_RUNTIME_API_KEY?.trim()),
+      localRuntimeApiUrl: process.env.LONGCLAW_LOCAL_RUNTIME_API_URL?.trim(),
+    }
+  }
+  return resolveLocalRuntimeSeat()
+}
+
+function withLaunchSeatMetadata(
+  intent: LongclawLaunchIntent,
+  seatResolution: LocalRuntimeSeatResolution,
+): LongclawLaunchIntent {
+  const runtimeProfile = currentRuntimeProfile(intent.work_mode, seatResolution)
+  const runtimeTarget = intent.work_mode === 'cloud_sandbox' ? 'cloud_runtime' : 'local_runtime'
+  const interactionSurface = intent.work_mode === 'weclaw_dispatch' ? 'weclaw' : 'electron_home'
+  const executionPlane = runtimeTarget === 'cloud_runtime' ? 'cloud_executor' : 'local_executor'
+
+  return LongclawLaunchIntentSchema.parse({
+    ...intent,
+    interaction_surface: interactionSurface,
+    runtime_profile: runtimeProfile,
+    runtime_target: runtimeTarget,
+    model_plane: 'cloud_provider',
+    metadata: {
+      ...(intent.metadata ?? {}),
+      work_mode: intent.work_mode,
+      launch_surface: intent.launch_surface ?? interactionSurface,
+      origin_surface: intent.launch_surface ?? interactionSurface,
+      interaction_surface: interactionSurface,
+      runtime_profile: runtimeProfile,
+      runtime_target: runtimeTarget,
+      model_plane: 'cloud_provider',
+      execution_plane: executionPlane,
+      local_runtime_seat: seatResolution.seat,
+      local_runtime_api_url: seatResolution.localRuntimeApiUrl,
+      local_acp_script: seatResolution.acpScript,
+    },
+  })
+}
+
+async function probeHttpOk(url: string | undefined): Promise<boolean> {
+  if (!url) return false
+  try {
+    const response = await fetch(url)
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+async function collectRuntimeStatus(
+  packs: LongclawDomainPackDescriptor[],
+  overviewReady: boolean,
+): Promise<Record<string, unknown>> {
+  const coreBaseUrl =
+    process.env.LONGCLAW_AGENT_OS_BASE_URL ?? process.env.LONGCLAW_HERMES_AGENT_OS_BASE_URL
+  const dueDiligenceBaseUrl = process.env.LONGCLAW_DUE_DILIGENCE_BASE_URL
+  const signalsStateRoot = process.env.LONGCLAW_SIGNALS_STATE_ROOT
+  const acpBridge = inspectConfiguredAcpBridge()
+  const localRuntimeSeat = await probeLocalRuntimeSeat()
+
+  const duePackVisible = packs.some(pack => pack.pack_id === 'due_diligence')
+  const signalsPackVisible = packs.some(pack => pack.pack_id === 'signals')
+  const [dueHealthReady] = await Promise.all([
+    probeHttpOk(
+      dueDiligenceBaseUrl
+        ? `${dueDiligenceBaseUrl.replace(/\/$/, '')}/healthz`
+        : undefined,
+    ),
+  ])
+
+  return {
+    stack_env_loaded: runtimeStackEnv.loaded,
+    stack_env_path: runtimeStackEnv.path,
+    stack_env_applied_keys: runtimeStackEnv.appliedKeys,
+    longclaw_core_connected: Boolean(coreBaseUrl && getControlPlaneClient().isHermesBacked() && overviewReady),
+    longclaw_core_base_url: coreBaseUrl ?? '',
+    due_diligence_connected: Boolean(duePackVisible || dueHealthReady),
+    due_diligence_base_url: dueDiligenceBaseUrl ?? '',
+    signals_available: Boolean(
+      signalsPackVisible || (signalsStateRoot && fs.existsSync(signalsStateRoot)),
+    ),
+    signals_state_root: signalsStateRoot ?? '',
+    local_acp_available: acpBridge.available,
+    local_acp_script: acpBridge.path,
+    local_acp_source: acpBridge.source,
+    local_runtime_seat: localRuntimeSeat.seat,
+    local_runtime_available: localRuntimeSeat.available,
+    local_runtime_api_url: localRuntimeSeat.localRuntimeApiUrl ?? '',
+    local_runtime_api_available:
+      localRuntimeSeat.seat === 'local_runtime_api' ? localRuntimeSeat.healthOk : false,
+    runtime_profile:
+      process.env.LONGCLAW_RUNTIME_PROFILE ??
+      (localRuntimeSeat.seat === 'local_runtime_api'
+        ? 'packaged_local_runtime'
+        : 'dev_local_acp_bridge'),
+  }
+}
+
+async function handleLocalAction(_event: Electron.IpcMainInvokeEvent, action: { kind: string; payload?: any }) {
+  const payload = action?.payload ?? {}
+  switch (action?.kind) {
+    case 'open_path':
+      return { ok: true, kind: action.kind, result: await shell.openPath(String(payload.path || '')) }
+    case 'open_url':
+      await shell.openExternal(String(payload.url || ''))
+      return { ok: true, kind: action.kind }
+    case 'copy_value':
+      clipboard.writeText(String(payload.value || ''))
+      return { ok: true, kind: action.kind }
+    default:
+      throw new Error(`Unsupported local action: ${action?.kind}`)
+  }
+}
+
+async function handleReadArtifactPreview(_event: Electron.IpcMainInvokeEvent, uri: string) {
+  if (!uri || !path.isAbsolute(uri) || !fs.existsSync(uri)) {
+    return { ok: false, reason: 'missing_file' }
+  }
+
+  const stat = fs.statSync(uri)
+  if (stat.size > 256 * 1024) {
+    return { ok: false, reason: 'too_large', size: stat.size }
+  }
+
+  const text = fs.readFileSync(uri, 'utf-8')
+  return { ok: true, text, size: stat.size }
+}
+
 // --- Skills discovery ---
 
 interface SkillInfo {
@@ -67,16 +324,54 @@ interface SkillInfo {
   project?: string
 }
 
-// Known project directories to scan for skills
-const SKILL_SCAN_DIRS = [
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'Signals'),
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'aippt'),
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'aippt', 'ppt-master'),
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'Chanless'),
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'gstack'),
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'superpowers'),
-  path.join(os.homedir(), 'Desktop', 'github代码仓库', 'compound-engineering-plugin'),
+interface PluginInfo {
+  plugin_id: string
+  label: string
+  path: string
+  description: string
+  source: string
+  project?: string
+}
+
+type AgentStreamEvent = {
+  type: 'text' | 'tool' | 'result' | 'error'
+  text?: string
+  toolName?: string
+  toolInput?: unknown
+  result?: unknown
+  error?: string
+}
+
+const WORKSPACE_ROOT_CANDIDATES = [
+  path.join(os.homedir(), 'github代码仓库'),
+  path.join(os.homedir(), 'Desktop', 'github代码仓库'),
 ]
+
+const KNOWN_SKILL_PROJECTS = [
+  'Signals',
+  'aippt',
+  'aippt/ppt-master',
+  'Chanless',
+  'gstack',
+  'superpowers',
+  'compound-engineering-plugin',
+]
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.filter(Boolean).map(item => path.resolve(item)))]
+}
+
+function workspaceRoots(): string[] {
+  return uniquePaths(
+    WORKSPACE_ROOT_CANDIDATES.filter(candidate => fs.existsSync(candidate)),
+  )
+}
+
+const SKILL_SCAN_DIRS = uniquePaths(
+  workspaceRoots().flatMap(root =>
+    KNOWN_SKILL_PROJECTS.map(project => path.join(root, project)),
+  ),
+)
 
 function scanDirForSkills(dir: string, projectName: string): SkillInfo[] {
   const skills: SkillInfo[] = []
@@ -118,11 +413,672 @@ function discoverAllSkills(): SkillInfo[] {
   if (!SKILL_SCAN_DIRS.includes(currentCwd)) {
     all.push(...scanDirForSkills(currentCwd, path.basename(currentCwd)))
   }
-  return all
+  const unique = new Map<string, SkillInfo>()
+  for (const skill of all) {
+    unique.set(skill.path, skill)
+  }
+  return [...unique.values()].sort((left, right) => left.name.localeCompare(right.name))
 }
 
 function discoverSkills(cwd: string): SkillInfo[] {
-  return discoverAllSkills()
+  const skills = [...discoverAllSkills(), ...scanDirForSkills(cwd, path.basename(cwd))]
+  const unique = new Map<string, SkillInfo>()
+  for (const skill of skills) {
+    unique.set(skill.path, skill)
+  }
+  return [...unique.values()].sort((left, right) => left.name.localeCompare(right.name))
+}
+
+function readJsonFile(filePath: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function pluginInfoForDir(dir: string): PluginInfo | null {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return null
+
+  const baseName = path.basename(dir)
+  const codexPluginPath = path.join(dir, '.codex-plugin', 'plugin.json')
+  const packageJsonPath = path.join(dir, 'package.json')
+  const isPluginLike =
+    baseName.toLowerCase().includes('plugin') ||
+    fs.existsSync(codexPluginPath) ||
+    fs.existsSync(path.join(dir, 'plugins')) ||
+    fs.existsSync(path.join(dir, 'cowork_plugins'))
+
+  if (!isPluginLike) return null
+
+  const pluginManifest = readJsonFile(codexPluginPath)
+  const packageManifest = readJsonFile(packageJsonPath)
+  const pluginId =
+    String(pluginManifest?.id ?? packageManifest?.name ?? baseName).trim() || baseName
+  const label =
+    String(pluginManifest?.name ?? packageManifest?.name ?? baseName).trim() || baseName
+  const description =
+    String(pluginManifest?.description ?? packageManifest?.description ?? '')
+      .trim()
+      .slice(0, 160) || `${baseName} plugin bundle`
+
+  return {
+    plugin_id: pluginId,
+    label,
+    path: dir,
+    description,
+    source: fs.existsSync(codexPluginPath) ? 'codex_plugin' : 'workspace_package',
+    project: baseName,
+  }
+}
+
+function discoverCapabilityPlugins(): PluginInfo[] {
+  const roots = uniquePaths([...workspaceRoots(), currentCwd])
+  const discovered = new Map<string, PluginInfo>()
+
+  for (const root of roots) {
+    const direct = pluginInfoForDir(root)
+    if (direct) discovered.set(direct.path, direct)
+
+    if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) continue
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const info = pluginInfoForDir(path.join(root, entry.name))
+      if (info) discovered.set(info.path, info)
+    }
+  }
+
+  return [...discovered.values()].sort((left, right) => left.label.localeCompare(right.label))
+}
+
+function forwardAgentEvent(sender: Electron.WebContents, event: AgentStreamEvent) {
+  log(`event: type=${event.type} text="${(event.text || '').slice(0, 30)}"`)
+  switch (event.type) {
+    case 'text':
+      sender.send('agent:text', event.text)
+      break
+    case 'tool':
+      sender.send('agent:tool', { name: event.toolName, input: event.toolInput })
+      break
+    case 'result':
+      sender.send('agent:result', event.result)
+      break
+    case 'error':
+      sender.send('agent:error', event.error)
+      break
+  }
+}
+
+function launchPackMention(intent: LongclawLaunchIntent): LongclawLaunchMention | undefined {
+  return intent.mentions.find(mention => mention.kind === 'pack')
+}
+
+function launchPackId(intent: LongclawLaunchIntent): string {
+  const metadataPack = intent.metadata.pack_id
+  const hintedValue =
+    launchPackMention(intent)?.value ??
+    (typeof metadataPack === 'string' ? metadataPack : '')
+  if (!hintedValue) return 'local_agent'
+  return hintedValue.includes('.') ? hintedValue.split('.')[0] : hintedValue
+}
+
+function launchTaskCapability(intent: LongclawLaunchIntent, packId: string): string {
+  const metadataCapability = intent.metadata.capability
+  const hintedValue =
+    launchPackMention(intent)?.value ??
+    (typeof metadataCapability === 'string' ? metadataCapability : '')
+  if (hintedValue.includes('.')) return hintedValue
+  if (hintedValue) return `${packId}.${hintedValue}`
+  return `${packId}.cowork_launch`
+}
+
+function launchRunCapability(taskCapability: string): string {
+  return taskCapability.includes('.') ? taskCapability.split('.').slice(1).join('.') : taskCapability
+}
+
+function launchDomain(packId: string): string {
+  if (packId === 'signals') return 'financial_analysis'
+  if (packId === 'due_diligence') return 'due_diligence'
+  return packId || 'local_agent'
+}
+
+function capabilityEntryFromPack(pack: LongclawDomainPackDescriptor): LongclawCapabilityEntry {
+  return {
+    capability_id: `pack:${pack.pack_id}`,
+    kind: 'pack',
+    label: pack.pack_id,
+    mention: `@pack ${pack.pack_id}`,
+    source: pack.runtime,
+    description: pack.description,
+    summary: `${pack.runtime} runtime`,
+    owner: pack.owner_repo,
+    curated: ['signals', 'due_diligence'].includes(pack.pack_id),
+    provisional: false,
+    metadata: pack.metadata ?? {},
+  }
+}
+
+function capabilityEntryFromSkill(skill: SkillInfo): LongclawCapabilityEntry {
+  return {
+    capability_id: `skill:${skill.project ?? 'workspace'}:${skill.name}`,
+    kind: 'skill',
+    label: skill.name,
+    mention: `@skill ${skill.name}`,
+    source: 'filesystem',
+    description: skill.description,
+    summary: skill.project ?? 'workspace',
+    owner: skill.project ?? null,
+    curated: false,
+    provisional: true,
+    metadata: {
+      path: skill.path,
+      project: skill.project ?? null,
+    },
+  }
+}
+
+function capabilityEntryFromPlugin(plugin: PluginInfo): LongclawCapabilityEntry {
+  return {
+    capability_id: `plugin:${plugin.plugin_id}`,
+    kind: 'plugin',
+    label: plugin.label,
+    mention: `@plugin ${plugin.plugin_id}`,
+    source: plugin.source,
+    description: plugin.description,
+    summary: plugin.project ?? 'workspace plugin',
+    owner: plugin.project ?? null,
+    curated: false,
+    provisional: true,
+    metadata: {
+      path: plugin.path,
+    },
+  }
+}
+
+function recentCapabilityEntry(task: LongclawTask): LongclawCapabilityEntry {
+  const metadata = task.metadata as Record<string, unknown>
+  const packId =
+    typeof metadata.pack_id === 'string' && metadata.pack_id
+      ? metadata.pack_id
+      : task.capability.includes('.')
+        ? task.capability.split('.')[0]
+        : ''
+  const skillMention = Array.isArray(metadata.skill_mentions) ? metadata.skill_mentions[0] : null
+  const pluginMention = Array.isArray(metadata.plugin_mentions) ? metadata.plugin_mentions[0] : null
+
+  if (typeof skillMention === 'string' && skillMention) {
+    return {
+      capability_id: `recent:skill:${skillMention}`,
+      kind: 'skill',
+      label: skillMention,
+      mention: `@skill ${skillMention}`,
+      source: String(metadata.launch_source ?? 'launch_history'),
+      description: 'Recently launched skill mention',
+      summary: task.status,
+      owner: null,
+      curated: false,
+      provisional: false,
+      metadata: { task_id: task.task_id, run_ids: task.run_ids },
+    }
+  }
+
+  if (typeof pluginMention === 'string' && pluginMention) {
+    return {
+      capability_id: `recent:plugin:${pluginMention}`,
+      kind: 'plugin',
+      label: pluginMention,
+      mention: `@plugin ${pluginMention}`,
+      source: String(metadata.launch_source ?? 'launch_history'),
+      description: 'Recently launched plugin bundle',
+      summary: task.status,
+      owner: null,
+      curated: false,
+      provisional: false,
+      metadata: { task_id: task.task_id, run_ids: task.run_ids },
+    }
+  }
+
+  return {
+    capability_id: `recent:pack:${task.capability}`,
+    kind: 'pack',
+    label: task.capability,
+    mention: packId ? `@pack ${task.capability}` : `@pack ${task.capability}`,
+    source: String(metadata.launch_source ?? 'launch_history'),
+    description: 'Recently launched pack capability',
+    summary: task.status,
+    owner: packId || null,
+    curated: ['signals', 'due_diligence'].includes(packId),
+    provisional: false,
+    metadata: { task_id: task.task_id, run_ids: task.run_ids },
+  }
+}
+
+async function buildCapabilitySubstrateSummary(): Promise<LongclawCapabilitySubstrateSummary> {
+  const [overviewResult, packsResult, tasksResult] = await Promise.allSettled([
+    getControlPlaneClient().getOverview(),
+    getControlPlaneClient().listPacks(),
+    getControlPlaneClient().listTasks(8),
+  ])
+  const skills = discoverAllSkills()
+  const plugins = discoverCapabilityPlugins()
+  const packs =
+    packsResult.status === 'fulfilled'
+      ? packsResult.value
+      : overviewResult.status === 'fulfilled'
+        ? overviewResult.value.packs
+        : []
+  const tasks = tasksResult.status === 'fulfilled' ? tasksResult.value : []
+  const source = getControlPlaneClient().isHermesBacked() ? 'hybrid' : 'local_fallback'
+  const runtimeStatus = await collectRuntimeStatus(
+    packs,
+    overviewResult.status === 'fulfilled' && getControlPlaneClient().isHermesBacked(),
+  )
+  const seatResolution = resolveLocalRuntimeSeat()
+
+  return LongclawCapabilitySubstrateSummarySchema.parse({
+    generated_at: new Date().toISOString(),
+    source,
+    provisional: true,
+    flagship_packs: packs.filter(pack => ['signals', 'due_diligence'].includes(pack.pack_id)),
+    skills: skills.map(capabilityEntryFromSkill),
+    plugins: plugins.map(capabilityEntryFromPlugin),
+    packs: packs.map(capabilityEntryFromPack),
+    aliases: [],
+    presets: [
+      packs.some(pack => pack.pack_id === 'signals')
+        ? {
+            preset_id: 'signals-review',
+            label: 'Signals Review',
+            description: 'Launch the flagship review flow in Signals.',
+            mentions: [{ kind: 'pack', value: 'signals.review', metadata: {} }],
+            default_pack_id: 'signals',
+            curated: true,
+            metadata: {},
+          }
+        : null,
+      packs.some(pack => pack.pack_id === 'signals')
+        ? {
+            preset_id: 'signals-backtest',
+            label: 'Signals Backtest',
+            description: 'Run backlog evaluation and backtest in the Signals pack.',
+            mentions: [{ kind: 'pack', value: 'signals.backtest', metadata: {} }],
+            default_pack_id: 'signals',
+            curated: true,
+            metadata: {},
+          }
+        : null,
+      packs.some(pack => pack.pack_id === 'due_diligence')
+        ? {
+            preset_id: 'due-diligence-company',
+            label: 'Company Due Diligence',
+            description: 'Launch the due-diligence runtime for a company investigation.',
+            mentions: [{ kind: 'pack', value: 'due_diligence.company_due_diligence', metadata: {} }],
+            default_pack_id: 'due_diligence',
+            curated: true,
+            metadata: {},
+          }
+        : null,
+    ].filter(Boolean),
+    last_used_capabilities: tasks.map(recentCapabilityEntry),
+    visibility: {
+      curated: false,
+      shows_provisional_inventory: true,
+      skills_source: 'filesystem',
+      plugins_source: plugins.length > 0 ? 'workspace_scan' : 'local_fallback',
+      packs_source: packsResult.status === 'fulfilled' ? 'control_plane' : 'overview',
+    },
+    metadata: {
+      cwd: currentCwd,
+      agent_mode: getAgentMode(),
+      runtime_profile: currentRuntimeProfile('local', seatResolution),
+      model_plane: 'cloud_provider',
+      local_runtime_seat: seatResolution.seat,
+      runtime_status: runtimeStatus,
+      packs_count: packs.length,
+      skills_count: skills.length,
+      plugins_count: plugins.length,
+      tasks_count: tasks.length,
+    },
+  })
+}
+
+async function handleProvisionalLaunch(
+  event: Electron.IpcMainInvokeEvent,
+  intent: LongclawLaunchIntent,
+) {
+  const sender = event.sender
+  const startedAt = new Date().toISOString()
+  const launchId = intent.launch_id ?? `launch-local-${Date.now()}`
+  const packId = launchPackId(intent)
+  const taskCapability = launchTaskCapability(intent, packId)
+  const taskId = `task-local-${Date.now()}`
+  const runId = `run-local-${Date.now()}`
+  const prompt = String(intent.requested_outcome ?? intent.raw_text).trim()
+  const workMode = intent.work_mode
+  const seatResolution = resolveLaunchSeat(workMode)
+  const localRuntimeSeat = String(
+    intent.metadata.local_runtime_seat ?? seatResolution.seat,
+  ) as LocalRuntimeSeat
+  const runtimeProfile = intent.runtime_profile ?? currentRuntimeProfile(workMode, seatResolution)
+  const runtimeTarget = workMode === 'cloud_sandbox' ? 'cloud_runtime' : 'local_runtime'
+  const interactionSurface =
+    workMode === 'weclaw_dispatch' ? 'weclaw' : 'electron_home'
+  const modelPlane = intent.model_plane ?? 'cloud_provider'
+  const executionPlane = runtimeTarget === 'cloud_runtime' ? 'cloud_executor' : 'local_executor'
+  const launchSurface = intent.launch_surface ?? interactionSurface
+  const workspaceTarget =
+    intent.workspace_target ??
+    (workMode === 'local'
+      ? currentCwd
+      : workMode === 'cloud_sandbox'
+        ? 'sandbox://longclaw/default'
+        : 'weclaw://active-thread')
+  const input = {
+    query: prompt,
+    raw_text: intent.raw_text,
+    requested_outcome: intent.requested_outcome ?? intent.raw_text,
+    work_mode: workMode,
+    launch_surface: launchSurface,
+    interaction_surface: interactionSurface,
+    runtime_profile: runtimeProfile,
+    runtime_target: runtimeTarget,
+    model_plane: modelPlane,
+    workspace_target: workspaceTarget,
+    local_runtime_seat: localRuntimeSeat,
+  }
+
+  let failed = false
+  let errorMessage = ''
+  let taskStatus = 'succeeded'
+  let runStatus = 'succeeded'
+  let runtimeSummary = 'Completed via local cowork runtime'
+  let seatDispatchResult: Record<string, unknown> | undefined
+  try {
+    if (workMode === 'cloud_sandbox') {
+      failed = true
+      errorMessage = 'Cloud Sandbox requires Longclaw Core.'
+      taskStatus = 'failed'
+      runStatus = 'failed'
+      runtimeSummary = errorMessage
+    } else if (localRuntimeSeat === 'acp_bridge') {
+      const b = await ensureBackend()
+      await b.query(prompt, rawEvent => {
+        forwardAgentEvent(sender, rawEvent as AgentStreamEvent)
+      })
+    } else if (localRuntimeSeat === 'local_runtime_api') {
+      seatDispatchResult = await dispatchToLocalRuntimeApi({
+        launch_id: launchId,
+        task_id: taskId,
+        work_mode: workMode,
+        requested_outcome: String(input.requested_outcome ?? prompt),
+        mentions: intent.mentions as Array<Record<string, unknown>>,
+        workspace_root: typeof workspaceTarget === 'string' ? workspaceTarget : currentCwd,
+        runtime_profile: runtimeProfile as 'dev_local_acp_bridge' | 'packaged_local_runtime' | 'cloud_managed_runtime',
+        model_plane: 'cloud_provider',
+        raw_text: intent.raw_text,
+      })
+      taskStatus = 'running'
+      runStatus = 'running'
+      runtimeSummary = 'Accepted by local runtime API'
+      forwardAgentEvent(sender, {
+        type: 'result',
+        result: {
+          local_runtime_seat: localRuntimeSeat,
+          accepted: Boolean(seatDispatchResult.accepted ?? true),
+          dispatch: seatDispatchResult,
+        },
+      })
+    } else {
+      failed = true
+      errorMessage =
+        'Local Work and WeClaw Dispatch need either a local ACP bridge or LONGCLAW_LOCAL_RUNTIME_API_URL.'
+      taskStatus = 'failed'
+      runStatus = 'failed'
+      runtimeSummary = errorMessage
+    }
+  } catch (error) {
+    failed = true
+    errorMessage = error instanceof Error ? error.message : String(error)
+    taskStatus = 'failed'
+    runStatus = 'failed'
+    runtimeSummary = `Fallback cowork launch failed: ${errorMessage}`
+    forwardAgentEvent(sender, { type: 'error', error: errorMessage })
+  }
+
+  const finishedAt = new Date().toISOString()
+  const task = LongclawTaskSchema.parse({
+    task_id: taskId,
+    capability: taskCapability,
+    session_id:
+      typeof intent.session_context.session_id === 'string'
+        ? intent.session_context.session_id
+        : null,
+    channel:
+      typeof intent.session_context.channel === 'string'
+        ? intent.session_context.channel
+        : intent.source,
+    status: taskStatus,
+    input,
+    work_mode: workMode,
+    origin_surface: launchSurface,
+    interaction_surface: interactionSurface,
+    runtime_profile: runtimeProfile,
+    runtime_target: runtimeTarget,
+    model_plane: modelPlane,
+    execution_plane: executionPlane,
+    run_ids: [runId],
+    last_run_id: runId,
+    created_at: startedAt,
+    updated_at: finishedAt,
+    metadata: {
+      ...intent.metadata,
+      provisional: true,
+      pack_id: packId,
+      launch_source: intent.source,
+      work_mode: workMode,
+      launch_surface: launchSurface,
+      interaction_surface: interactionSurface,
+      runtime_profile: runtimeProfile,
+      runtime_target: runtimeTarget,
+      model_plane: modelPlane,
+      execution_plane: executionPlane,
+      workspace_target: workspaceTarget,
+      local_runtime_seat: localRuntimeSeat,
+      mentions: intent.mentions,
+      fallback_runtime: localRuntimeSeat === 'acp_bridge' ? getAgentMode() : localRuntimeSeat,
+      error: errorMessage || undefined,
+      local_runtime_dispatch: seatDispatchResult,
+    },
+  })
+  const run = LongclawRunSchema.parse({
+    run_id: runId,
+    domain: launchDomain(packId),
+    capability: launchRunCapability(taskCapability),
+    status: runStatus,
+    session_id: task.session_id,
+    task_id: taskId,
+    requested_by:
+      typeof intent.session_context.user_id === 'string'
+        ? intent.session_context.user_id
+        : null,
+    work_mode: workMode,
+    origin_surface: launchSurface,
+    interaction_surface: interactionSurface,
+    runtime_profile: runtimeProfile,
+    runtime_target: runtimeTarget,
+    model_plane: modelPlane,
+    execution_plane: executionPlane,
+    summary: runtimeSummary,
+    created_at: startedAt,
+    started_at: startedAt,
+    finished_at: finishedAt,
+    metadata: {
+      ...intent.metadata,
+      provisional: true,
+      pack_id: packId,
+      launch_source: intent.source,
+      work_mode: workMode,
+      launch_surface: launchSurface,
+      interaction_surface: interactionSurface,
+      runtime_profile: runtimeProfile,
+      runtime_target: runtimeTarget,
+      model_plane: modelPlane,
+      execution_plane: executionPlane,
+      workspace_target: workspaceTarget,
+      fallback_runtime: localRuntimeSeat === 'acp_bridge' ? getAgentMode() : localRuntimeSeat,
+      local_runtime_seat: localRuntimeSeat,
+      local_runtime_dispatch: seatDispatchResult,
+      raw_text: intent.raw_text,
+    },
+    pack_id: packId,
+  })
+  const workItems = failed
+    ? [
+        LongclawWorkItemSchema.parse({
+          work_item_id: `work-local-${Date.now()}`,
+          pack_id: packId,
+          kind: 'delivery_failed',
+          title: 'Fallback cowork launch failed',
+          summary: errorMessage || 'Local cowork runtime failed before Hermes was available.',
+          severity: 'warning',
+          status: 'open',
+          run_id: runId,
+          work_mode: workMode,
+          origin_surface: launchSurface,
+          interaction_surface: interactionSurface,
+          runtime_profile: runtimeProfile,
+          runtime_target: runtimeTarget,
+          model_plane: modelPlane,
+          execution_plane: executionPlane,
+          artifact_refs: [],
+          operator_actions: [],
+          created_at: finishedAt,
+          updated_at: finishedAt,
+          metadata: {
+            provisional: true,
+            launch_id: launchId,
+            work_mode: workMode,
+            launch_surface: launchSurface,
+            interaction_surface: interactionSurface,
+            runtime_profile: runtimeProfile,
+            runtime_target: runtimeTarget,
+            model_plane: modelPlane,
+            execution_plane: executionPlane,
+            workspace_target: workspaceTarget,
+            local_runtime_seat: localRuntimeSeat,
+          },
+        }),
+      ]
+    : []
+
+  return LongclawLaunchReceiptSchema.parse({
+    launch_id: launchId,
+    pack_id: packId,
+    task,
+    run,
+    artifacts: [],
+    review_actions: [],
+    work_items: workItems,
+    compiled_input: input,
+    metadata: {
+      source: 'local_fallback',
+      provisional: true,
+      work_mode: workMode,
+      launch_surface: launchSurface,
+      interaction_surface: interactionSurface,
+      runtime_profile: runtimeProfile,
+      runtime_target: runtimeTarget,
+      model_plane: modelPlane,
+      execution_plane: executionPlane,
+      workspace_target: workspaceTarget,
+      fallback_runtime: localRuntimeSeat === 'acp_bridge' ? getAgentMode() : localRuntimeSeat,
+      local_runtime_seat: localRuntimeSeat,
+      local_runtime_dispatch: seatDispatchResult,
+    },
+  })
+}
+
+async function handleLaunchIntent(
+  event: Electron.IpcMainInvokeEvent,
+  payload: unknown,
+) {
+  const parsedIntent = LongclawLaunchIntentSchema.parse(payload)
+  const seatResolution = resolveLaunchSeat(parsedIntent.work_mode)
+  const intent = withLaunchSeatMetadata(parsedIntent, seatResolution)
+  try {
+    const receipt = await getControlPlaneClient().launch(intent)
+    const hasPackMention = intent.mentions.some(mention => mention.kind === 'pack')
+    const shouldDispatchLocalSeat =
+      intent.work_mode !== 'cloud_sandbox' &&
+      seatResolution.available &&
+      (receipt.pack_id === 'local_runtime' || !hasPackMention)
+
+    if (shouldDispatchLocalSeat) {
+      if (seatResolution.seat === 'acp_bridge') {
+        const sender = event.sender
+        const b = await ensureBackend()
+        await b.query(String(intent.requested_outcome ?? intent.raw_text).trim(), rawEvent => {
+          forwardAgentEvent(sender, rawEvent as AgentStreamEvent)
+        })
+      } else if (seatResolution.seat === 'local_runtime_api') {
+        await dispatchToLocalRuntimeApi({
+          launch_id: receipt.launch_id,
+          task_id: receipt.task.task_id,
+          work_mode: intent.work_mode,
+          requested_outcome: String(intent.requested_outcome ?? intent.raw_text).trim(),
+          mentions: intent.mentions as Array<Record<string, unknown>>,
+          workspace_root:
+            typeof intent.workspace_target === 'string' && intent.workspace_target
+              ? intent.workspace_target
+              : currentCwd,
+          runtime_profile:
+            currentRuntimeProfile(intent.work_mode, seatResolution) as
+              | 'dev_local_acp_bridge'
+              | 'packaged_local_runtime'
+              | 'cloud_managed_runtime',
+          model_plane: 'cloud_provider',
+          raw_text: intent.raw_text,
+        })
+      }
+    }
+
+    return LongclawLaunchReceiptSchema.parse({
+      ...receipt,
+      task: {
+        ...receipt.task,
+        metadata: {
+          ...(receipt.task.metadata ?? {}),
+          local_runtime_seat: seatResolution.seat,
+        },
+      },
+      run: {
+        ...receipt.run,
+        metadata: {
+          ...(receipt.run.metadata ?? {}),
+          local_runtime_seat: seatResolution.seat,
+        },
+      },
+      metadata: {
+        ...(receipt.metadata ?? {}),
+        local_runtime_seat: seatResolution.seat,
+      },
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const hasPackMention = intent.mentions.some(mention => mention.kind === 'pack')
+    const missingPackRouting =
+      /LaunchIntent requires an @pack mention/.test(message) && !hasPackMention
+    const shouldFallback =
+      !getControlPlaneClient().isHermesBacked() ||
+      /404\b/.test(message) ||
+      /Launch requires Hermes Agent OS/.test(message) ||
+      missingPackRouting
+
+    if (!shouldFallback) {
+      throw error
+    }
+    return handleProvisionalLaunch(event, intent)
+  }
 }
 
 // --- IPC Handlers ---
@@ -132,21 +1088,7 @@ async function handleQuery(_event: Electron.IpcMainInvokeEvent, message: string)
   const b = await ensureBackend()
 
   await b.query(message, (event) => {
-    log(`event: type=${event.type} text="${(event.text || '').slice(0, 30)}"`)
-    switch (event.type) {
-      case 'text':
-        sender.send('agent:text', event.text)
-        break
-      case 'tool':
-        sender.send('agent:tool', { name: event.toolName, input: event.toolInput })
-        break
-      case 'result':
-        sender.send('agent:result', event.result)
-        break
-      case 'error':
-        sender.send('agent:error', event.error)
-        break
-    }
+    forwardAgentEvent(sender, event as AgentStreamEvent)
   })
 
   return { ok: true }
@@ -200,6 +1142,30 @@ app.whenReady().then(() => {
 
   // Skills
   ipcMain.handle('skills:list', () => discoverAllSkills())
+
+  // Cowork front door + capability substrate
+  ipcMain.handle('launch:submit', handleLaunchIntent)
+  ipcMain.handle('launch:list-tasks', async (_event, limit?: number) =>
+    getControlPlaneClient().listTasks(typeof limit === 'number' ? limit : 50),
+  )
+  ipcMain.handle('launch:get-task', async (_event, taskId: string) =>
+    getControlPlaneClient().getTask(taskId),
+  )
+  ipcMain.handle('capability-substrate:get-summary', buildCapabilitySubstrateSummary)
+
+  // Control plane
+  ipcMain.handle('control-plane:get-overview', async () => getControlPlaneClient().getOverview())
+  ipcMain.handle('control-plane:list-runs', async () => getControlPlaneClient().listRuns())
+  ipcMain.handle('control-plane:list-work-items', async () => getControlPlaneClient().listWorkItems())
+  ipcMain.handle('control-plane:get-pack-dashboard', async (_event, packId: string) => getControlPlaneClient().getPackDashboard(packId))
+  ipcMain.handle('control-plane:list-artifacts', async (_event, runId: string, domain: string) => getControlPlaneClient().listArtifacts(runId, domain))
+  ipcMain.handle('control-plane:execute-action', async (_event, actionId: string, payload: any) => getControlPlaneClient().executeAction(actionId, payload ?? {}))
+  ipcMain.handle('control-plane:local-action', handleLocalAction)
+  ipcMain.handle('control-plane:read-artifact-preview', handleReadArtifactPreview)
+  ipcMain.handle('window:set-locale', async (_event, locale: string) => {
+    applyWindowLocale(locale === 'en-US' ? 'en-US' : 'zh-CN')
+    return { ok: true }
+  })
 
   createWindow()
 })

@@ -21,10 +21,17 @@ rm -f \
   "$WECLAW_HOME/watchdog.launchd.out.log" \
   "$WECLAW_HOME/watchdog.launchd.err.log" \
   "$WECLAW_HOME/weclaw.pid"
+launchctl bootout "gui/$(id -u)/com.zhangqilong.ai.harness.loop" >/dev/null 2>&1 || true
+rm -f "$LAUNCH_AGENTS_DIR/com.zhangqilong.ai.harness.loop.plist"
 
 log "sync runtime scripts"
 cp "$RUNTIME_SRC_DIR/bin/weclaw" "$RUNTIME_INSTALL_DIR/bin/weclaw"
 cp "$RUNTIME_SRC_DIR/bin/weguard" "$RUNTIME_INSTALL_DIR/bin/weguard"
+cp "$RUNTIME_SRC_DIR/bin/harness" "$RUNTIME_INSTALL_DIR/bin/harness"
+cp "$RUNTIME_SRC_DIR/bin/routing-controller" "$RUNTIME_INSTALL_DIR/bin/routing-controller"
+cp "$RUNTIME_SRC_DIR/bin/runtime-status" "$RUNTIME_INSTALL_DIR/bin/runtime-status"
+cp "$RUNTIME_SRC_DIR/bin/runtime-roadmap-sync.py" "$RUNTIME_INSTALL_DIR/bin/runtime-roadmap-sync.py"
+cp "$RUNTIME_SRC_DIR/bin/runtime-wechat-control.py" "$RUNTIME_INSTALL_DIR/bin/runtime-wechat-control.py"
 cp "$RUNTIME_SRC_DIR/bin/codex-appserver.sh" "$RUNTIME_INSTALL_DIR/bin/codex-appserver.sh"
 cp "$RUNTIME_SRC_DIR/bin/claude-worker.sh" "$RUNTIME_INSTALL_DIR/bin/claude-worker.sh"
 cp "$RUNTIME_SRC_DIR/bin/weclaw-bridge.sh" "$RUNTIME_INSTALL_DIR/bin/weclaw-bridge.sh"
@@ -33,6 +40,13 @@ cp "$RUNTIME_SRC_DIR/bin/guardian-monitor.sh" "$RUNTIME_INSTALL_DIR/bin/guardian
 cp "$RUNTIME_SRC_DIR/config/workspace-watchdog.json" "$RUNTIME_INSTALL_DIR/config/workspace-watchdog.json"
 cp "$RUNTIME_SRC_DIR/config/repo-sync-policy.json" "$RUNTIME_INSTALL_DIR/config/repo-sync-policy.json"
 chmod +x "$RUNTIME_INSTALL_DIR/bin/"*
+
+log "sync harness assets"
+cp "$ROOT_DIR/harness/AGENTS.md" "$RUNTIME_INSTALL_DIR/harness/AGENTS.md"
+cp "$ROOT_DIR/harness/bin/harness" "$RUNTIME_INSTALL_DIR/harness/bin/harness"
+cp "$ROOT_DIR/harness/policies/golden-principles.md" "$RUNTIME_INSTALL_DIR/harness/policies/golden-principles.md"
+cp "$ROOT_DIR/harness/projects/projects.yaml" "$RUNTIME_INSTALL_DIR/harness/projects/projects.yaml"
+chmod +x "$RUNTIME_INSTALL_DIR/harness/bin/harness"
 
 log "install weclaw core binary"
 WECLAW_SOURCE_TYPE=""

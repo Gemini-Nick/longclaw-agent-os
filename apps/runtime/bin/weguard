@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_CONFIG="${WECLAW_CONFIG:-$HOME/.weclaw/services.json}"
+RUNTIME_STATUS_BIN="${LONGCLAW_RUNTIME_STATUS_BIN:-$HOME/.longclaw/runtime-v2/bin/runtime-status}"
 
 find_guardian_bin() {
   local candidates=(
@@ -48,6 +49,9 @@ case "$cmd" in
     subcmd="${1:-status}"
     shift || true
     exec "$GUARDIAN_BIN" failover "$subcmd" --config "$DEFAULT_CONFIG" "$@"
+    ;;
+  runtime-status)
+    exec "$RUNTIME_STATUS_BIN" "$@"
     ;;
   *)
     exec "$GUARDIAN_BIN" "$cmd" "$@"

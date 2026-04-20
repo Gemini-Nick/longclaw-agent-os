@@ -2,6 +2,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -10,8 +11,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const harnessRoot = path.join(repoRoot, "harness");
-const generatedRoot = path.join(harnessRoot, "generated");
-const stateRoot = path.join(harnessRoot, "state");
+const legacyGeneratedRoot = path.join(harnessRoot, "generated");
+const legacyStateRoot = path.join(harnessRoot, "state");
+const runtimeHarnessRoot = process.env.HARNESS_RUNTIME_ROOT || path.join(os.homedir(), ".longclaw", "runtime-v2", "state", "harness");
+const generatedRoot = path.join(runtimeHarnessRoot, "generated");
+const stateRoot = runtimeHarnessRoot;
 const projectsFile = path.join(harnessRoot, "projects", "projects.yaml");
 const failuresFile = path.join(stateRoot, "failures.json");
 const scheduleFile = path.join(stateRoot, "schedule.json");
@@ -22,10 +26,10 @@ const snapshotRoot = path.join(stateRoot, "snapshots");
 const dashboardDir = path.join(generatedRoot, "dashboard");
 const outboxDir = path.join(generatedRoot, "outbox");
 const LOOP_INTERVAL_MS = Number(process.env.HARNESS_LOOP_INTERVAL_MS || 60_000);
+const PLAN_ONLY_MODE = process.env.HARNESS_PLAN_ONLY !== "0";
 const HOURLY_MS = 60 * 60 * 1000;
 const DAILY_MS = 24 * HOURLY_MS;
 const WEEKLY_MS = 7 * DAILY_MS;
-const PROGRESS_RETRY_MS = 10 * 60 * 1000;
 const PIP_TIMEOUT_MS = Number(process.env.HARNESS_PIP_TIMEOUT_MS || 180_000);
 const SIGNALS_BASE_DEPENDENCIES = [
   "pytest",
@@ -49,6 +53,7 @@ const SIGNALS_OPTIONAL_DEPENDENCIES = {
 main();
 
 function main() {
+  migrateLegacyHarnessRuntime();
   ensureDir(generatedRoot);
   ensureDir(stateRoot);
   ensureDir(venvRoot);
@@ -97,18 +102,8 @@ function main() {
       {
         const send = target === "send";
         const result = runBrief(projects, { send });
-        if (send) {
-          const schedule = loadSchedule();
-          const now = new Date().toISOString();
-          schedule.last_progress_attempt_at = now;
-          if (result.status === "pass") {
-            schedule.last_progress_at = now;
-          }
-          saveSchedule(schedule);
-        }
         exitFromResult(result);
       }
-      return;
       return;
     case "tick":
       exitFromResult(runTick(projects));
@@ -355,21 +350,12 @@ function runTick(projects) {
     nextActions.push("No actionable failures. Wait for the next schedule tick or a new failure record.");
   }
 
-  const progressDue = shouldRunSchedule(schedule.last_progress_at, HOURLY_MS, now);
-  const progressRetryDue = shouldRunSchedule(schedule.last_progress_attempt_at, PROGRESS_RETRY_MS, now);
-  const shouldSendProgress = progressDue && progressRetryDue;
-  const brief = runBrief(projects, { send: shouldSendProgress });
+  const brief = runBrief(projects);
   checks.push(`Progress summary: ${brief.status}`);
   details.progress_report = brief.reportPath;
   if (brief.details?.outbox_path) details.progress_outbox = brief.details.outbox_path;
   if (brief.details?.channel) details.progress_channel = brief.details.channel;
   if (brief.details?.sent_at) details.progress_sent_at = brief.details.sent_at;
-  if (shouldSendProgress) {
-    schedule.last_progress_attempt_at = new Date(now).toISOString();
-    if (brief.status === "pass") {
-      schedule.last_progress_at = new Date(now).toISOString();
-    }
-  }
   saveSchedule(schedule);
 
   return persistSystemReport("tick-latest", {
@@ -388,6 +374,10 @@ function runBrief(projects, options = {}) {
   const details = {
     report_path: reportPath,
     headline: payload.headline,
+    summary_signature: payload.summary_signature,
+    next_steps_effective: payload.next_steps,
+    should_notify: false,
+    notify_reason: "plan_only_brief",
   };
   let checks = [`Projects tracked: ${projects.length}`];
   let failures = [];
@@ -1440,14 +1430,14 @@ function shouldRunSchedule(lastRunAt, intervalMs, nowMs) {
 }
 
 function loadSchedule() {
-  if (!fs.existsSync(scheduleFile)) {
-    return {};
-  }
-  return JSON.parse(fs.readFileSync(scheduleFile, "utf8"));
+  const schedule = !fs.existsSync(scheduleFile)
+    ? {}
+    : JSON.parse(fs.readFileSync(scheduleFile, "utf8"));
+  return normalizeSchedule(schedule);
 }
 
 function saveSchedule(schedule) {
-  fs.writeFileSync(scheduleFile, JSON.stringify(schedule, null, 2) + "\n", "utf8");
+  fs.writeFileSync(scheduleFile, JSON.stringify(normalizeSchedule(schedule), null, 2) + "\n", "utf8");
 }
 
 function nextActionableFailure(projects) {
@@ -1482,6 +1472,32 @@ function getProjectMaxAttempts(projects, projectId) {
   return project?.max_autofix_attempts || 1;
 }
 
+function normalizeSchedule(schedule) {
+  return {
+    last_doctor_at: schedule.last_doctor_at || null,
+    last_eval_at: schedule.last_eval_at || null,
+    last_weekly_at: schedule.last_weekly_at || null,
+  };
+}
+
+function actionSummaryForFailure(failure) {
+  const action = failure.next_allowed_action || nextAllowedActionForStatus(failure.status, failure.category);
+  switch (action) {
+    case "fix-plan":
+      return `${failure.project}: 生成修复方案并确认低风险动作`;
+    case "autofix":
+      return `${failure.project}: 运行自动修复并复检`;
+    case "hold":
+      return `${failure.project}: 进入 hold，等待人工判断`;
+    case "manual_review":
+      return `${failure.project}: 人工审阅 ${failure.category}`;
+    case "resolve":
+      return `${failure.project}: 标记已解决并归档`;
+    default:
+      return `${failure.project}: 当前无待执行动作`;
+  }
+}
+
 function buildNotificationPayload(failure) {
   const actionLabel = notificationActionLabel(failure);
   const riskLevel = riskLevelForCategory(failure.category);
@@ -1514,7 +1530,7 @@ function buildNotificationPayload(failure) {
 
 function shouldSendExternalNotification(failure) {
   const riskLevel = riskLevelForCategory(failure.category);
-  return riskLevel !== "low";
+  return !PLAN_ONLY_MODE && riskLevel !== "low";
 }
 
 function writeNotificationOutbox(payload) {
@@ -1633,8 +1649,6 @@ function buildProgressSummary(projects) {
     payload: latestPayloadForProject(project.id),
   }));
   const localProjects = projects.filter((project) => project.kind !== "remote");
-  const watchdogHealthy = latestRows.find((row) => row.id === "watchdog")?.payload?.status === "pass";
-  const harnessLoopInstalled = launchctlHasLabel("com.zhangqilong.ai.harness.loop");
   const activeFailures = loadFailures().failures
     .filter((item) => !["resolved", "autofix_pass"].includes(item.status))
     .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at));
@@ -1650,7 +1664,7 @@ function buildProgressSummary(projects) {
     .map((row) => row.id);
   const currentWork = activeFailures.length > 0
     ? `正在处理 ${activeFailures[0].project} 的 ${activeFailures[0].category} 问题`
-    : `当前 ${passingLocal.length} 个本地试点项目已绿，正在维持 loop 并推进更完整的控制面整理`;
+    : `当前 ${passingLocal.length} 个本地试点项目已绿，正在维持本地闭环并推进控制面收口`;
   const blockers = activeFailures.length > 0
     ? activeFailures.slice(0, 3).map((failure) =>
         `${riskEmoji(failure.risk_level || riskLevelForCategory(failure.category))} ${failure.project} · ${failure.category} · ${notificationSummaryLine(failure)}`,
@@ -1663,23 +1677,24 @@ function buildProgressSummary(projects) {
     : ["近期没有新关闭的问题。"];
   const uniqueCompleted = uniqueLines(completed);
   const nextSteps = activeFailures.length > 0
-    ? activeFailures.slice(0, 3).map((failure) =>
-        `${failure.project}: ${failure.next_allowed_action || "manual_review"}`,
-      )
-    : !harnessLoopInstalled
-      ? ["把 harness loop 接入 launchd，摆脱终端会话依赖。"]
-      : !watchdogHealthy
-        ? ["把 watchdog 控制面从占位项目切到本机现有 runtime 服务。"]
-        : [
-            "清理历史通知与旧 failure 视图，避免绿色状态下继续展示陈旧告警。",
-            "准备正式 watchdog 仓库 checkout 和更深的控制面接入。",
-          ];
+    ? uniqueLines(activeFailures.slice(0, 5).map((failure) => actionSummaryForFailure(failure)))
+    : ["当前无待执行动作"];
+  const summarySignature = hashText(
+    JSON.stringify({
+      headline: activeFailures.length > 0
+        ? `当前有 ${activeFailures.length} 个待处理问题`
+        : `当前 ${passingLocal.length}/${localProjects.length} 个本地试点项目为 pass`,
+      blockers,
+      nextSteps,
+    }),
+  );
 
   return {
     timestamp,
     headline: activeFailures.length > 0
       ? `当前有 ${activeFailures.length} 个待处理问题，最高风险 ${riskEmoji(riskLevelForCategory(activeFailures[0].category))}`
       : `当前 ${passingLocal.length}/${localProjects.length} 个本地试点项目为 pass，系统处于绿色状态`,
+    summary_signature: summarySignature,
     project_rows: latestRows.map((row) =>
       `${row.id}: ${row.payload?.status || "unknown"} (${row.payload?.workflow || "no report"})`,
     ),
@@ -1770,6 +1785,14 @@ function writeProgressOutbox(summary) {
 }
 
 function sendProgressBrief(summary) {
+  if (PLAN_ONLY_MODE) {
+    return {
+      status: "pass",
+      channel: "dashboard_only",
+      failures: [],
+      nextActions: ["当前运行在 plan-only 模式，进度播报仅保留在本地 dashboard 和 outbox。"],
+    };
+  }
   const target = discoverWeclawNotificationTarget();
   if (!target) {
     return {
@@ -2262,6 +2285,37 @@ function persistWorkflowResult(project, result) {
     project,
     reportPath: latestMarkdownPath(project.id, reportName),
   };
+}
+
+function migrateLegacyHarnessRuntime() {
+  ensureDir(stateRoot);
+  ensureDir(generatedRoot);
+
+  const legacyStateFiles = ["failures.json", "schedule.json", "notifications.json", "activity.json"];
+  for (const name of legacyStateFiles) {
+    const legacy = path.join(legacyStateRoot, name);
+    const current = path.join(stateRoot, name);
+    if (!fs.existsSync(current) && fs.existsSync(legacy)) {
+      fs.copyFileSync(legacy, current);
+    }
+  }
+
+  if (!fs.existsSync(path.join(generatedRoot, "system")) && fs.existsSync(legacyGeneratedRoot)) {
+    copyDirectory(legacyGeneratedRoot, generatedRoot);
+  }
+}
+
+function copyDirectory(sourceDir, targetDir) {
+  ensureDir(targetDir);
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    const source = path.join(sourceDir, entry.name);
+    const target = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectory(source, target);
+    } else if (!fs.existsSync(target)) {
+      fs.copyFileSync(source, target);
+    }
+  }
 }
 
 function persistSystemReport(reportName, result) {

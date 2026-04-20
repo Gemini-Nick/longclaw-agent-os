@@ -16,7 +16,7 @@ for label in "${LEGACY_LABELS[@]}"; do
 done
 
 log "archiving legacy launchagent files"
-for p in "$LAUNCH_AGENTS_DIR"/com.weclaw*.plist "$LAUNCH_AGENTS_DIR"/com.longclaw*.plist; do
+for p in "$LAUNCH_AGENTS_DIR"/com.weclaw*.plist "$LAUNCH_AGENTS_DIR"/com.longclaw*.plist "$LAUNCH_AGENTS_DIR"/com.zhangqilong.ai.harness.loop.plist; do
   [[ -f "$p" ]] || continue
   mv "$p" "$ARCHIVE_DIR/LaunchAgents/"
 done

@@ -55,18 +55,31 @@ type jsonLogger struct {
 }
 
 type FailoverState struct {
-	ActiveAgent        string `json:"active_agent"`
-	Reason             string `json:"reason"`
-	ChangedAt          string `json:"changed_at"`
-	ClaudeStatus       string `json:"claude_status"`
-	ClaudeHealthy      bool   `json:"claude_healthy"`
-	CodexAvailable     bool   `json:"codex_available"`
-	ManualOverride     bool   `json:"manual_override"`
-	StableSuccesses    int    `json:"stable_successes"`
-	DesiredAgent       string `json:"desired_agent,omitempty"`
-	DesiredAgentSource string `json:"desired_agent_source,omitempty"`
-	LastReconciledAt   string `json:"last_reconciled_at,omitempty"`
-	LastConfigSyncedAt string `json:"last_config_synced_at,omitempty"`
+	ActiveAgent        string                      `json:"active_agent"`
+	EffectiveAgent     string                      `json:"effective_agent,omitempty"`
+	PreferredPrimary   string                      `json:"preferred_primary,omitempty"`
+	PreferredBackup    string                      `json:"preferred_backup,omitempty"`
+	BackupAgent        string                      `json:"backup_agent,omitempty"`
+	RoutingMode        string                      `json:"routing_mode,omitempty"`
+	Reason             string                      `json:"reason"`
+	ChangedAt          string                      `json:"changed_at"`
+	ClaudeStatus       string                      `json:"claude_status"`
+	ClaudeHealthy      bool                        `json:"claude_healthy"`
+	CodexAvailable     bool                        `json:"codex_available"`
+	ManualOverride     bool                        `json:"manual_override"`
+	StableSuccesses    int                         `json:"stable_successes"`
+	DesiredAgent       string                      `json:"desired_agent,omitempty"`
+	DesiredAgentSource string                      `json:"desired_agent_source,omitempty"`
+	LastReconciledAt   string                      `json:"last_reconciled_at,omitempty"`
+	LastConfigSyncedAt string                      `json:"last_config_synced_at,omitempty"`
+	Agents             map[string]AgentHealthState `json:"agents,omitempty"`
+}
+
+type AgentHealthState struct {
+	Healthy        bool   `json:"healthy"`
+	Status         string `json:"status"`
+	Reason         string `json:"reason,omitempty"`
+	ServiceRunning bool   `json:"service_running,omitempty"`
 }
 
 type ClaudeHealth struct {
@@ -432,7 +445,7 @@ func runActiveAgent(args []string) int {
 		fmt.Fprintf(os.Stderr, "reconcile failover: %v\n", err)
 		return 1
 	}
-	fmt.Println(state.ActiveAgent)
+	fmt.Println(state.EffectiveAgent)
 	return 0
 }
 
@@ -499,7 +512,7 @@ func runFailoverReconcile(args []string) int {
 		fmt.Fprintf(os.Stderr, "reconcile failover: %v\n", err)
 		return 1
 	}
-	fmt.Printf("active_agent=%s reason=%s claude_status=%s codex_available=%t\n", state.ActiveAgent, state.Reason, state.ClaudeStatus, state.CodexAvailable)
+	fmt.Printf("effective_agent=%s preferred_primary=%s preferred_backup=%s reason=%s claude_status=%s codex_available=%t\n", state.EffectiveAgent, state.PreferredPrimary, state.PreferredBackup, state.Reason, state.ClaudeStatus, state.CodexAvailable)
 	return 0
 }
 
@@ -536,7 +549,7 @@ func runFailoverSwitch(args []string) int {
 		fmt.Fprintf(os.Stderr, "switch failover: %v\n", err)
 		return 1
 	}
-	fmt.Printf("active_agent=%s reason=%s manual_override=%t\n", next.ActiveAgent, next.Reason, next.ManualOverride)
+	fmt.Printf("effective_agent=%s preferred_primary=%s preferred_backup=%s reason=%s manual_override=%t\n", next.EffectiveAgent, next.PreferredPrimary, next.PreferredBackup, next.Reason, next.ManualOverride)
 	return 0
 }
 
@@ -789,13 +802,17 @@ func detectWeclawHealth() WeclawHealth {
 
 func failoverFields(state FailoverState) map[string]any {
 	return map[string]any{
-		"active_agent":     state.ActiveAgent,
-		"reason":           state.Reason,
-		"claude_status":    state.ClaudeStatus,
-		"claude_healthy":   state.ClaudeHealthy,
-		"codex_available":  state.CodexAvailable,
-		"manual_override":  state.ManualOverride,
-		"stable_successes": state.StableSuccesses,
+		"active_agent":      state.ActiveAgent,
+		"effective_agent":   state.EffectiveAgent,
+		"preferred_primary": state.PreferredPrimary,
+		"preferred_backup":  state.PreferredBackup,
+		"routing_mode":      state.RoutingMode,
+		"reason":            state.Reason,
+		"claude_status":     state.ClaudeStatus,
+		"claude_healthy":    state.ClaudeHealthy,
+		"codex_available":   state.CodexAvailable,
+		"manual_override":   state.ManualOverride,
+		"stable_successes":  state.StableSuccesses,
 	}
 }
 
@@ -867,6 +884,16 @@ func reconcileFailover(cfg Config, uid int, state FailoverState, preserveManual 
 	if hasCodex {
 		codexAvailable = queryLaunchd(resolveTarget(codexSvc, uid)).Running
 	}
+	if state.PreferredPrimary == "" {
+		state.PreferredPrimary = "codex"
+	}
+	if state.PreferredBackup == "" {
+		state.PreferredBackup = "claude"
+	}
+	if state.RoutingMode == "" {
+		state.RoutingMode = "primary_backup_failover"
+	}
+	state.BackupAgent = state.PreferredBackup
 
 	if preserveManual && state.ManualOverride && (state.DesiredAgent == "claude" || state.DesiredAgent == "codex") {
 		state.ActiveAgent = state.DesiredAgent
@@ -884,49 +911,63 @@ func reconcileFailover(cfg Config, uid int, state FailoverState, preserveManual 
 		}
 	}
 
+	primaryHealthy := agentHealthy(state.PreferredPrimary, claudeHealth, codexAvailable)
+	backupHealthy := agentHealthy(state.PreferredBackup, claudeHealth, codexAvailable)
+
 	if state.ManualOverride {
 		if state.ActiveAgent == "" {
 			state.ActiveAgent = state.DesiredAgent
 		}
-	} else if !claudeHealth.Healthy {
-		if codexAvailable {
-			state.ActiveAgent = "codex"
-			state.Reason = "claude_unavailable"
-		} else if state.ActiveAgent == "" {
-			state.ActiveAgent = "claude"
-			state.Reason = "claude_unavailable_no_codex"
-		}
-		state.StableSuccesses = 0
 	} else {
-		if state.ActiveAgent == "codex" {
-			state.StableSuccesses++
-			if state.StableSuccesses >= cfg.FailbackSuccessThreshold {
-				state.ActiveAgent = "claude"
-				state.Reason = "claude_recovered"
+		if primaryHealthy {
+			if state.ActiveAgent == state.PreferredBackup && state.PreferredBackup != state.PreferredPrimary {
+				state.StableSuccesses++
+				if state.StableSuccesses >= cfg.FailbackSuccessThreshold {
+					state.ActiveAgent = state.PreferredPrimary
+					state.Reason = state.PreferredPrimary + "_recovered"
+					state.StableSuccesses = 0
+				} else {
+					state.ActiveAgent = state.PreferredBackup
+					state.Reason = state.PreferredPrimary + "_recovery_window"
+				}
+			} else {
+				state.ActiveAgent = state.PreferredPrimary
+				state.Reason = state.PreferredPrimary + "_healthy"
 				state.StableSuccesses = 0
-			} else if state.Reason == "" {
-				state.Reason = "claude_recovery_window"
 			}
-		} else {
-			state.ActiveAgent = "claude"
-			state.Reason = "claude_healthy"
+		} else if backupHealthy {
+			state.ActiveAgent = state.PreferredBackup
+			state.Reason = state.PreferredPrimary + "_unavailable"
 			state.StableSuccesses = 0
+		} else if state.ActiveAgent == "" {
+			state.ActiveAgent = state.PreferredPrimary
+			state.Reason = state.PreferredPrimary + "_preferred_unavailable"
 		}
 	}
 
 	if state.ActiveAgent == "" {
-		if codexAvailable {
-			state.ActiveAgent = "codex"
-			state.Reason = "codex_only"
-		} else {
-			state.ActiveAgent = "claude"
-			state.Reason = "default_claude"
-		}
+		state.ActiveAgent = state.PreferredPrimary
+		state.Reason = "default_primary"
 	}
 
 	state.ClaudeHealthy = claudeHealth.Healthy
 	state.ClaudeStatus = claudeHealth.Status
 	state.CodexAvailable = codexAvailable
+	state.EffectiveAgent = state.ActiveAgent
+	state.Agents = map[string]AgentHealthState{
+		"codex": {
+			Healthy:        codexAvailable,
+			Status:         boolStatus(codexAvailable, "running", "not_running"),
+			Reason:         boolStatus(codexAvailable, "codex service is running", "codex service is not running"),
+			ServiceRunning: codexAvailable,
+		},
+		"claude": {
+			Healthy:        claudeHealth.Healthy,
+			Status:         claudeHealth.Status,
+			Reason:         claudeHealth.Reason,
+			ServiceRunning: claudeHealth.Healthy,
+		},
+	}
 	state.LastReconciledAt = now.Format(time.RFC3339)
 	if state.ActiveAgent != prev.ActiveAgent || state.Reason != prev.Reason || state.ManualOverride != prev.ManualOverride {
 		state.ChangedAt = now.Format(time.RFC3339)
@@ -936,15 +977,40 @@ func reconcileFailover(cfg Config, uid int, state FailoverState, preserveManual 
 	if err := writeFailoverState(cfg.FailoverStateFile, state); err != nil {
 		return state, false, err
 	}
-	if err := syncWeclawDefaultAgent(cfg.WeclawConfigPath, state.ActiveAgent); err != nil {
+	if err := syncWeclawDefaultAgent(cfg.WeclawConfigPath, state.EffectiveAgent); err != nil {
 		return state, false, err
 	}
 	state.LastConfigSyncedAt = now.Format(time.RFC3339)
 	if err := writeFailoverState(cfg.FailoverStateFile, state); err != nil {
 		return state, false, err
 	}
-	changed := state.ActiveAgent != prev.ActiveAgent || state.Reason != prev.Reason || state.ManualOverride != prev.ManualOverride || state.ClaudeStatus != prev.ClaudeStatus || state.CodexAvailable != prev.CodexAvailable
+	changed := state.ActiveAgent != prev.ActiveAgent ||
+		state.EffectiveAgent != prev.EffectiveAgent ||
+		state.Reason != prev.Reason ||
+		state.ManualOverride != prev.ManualOverride ||
+		state.ClaudeStatus != prev.ClaudeStatus ||
+		state.CodexAvailable != prev.CodexAvailable ||
+		state.PreferredPrimary != prev.PreferredPrimary ||
+		state.PreferredBackup != prev.PreferredBackup
 	return state, changed, nil
+}
+
+func agentHealthy(agentName string, claudeHealth ClaudeHealth, codexAvailable bool) bool {
+	switch agentName {
+	case "claude":
+		return claudeHealth.Healthy
+	case "codex":
+		return codexAvailable
+	default:
+		return false
+	}
+}
+
+func boolStatus(value bool, whenTrue, whenFalse string) string {
+	if value {
+		return whenTrue
+	}
+	return whenFalse
 }
 
 func appendLine(path, line string) {

@@ -2,22 +2,33 @@
 # watchdog-runtime-version: workspace-v2-2026-04-06
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_APP_ROOT="${LONGCLAW_RUNTIME_APP_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 LOG_DIR="${LONGCLAW_LOG_DIR:-/tmp/longclaw-guardian}"
 LOG_FILE="$LOG_DIR/scheduler.task.log"
 STATE_FILE="$LOG_DIR/repo-scheduler.state"
 LOCK_DIR="$LOG_DIR/repo-scheduler.lock"
 BOOTSTRAP="${LONGCLAW_BOOTSTRAP:-$HOME/.longclaw/bootstrap-longclaw-repos.sh}"
 REPO_ROOT="${REPO_ROOT:-$HOME/github代码仓库}"
+SOURCE_ROOT="${LONGCLAW_SOURCE_ROOT:-$REPO_ROOT/longclaw-agent-os}"
 WECLAW_BIN="${WECLAW_BIN:-$HOME/.weclaw/bin/weclaw}"
 WECLAW_ACCOUNTS_DIR="${WECLAW_ACCOUNTS_DIR:-$HOME/.weclaw/accounts}"
 WECLAW_LOG_FILE="${WECLAW_LOG_FILE:-$HOME/.weclaw/weclaw.log}"
 WECLAW_PORT="${WECLAW_PORT:-18011}"
-WORKSPACE_CONFIG="${LONGCLAW_WORKSPACE_CONFIG:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/workspace-watchdog.json}"
-POLICY_CONFIG="${LONGCLAW_POLICY_CONFIG:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config/repo-sync-policy.json}"
+WORKSPACE_CONFIG="${LONGCLAW_WORKSPACE_CONFIG:-$RUNTIME_APP_ROOT/config/workspace-watchdog.json}"
+POLICY_CONFIG="${LONGCLAW_POLICY_CONFIG:-$RUNTIME_APP_ROOT/config/repo-sync-policy.json}"
 AUTO_COMMIT_MESSAGE="${LONGCLAW_AUTO_COMMIT_MESSAGE:-chore(watchdog): auto-commit tracked workspace changes}"
 AUTO_COMMIT="${LONGCLAW_AUTO_COMMIT:-0}"
 DRY_RUN="${LONGCLAW_DRY_RUN:-0}"
 AUTO_PUSH="${LONGCLAW_AUTO_PUSH:-0}"
+RUNTIME_STATE_DIR="${LONGCLAW_RUNTIME_STATE_DIR:-$HOME/.longclaw/runtime-v2/state}"
+HARNESS_BIN="${LONGCLAW_HARNESS_BIN:-}"
+ROUTING_CONTROLLER_BIN="${LONGCLAW_ROUTING_CONTROLLER_BIN:-}"
+ROADMAP_SYNC_BIN="${LONGCLAW_ROADMAP_SYNC_BIN:-}"
+WECHAT_CONTROL_BIN="${LONGCLAW_WECHAT_CONTROL_BIN:-}"
+ROADMAP_QUEUE_FILE="${LONGCLAW_ROADMAP_QUEUE_FILE:-$RUNTIME_STATE_DIR/roadmap-queue.json}"
+HERMES_REPO="${LONGCLAW_HERMES_REPO:-$REPO_ROOT/hermes-agent}"
+KNOWLEDGE_VAULT_DIR="${LONGCLAW_KNOWLEDGE_VAULT:-$HOME/Desktop/知识库}"
 RUNTIME_VERSION="workspace-v2-2026-04-06"
 mkdir -p "$LOG_DIR"
 
@@ -38,6 +49,86 @@ cleanup() {
   if [[ -d "$LOCK_DIR" ]]; then
     rmdir "$LOCK_DIR" 2>/dev/null || true
   fi
+}
+
+resolve_harness_bin() {
+  if [[ -n "$HARNESS_BIN" ]]; then
+    printf '%s\n' "$HARNESS_BIN"
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "$HOME/.longclaw/runtime-v2/bin/harness" \
+    "$SOURCE_ROOT/apps/runtime/bin/harness"
+  do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$HOME/.longclaw/runtime-v2/bin/harness"
+}
+
+resolve_roadmap_sync_bin() {
+  if [[ -n "$ROADMAP_SYNC_BIN" ]]; then
+    printf '%s\n' "$ROADMAP_SYNC_BIN"
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "$HOME/.longclaw/runtime-v2/bin/runtime-roadmap-sync.py" \
+    "$SOURCE_ROOT/apps/runtime/bin/runtime-roadmap-sync.py"
+  do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$HOME/.longclaw/runtime-v2/bin/runtime-roadmap-sync.py"
+}
+
+resolve_routing_controller_bin() {
+  if [[ -n "$ROUTING_CONTROLLER_BIN" ]]; then
+    printf '%s\n' "$ROUTING_CONTROLLER_BIN"
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "$HOME/.longclaw/runtime-v2/bin/routing-controller" \
+    "$SOURCE_ROOT/apps/runtime/bin/routing-controller"
+  do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$HOME/.longclaw/runtime-v2/bin/routing-controller"
+}
+
+resolve_wechat_control_bin() {
+  if [[ -n "$WECHAT_CONTROL_BIN" ]]; then
+    printf '%s\n' "$WECHAT_CONTROL_BIN"
+    return 0
+  fi
+
+  local candidate
+  for candidate in \
+    "$HOME/.longclaw/runtime-v2/bin/runtime-wechat-control.py" \
+    "$SOURCE_ROOT/apps/runtime/bin/runtime-wechat-control.py"
+  do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "$HOME/.longclaw/runtime-v2/bin/runtime-wechat-control.py"
 }
 
 find_weclaw_user_id() {
@@ -122,6 +213,116 @@ send_summary() {
 
   log "summary skipped: weclaw send failed"
   return 0
+}
+
+run_harness_tick() {
+  local harness_bin
+  harness_bin="$(resolve_harness_bin)"
+  if [[ ! -x "$harness_bin" ]]; then
+    log "harness tick skipped: missing_bin path=$harness_bin"
+    return 1
+  fi
+
+  local output
+  if output="$("$harness_bin" tick 2>&1)"; then
+    [[ -n "$output" ]] && log "harness tick output: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    return 0
+  fi
+
+  [[ -n "$output" ]] && log "harness tick failed: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+  return 1
+}
+
+run_routing_reconcile() {
+  local routing_bin
+  routing_bin="$(resolve_routing_controller_bin)"
+  if [[ ! -x "$routing_bin" ]]; then
+    log "routing reconcile skipped: missing_bin path=$routing_bin"
+    return 1
+  fi
+
+  local output
+  if output="$("$routing_bin" reconcile 2>&1)"; then
+    [[ -n "$output" ]] && log "routing reconcile output: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    return 0
+  fi
+
+  [[ -n "$output" ]] && log "routing reconcile failed: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+  return 1
+}
+
+run_roadmap_sync() {
+  local roadmap_sync_bin
+  roadmap_sync_bin="$(resolve_roadmap_sync_bin)"
+  if [[ ! -f "$roadmap_sync_bin" ]]; then
+    log "roadmap sync skipped: missing_script path=$roadmap_sync_bin"
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "roadmap sync skipped: python3_missing"
+    return 1
+  fi
+
+  local output
+  if output="$(LONGCLAW_RUNTIME_STATE_DIR="$RUNTIME_STATE_DIR" LONGCLAW_HERMES_REPO="$HERMES_REPO" LONGCLAW_KNOWLEDGE_VAULT="$KNOWLEDGE_VAULT_DIR" python3 "$roadmap_sync_bin" 2>&1)"; then
+    [[ -n "$output" ]] && log "roadmap sync output: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    return 0
+  fi
+
+  [[ -n "$output" ]] && log "roadmap sync failed: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+  return 1
+}
+
+run_wechat_summary_send() {
+  local wechat_control_bin
+  wechat_control_bin="$(resolve_wechat_control_bin)"
+  if [[ ! -f "$wechat_control_bin" ]]; then
+    log "wechat summary skipped: missing_script path=$wechat_control_bin"
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "wechat summary skipped: python3_missing"
+    return 1
+  fi
+  if [[ ! -x "$WECLAW_BIN" ]]; then
+    log "wechat summary skipped: missing_weclaw_bin path=$WECLAW_BIN"
+    return 1
+  fi
+
+  local output
+  if output="$(LONGCLAW_RUNTIME_STATE_DIR="$RUNTIME_STATE_DIR" WECLAW_BIN="$WECLAW_BIN" WECLAW_ACCOUNTS_DIR="$WECLAW_ACCOUNTS_DIR" python3 "$wechat_control_bin" send-summary 2>&1)"; then
+    [[ -n "$output" ]] && log "wechat summary output: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    printf '%s\n' "$output"
+    return 0
+  fi
+
+  [[ -n "$output" ]] && log "wechat summary failed: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+  printf '%s\n' "$output"
+  return 1
+}
+
+run_queued_task_dispatch() {
+  local wechat_control_bin
+  wechat_control_bin="$(resolve_wechat_control_bin)"
+  if [[ ! -f "$wechat_control_bin" ]]; then
+    log "queued task dispatch skipped: missing_script path=$wechat_control_bin"
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    log "queued task dispatch skipped: python3_missing"
+    return 1
+  fi
+
+  local output
+  if output="$(LONGCLAW_RUNTIME_STATE_DIR="$RUNTIME_STATE_DIR" WECLAW_API_ADDR="127.0.0.1:$WECLAW_PORT" python3 "$wechat_control_bin" dispatch-next-task 2>&1)"; then
+    [[ -n "$output" ]] && log "queued task dispatch output: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+    printf '%s\n' "$output"
+    return 0
+  fi
+
+  [[ -n "$output" ]] && log "queued task dispatch failed: $(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+  printf '%s\n' "$output"
+  return 1
 }
 
 has_remote() {
@@ -332,6 +533,7 @@ def git_toplevel(path: Path):
 config = {
     "scan_roots": ["~/github代码仓库"],
     "explicit_workspaces": [],
+    "restrict_to_explicit_workspaces": False,
     "tool_mapping_ignored_names": [],
     "unresolved_mapping_alert_threshold": 3,
     "ignored_path_patterns": [],
@@ -345,6 +547,7 @@ if config_path.exists():
 
 scan_roots = [expand(p) for p in config.get("scan_roots", [])]
 explicit_workspaces = [expand(p) for p in config.get("explicit_workspaces", [])]
+restrict_to_explicit_workspaces = bool(config.get("restrict_to_explicit_workspaces", False))
 ignored_tool_mapping_names = set(config.get("tool_mapping_ignored_names", []) or [])
 unresolved_mapping_alert_threshold = int(config.get("unresolved_mapping_alert_threshold", 3) or 3)
 tool_mappings = config.get("tool_mappings", {}) or {}
@@ -364,6 +567,11 @@ def add_workspace(path: Path, source: str, category_hint: str):
     else:
         canonical = real
         category = category_hint or "non_git_workspace"
+    if restrict_to_explicit_workspaces:
+        canonical_str = str(canonical)
+        real_str = str(real)
+        if canonical_str not in explicit_workspace_set and real_str not in explicit_workspace_set:
+            return False
     entry = workspaces.get(str(canonical))
     if entry is None:
         entry = {
@@ -376,6 +584,7 @@ def add_workspace(path: Path, source: str, category_hint: str):
         entry["sources"].append(source)
     if entry["category"] != "git_repo" and category == "git_repo":
         entry["category"] = category
+    return True
 
 def should_skip_root(path: Path) -> bool:
     parts = set(path.parts)
@@ -425,28 +634,29 @@ def is_within_repo_root(path: Path) -> bool:
     except ValueError:
         return False
 
-for root in scan_roots:
-    if not root.exists():
-        continue
-    if root.is_dir() and root.joinpath(".git").exists():
-        add_workspace(root, f"scan_root:{root}", "git_repo")
-    for current, dirs, files in os.walk(root):
-        current_path = Path(current)
-        dirs[:] = [
-            d for d in dirs
-            if d not in {".git", "node_modules", ".cache", ".Trash", ".claude", ".codex", ".weclaw", "Library"}
-        ]
-        if current_path.name in {".git", "node_modules", ".cache", ".Trash", ".claude", ".codex", ".weclaw"}:
+if not restrict_to_explicit_workspaces:
+    for root in scan_roots:
+        if not root.exists():
             continue
-        if current_path.joinpath(".git").exists():
-            add_workspace(current_path, f"scan_root:{root}", "git_repo")
-            dirs[:] = []
+        if root.is_dir() and root.joinpath(".git").exists():
+            add_workspace(root, f"scan_root:{root}", "git_repo")
+        for current, dirs, files in os.walk(root):
+            current_path = Path(current)
+            dirs[:] = [
+                d for d in dirs
+                if d not in {".git", "node_modules", ".cache", ".Trash", ".claude", ".codex", ".weclaw", "Library"}
+            ]
+            if current_path.name in {".git", "node_modules", ".cache", ".Trash", ".claude", ".codex", ".weclaw"}:
+                continue
+            if current_path.joinpath(".git").exists():
+                add_workspace(current_path, f"scan_root:{root}", "git_repo")
+                dirs[:] = []
 
 for workspace in explicit_workspaces:
     if workspace.exists():
         add_workspace(workspace, "explicit_workspace", "non_git_workspace")
 
-if bootstrap.exists():
+if bootstrap.exists() and not restrict_to_explicit_workspaces:
     try:
         output = subprocess.check_output(
             ["bash", str(bootstrap), "status"],
@@ -487,8 +697,8 @@ if codex_dir_raw:
                 continue
             real = Path(gitdir_str.split(marker, 1)[0]).resolve()
             if real.exists() and is_within_repo_root(real):
-                tool_mapping_count += 1
-                add_workspace(real, f"codex_worktree:{gitfile.parent}", "tool_mapping_only")
+                if add_workspace(real, f"codex_worktree:{gitfile.parent}", "tool_mapping_only"):
+                    tool_mapping_count += 1
             else:
                 tool_only_logs.append(("codex_worktree", str(gitfile.parent), "resolved_path_missing", ""))
 
@@ -542,8 +752,8 @@ if claude_dir_raw:
             if git_toplevel(resolved) is None and is_container_only_path(resolved):
                 tool_only_logs.append(("claude_project", str(project_dir), "container_only", f"resolved={resolved}"))
                 continue
-            tool_mapping_count += 1
-            add_workspace(resolved, f"claude_project:{project_dir.name}", "tool_mapping_only")
+            if add_workspace(resolved, f"claude_project:{project_dir.name}", "tool_mapping_only"):
+                tool_mapping_count += 1
 
 weclaw_dir_raw = tool_mappings.get("weclaw_workspace_dir")
 if weclaw_dir_raw:
@@ -569,7 +779,7 @@ main() {
   local trigger dep_updates auto_commits cloud_syncs cloud_pushes workspace_total tool_mappings
   local result_text commit_made discovery_file line path category sources source_display
   local tool_only_count unresolved_tool_only_count broad_tool_only_count container_tool_only_count runtime_tool_only_count
-  local unresolved_mapping_alert_threshold obsidian_raw obsidian_line source reason detail
+  local unresolved_mapping_alert_threshold obsidian_raw obsidian_line source reason detail routing_status harness_status roadmap_sync_status
 
   trap cleanup EXIT
 
@@ -591,6 +801,9 @@ main() {
   container_tool_only_count=0
   runtime_tool_only_count=0
   unresolved_mapping_alert_threshold=3
+  routing_status="not_run"
+  harness_status="not_run"
+  roadmap_sync_status="not_run"
 
   log "scheduler tick version=$RUNTIME_VERSION trigger=$trigger repo_root=$REPO_ROOT bootstrap=$BOOTSTRAP workspace_config=$WORKSPACE_CONFIG"
 
@@ -731,12 +944,81 @@ main() {
     fi
   fi
 
+  if run_routing_reconcile; then
+    routing_status="updated"
+    result_text="$result_text"$'\n'"🧭 Routing: 已刷新 primary/backup 路由态"
+  else
+    routing_status="failed"
+    result_text="$result_text"$'\n'"⚠️ Routing: 刷新失败，请查看 scheduler.task.log"
+  fi
+
+  if run_harness_tick; then
+    harness_status="updated"
+    result_text="$result_text"$'\n'"🛠 Harness: 已刷新 runtime summary"
+  else
+    harness_status="failed"
+    result_text="$result_text"$'\n'"⚠️ Harness: 刷新失败，请查看 scheduler.task.log"
+  fi
+
+  if run_roadmap_sync; then
+    roadmap_sync_status="updated"
+    result_text="$result_text"$'\n'"🗺️ Roadmap: 已同步 runtime queue / dashboard / hermes status"
+  else
+    roadmap_sync_status="failed"
+    result_text="$result_text"$'\n'"⚠️ Roadmap: 同步失败，请查看 scheduler.task.log"
+  fi
+
+  wechat_summary_output="$(run_wechat_summary_send || true)"
+  if [[ "$wechat_summary_output" == *'"status": "sent"'* ]] || [[ "$wechat_summary_output" == *'"status":"sent"'* ]]; then
+    wechat_summary_status="sent"
+    result_text="$result_text"$'\n'"💬 WeChat: 已在有效 context window 内发送本轮摘要"
+  elif [[ "$wechat_summary_output" == *'"reason": "window_unavailable"'* ]] || [[ "$wechat_summary_output" == *'"reason":"window_unavailable"'* ]]; then
+    wechat_summary_status="skipped_window_unavailable"
+    result_text="$result_text"$'\n'"🪟 WeChat: 当前不在 live context window，摘要仅保留在本地 runtime / dashboard"
+  elif [[ "$wechat_summary_output" == *'"status": "skipped"'* ]] || [[ "$wechat_summary_output" == *'"status":"skipped"'* ]]; then
+    wechat_summary_status="skipped"
+    result_text="$result_text"$'\n'"💬 WeChat: 本轮摘要未重复发送，已保留本地状态"
+  elif [[ "$wechat_summary_output" == *'"status": "failed"'* ]] || [[ "$wechat_summary_output" == *'"status":"failed"'* ]]; then
+    wechat_summary_status="failed"
+    result_text="$result_text"$'\n'"⚠️ WeChat: 摘要发送失败，状态已保留在本地 runtime / dashboard"
+  else
+    wechat_summary_status="unknown"
+    result_text="$result_text"$'\n'"⚠️ WeChat: 摘要结果未知，请查看 scheduler.task.log"
+  fi
+
+  if run_roadmap_sync; then
+    result_text="$result_text"$'\n'"🗂️ Runtime: 已在摘要阶段后刷新 delivery 状态"
+  else
+    result_text="$result_text"$'\n'"⚠️ Runtime: 摘要阶段后的 delivery 状态刷新失败，请查看 scheduler.task.log"
+  fi
+
+  dispatch_output="$(run_queued_task_dispatch || true)"
+  dispatch_status="idle"
+  if [[ "$dispatch_output" == *'"status": "completed"'* ]] || [[ "$dispatch_output" == *'"status":"completed"'* ]]; then
+    dispatch_status="completed"
+    result_text="$result_text"$'\n'"🧾 Queue: 已执行 1 条微信排队任务"
+    if run_roadmap_sync; then
+      roadmap_sync_status="updated_after_dispatch"
+      result_text="$result_text"$'\n'"🗂️ Runtime: 已在任务执行后刷新 queue / dashboard / hermes status"
+    else
+      roadmap_sync_status="failed_after_dispatch"
+      result_text="$result_text"$'\n'"⚠️ Runtime: 任务执行后刷新失败，请查看 scheduler.task.log"
+    fi
+  elif [[ "$dispatch_output" == *'"status": "failed"'* ]] || [[ "$dispatch_output" == *'"status":"failed"'* ]]; then
+    dispatch_status="failed"
+    result_text="$result_text"$'\n'"⚠️ Queue: 微信排队任务执行失败，请查看 scheduler.task.log"
+    if run_roadmap_sync; then
+      roadmap_sync_status="updated_after_dispatch_failure"
+    fi
+  else
+    result_text="$result_text"$'\n'"🧾 Queue: 当前无待执行微信任务"
+  fi
+
   if [[ "$unresolved_tool_only_count" -ge "$unresolved_mapping_alert_threshold" ]]; then
     result_text="$result_text"$'\n'"⚠️ 部分工具目录未映射到真实工作区，请看日志"
   fi
 
-  log "summary counters workspaces=$workspace_total dependency_updates=$dep_updates auto_commits=$auto_commits cloud_syncs=$cloud_syncs cloud_pushes=$cloud_pushes tool_mapping_only=$tool_only_count unresolved_tool_only=$unresolved_tool_only_count broad_tool_only=$broad_tool_only_count container_tool_only=$container_tool_only_count runtime_tool_only=$runtime_tool_only_count"
-  send_summary "$(build_summary_message "$workspace_total" "$dep_updates" "$auto_commits" "$cloud_syncs" "$cloud_pushes" "$result_text")"
+  log "summary counters workspaces=$workspace_total dependency_updates=$dep_updates auto_commits=$auto_commits cloud_syncs=$cloud_syncs cloud_pushes=$cloud_pushes tool_mapping_only=$tool_only_count unresolved_tool_only=$unresolved_tool_only_count broad_tool_only=$broad_tool_only_count container_tool_only=$container_tool_only_count runtime_tool_only=$runtime_tool_only_count routing_status=$routing_status harness_status=$harness_status roadmap_sync_status=$roadmap_sync_status wechat_summary_status=$wechat_summary_status dispatch_status=$dispatch_status queue_file=$ROADMAP_QUEUE_FILE"
   CURRENT_DISCOVERY_FILE=""
   write_state "$trigger"
 }

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUNTIME_SRC_DIR="$ROOT_DIR/apps/runtime"
 RUNTIME_INSTALL_DIR="$HOME/.longclaw/runtime-v2"
+RUNTIME_STATE_DIR="$RUNTIME_INSTALL_DIR/state"
 WECLAW_HOME="$HOME/.weclaw"
 WECLAW_BIN_DIR="$WECLAW_HOME/bin"
 WECLAW_REAL_BUNDLE="${WECLAW_REAL_BUNDLE:-$ROOT_DIR/bundle/weclaw-real}"
@@ -29,6 +30,7 @@ LEGACY_LABELS=(
   "com.zhangqilong.weclaw.session-watchdog"
   "com.zhangqilong.longclaw.guardian-heartbeat"
   "com.zhangqilong.longclaw.guardian-scheduler"
+  "com.zhangqilong.ai.harness.loop"
 )
 
 log() {
@@ -45,7 +47,17 @@ err() {
 }
 
 ensure_dirs() {
-  mkdir -p "$RUNTIME_INSTALL_DIR/bin" "$RUNTIME_INSTALL_DIR/config" "$RUNTIME_INSTALL_DIR/launchd" "$LOG_DIR" "$WECLAW_BIN_DIR" "$LAUNCH_AGENTS_DIR"
+  mkdir -p \
+    "$RUNTIME_INSTALL_DIR/bin" \
+    "$RUNTIME_INSTALL_DIR/config" \
+    "$RUNTIME_INSTALL_DIR/launchd" \
+    "$RUNTIME_INSTALL_DIR/harness/bin" \
+    "$RUNTIME_INSTALL_DIR/harness/policies" \
+    "$RUNTIME_INSTALL_DIR/harness/projects" \
+    "$RUNTIME_STATE_DIR/harness" \
+    "$LOG_DIR" \
+    "$WECLAW_BIN_DIR" \
+    "$LAUNCH_AGENTS_DIR"
 }
 
 render_template() {

@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def expand(path: str) -> Path:
+    return Path(os.path.expanduser(path)).resolve()
+
+
+def read_json(path: Path, default):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def build_summary(queue: dict, ingress: dict, knowledge: dict) -> dict:
+    routing = queue.get("routing", {})
+    harness = queue.get("harness", {})
+    delivery = queue.get("delivery_policy", {})
+    return {
+        "generated_at": queue.get("generated_at"),
+        "loop_name": queue.get("local_loop", {}).get("name"),
+        "most_worth_watching": queue.get("most_worth_watching"),
+        "routing": {
+            "routing_mode": routing.get("routing_mode"),
+            "effective_agent": routing.get("effective_agent"),
+            "preferred_primary": routing.get("preferred_primary"),
+            "preferred_backup": routing.get("preferred_backup"),
+            "reason": routing.get("reason"),
+        },
+        "harness": {
+            "brief_status": harness.get("brief_status"),
+            "tick_status": harness.get("tick_status"),
+            "headline": harness.get("headline"),
+        },
+        "weclaw_ingress": {
+            "status": ingress.get("status"),
+            "archive_status": ingress.get("archive_status"),
+            "reviewed_handoff_status": ingress.get("archive_status"),
+            "counts": ingress.get("counts", {}),
+            "session_window_parse_failures": ingress.get("session_window_parse_failures", []),
+        },
+        "knowledge_projection": {
+            "status": knowledge.get("status"),
+            "inbox_count": knowledge.get("inbox_count"),
+            "review_file": knowledge.get("paths", {}).get("review_file"),
+            "dashboard_file": knowledge.get("paths", {}).get("dashboard_file"),
+        },
+        "reviewed_knowledge_plane": {
+            "status": knowledge.get("status"),
+            "inbox_count": knowledge.get("inbox_count"),
+            "review_file": knowledge.get("paths", {}).get("review_file"),
+            "dashboard_file": knowledge.get("paths", {}).get("dashboard_file"),
+        },
+        "delivery_policy": delivery,
+        "service_health": queue.get("service_health", {}),
+        "task_queue": queue.get("task_queue", {}),
+        "wechat_notifications": queue.get("wechat_notifications", {}),
+        "blocked_items": queue.get("blocked_items", []),
+        "pending_reviews": queue.get("pending_reviews", []),
+        "outputs": queue.get("outputs", {}),
+    }
+
+
+def print_text(summary: dict) -> None:
+    routing = summary.get("routing", {})
+    harness = summary.get("harness", {})
+    ingress = summary.get("weclaw_ingress", {})
+    knowledge = summary.get("knowledge_projection", {})
+    delivery = summary.get("delivery_policy", {})
+    service_health = summary.get("service_health", {})
+    summary_delivery = delivery.get("summary_delivery_result", {})
+    conversation_delivery = delivery.get("conversation_delivery_result", {})
+
+    lines = [
+        "Longclaw Runtime Status",
+        f"generated_at: {summary.get('generated_at', 'unknown')}",
+        f"loop_name: {summary.get('loop_name', 'unknown')}",
+        f"most_worth_watching: {summary.get('most_worth_watching', 'unknown')}",
+        "",
+        "Routing",
+        f"  effective_agent: {routing.get('effective_agent', 'unknown')}",
+        f"  preferred_primary: {routing.get('preferred_primary', 'unknown')}",
+        f"  preferred_backup: {routing.get('preferred_backup', 'unknown')}",
+        f"  reason: {routing.get('reason', 'unknown')}",
+        "",
+        "Harness",
+        f"  brief_status: {harness.get('brief_status', 'unknown')}",
+        f"  tick_status: {harness.get('tick_status', 'unknown')}",
+        f"  headline: {harness.get('headline', 'unknown')}",
+        "",
+        "WeClaw Companion",
+        f"  status: {ingress.get('status', 'unknown')}",
+        f"  reviewed_handoff_status: {ingress.get('archive_status', 'unknown')}",
+        f"  seen_messages: {ingress.get('counts', {}).get('seen_messages', 0)}",
+        f"  context_tokens: {ingress.get('counts', {}).get('context_tokens', 0)}",
+        f"  session_windows: {ingress.get('counts', {}).get('session_windows', 0)}",
+        f"  session_windows_valid: {ingress.get('counts', {}).get('session_windows_valid', 0)}",
+        f"  session_windows_invalid: {ingress.get('counts', {}).get('session_windows_invalid', 0)}",
+        f"  session_window_valid: {ingress.get('session_window_valid', True)}",
+        f"  media_sidecars: {ingress.get('counts', {}).get('media_sidecars', 0)}",
+        "",
+        "Reviewed Knowledge Plane",
+        f"  status: {knowledge.get('status', 'unknown')}",
+        f"  inbox_count: {knowledge.get('inbox_count', 0)}",
+        f"  review_file: {knowledge.get('review_file', 'unknown')}",
+        "",
+        "Delivery Policy",
+        f"  conversation_delivery_mode: {delivery.get('conversation_delivery_mode', delivery.get('wechat_delivery_mode', 'unknown'))}",
+        f"  summary_delivery_mode: {delivery.get('summary_delivery_mode', 'unknown')}",
+        f"  reliable_local: {delivery.get('reliable_local', False)}",
+        f"  last_inbound_at: {delivery.get('last_inbound_at', 'unknown')}",
+        f"  last_context_token_at: {delivery.get('last_context_token_at', 'unknown')}",
+        f"  conversation_delivery_status: {conversation_delivery.get('status', 'unknown')}",
+        f"  summary_delivery_status: {summary_delivery.get('status', 'unknown')}",
+        "",
+        "Service Health",
+        f"  bridge_listener_up: {service_health.get('bridge', {}).get('listener_up', False)}",
+        f"  bridge_upstream_reachable: {service_health.get('bridge', {}).get('upstream_reachable', False)}",
+        f"  bridge_consecutive_failures: {service_health.get('bridge', {}).get('consecutive_failures', 0)}",
+        f"  bridge_last_success_at: {service_health.get('bridge', {}).get('last_success_at', 'unknown')}",
+        f"  scheduler_last_summary_generated_at: {service_health.get('scheduler', {}).get('last_summary_generated_at', 'unknown')}",
+        f"  scheduler_last_summary_send_attempt_at: {service_health.get('scheduler', {}).get('last_summary_send_attempt_at', 'unknown')}",
+        f"  scheduler_last_summary_send_result: {service_health.get('scheduler', {}).get('last_summary_send_result', 'unknown')}",
+        "",
+        "Remote Companion Runtime",
+        f"  pending_tasks: {summary.get('task_queue', {}).get('counts', {}).get('pending', 0)}",
+        f"  running_tasks: {summary.get('task_queue', {}).get('counts', {}).get('running', 0)}",
+        f"  last_delivery_status: {summary.get('wechat_notifications', {}).get('last_send_status', 'unknown')}",
+        f"  last_sent_at: {summary.get('wechat_notifications', {}).get('last_sent_at', 'unknown')}",
+        "",
+        "Blocked Items",
+    ]
+
+    blocked_items = summary.get("blocked_items", [])
+    if blocked_items:
+        lines.extend([f"  - {item}" for item in blocked_items])
+    else:
+        lines.append("  - none")
+
+    lines.append("")
+    lines.append("Pending Reviews")
+    pending_reviews = summary.get("pending_reviews", [])
+    if pending_reviews:
+        lines.extend([f"  - {item}" for item in pending_reviews])
+    else:
+        lines.append("  - none")
+
+    print("\n".join(lines))
+
+
+def main() -> int:
+    state_dir = expand(os.getenv("LONGCLAW_RUNTIME_STATE_DIR", "~/.longclaw/runtime-v2/state"))
+    queue_file = expand(os.getenv("LONGCLAW_ROADMAP_QUEUE_FILE", str(state_dir / "roadmap-queue.json")))
+    ingress_file = expand(os.getenv("LONGCLAW_WECLAW_INGRESS_FILE", str(state_dir / "weclaw-ingress.json")))
+    knowledge_file = expand(
+        os.getenv("LONGCLAW_KNOWLEDGE_PROJECTION_FILE", str(state_dir / "knowledge-projection.json"))
+    )
+
+    queue = read_json(queue_file, {})
+    if not queue:
+        print(f"runtime status unavailable: {queue_file}", file=sys.stderr)
+        return 1
+
+    ingress = read_json(ingress_file, {})
+    knowledge = read_json(knowledge_file, {})
+    summary = build_summary(queue, ingress, knowledge)
+
+    if "--json" in sys.argv[1:]:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
+
+    print_text(summary)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

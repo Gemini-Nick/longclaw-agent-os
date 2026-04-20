@@ -4,6 +4,7 @@
  * Connects to CC Desktop (claude-agent-acp) via JSON-RPC over stdio.
  */
 import { spawn, ChildProcess } from 'child_process'
+import fs from 'fs'
 import { createInterface, Interface } from 'readline'
 import path from 'path'
 import os from 'os'
@@ -35,6 +36,45 @@ export interface AcpChunkHandler {
   onToolUse?: (name: string, input: any) => void
 }
 
+export function defaultLegacyAcpScriptPath(): string {
+  return path.join(os.homedir(), '.weclaw', 'claude-acp.sh')
+}
+
+export function defaultLegacyCodexAcpScriptPath(): string {
+  return path.join(os.homedir(), '.weclaw', 'codex-acp.sh')
+}
+
+export function resolveConfiguredAcpScriptPath(
+  options: Pick<AcpClientOptions, 'acpScript'> = {},
+): { path: string; source: 'option' | 'env' | 'legacy_default' } {
+  const explicitOption = options.acpScript?.trim()
+  if (explicitOption) {
+    return { path: explicitOption, source: 'option' }
+  }
+
+  const envScript = process.env.LONGCLAW_LOCAL_ACP_SCRIPT?.trim()
+  if (envScript) {
+    return { path: envScript, source: 'env' }
+  }
+
+  const codexDefault = defaultLegacyCodexAcpScriptPath()
+  if (fs.existsSync(codexDefault)) {
+    return { path: codexDefault, source: 'legacy_default' }
+  }
+
+  return { path: defaultLegacyAcpScriptPath(), source: 'legacy_default' }
+}
+
+export function inspectConfiguredAcpBridge(
+  options: Pick<AcpClientOptions, 'acpScript'> = {},
+): { path: string; source: 'option' | 'env' | 'legacy_default'; available: boolean } {
+  const resolved = resolveConfiguredAcpScriptPath(options)
+  return {
+    ...resolved,
+    available: fs.existsSync(resolved.path),
+  }
+}
+
 export class AcpClient {
   private proc: ChildProcess | null = null
   private rl: Interface | null = null
@@ -57,7 +97,7 @@ export class AcpClient {
 
   constructor(options: AcpClientOptions = {}) {
     this.cwd = options.cwd || os.homedir()
-    this.acpScript = options.acpScript || path.join(os.homedir(), '.weclaw', 'claude-acp.sh')
+    this.acpScript = resolveConfiguredAcpScriptPath(options).path
     this.claudeExecutable = options.claudeExecutable || path.join(os.homedir(), '.local', 'bin', 'claude')
   }
 

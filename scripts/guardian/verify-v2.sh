@@ -15,6 +15,11 @@ EXPECTED_RUNTIME_MARKER="watchdog-runtime-version: workspace-v2-2026-04-06"
 EXPECTED_SUMMARY_MARKER="📊 工作区总数:"
 RUNTIME_SCRIPT="$RUNTIME_INSTALL_DIR/bin/repo-scheduler-service.sh"
 WORKSPACE_CONFIG_FILE="$RUNTIME_INSTALL_DIR/config/workspace-watchdog.json"
+HARNESS_ENTRY="$RUNTIME_INSTALL_DIR/bin/harness"
+ROUTING_CONTROLLER_ENTRY="$RUNTIME_INSTALL_DIR/bin/routing-controller"
+RUNTIME_STATUS_ENTRY="$RUNTIME_INSTALL_DIR/bin/runtime-status"
+ROADMAP_SYNC_ENTRY="$RUNTIME_INSTALL_DIR/bin/runtime-roadmap-sync.py"
+WECHAT_CONTROL_ENTRY="$RUNTIME_INSTALL_DIR/bin/runtime-wechat-control.py"
 
 log "checking new labels"
 for label in "${NEW_LABELS[@]}"; do
@@ -53,6 +58,38 @@ if [[ -f "$WORKSPACE_CONFIG_FILE" ]]; then
   echo "OK   workspace config"
 else
   echo "MISS $WORKSPACE_CONFIG_FILE"
+  status=1
+fi
+
+log "checking installed routing, harness, and roadmap sync entries"
+if [[ -x "$ROUTING_CONTROLLER_ENTRY" ]]; then
+  echo "OK   routing controller entry"
+else
+  echo "MISS $ROUTING_CONTROLLER_ENTRY"
+  status=1
+fi
+if [[ -x "$RUNTIME_STATUS_ENTRY" ]]; then
+  echo "OK   runtime status entry"
+else
+  echo "MISS $RUNTIME_STATUS_ENTRY"
+  status=1
+fi
+if [[ -x "$HARNESS_ENTRY" ]]; then
+  echo "OK   harness entry"
+else
+  echo "MISS $HARNESS_ENTRY"
+  status=1
+fi
+if [[ -f "$ROADMAP_SYNC_ENTRY" ]]; then
+  echo "OK   roadmap sync entry"
+else
+  echo "MISS $ROADMAP_SYNC_ENTRY"
+  status=1
+fi
+if [[ -f "$WECHAT_CONTROL_ENTRY" ]]; then
+  echo "OK   wechat control entry"
+else
+  echo "MISS $WECHAT_CONTROL_ENTRY"
   status=1
 fi
 

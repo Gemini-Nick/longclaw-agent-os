@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="${LONGCLAW_LOG_DIR:-/tmp/longclaw-guardian}"
 LOG_FILE="$LOG_DIR/weclaw-bridge.log"
 WECLAW_BIN="${WECLAW_BRIDGE_BIN:-$HOME/.weclaw/bin/weclaw-real}"
 WECLAW_PID_FILE="${WECLAW_PID_FILE:-$HOME/.weclaw/weclaw.pid}"
 WECLAW_LOG_FILE="${WECLAW_LOG_FILE:-$HOME/.weclaw/weclaw.log}"
 WECLAW_PORT="${WECLAW_PORT:-18011}"
+HEALTH_SCRIPT="${WECLAW_HEALTH_SCRIPT:-$SCRIPT_DIR/weclaw-bridge-health.py}"
 mkdir -p "$LOG_DIR"
 
 log() {
@@ -77,6 +79,14 @@ prune_legacy_watchdog_files
 cleanup_stale_pid
 cleanup_orphan_listener
 rm -f "$WECLAW_LOG_FILE"
+
+if command -v python3 >/dev/null 2>&1 && [[ -f "$HEALTH_SCRIPT" ]]; then
+  python3 "$HEALTH_SCRIPT" probe >>"$LOG_FILE" 2>&1 || true
+  python3 "$HEALTH_SCRIPT" loop >>"$LOG_FILE" 2>&1 &
+  log "weclaw bridge health monitor started pid=$!"
+else
+  log "weclaw bridge health monitor skipped: missing python3 or $HEALTH_SCRIPT"
+fi
 
 log "weclaw bridge starting in foreground with $WECLAW_BIN start -f"
 exec "$WECLAW_BIN" start -f

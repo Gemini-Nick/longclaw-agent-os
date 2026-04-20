@@ -23,7 +23,6 @@
 - `node harness/bin/harness autorefactor knowledge-base`
 - `node harness/bin/harness hold weclaw`
 - `node harness/bin/harness tick`
-- `node harness/bin/harness loop`
 - `node harness/bin/harness notify <failure_id>`
 - `node harness/bin/harness resolve <failure_id>`
 - `node harness/bin/harness report knowledge-base`
@@ -32,4 +31,4 @@
 
 - 项目注册表：`harness/projects/projects.yaml`
 - 硬规则：`harness/policies/golden-principles.md`
-- 报告目录：`harness/generated/`
+- 报告目录：`~/.longclaw/runtime-v2/state/harness/generated/`

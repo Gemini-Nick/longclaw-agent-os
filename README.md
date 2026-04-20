@@ -1,37 +1,103 @@
-# 隆小虾 Agent OS
+# Longclaw Agent OS
 
-AI 时代的 Wind/同花顺 — 金融业务 Agent 桌面应用。
+隆小虾 Agent OS 是面向单人高杠杆操盘手的 Agent OS。它不是纯聊天壳，也不是纯治理台；当前阶段的产品原则固定为：
 
-基于 [Open Agent SDK](https://github.com/shipany-ai/open-agent-sdk) fork，Electron + React + TypeScript。
+- `Chat launches, console governs.`
+- `Electron` 是唯一 default home
+- `WeClaw` 是 remote cowork companion
+- `Hermes` 是唯一 canonical `LaunchIntent -> Task / Run / Work Item` 编排层
+
+当前仓库基于 [Open Agent SDK](https://github.com/shipany-ai/open-agent-sdk) fork，承载 `Client Runtime（端侧）`、Electron 产品外壳、可见的 `Capability Substrate`，以及 Longclaw 的本地治理与恢复能力。
 
 ## 特性
 
-- Electron 桌面应用，Claude Desktop App 风格 UI（暖色调）
-- 双模式 agent backend：ACP（连接 CC CLI）+ SDK（直连 API）
-- 59 个内置工具（文件读写/编辑/Bash/Glob/Grep/WebSearch 等）
-- MCP 原生支持（Signals 缠论分析 / aippt PPT 生成 / 尽调工具）
-- Skills 系统（自动发现 `.claude/skills/` 下的技能）
-- 流式输出 + Markdown 渲染 + 代码语法高亮
-- 多入口：桌面端 / 微信（weclaw）/ 语音（Chanless）
+- `Home / Runs / Work Items / Packs / Studio` 五个一级产品面
+- `Home = Cowork Launch + Governance Snapshot`
+- 显式 `@pack / @skill / @plugin` 前门启动
+- Electron 治理面统一承接 `runs / evidence / review / work items / promotion`
+- `Signals` / `due-diligence-core` 作为旗舰 `Professional Grounds`
+- WeClaw 作为 remote cowork companion 负责远程发起、轻量追问和状态回看
+- Skills / plugins / bundled capabilities 可见化，并通过 `Studio` 做 curated 管理
 
 ## 架构定位
 
-`longclaw-agent-os` 的目标是继续演化为完整桌面 agent 产品，但不重新实现微信桥接语义。
+`longclaw-agent-os` 当前定位为 `Client Runtime（端侧）` 参考实现，也是 phase 1 的 `default home`。它不是最终可移植的 `Agent Core（云侧）`。
 
-- `weclaw`：微信桥接核心，负责消息语义、媒体规范化、语音 transcript-first、session/media facts、archive tool contract。
-- `agent-os runtime`：负责 install、guardian、scheduler、launchd、策略注入、健康检查。
-- `agent-os product`：负责 GUI、workspace 管理、任务中心、调试面板、通知与产品体验。
+统一术语：
 
-这让 `Gemini-Nick/weclaw` 继续保持对上游 `fastclaw-ai/weclaw` 的可继承性，同时让 `longclaw-agent-os` 逐步向 `workany` 风格桌面产品演进。
+- `Client Runtime（端侧）`：设备侧宿主环境，负责桌面产品外壳、本地 CLI、安装升级、`launchd`、guardian、scheduler 和设备能力集成。
+- `Agent Core（云侧）`：由 `hermes-agent` 承担，负责 `session / memory / skills / scheduler / delivery / approvals / eval`。
+- `Interaction Adapter Layer（通道侧）`：如 `weclaw`、`Chanless` 这类消息与语音接入层。
+- `Capability Substrate`：端侧可见的 `skills / plugins / bundled skills / built-in plugins / cowork runtime`。
+- `Professional Grounds`：Longclaw 的旗舰专业训练场。phase 1 主要是 `Signals` 与 `due-diligence-core`。
+- `Reviewed Knowledge Plane`：只接 reviewed outputs。phase 1 主要落到 Obsidian。
 
-## 快速开始
+当前阶段采用 `Local-first Reference Architecture（当前本地参考实现）`：
+
+- `longclaw-agent-os`：`Client Runtime（端侧）` + `default home`
+- `weclaw`：`Interaction Adapter Layer（通道侧）` + remote cowork companion
+- `Signals` / `due-diligence-core`：flagship `Professional Grounds`
+- Obsidian：`Reviewed Knowledge Plane`
+- `hermes-agent`：`Agent Core（云侧）`
+
+完整边界、信息架构和设计语言见：
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md)
+
+## 入口与产品结构
+
+Longclaw 的一级产品结构固定为：
+
+- `Home`
+- `Runs`
+- `Work Items`
+- `Packs`
+- `Studio`
+
+其中：
+
+- `Home` 取代旧 `Overview`
+- `Home` 固定为 `Cowork Launch + Governance Snapshot`
+- `Studio` 只做 curated capabilities，不做 marketplace 首页
+- `Runs / Work Items / Packs` 共享统一的 row / drawer / artifact preview 语法
+
+## 开发环境初始化
 
 ```bash
 git clone https://github.com/Gemini-Nick/longxiaoxia-agent-os.git
 cd longxiaoxia-agent-os
-npm install
+bash bootstrap-dev.sh
 npm run build
 npm run electron:start
+```
+
+说明：
+
+- 开发环境固定使用 `npm`（见 `packageManager`），默认走 `npm ci`
+- 这一步只初始化仓库自身的 Electron / React / TypeScript 依赖
+- Node.js 版本要求见 [`package.json`](package.json)，当前下限是 `>=18`
+
+如果你要验证 `WeClaw -> Hermes -> Electron` 的模拟闭环，可直接运行：
+
+```bash
+bash scripts/validate-weclaw-client-simulated.sh
+```
+
+完整验证说明见 [docs/VALIDATION_WECLAW_TO_CLIENT.md](docs/VALIDATION_WECLAW_TO_CLIENT.md)。
+
+## Runtime 安装
+
+`bash install.sh`、`bash apply-live.sh` 和 guardian 相关脚本只负责 `Client Runtime（端侧）` 的安装/更新：
+
+- 安装 runtime
+- 注入 `launchd` / guardian / `~/.weclaw/config.json`
+- 管理 `weclaw-real` 等设备侧依赖
+
+它们**不会**自动安装当前仓库的 `node_modules`。如果你要开发 Electron 控制面，先执行：
+
+```bash
+bash bootstrap-dev.sh
 ```
 
 环境变量：
@@ -59,8 +125,9 @@ scripts/guardian/ # 迁移、验证、退役脚本
 - `weclaw-guardian`：统一监控与重启控制（Go 核心）
 - `weguard`：guardian 运维命令入口（`status/restart/monitor`）
 - `codex` / `claude` / `weclaw` / `repo-scheduler`：独立 launchd 服务
-- `weclaw` 保留给 fastclaw 微信桥，不再由 guardian 覆盖
-- runtime 只向 `~/.weclaw/config.json` 注入策略，不接管微信消息语义
+- `harness`：one-shot runtime control entry，由 scheduler 驱动，不再单独常驻
+- `weclaw` 保留给 remote cowork companion，不接管 Electron 治理面语义
+- runtime 只向 `~/.weclaw/config.json` 注入设备侧策略，不接管微信消息语义
 
 常用命令：
 
@@ -74,10 +141,10 @@ npm run guardian:retire
 
 ## 单包安装边界
 
-这套后台服务产品化后，建议按两层打包：
+这套后台服务当前按 `Client Runtime（端侧）` 参考实现打包：
 
-- 产品层：`apps/runtime/` + `scripts/guardian/`
-- 内核层：`weclaw-real`
+- 端侧宿主层：`apps/runtime/` + `scripts/guardian/`
+- 通道核心依赖：`weclaw-real`
 
 安装入口已经固定在仓库根目录：
 
@@ -104,7 +171,7 @@ bash install.sh
 ~/.weclaw/bin/weclaw login
 ```
 
-边界和打包约束见 [docs/PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md)。
+边界和打包约束见 [docs/PRODUCT_BOUNDARY.md](docs/PRODUCT_BOUNDARY.md)。未来可移植核心的抽取方向见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 上游同步
 
@@ -113,11 +180,24 @@ bash install.sh
 ```bash
 git fetch upstream
 git merge upstream/main
-
-另见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，用于约束 `weclaw` 与 `agent-os` 的长期分层边界。
-
-`weclaw` 的消费策略见 [docs/WECLAW_CONSUMPTION.md](docs/WECLAW_CONSUMPTION.md)。`agent-os` 只应消费已验证的 fork 构建产物，不直接追 `fastclaw-ai/weclaw`。
 ```
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 用于约束 `weclaw` 与 `agent-os` 的长期分层边界。
+- [docs/WECLAW_CONSUMPTION.md](docs/WECLAW_CONSUMPTION.md) 约束 `agent-os` 只消费已验证的 `weclaw` fork 构建产物，不直接追 `fastclaw-ai/weclaw`。
+
+## 验证目标
+
+本轮验收聚焦两个目标：
+
+- 完成整体设计代码改造
+- 完成一次从 `WeClaw` 到客户端的完整验证
+
+具体闭环拆分为：
+
+- `模拟闭环 = 自动化`
+- `真实微信闭环 = 手工 runbook + 证据包`
+
+详见 [docs/VALIDATION_WECLAW_TO_CLIENT.md](docs/VALIDATION_WECLAW_TO_CLIENT.md)。
 
 ## License
 

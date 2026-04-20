@@ -2,7 +2,13 @@
   "scan_roots": [
     "~/github代码仓库"
   ],
-  "explicit_workspaces": [],
+  "restrict_to_explicit_workspaces": true,
+  "local_loop_name": "wechat-weclaw-mac-dual-agent-knowledge",
+  "explicit_workspaces": [
+    "~/github代码仓库/longclaw-agent-os",
+    "~/github代码仓库/weclaw",
+    "~/github代码仓库/hermes-agent"
+  ],
   "tool_mapping_ignored_names": [
     "-Users-zhangqilong--weclaw-chat",
     "-Users-zhangqilong--weclaw-workspace",

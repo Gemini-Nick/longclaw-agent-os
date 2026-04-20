@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_RUNTIME_STATE="${HARNESS_RUNTIME_ROOT:-$HOME/.longclaw/runtime-v2/state/harness}"
+
+find_harness_script() {
+  local candidates=(
+    "$SCRIPT_DIR/../harness/bin/harness"
+    "$SCRIPT_DIR/../../../harness/bin/harness"
+  )
+
+  for c in "${candidates[@]}"; do
+    if [[ -f "$c" ]]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! HARNESS_SCRIPT="$(find_harness_script)"; then
+  cat >&2 <<'ERR'
+harness script not found.
+Expected either an installed runtime copy or the repo-local harness/bin/harness.
+ERR
+  exit 1
+fi
+
+NODE_BIN="${NODE_BIN:-$(command -v node)}"
+if [[ -z "$NODE_BIN" ]]; then
+  echo "node not found in PATH" >&2
+  exit 1
+fi
+
+export HARNESS_RUNTIME_ROOT="$DEFAULT_RUNTIME_STATE"
+
+exec "$NODE_BIN" "$HARNESS_SCRIPT" "$@"

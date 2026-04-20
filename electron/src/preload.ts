@@ -39,3 +39,33 @@ contextBridge.exposeInMainWorld('agentAPI', {
     return () => ipcRenderer.removeListener('agent:error', listener)
   },
 })
+
+contextBridge.exposeInMainWorld('longclawControlPlane', {
+  getOverview: () => ipcRenderer.invoke('control-plane:get-overview'),
+  listRuns: () => ipcRenderer.invoke('control-plane:list-runs'),
+  listWorkItems: () => ipcRenderer.invoke('control-plane:list-work-items'),
+  getPackDashboard: (packId: string) =>
+    ipcRenderer.invoke('control-plane:get-pack-dashboard', packId),
+  listArtifacts: (runId: string, domain: string) =>
+    ipcRenderer.invoke('control-plane:list-artifacts', runId, domain),
+  executeAction: (actionId: string, payload?: Record<string, unknown>) =>
+    ipcRenderer.invoke('control-plane:execute-action', actionId, payload ?? {}),
+  performLocalAction: (action: { kind: string; payload?: Record<string, unknown> }) =>
+    ipcRenderer.invoke('control-plane:local-action', action),
+  readArtifactPreview: (uri: string) =>
+    ipcRenderer.invoke('control-plane:read-artifact-preview', uri),
+})
+
+contextBridge.exposeInMainWorld('longclawLaunch', {
+  launch: (intent: Record<string, unknown>) => ipcRenderer.invoke('launch:submit', intent),
+  listTasks: (limit?: number) => ipcRenderer.invoke('launch:list-tasks', limit),
+  getTask: (taskId: string) => ipcRenderer.invoke('launch:get-task', taskId),
+})
+
+contextBridge.exposeInMainWorld('longclawCapabilitySubstrate', {
+  getSummary: () => ipcRenderer.invoke('capability-substrate:get-summary'),
+})
+
+contextBridge.exposeInMainWorld('longclawWindow', {
+  setLocale: (locale: 'zh-CN' | 'en-US') => ipcRenderer.invoke('window:set-locale', locale),
+})

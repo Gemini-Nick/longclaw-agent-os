@@ -29,6 +29,7 @@ After install, use guardian command entry:
 ```bash
 weguard status
 weguard restart codex
+weguard runtime-status
 ```
 
 Use mixed mode (codex + monitor as system daemons templates):
@@ -61,16 +62,28 @@ bash scripts/guardian/retire-legacy.sh
 bash scripts/guardian/rollback-v2.sh
 ```
 
-## Harness Loop Service
+## Harness Entry
 
-Install the harness control loop as a user launch agent:
-
-```bash
-bash scripts/guardian/install-harness-loop.sh
-```
-
-Remove it if needed:
+Harness is now expected to run as a one-shot runtime tool instead of a dedicated launchd loop:
 
 ```bash
-bash scripts/guardian/uninstall-harness-loop.sh
+~/.longclaw/runtime-v2/bin/routing-controller reconcile
+~/.longclaw/runtime-v2/bin/routing-controller status
+~/.longclaw/runtime-v2/bin/runtime-status
+~/.longclaw/runtime-v2/bin/harness tick
+~/.longclaw/runtime-v2/bin/harness brief
+~/.longclaw/runtime-v2/bin/harness doctor
+~/.longclaw/runtime-v2/bin/harness eval watchdog
+python3 ~/.longclaw/runtime-v2/bin/runtime-wechat-control.py send-summary
+python3 ~/.longclaw/runtime-v2/bin/runtime-wechat-control.py dispatch-next-task
 ```
+
+The installed runtime also provides `runtime-roadmap-sync.py` and `runtime-wechat-control.py`, which consume routing and harness outputs and update:
+
+- `~/.longclaw/runtime-v2/state/roadmap-queue.json`
+- `~/.longclaw/runtime-v2/state/weclaw-ingress.json`
+- `~/.longclaw/runtime-v2/state/knowledge-projection.json`
+- `~/.longclaw/runtime-v2/state/wechat-task-queue.json`
+- `~/.longclaw/runtime-v2/state/wechat-notification-state.json`
+- `00 Dashboard/Longclaw Runtime.md`
+- `hermes-agent/docs/longclaw/status/runtime-status-latest.*`

@@ -1,64 +1,155 @@
 # Longclaw Agent OS Architecture
 
-`longclaw-agent-os` is the product and runtime shell. It should evolve toward a desktop agent product, while consuming `weclaw` as a bridge-core dependency instead of re-owning WeChat semantics.
+`longclaw-agent-os` is the current `Client Runtime（端侧）` reference implementation for the Longclaw product line. In phase 1 it is more than an installer shell: it is the default home, the governance surface host, and the local `Capability Substrate` host for Longclaw.
+
+It is not the final portable `Agent Core（云侧）`. `hermes-agent` remains the cloud-side core and architecture source of truth.
+
+## Canonical Terms
+
+Use these terms consistently across docs and code reviews:
+
+- `Client Runtime（端侧）`
+  - The user-device-side runtime.
+  - In phase 1, this repo is the default product home.
+- `Agent Core（云侧）`
+  - The portable runtime core owned by Hermes.
+  - Responsible for `session / memory / skills / scheduler / delivery / approvals / eval`.
+- `Interaction Adapter Layer（通道侧）`
+  - Channel and protocol adapters such as WeChat and voice.
+- `Capability Substrate`
+  - The curated capability layer visible from the product shell.
+  - Includes `skills / plugins / bundled skills / built-in plugins / cowork runtime`.
+- `Professional Grounds`
+  - Flagship packs where Longclaw builds specialist depth.
+  - In phase 1: `Signals` and `due-diligence-core`.
+- `Reviewed Knowledge Plane`
+  - Human-readable reviewed knowledge only.
+  - In phase 1: `Obsidian`.
 
 ## Product Role
 
-- Provide the desktop product surface.
-- Orchestrate local agent runtimes and background services.
-- Inject environment and policy defaults into bridge/runtime components.
-- Own installation, monitoring, scheduling, and recovery flows.
+This repo owns the default home for Longclaw.
 
-## Layering Model
+Primary navigation is fixed to:
 
-### 1. Bridge Core
+- `Home`
+- `Runs`
+- `Work Items`
+- `Packs`
+- `Studio`
 
-Provided by `weclaw`.
+`Home` replaces the old `Overview` and always combines:
 
-- WeChat message semantics
-- Media parsing and normalization
-- Transcript-first voice behavior
-- Session/media facts
-- Archive tool protocol
+- `Cowork Launch`
+- `Governance Snapshot`
 
-### 2. Agent Runtime
+The product rule here is:
 
-Owned by `longclaw-agent-os`, with future alignment toward `fastclaw`-style runtime capabilities.
+- `Chat launches, console governs.`
 
-- Agent lifecycle management
-- Tool and provider orchestration
-- Memory, scheduler, failover, and runtime policies
-- Runtime adapters for Codex, Claude, and future engines
+That means:
 
-### 3. Desktop Product
+- `Home` gives the operator a fast launch surface.
+- governance surfaces remain the system of record for runs, evidence, review, work items, and promotion.
+- `Studio` manages curated capabilities, not a plugin marketplace.
 
-Owned by `longclaw-agent-os`, evolving toward a `workany`-style desktop product.
+## Design Source Of Truth
 
-- GUI and task center
-- Workspace management
-- Settings and observability
-- Notifications, review panels, and product workflows
+`longclaw-agent-os` does not own an independent visual language.
+
+- Product-level design decisions come from
+  `/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md`
+- This repo implements the primary work surface for that system.
+- If a renderer, companion surface, or pack-specific screen wants to diverge,
+  it must still preserve Longclaw's shared type system, color semantics,
+  surface hierarchy, and status naming.
+
+## System Position
+
+```mermaid
+flowchart TB
+  subgraph FD["Front Doors"]
+    HM["Home: Cowork Launch + Governance Snapshot"]
+    WC["WeClaw"]
+  end
+
+  subgraph CR["Client Runtime（端侧）"]
+    AO["longclaw-agent-os"]
+    GC["Runs / Work Items / Packs"]
+    ST["Studio / Capability Substrate"]
+  end
+
+  subgraph AC["Agent Core（云侧）"]
+    HC["hermes-agent"]
+    LI["LaunchIntent"]
+    RW["Task / Run / Work Item"]
+  end
+
+  subgraph PG["Professional Grounds"]
+    SG["Signals"]
+    DD["due-diligence-core"]
+  end
+
+  subgraph RK["Reviewed Knowledge Plane"]
+    OB["Obsidian"]
+  end
+
+  HM --> AO
+  WC --> LI
+  AO --> LI
+  AO --> GC
+  AO --> ST
+  LI --> HC
+  HC --> RW
+  RW --> SG
+  RW --> DD
+  SG --> GC
+  DD --> GC
+  GC --> OB
+```
 
 ## Responsibilities Owned Here
 
-- Install and uninstall flows
-- Guardian, scheduler, launchd orchestration
-- TLS preflight and process health checks
-- Runtime config injection into `~/.weclaw/config.json`
-- Formal archive enablement policy
-- Obsidian vault discovery and environment defaults
-- Desktop-facing control surfaces and UX
+`longclaw-agent-os` currently owns the device-side host responsibilities:
+
+- install and uninstall flows
+- `launchd` orchestration and service packaging
+- guardian substrate and recovery flows
+- runtime policy injection into `~/.weclaw/config.json`
+- `Electron` default home and governance surfaces
+- `Studio` and the visible `Capability Substrate`
+- local notifications, observability, and reliable local delivery
+
+## Responsibilities That Must Stay In Hermes
+
+Do not migrate these into `longclaw-agent-os`:
+
+- canonical `LaunchIntent`
+- canonical `Task / Run / Work Item`
+- cross-pack delivery policy
+- approvals, promotion, and evaluation gates
+- cross-channel session and memory semantics
 
 ## Responsibilities That Must Stay In WeClaw
 
 Do not migrate these into `longclaw-agent-os`:
 
 - `VoiceItem.Text` interpretation rules
-- Voice canonicalization behavior
-- Media sidecar/session schema
-- Obsidian formal note protocol
-- Direct mapping from WeChat message items to agent prompts
-- Archive tool payload contract
+- voice canonicalization behavior
+- media sidecar/session schema
+- direct mapping from WeChat message items to canonical agent input
+- reviewed handoff compatibility contract
+- WeChat protocol semantics
+
+## Integration Boundary With Hermes
+
+`longclaw-agent-os` should interact with Hermes through canonical product APIs:
+
+- `LaunchIntent` submission from `Home`
+- `overview / runs / work-items / pack dashboards / actions`
+- run artifacts and review queues
+
+The repo should consume those contracts, not redefine pack state machines.
 
 ## Integration Boundary With WeClaw
 
@@ -69,13 +160,31 @@ Do not migrate these into `longclaw-agent-os`:
 - `~/.weclaw/config.json`
 - `~/.weclaw` workspace/session/sidecar artifacts
 
-The runtime may set policy values such as:
+The `Client Runtime（端侧）` may set policy values such as:
 
 - default agent
-- archive enablement
-- formal write policy
+- reviewed handoff compatibility enablement
+- reviewed handoff write policy
 - vault paths
 - scheduler cadence
 - default voice input mode
 
-It should not reimplement WeChat message semantics.
+The underlying config keys may still use legacy names such as `archive` or `formal write`, but the product narrative should treat them as reviewed handoff controls.
+
+## Flagship Packs
+
+This repo surfaces, but does not own, the flagship `Professional Grounds`:
+
+- `Signals`
+  - financial review
+  - backtest
+  - connector health
+  - output artifacts
+- `due-diligence-core`
+  - cloud execution
+  - evidence
+  - manual review
+  - repair
+  - site health
+
+They are deep work surfaces under `Packs`, not alternative homes.
