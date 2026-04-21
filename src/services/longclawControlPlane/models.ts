@@ -610,6 +610,14 @@ export const LongclawConnectorHealthSchema = z.object({
   details: JsonRecordSchema,
 })
 
+export const LongclawPackDiagnosticSchema = z.object({
+  diagnostic_id: z.string(),
+  status: z.string().default('info'),
+  label: z.string(),
+  detail: z.string().default(''),
+  metadata: JsonRecordSchema.default({}),
+})
+
 export const LongclawLaunchReceiptSchema = z.object({
   launch_id: z.string(),
   pack_id: z.string(),
@@ -720,6 +728,7 @@ export const DueDiligenceDashboardSchema = z.object({
   title: z.string().default('Due Diligence'),
   status: z.string().default('healthy'),
   notice: z.string().default(''),
+  diagnostics: z.array(LongclawPackDiagnosticSchema).default([]),
   recent_runs: z.array(LongclawRunSchema).default([]),
   manual_review_queue: z.array(z.object({
     review_id: z.string(),
@@ -763,18 +772,89 @@ export const DueDiligenceDashboardSchema = z.object({
   operator_actions: z.array(LongclawOperatorActionSchema).default([]),
 })
 
+const SignalsCandidateSchema = z.object({
+  symbol: z.string(),
+  name: z.string().default(''),
+  score: z.number().default(0),
+  direction: z.string().default(''),
+  reason: z.string().default(''),
+  status: z.string().default('open'),
+  metadata: JsonRecordSchema.default({}),
+})
+
+const SignalsChartContextSchema = z.object({
+  symbol: z.string().default(''),
+  freq: z.string().default('daily'),
+  conclusion: z.string().default(''),
+  latest_signal: z.string().default(''),
+  key_levels: z.array(z.object({
+    name: z.string(),
+    value: z.number(),
+    position: z.string().default(''),
+    distance_pct: z.number().nullable().optional(),
+  })).default([]),
+  signal_markers: z.array(z.object({
+    time: z.number().optional(),
+    date_str: z.string().default(''),
+    type: z.string().default(''),
+    price: z.number().nullable().optional(),
+    confidence: z.number().nullable().optional(),
+  })).default([]),
+  ohlcv_preview: z.array(z.object({
+    time: z.number(),
+    close: z.number(),
+  })).default([]),
+  metadata: JsonRecordSchema.default({}),
+})
+
+const SignalsBacktestJobSchema = z.object({
+  job_id: z.string(),
+  status: z.string().default('idle'),
+  symbol: z.string().default(''),
+  freq: z.string().default(''),
+  summary: z.string().default(''),
+  updated_at: z.string().nullable().optional(),
+  source: z.string().default('web2'),
+  metadata: JsonRecordSchema.default({}),
+})
+
+const SignalsDeepLinkSchema = z.object({
+  link_id: z.string(),
+  label: z.string(),
+  url: z.string(),
+  kind: z.string().default('web'),
+})
+
+const SignalsOverviewSchema = z.object({
+  market_regime: JsonRecordSchema.default({}),
+  cluster_summary: JsonRecordSchema.default({}),
+  review_summary: JsonRecordSchema.default({}),
+  data_warning: z.string().default(''),
+})
+
 export const SignalsDashboardSchema = z.object({
   pack_id: z.literal('signals'),
   title: z.string().default('Signals'),
   status: z.string().default('healthy'),
   notice: z.string().default(''),
+  diagnostics: z.array(LongclawPackDiagnosticSchema).default([]),
+  overview: SignalsOverviewSchema.default({
+    market_regime: {},
+    cluster_summary: {},
+    review_summary: {},
+    data_warning: '',
+  }),
   recent_runs: z.array(LongclawRunSchema).default([]),
   review_runs: z.array(LongclawRunSchema).default([]),
+  buy_candidates: z.array(SignalsCandidateSchema).default([]),
+  sell_warnings: z.array(SignalsCandidateSchema).default([]),
+  chart_context: SignalsChartContextSchema.nullable().default(null),
   backtest_summary: z.object({
     total: z.number().default(0),
     evaluated: z.number().default(0),
     pending: z.number().default(0),
   }).default({ total: 0, evaluated: 0, pending: 0 }),
+  backtest_jobs: z.array(SignalsBacktestJobSchema).default([]),
   pending_backlog_preview: z.array(z.object({
     symbol: z.string(),
     signal_date: z.string(),
@@ -783,6 +863,7 @@ export const SignalsDashboardSchema = z.object({
     created_at: z.string().nullable().optional(),
   })).default([]),
   connector_health: z.array(LongclawConnectorHealthSchema).default([]),
+  deep_links: z.array(SignalsDeepLinkSchema).default([]),
   operator_actions: z.array(LongclawOperatorActionSchema).default([]),
 })
 

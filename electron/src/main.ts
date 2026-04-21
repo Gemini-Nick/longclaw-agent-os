@@ -2,15 +2,33 @@ import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { fileURLToPath } from 'url'
 import { createBackend, AgentBackend, AgentMode } from './agent-backend.js'
 import { inspectConfiguredAcpBridge } from './acp-client.js'
 import {
   dispatchToLocalRuntimeApi,
+  normalizeLocalRuntimeSeatPreference,
   probeLocalRuntimeSeat,
   resolveLocalRuntimeSeat,
   type LocalRuntimeSeat,
+  type LocalRuntimeSeatPreference,
   type LocalRuntimeSeatResolution,
 } from './local-runtime-seat.js'
+import {
+  readRuntimeCapabilityRegistry,
+  registerRuntimeCapability,
+  removeRuntimeCapability,
+  rescanRuntimeCapabilityRegistry,
+  runtimeDiscoveryRoots,
+  type RuntimeCapabilityKind,
+  type RuntimeCapabilityRegistry,
+} from './runtime/capabilityRegistry.js'
+import {
+  canonicalWeclawSessionId,
+  mergeWeclawSessionUiFlags,
+  normalizeWeclawSessionUiState,
+  type WeclawSessionUiState,
+} from './runtime/weclawSessionState.js'
 import { createLongclawControlPlaneClientFromEnv } from '../../src/services/longclawControlPlane/client.js'
 import {
   LongclawCapabilitySubstrateSummarySchema,
@@ -33,6 +51,18 @@ function log(...args: any[]) {
 }
 
 const STACK_ENV_PATH = path.join(os.homedir(), '.longclaw', 'runtime-v2', 'stack.env')
+const LONGCLAW_RUNTIME_DIR = path.join(os.homedir(), '.longclaw', 'runtime-v2')
+const CAPABILITY_MANAGER_SETTINGS_PATH = path.join(
+  LONGCLAW_RUNTIME_DIR,
+  'capability-manager.json',
+)
+const CAPABILITY_REGISTRY_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'capability-registry.json')
+const WECLAW_SESSION_UI_STATE_PATH = path.join(
+  LONGCLAW_RUNTIME_DIR,
+  'weclaw-session-state.json',
+)
+const WECLAW_CONFIG_PATH = path.join(os.homedir(), '.weclaw', 'config.json')
+const DEFAULT_WECLAW_WORKSPACE = path.join(os.homedir(), '.weclaw', 'workspace')
 
 function stripShellQuotes(value: string): string {
   const trimmed = value.trim()
@@ -85,6 +115,8 @@ let mainWindow: BrowserWindow | null = null
 let backend: AgentBackend | null = null
 let controlPlaneClient = createLongclawControlPlaneClientFromEnv()
 let currentCwd = process.env.AGENT_CWD || app.getPath('home')
+let localRuntimeSeatPreference: LocalRuntimeSeatPreference =
+  normalizeLocalRuntimeSeatPreference(process.env.LONGCLAW_LOCAL_RUNTIME_SEAT_OVERRIDE)
 const DEFAULT_LOCALE = 'zh-CN'
 
 function getAgentMode(): AgentMode {
@@ -168,30 +200,41 @@ function currentRuntimeProfile(
   workMode: LongclawLaunchIntent['work_mode'],
   seatResolution?: LocalRuntimeSeatResolution,
 ): string {
+  if (workMode === 'cloud_sandbox') {
+    return 'cloud_managed_runtime'
+  }
   if (process.env.LONGCLAW_RUNTIME_PROFILE?.trim()) {
     return process.env.LONGCLAW_RUNTIME_PROFILE.trim()
-  }
-  if (workMode === 'cloud_sandbox') {
-    return 'dev_local_acp_bridge'
   }
   return seatResolution?.runtimeProfile ?? 'dev_local_acp_bridge'
 }
 
+function getLocalRuntimeSeatPreference(): LocalRuntimeSeatPreference {
+  return localRuntimeSeatPreference
+}
+
+function setLocalRuntimeSeatPreference(value: unknown): LocalRuntimeSeatPreference {
+  localRuntimeSeatPreference = normalizeLocalRuntimeSeatPreference(value)
+  return localRuntimeSeatPreference
+}
+
 function resolveLaunchSeat(
   workMode: LongclawLaunchIntent['work_mode'],
+  preference: LocalRuntimeSeatPreference = getLocalRuntimeSeatPreference(),
 ): LocalRuntimeSeatResolution {
   if (workMode === 'cloud_sandbox') {
     return {
+      preference,
       seat: 'unavailable',
       available: false,
-      runtimeProfile: 'dev_local_acp_bridge',
-      runtimeTarget: 'local_runtime',
+      runtimeProfile: 'cloud_managed_runtime',
+      runtimeTarget: 'cloud_runtime',
       modelPlane: 'cloud_provider',
       localRuntimeApiKeyConfigured: Boolean(process.env.LONGCLAW_LOCAL_RUNTIME_API_KEY?.trim()),
       localRuntimeApiUrl: process.env.LONGCLAW_LOCAL_RUNTIME_API_URL?.trim(),
     }
   }
-  return resolveLocalRuntimeSeat()
+  return resolveLocalRuntimeSeat(preference)
 }
 
 function withLaunchSeatMetadata(
@@ -220,10 +263,492 @@ function withLaunchSeatMetadata(
       model_plane: 'cloud_provider',
       execution_plane: executionPlane,
       local_runtime_seat: seatResolution.seat,
+      local_runtime_seat_preference: seatResolution.preference,
+      dev_machine_acp_takeover:
+        seatResolution.preference === 'auto' && seatResolution.seat === 'acp_bridge',
       local_runtime_api_url: seatResolution.localRuntimeApiUrl,
       local_acp_script: seatResolution.acpScript,
     },
   })
+}
+
+type WeclawWorkspaceResolution = {
+  workspaceRoot: string | null
+  source: 'config' | 'env' | 'default' | 'unresolved'
+}
+
+type WeclawSessionSourceStatus = {
+  workspaceRoot: string | null
+  workspaceSource: WeclawWorkspaceResolution['source']
+  sessionsDir: string | null
+  sessionsDirExists: boolean
+  sessionCount: number
+}
+
+type WeclawSessionAttachment = {
+  attachmentId: string
+  title: string
+  kind: string
+  path?: string
+  url?: string
+  mimeType?: string
+  size?: number
+  text?: string
+  origin: 'session' | 'message'
+  messageId?: string
+  metadata: Record<string, unknown>
+}
+
+type WeclawSessionMessage = {
+  messageId: string
+  role: string
+  kind?: string
+  text?: string
+  agentName?: string
+  createdAt?: string
+  attachments: WeclawSessionAttachment[]
+  metadata: Record<string, unknown>
+}
+
+type WeclawSessionDetail = {
+  sessionId: string
+  canonicalSessionId: string
+  duplicateSessionIds: string[]
+  hidden: boolean
+  archived: boolean
+  filePath: string
+  userId?: string
+  updatedAt?: string
+  title: string
+  preview?: string
+  messageCount: number
+  agentReplyCount: number
+  mediaCount: number
+  canonicalMetadata: Record<string, unknown>
+  messages: WeclawSessionMessage[]
+  media: WeclawSessionAttachment[]
+}
+
+type WeclawSessionSummary = Pick<
+  WeclawSessionDetail,
+  | 'sessionId'
+  | 'canonicalSessionId'
+  | 'duplicateSessionIds'
+  | 'hidden'
+  | 'archived'
+  | 'filePath'
+  | 'userId'
+  | 'updatedAt'
+  | 'title'
+  | 'preview'
+  | 'messageCount'
+  | 'agentReplyCount'
+  | 'mediaCount'
+> & {
+  sourceLabel: string
+  canonicalMetadata: Record<string, unknown>
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function normalizeWeclawAttachmentPath(filePath: string, candidate: unknown): string | undefined {
+  const rawValue = readString(candidate)
+  if (!rawValue) return undefined
+  if (/^https?:\/\//i.test(rawValue)) return rawValue
+  if (rawValue.startsWith('file://')) {
+    try {
+      return fileURLToPath(rawValue)
+    } catch {
+      return rawValue
+    }
+  }
+  if (path.isAbsolute(rawValue)) return rawValue
+  return path.resolve(path.dirname(filePath), rawValue)
+}
+
+function collectAttachmentRecords(value: unknown): Array<Record<string, unknown> | string> {
+  if (Array.isArray(value)) {
+    return value.flatMap(item => collectAttachmentRecords(item))
+  }
+  if (typeof value === 'string' || isPlainRecord(value)) return [value]
+  return []
+}
+
+function parseWeclawAttachment(
+  filePath: string,
+  source: unknown,
+  origin: WeclawSessionAttachment['origin'],
+  messageId?: string,
+): WeclawSessionAttachment | null {
+  if (typeof source === 'string') {
+    const resolvedPath = normalizeWeclawAttachmentPath(filePath, source)
+    const title = resolvedPath ? path.basename(resolvedPath) : source
+    return {
+      attachmentId: `${origin}:${messageId ?? 'session'}:${title}`,
+      title,
+      kind: path.extname(title).slice(1) || 'attachment',
+      path: resolvedPath && path.isAbsolute(resolvedPath) ? resolvedPath : undefined,
+      url: /^https?:\/\//i.test(source) ? source : undefined,
+      origin,
+      messageId,
+      metadata: {},
+    }
+  }
+  if (!isPlainRecord(source)) return null
+
+  const pathValue =
+    normalizeWeclawAttachmentPath(
+      filePath,
+      source.path ?? source.file_path ?? source.filePath ?? source.uri ?? source.url,
+    )
+  const title =
+    readString(source.title) ??
+    readString(source.name) ??
+    readString(source.label) ??
+    readString(source.filename) ??
+    (pathValue ? path.basename(pathValue) : undefined) ??
+    '附件'
+  const kind =
+    readString(source.kind) ??
+    readString(source.type) ??
+    (pathValue ? path.extname(pathValue).slice(1) || 'attachment' : 'attachment')
+  const url = readString(source.url)
+
+  return {
+    attachmentId:
+      readString(source.id) ??
+      readString(source.attachment_id) ??
+      `${origin}:${messageId ?? 'session'}:${title}`,
+    title,
+    kind,
+    path: pathValue && path.isAbsolute(pathValue) ? pathValue : undefined,
+    url: url && /^https?:\/\//i.test(url) ? url : undefined,
+    mimeType: readString(source.mime_type) ?? readString(source.mimeType),
+    size: readNumber(source.size) ?? readNumber(source.bytes),
+    text: readString(source.text) ?? readString(source.caption) ?? readString(source.description),
+    origin,
+    messageId,
+    metadata: Object.fromEntries(
+      Object.entries(source).filter(
+        ([key]) =>
+          ![
+            'id',
+            'attachment_id',
+            'title',
+            'name',
+            'label',
+            'filename',
+            'kind',
+            'type',
+            'path',
+            'file_path',
+            'filePath',
+            'uri',
+            'url',
+            'mime_type',
+            'mimeType',
+            'size',
+            'bytes',
+            'text',
+            'caption',
+            'description',
+          ].includes(key),
+      ),
+    ),
+  }
+}
+
+function parseWeclawMessage(filePath: string, source: unknown): WeclawSessionMessage | null {
+  if (!isPlainRecord(source)) return null
+  const messageId =
+    readString(source.message_id) ??
+    readString(source.id) ??
+    readString(source.uuid) ??
+    `${readString(source.created_at) ?? readString(source.createdAt) ?? 'message'}:${readString(source.role) ?? 'unknown'}`
+  const attachments = collectAttachmentRecords(
+    source.attachments ?? source.attachment ?? source.media ?? source.files,
+  )
+    .map(item => parseWeclawAttachment(filePath, item, 'message', messageId))
+    .filter((item): item is WeclawSessionAttachment => Boolean(item))
+  const metadata = Object.fromEntries(
+    Object.entries(source).filter(
+      ([key]) =>
+        ![
+          'message_id',
+          'id',
+          'uuid',
+          'role',
+          'kind',
+          'text',
+          'content',
+          'message',
+          'agent_name',
+          'agentName',
+          'created_at',
+          'createdAt',
+          'attachments',
+          'attachment',
+          'media',
+          'files',
+        ].includes(key),
+    ),
+  )
+  const text =
+    readString(source.text) ??
+    readString(source.content) ??
+    readString(source.message) ??
+    readString(source.summary)
+
+  return {
+    messageId,
+    role: readString(source.role) ?? 'unknown',
+    kind: readString(source.kind),
+    text,
+    agentName: readString(source.agent_name) ?? readString(source.agentName),
+    createdAt: readString(source.created_at) ?? readString(source.createdAt),
+    attachments,
+    metadata,
+  }
+}
+
+function summarizeWeclawSession(filePath: string, raw: Record<string, unknown>): WeclawSessionDetail {
+  const messages = collectAttachmentRecords(raw.messages ?? raw.conversation ?? raw.turns ?? [])
+  const parsedMessages = messages
+    .map(message => parseWeclawMessage(filePath, message))
+    .filter((message): message is WeclawSessionMessage => Boolean(message))
+  const topLevelMedia = collectAttachmentRecords(raw.media ?? raw.attachments ?? raw.files ?? [])
+    .map(item => parseWeclawAttachment(filePath, item, 'session'))
+    .filter((item): item is WeclawSessionAttachment => Boolean(item))
+  const canonicalMetadata = Object.fromEntries(
+    Object.entries(raw).filter(([key]) => !['messages', 'media'].includes(key)),
+  )
+  const sessionId = path.basename(filePath, path.extname(filePath))
+  const userId = readString(raw.user_id) ?? readString(raw.userId)
+  const updatedAt = readString(raw.updated_at) ?? readString(raw.updatedAt)
+  const preview =
+    [...parsedMessages]
+      .reverse()
+      .map(message => message.text?.trim())
+      .find(Boolean) ??
+    readString(raw.preview) ??
+    readString(raw.title)
+  const title =
+    readString(raw.title) ??
+    readString(raw.session_title) ??
+    readString(raw.subject) ??
+    preview?.split(/\r?\n/).find(Boolean)?.slice(0, 96) ??
+    userId ??
+    sessionId
+  const agentReplyCount = parsedMessages.filter(message =>
+    ['agent', 'assistant'].includes(message.role) ||
+    ['reply', 'response'].includes(String(message.kind ?? '').toLowerCase()),
+  ).length
+  const nestedMediaCount = parsedMessages.reduce(
+    (count, message) => count + message.attachments.length,
+    0,
+  )
+  const canonicalSessionId = canonicalWeclawSessionId({
+    sessionId,
+    userId,
+    title,
+    canonicalMetadata,
+  })
+
+  return {
+    sessionId,
+    canonicalSessionId,
+    duplicateSessionIds: [],
+    hidden: false,
+    archived: false,
+    filePath,
+    userId,
+    updatedAt,
+    title,
+    preview,
+    messageCount: parsedMessages.length,
+    agentReplyCount,
+    mediaCount: topLevelMedia.length + nestedMediaCount,
+    canonicalMetadata,
+    messages: parsedMessages,
+    media: topLevelMedia,
+  }
+}
+
+function readWeclawConfigSaveDir(): string | undefined {
+  if (!fs.existsSync(WECLAW_CONFIG_PATH)) return undefined
+  try {
+    const raw = JSON.parse(fs.readFileSync(WECLAW_CONFIG_PATH, 'utf-8')) as Record<string, unknown>
+    return readString(raw.save_dir)
+  } catch {
+    return undefined
+  }
+}
+
+function resolveWeclawWorkspaceResolution(): WeclawWorkspaceResolution {
+  const candidates = [
+    { value: readWeclawConfigSaveDir(), source: 'config' as const },
+    { value: readString(process.env.WECLAW_SAVE_DIR), source: 'env' as const },
+    { value: DEFAULT_WECLAW_WORKSPACE, source: 'default' as const },
+  ].filter((candidate): candidate is { value: string; source: 'config' | 'env' | 'default' } =>
+    Boolean(candidate.value),
+  )
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate.value) && fs.statSync(candidate.value).isDirectory()) {
+      return { workspaceRoot: candidate.value, source: candidate.source }
+    }
+  }
+
+  if (candidates[0]) {
+    return { workspaceRoot: candidates[0].value, source: candidates[0].source }
+  }
+
+  return { workspaceRoot: null, source: 'unresolved' }
+}
+
+function resolveWeclawWorkspaceRoot(): string | null {
+  return resolveWeclawWorkspaceResolution().workspaceRoot
+}
+
+function resolveWeclawSessionsDir(): string | null {
+  const workspaceRoot = resolveWeclawWorkspaceRoot()
+  if (!workspaceRoot) return null
+  return path.join(workspaceRoot, '.obsidian', 'sessions')
+}
+
+function getWeclawSessionSourceStatus(): WeclawSessionSourceStatus {
+  const resolution = resolveWeclawWorkspaceResolution()
+  const sessionsDir = resolution.workspaceRoot
+    ? path.join(resolution.workspaceRoot, '.obsidian', 'sessions')
+    : null
+  const sessionsDirExists = Boolean(
+    sessionsDir && fs.existsSync(sessionsDir) && fs.statSync(sessionsDir).isDirectory(),
+  )
+  const sessionCount = sessionsDirExists
+    ? fs.readdirSync(sessionsDir!, { withFileTypes: true }).filter(
+        entry => entry.isFile() && entry.name.endsWith('.json'),
+      ).length
+    : 0
+
+  return {
+    workspaceRoot: resolution.workspaceRoot,
+    workspaceSource: resolution.source,
+    sessionsDir,
+    sessionsDirExists,
+    sessionCount,
+  }
+}
+
+function loadWeclawSessionFiles(): Array<{ sessionId: string; filePath: string; mtimeMs: number }> {
+  const sessionsDir = resolveWeclawSessionsDir()
+  if (!sessionsDir || !fs.existsSync(sessionsDir)) return []
+  return fs
+    .readdirSync(sessionsDir, { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.json'))
+    .map(entry => path.join(sessionsDir, entry.name))
+    .map(filePath => {
+      const stat = fs.statSync(filePath)
+      return {
+        sessionId: path.basename(filePath, path.extname(filePath)),
+        filePath,
+        mtimeMs: stat.mtimeMs,
+      }
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)
+}
+
+function readWeclawSessionDetailByFile(filePath: string): WeclawSessionDetail | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown
+    if (!isPlainRecord(raw)) return null
+    return summarizeWeclawSession(filePath, raw)
+  } catch (error) {
+    log('failed to read weclaw session', { filePath, error })
+    return null
+  }
+}
+
+function listWeclawSessions(): WeclawSessionSummary[] {
+  const deduped = new Map<string, WeclawSessionDetail>()
+  for (const session of loadWeclawSessionFiles()
+    .map(({ filePath }) => readWeclawSessionDetailByFile(filePath))
+    .filter((session): session is WeclawSessionDetail => Boolean(session))
+  ) {
+    const existing = deduped.get(session.canonicalSessionId)
+    if (!existing) {
+      deduped.set(session.canonicalSessionId, session)
+      continue
+    }
+    const existingTs = Date.parse(existing.updatedAt ?? '') || 0
+    const currentTs = Date.parse(session.updatedAt ?? '') || 0
+    const primary = currentTs >= existingTs ? session : existing
+    const secondary = currentTs >= existingTs ? existing : session
+    primary.duplicateSessionIds = [...new Set([
+      ...primary.duplicateSessionIds,
+      secondary.sessionId,
+      ...secondary.duplicateSessionIds,
+    ])]
+    deduped.set(session.canonicalSessionId, primary)
+  }
+  return [...deduped.values()].map(session => {
+    const uiFlags =
+      getWeclawSessionUiState()[session.canonicalSessionId] ?? {
+        hidden: false,
+        archived: false,
+      }
+    return {
+      sessionId: session.sessionId,
+      canonicalSessionId: session.canonicalSessionId,
+      duplicateSessionIds: session.duplicateSessionIds,
+      hidden: uiFlags.hidden,
+      archived: uiFlags.archived,
+      filePath: session.filePath,
+      userId: session.userId,
+      updatedAt: session.updatedAt,
+      title: session.title,
+      preview: session.preview,
+      messageCount: session.messageCount,
+      agentReplyCount: session.agentReplyCount,
+      mediaCount: session.mediaCount,
+      sourceLabel: session.userId ? 'WeChat 会话' : 'WeClaw 会话',
+      canonicalMetadata: session.canonicalMetadata,
+    }
+  })
+}
+
+function getWeclawSession(sessionId: string): WeclawSessionDetail | null {
+  const target = readString(sessionId)
+  if (!target) return null
+  for (const entry of loadWeclawSessionFiles()) {
+    if (entry.sessionId === target) {
+      const session = readWeclawSessionDetailByFile(entry.filePath)
+      if (!session) return null
+      const uiFlags =
+        getWeclawSessionUiState()[session.canonicalSessionId] ?? {
+          hidden: false,
+          archived: false,
+        }
+      return {
+        ...session,
+        hidden: uiFlags.hidden,
+        archived: uiFlags.archived,
+        duplicateSessionIds: listWeclawSessions()
+          .find(item => item.sessionId === session.sessionId)
+          ?.duplicateSessionIds ?? [],
+      }
+    }
+  }
+  return null
 }
 
 async function probeHttpOk(url: string | undefined): Promise<boolean> {
@@ -244,8 +769,12 @@ async function collectRuntimeStatus(
     process.env.LONGCLAW_AGENT_OS_BASE_URL ?? process.env.LONGCLAW_HERMES_AGENT_OS_BASE_URL
   const dueDiligenceBaseUrl = process.env.LONGCLAW_DUE_DILIGENCE_BASE_URL
   const signalsStateRoot = process.env.LONGCLAW_SIGNALS_STATE_ROOT
+  const signalsWebBaseUrl = process.env.LONGCLAW_SIGNALS_WEB_BASE_URL
+  const signalsWeb2BaseUrl = process.env.LONGCLAW_SIGNALS_WEB2_BASE_URL
   const acpBridge = inspectConfiguredAcpBridge()
-  const localRuntimeSeat = await probeLocalRuntimeSeat()
+  const currentSeatPreference = getLocalRuntimeSeatPreference()
+  const localRuntimeSeat = await probeLocalRuntimeSeat(currentSeatPreference)
+  const localRuntimeApiSeat = await probeLocalRuntimeSeat('force_local_runtime_api')
 
   const duePackVisible = packs.some(pack => pack.pack_id === 'due_diligence')
   const signalsPackVisible = packs.some(pack => pack.pack_id === 'signals')
@@ -266,22 +795,30 @@ async function collectRuntimeStatus(
     due_diligence_connected: Boolean(duePackVisible || dueHealthReady),
     due_diligence_base_url: dueDiligenceBaseUrl ?? '',
     signals_available: Boolean(
-      signalsPackVisible || (signalsStateRoot && fs.existsSync(signalsStateRoot)),
+      signalsPackVisible ||
+        (signalsStateRoot && fs.existsSync(signalsStateRoot)) ||
+        signalsWebBaseUrl ||
+        signalsWeb2BaseUrl,
     ),
     signals_state_root: signalsStateRoot ?? '',
+    signals_web_base_url: signalsWebBaseUrl ?? '',
+    signals_web2_base_url: signalsWeb2BaseUrl ?? '',
     local_acp_available: acpBridge.available,
     local_acp_script: acpBridge.path,
     local_acp_source: acpBridge.source,
     local_runtime_seat: localRuntimeSeat.seat,
+    local_runtime_seat_preference: currentSeatPreference,
+    local_runtime_seat_override_active: currentSeatPreference !== 'auto',
     local_runtime_available: localRuntimeSeat.available,
     local_runtime_api_url: localRuntimeSeat.localRuntimeApiUrl ?? '',
-    local_runtime_api_available:
-      localRuntimeSeat.seat === 'local_runtime_api' ? localRuntimeSeat.healthOk : false,
+    local_runtime_api_available: localRuntimeApiSeat.healthOk,
+    dev_machine_acp_takeover:
+      currentSeatPreference === 'auto' &&
+      acpBridge.available &&
+      localRuntimeSeat.seat === 'acp_bridge',
     runtime_profile:
       process.env.LONGCLAW_RUNTIME_PROFILE ??
-      (localRuntimeSeat.seat === 'local_runtime_api'
-        ? 'packaged_local_runtime'
-        : 'dev_local_acp_bridge'),
+      localRuntimeSeat.runtimeProfile,
   }
 }
 
@@ -322,6 +859,10 @@ interface SkillInfo {
   path: string
   description: string
   project?: string
+  source?: string
+  registry_id?: string
+  managed?: boolean
+  health?: string
 }
 
 interface PluginInfo {
@@ -331,6 +872,16 @@ interface PluginInfo {
   description: string
   source: string
   project?: string
+  registry_id?: string
+  managed?: boolean
+  health?: string
+}
+
+type CapabilityManagerSettings = {
+  disabled_capabilities: string[]
+  capability_groups: Record<string, string>
+  extra_skill_roots: string[]
+  extra_plugin_roots: string[]
 }
 
 type AgentStreamEvent = {
@@ -361,28 +912,271 @@ function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths.filter(Boolean).map(item => path.resolve(item)))]
 }
 
+function expandUserPath(input: string): string {
+  const trimmed = input.trim()
+  if (trimmed === '~') return os.homedir()
+  if (trimmed.startsWith('~/')) return path.join(os.homedir(), trimmed.slice(2))
+  return trimmed
+}
+
+function normalizeCapabilityIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.map(item => String(item ?? '').trim()).filter(Boolean))].sort()
+}
+
+function normalizeCapabilityGroupMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, group]) => [String(key).trim(), String(group ?? '').trim()] as const)
+      .filter(([key, group]) => Boolean(key) && Boolean(group))
+      .sort(([left], [right]) => left.localeCompare(right)),
+  )
+}
+
+function normalizeDiscoveryRoots(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return uniquePaths(
+    value
+      .map(item => String(item ?? '').trim())
+      .filter(Boolean)
+      .map(expandUserPath),
+  )
+}
+
+function defaultCapabilityManagerSettings(): CapabilityManagerSettings {
+  return {
+    disabled_capabilities: [],
+    capability_groups: {},
+    extra_skill_roots: [],
+    extra_plugin_roots: [],
+  }
+}
+
+function normalizeCapabilityManagerSettings(
+  value: unknown,
+  base: CapabilityManagerSettings = defaultCapabilityManagerSettings(),
+): CapabilityManagerSettings {
+  const record =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {}
+  return {
+    disabled_capabilities:
+      'disabled_capabilities' in record
+        ? normalizeCapabilityIdList(record.disabled_capabilities)
+        : base.disabled_capabilities,
+    capability_groups:
+      'capability_groups' in record
+        ? normalizeCapabilityGroupMap(record.capability_groups)
+        : base.capability_groups,
+    extra_skill_roots:
+      'extra_skill_roots' in record
+        ? normalizeDiscoveryRoots(record.extra_skill_roots)
+        : base.extra_skill_roots,
+    extra_plugin_roots:
+      'extra_plugin_roots' in record
+        ? normalizeDiscoveryRoots(record.extra_plugin_roots)
+        : base.extra_plugin_roots,
+  }
+}
+
+function loadCapabilityManagerSettings(): CapabilityManagerSettings {
+  if (!fs.existsSync(CAPABILITY_MANAGER_SETTINGS_PATH)) {
+    return defaultCapabilityManagerSettings()
+  }
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(CAPABILITY_MANAGER_SETTINGS_PATH, 'utf-8'),
+    ) as Record<string, unknown>
+    return normalizeCapabilityManagerSettings(raw)
+  } catch (error) {
+    log('failed to load capability manager settings', CAPABILITY_MANAGER_SETTINGS_PATH, error)
+    return defaultCapabilityManagerSettings()
+  }
+}
+
+function persistCapabilityManagerSettings(settings: CapabilityManagerSettings): CapabilityManagerSettings {
+  const normalized = normalizeCapabilityManagerSettings(settings)
+  fs.mkdirSync(LONGCLAW_RUNTIME_DIR, { recursive: true })
+  fs.writeFileSync(
+    CAPABILITY_MANAGER_SETTINGS_PATH,
+    `${JSON.stringify(normalized, null, 2)}\n`,
+    'utf-8',
+  )
+  return normalized
+}
+
+let capabilityManagerSettings = loadCapabilityManagerSettings()
+let runtimeCapabilityRegistry = readRuntimeCapabilityRegistry(
+  CAPABILITY_REGISTRY_PATH,
+  LONGCLAW_RUNTIME_DIR,
+)
+
+function getRuntimeCapabilityRegistry(): RuntimeCapabilityRegistry {
+  runtimeCapabilityRegistry = readRuntimeCapabilityRegistry(
+    CAPABILITY_REGISTRY_PATH,
+    LONGCLAW_RUNTIME_DIR,
+  )
+  return runtimeCapabilityRegistry
+}
+
+function registerManagedCapability(
+  input: { kind: RuntimeCapabilityKind; sourcePath: string; label?: string },
+): RuntimeCapabilityRegistry {
+  runtimeCapabilityRegistry = registerRuntimeCapability({
+    runtimeDir: LONGCLAW_RUNTIME_DIR,
+    registryPath: CAPABILITY_REGISTRY_PATH,
+    kind: input.kind,
+    sourcePath: input.sourcePath,
+    label: input.label,
+    metadata: {
+      current_cwd: currentCwd,
+    },
+  })
+  return runtimeCapabilityRegistry
+}
+
+function removeManagedCapability(registryId: string): RuntimeCapabilityRegistry {
+  runtimeCapabilityRegistry = removeRuntimeCapability({
+    runtimeDir: LONGCLAW_RUNTIME_DIR,
+    registryPath: CAPABILITY_REGISTRY_PATH,
+    registryId,
+  })
+  return runtimeCapabilityRegistry
+}
+
+function rescanManagedCapabilities(): RuntimeCapabilityRegistry {
+  runtimeCapabilityRegistry = rescanRuntimeCapabilityRegistry(
+    CAPABILITY_REGISTRY_PATH,
+    LONGCLAW_RUNTIME_DIR,
+  )
+  return runtimeCapabilityRegistry
+}
+
+function loadWeclawSessionUiState(): WeclawSessionUiState {
+  if (!fs.existsSync(WECLAW_SESSION_UI_STATE_PATH)) return {}
+  try {
+    return normalizeWeclawSessionUiState(
+      JSON.parse(fs.readFileSync(WECLAW_SESSION_UI_STATE_PATH, 'utf-8')),
+    )
+  } catch (error) {
+    log('failed to load weclaw session ui state', WECLAW_SESSION_UI_STATE_PATH, error)
+    return {}
+  }
+}
+
+function persistWeclawSessionUiState(state: WeclawSessionUiState): WeclawSessionUiState {
+  const normalized = normalizeWeclawSessionUiState(state)
+  fs.mkdirSync(LONGCLAW_RUNTIME_DIR, { recursive: true })
+  fs.writeFileSync(
+    WECLAW_SESSION_UI_STATE_PATH,
+    `${JSON.stringify(normalized, null, 2)}\n`,
+    'utf-8',
+  )
+  return normalized
+}
+
+let weclawSessionUiState = loadWeclawSessionUiState()
+
+function getWeclawSessionUiState(): WeclawSessionUiState {
+  return weclawSessionUiState
+}
+
+function updateWeclawSessionUiState(
+  canonicalSessionId: string,
+  patch: Partial<{ hidden: boolean; archived: boolean }>,
+): WeclawSessionUiState {
+  const target = readString(canonicalSessionId)
+  if (!target) {
+    throw new Error('canonical session id is required')
+  }
+  weclawSessionUiState = persistWeclawSessionUiState(
+    mergeWeclawSessionUiFlags(weclawSessionUiState, target, patch),
+  )
+  return weclawSessionUiState
+}
+
+function getCapabilityManagerSettings(): CapabilityManagerSettings {
+  return capabilityManagerSettings
+}
+
+function updateCapabilityManagerSettings(
+  patch: unknown,
+): CapabilityManagerSettings {
+  capabilityManagerSettings = persistCapabilityManagerSettings(
+    normalizeCapabilityManagerSettings(patch, capabilityManagerSettings),
+  )
+  return capabilityManagerSettings
+}
+
 function workspaceRoots(): string[] {
   return uniquePaths(
     WORKSPACE_ROOT_CANDIDATES.filter(candidate => fs.existsSync(candidate)),
   )
 }
 
-const SKILL_SCAN_DIRS = uniquePaths(
-  workspaceRoots().flatMap(root =>
-    KNOWN_SKILL_PROJECTS.map(project => path.join(root, project)),
-  ),
-)
+function runtimeRegistryEntryByManagedPath(): Map<string, RuntimeCapabilityRegistry['entries'][number]> {
+  return new Map(
+    getRuntimeCapabilityRegistry().entries.map(entry => [path.resolve(entry.managed_path), entry] as const),
+  )
+}
+
+function configuredSkillScanDirs(
+  settings: CapabilityManagerSettings = getCapabilityManagerSettings(),
+): string[] {
+  const runtimeRoots = runtimeDiscoveryRoots(LONGCLAW_RUNTIME_DIR)
+  return uniquePaths([
+    ...workspaceRoots().flatMap(root =>
+      KNOWN_SKILL_PROJECTS.map(project => path.join(root, project)),
+    ),
+    ...runtimeRoots.skills,
+    ...settings.extra_skill_roots,
+  ])
+}
 
 function scanDirForSkills(dir: string, projectName: string): SkillInfo[] {
   const skills: SkillInfo[] = []
   if (!fs.existsSync(dir)) return skills
+  const registryEntry = runtimeRegistryEntryByManagedPath().get(path.resolve(dir))
 
   // CLAUDE.md
   const claudeMd = path.join(dir, 'CLAUDE.md')
   if (fs.existsSync(claudeMd)) {
     const content = fs.readFileSync(claudeMd, 'utf-8')
     const title = content.split('\n').find(l => l.startsWith('# '))?.replace('# ', '') || projectName
-    skills.push({ name: `${projectName}/CLAUDE.md`, path: claudeMd, description: title.slice(0, 80), project: projectName })
+    skills.push({
+      name: `${projectName}/CLAUDE.md`,
+      path: claudeMd,
+      description: title.slice(0, 80),
+      project: projectName,
+      source: registryEntry?.source ?? 'filesystem',
+      registry_id: registryEntry?.registry_id,
+      managed: Boolean(registryEntry),
+      health: registryEntry?.health,
+    })
+  }
+
+  // Direct SKILL.md capability roots, used by runtime-managed overlays.
+  const directSkillMd = path.join(dir, 'SKILL.md')
+  if (fs.existsSync(directSkillMd)) {
+    const content = fs.readFileSync(directSkillMd, 'utf-8')
+    const description =
+      content
+        .split('\n')
+        .find(l => l.trim() && !l.startsWith('#') && !l.startsWith('---'))
+        ?.trim()
+        .slice(0, 80) || projectName
+    skills.push({
+      name: registryEntry?.label ?? projectName,
+      path: directSkillMd,
+      description,
+      project: projectName,
+      source: registryEntry?.source ?? 'filesystem',
+      registry_id: registryEntry?.registry_id,
+      managed: Boolean(registryEntry),
+      health: registryEntry?.health,
+    })
   }
 
   // .claude/skills/
@@ -395,7 +1189,16 @@ function scanDirForSkills(dir: string, projectName: string): SkillInfo[] {
         if (fs.existsSync(skillMd)) {
           const content = fs.readFileSync(skillMd, 'utf-8')
           const desc = content.split('\n').find(l => l.trim() && !l.startsWith('#') && !l.startsWith('---')) || ''
-          skills.push({ name: entry.name, path: skillMd, description: desc.trim().slice(0, 80), project: projectName })
+          skills.push({
+            name: entry.name,
+            path: skillMd,
+            description: desc.trim().slice(0, 80),
+            project: projectName,
+            source: registryEntry?.source ?? 'filesystem',
+            registry_id: registryEntry?.registry_id,
+            managed: Boolean(registryEntry),
+            health: registryEntry?.health,
+          })
         }
       }
     } catch {}
@@ -404,13 +1207,16 @@ function scanDirForSkills(dir: string, projectName: string): SkillInfo[] {
   return skills
 }
 
-function discoverAllSkills(): SkillInfo[] {
+function discoverAllSkills(
+  settings: CapabilityManagerSettings = getCapabilityManagerSettings(),
+): SkillInfo[] {
   const all: SkillInfo[] = []
-  for (const dir of SKILL_SCAN_DIRS) {
+  const scanDirs = configuredSkillScanDirs(settings)
+  for (const dir of scanDirs) {
     const projectName = path.basename(dir)
     all.push(...scanDirForSkills(dir, projectName))
   }
-  if (!SKILL_SCAN_DIRS.includes(currentCwd)) {
+  if (!scanDirs.includes(currentCwd)) {
     all.push(...scanDirForSkills(currentCwd, path.basename(currentCwd)))
   }
   const unique = new Map<string, SkillInfo>()
@@ -441,6 +1247,7 @@ function pluginInfoForDir(dir: string): PluginInfo | null {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return null
 
   const baseName = path.basename(dir)
+  const registryEntry = runtimeRegistryEntryByManagedPath().get(path.resolve(dir))
   const codexPluginPath = path.join(dir, '.codex-plugin', 'plugin.json')
   const packageJsonPath = path.join(dir, 'package.json')
   const isPluginLike =
@@ -467,13 +1274,24 @@ function pluginInfoForDir(dir: string): PluginInfo | null {
     label,
     path: dir,
     description,
-    source: fs.existsSync(codexPluginPath) ? 'codex_plugin' : 'workspace_package',
+    source: registryEntry?.source ?? (fs.existsSync(codexPluginPath) ? 'codex_plugin' : 'workspace_package'),
     project: baseName,
+    registry_id: registryEntry?.registry_id,
+    managed: Boolean(registryEntry),
+    health: registryEntry?.health,
   }
 }
 
-function discoverCapabilityPlugins(): PluginInfo[] {
-  const roots = uniquePaths([...workspaceRoots(), currentCwd])
+function discoverCapabilityPlugins(
+  settings: CapabilityManagerSettings = getCapabilityManagerSettings(),
+): PluginInfo[] {
+  const runtimeRoots = runtimeDiscoveryRoots(LONGCLAW_RUNTIME_DIR)
+  const roots = uniquePaths([
+    ...workspaceRoots(),
+    currentCwd,
+    ...runtimeRoots.plugins,
+    ...settings.extra_plugin_roots,
+  ])
   const discovered = new Map<string, PluginInfo>()
 
   for (const root of roots) {
@@ -559,6 +1377,7 @@ function capabilityEntryFromPack(pack: LongclawDomainPackDescriptor): LongclawCa
 }
 
 function capabilityEntryFromSkill(skill: SkillInfo): LongclawCapabilityEntry {
+  const configPath = fs.existsSync(skill.path) ? skill.path : null
   return {
     capability_id: `skill:${skill.project ?? 'workspace'}:${skill.name}`,
     kind: 'skill',
@@ -573,11 +1392,17 @@ function capabilityEntryFromSkill(skill: SkillInfo): LongclawCapabilityEntry {
     metadata: {
       path: skill.path,
       project: skill.project ?? null,
+      config_path: configPath,
+      managed: skill.managed ?? false,
+      registry_id: skill.registry_id ?? null,
+      health: skill.health ?? null,
+      source: skill.source ?? 'filesystem',
     },
   }
 }
 
 function capabilityEntryFromPlugin(plugin: PluginInfo): LongclawCapabilityEntry {
+  const configPath = path.join(plugin.path, '.codex-plugin', 'plugin.json')
   return {
     capability_id: `plugin:${plugin.plugin_id}`,
     kind: 'plugin',
@@ -591,6 +1416,26 @@ function capabilityEntryFromPlugin(plugin: PluginInfo): LongclawCapabilityEntry 
     provisional: true,
     metadata: {
       path: plugin.path,
+      config_path: fs.existsSync(configPath) ? configPath : null,
+      managed: plugin.managed ?? false,
+      registry_id: plugin.registry_id ?? null,
+      health: plugin.health ?? null,
+    },
+  }
+}
+
+function applyCapabilityManagerOverlay(
+  capability: LongclawCapabilityEntry,
+  settings: CapabilityManagerSettings,
+): LongclawCapabilityEntry {
+  const disabled = settings.disabled_capabilities.includes(capability.capability_id)
+  const group = settings.capability_groups[capability.capability_id]
+  return {
+    ...capability,
+    metadata: {
+      ...capability.metadata,
+      disabled,
+      group: group ?? null,
     },
   }
 }
@@ -654,13 +1499,15 @@ function recentCapabilityEntry(task: LongclawTask): LongclawCapabilityEntry {
 }
 
 async function buildCapabilitySubstrateSummary(): Promise<LongclawCapabilitySubstrateSummary> {
+  const settings = getCapabilityManagerSettings()
   const [overviewResult, packsResult, tasksResult] = await Promise.allSettled([
     getControlPlaneClient().getOverview(),
     getControlPlaneClient().listPacks(),
     getControlPlaneClient().listTasks(8),
   ])
-  const skills = discoverAllSkills()
-  const plugins = discoverCapabilityPlugins()
+  const skills = discoverAllSkills(settings)
+  const plugins = discoverCapabilityPlugins(settings)
+  const capabilityRegistry = getRuntimeCapabilityRegistry()
   const packs =
     packsResult.status === 'fulfilled'
       ? packsResult.value
@@ -673,15 +1520,17 @@ async function buildCapabilitySubstrateSummary(): Promise<LongclawCapabilitySubs
     packs,
     overviewResult.status === 'fulfilled' && getControlPlaneClient().isHermesBacked(),
   )
-  const seatResolution = resolveLocalRuntimeSeat()
+  const seatResolution = resolveLocalRuntimeSeat(getLocalRuntimeSeatPreference())
 
   return LongclawCapabilitySubstrateSummarySchema.parse({
     generated_at: new Date().toISOString(),
     source,
     provisional: true,
     flagship_packs: packs.filter(pack => ['signals', 'due_diligence'].includes(pack.pack_id)),
-    skills: skills.map(capabilityEntryFromSkill),
-    plugins: plugins.map(capabilityEntryFromPlugin),
+    skills: skills.map(capabilityEntryFromSkill).map(entry => applyCapabilityManagerOverlay(entry, settings)),
+    plugins: plugins
+      .map(capabilityEntryFromPlugin)
+      .map(entry => applyCapabilityManagerOverlay(entry, settings)),
     packs: packs.map(capabilityEntryFromPack),
     aliases: [],
     presets: [
@@ -733,11 +1582,17 @@ async function buildCapabilitySubstrateSummary(): Promise<LongclawCapabilitySubs
       runtime_profile: currentRuntimeProfile('local', seatResolution),
       model_plane: 'cloud_provider',
       local_runtime_seat: seatResolution.seat,
+      local_runtime_seat_preference: seatResolution.preference,
       runtime_status: runtimeStatus,
       packs_count: packs.length,
       skills_count: skills.length,
       plugins_count: plugins.length,
       tasks_count: tasks.length,
+      capability_manager: settings,
+      capability_manager_settings_path: CAPABILITY_MANAGER_SETTINGS_PATH,
+      capability_registry: capabilityRegistry,
+      capability_registry_path: CAPABILITY_REGISTRY_PATH,
+      runtime_capability_roots: runtimeDiscoveryRoots(LONGCLAW_RUNTIME_DIR),
     },
   })
 }
@@ -755,7 +1610,10 @@ async function handleProvisionalLaunch(
   const runId = `run-local-${Date.now()}`
   const prompt = String(intent.requested_outcome ?? intent.raw_text).trim()
   const workMode = intent.work_mode
-  const seatResolution = resolveLaunchSeat(workMode)
+  const seatPreference = normalizeLocalRuntimeSeatPreference(
+    intent.metadata.local_runtime_seat_preference,
+  )
+  const seatResolution = resolveLaunchSeat(workMode, seatPreference)
   const localRuntimeSeat = String(
     intent.metadata.local_runtime_seat ?? seatResolution.seat,
   ) as LocalRuntimeSeat
@@ -816,7 +1674,7 @@ async function handleProvisionalLaunch(
         runtime_profile: runtimeProfile as 'dev_local_acp_bridge' | 'packaged_local_runtime' | 'cloud_managed_runtime',
         model_plane: 'cloud_provider',
         raw_text: intent.raw_text,
-      })
+      }, seatResolution.preference)
       taskStatus = 'running'
       runStatus = 'running'
       runtimeSummary = 'Accepted by local runtime API'
@@ -884,6 +1742,7 @@ async function handleProvisionalLaunch(
       execution_plane: executionPlane,
       workspace_target: workspaceTarget,
       local_runtime_seat: localRuntimeSeat,
+      local_runtime_seat_preference: seatResolution.preference,
       mentions: intent.mentions,
       fallback_runtime: localRuntimeSeat === 'acp_bridge' ? getAgentMode() : localRuntimeSeat,
       error: errorMessage || undefined,
@@ -927,6 +1786,7 @@ async function handleProvisionalLaunch(
       workspace_target: workspaceTarget,
       fallback_runtime: localRuntimeSeat === 'acp_bridge' ? getAgentMode() : localRuntimeSeat,
       local_runtime_seat: localRuntimeSeat,
+      local_runtime_seat_preference: seatResolution.preference,
       local_runtime_dispatch: seatDispatchResult,
       raw_text: intent.raw_text,
     },
@@ -966,6 +1826,7 @@ async function handleProvisionalLaunch(
             execution_plane: executionPlane,
             workspace_target: workspaceTarget,
             local_runtime_seat: localRuntimeSeat,
+            local_runtime_seat_preference: seatResolution.preference,
           },
         }),
       ]
@@ -993,6 +1854,7 @@ async function handleProvisionalLaunch(
       workspace_target: workspaceTarget,
       fallback_runtime: localRuntimeSeat === 'acp_bridge' ? getAgentMode() : localRuntimeSeat,
       local_runtime_seat: localRuntimeSeat,
+      local_runtime_seat_preference: seatResolution.preference,
       local_runtime_dispatch: seatDispatchResult,
     },
   })
@@ -1003,7 +1865,10 @@ async function handleLaunchIntent(
   payload: unknown,
 ) {
   const parsedIntent = LongclawLaunchIntentSchema.parse(payload)
-  const seatResolution = resolveLaunchSeat(parsedIntent.work_mode)
+  const seatPreference = normalizeLocalRuntimeSeatPreference(
+    parsedIntent.metadata.local_runtime_seat_preference,
+  )
+  const seatResolution = resolveLaunchSeat(parsedIntent.work_mode, seatPreference)
   const intent = withLaunchSeatMetadata(parsedIntent, seatResolution)
   try {
     const receipt = await getControlPlaneClient().launch(intent)
@@ -1038,7 +1903,7 @@ async function handleLaunchIntent(
               | 'cloud_managed_runtime',
           model_plane: 'cloud_provider',
           raw_text: intent.raw_text,
-        })
+        }, seatResolution.preference)
       }
     }
 
@@ -1049,6 +1914,7 @@ async function handleLaunchIntent(
         metadata: {
           ...(receipt.task.metadata ?? {}),
           local_runtime_seat: seatResolution.seat,
+          local_runtime_seat_preference: seatResolution.preference,
         },
       },
       run: {
@@ -1056,11 +1922,13 @@ async function handleLaunchIntent(
         metadata: {
           ...(receipt.run.metadata ?? {}),
           local_runtime_seat: seatResolution.seat,
+          local_runtime_seat_preference: seatResolution.preference,
         },
       },
       metadata: {
         ...(receipt.metadata ?? {}),
         local_runtime_seat: seatResolution.seat,
+        local_runtime_seat_preference: seatResolution.preference,
       },
     })
   } catch (error) {
@@ -1151,7 +2019,33 @@ app.whenReady().then(() => {
   ipcMain.handle('launch:get-task', async (_event, taskId: string) =>
     getControlPlaneClient().getTask(taskId),
   )
+  ipcMain.handle('weclaw:list-sessions', () => listWeclawSessions())
+  ipcMain.handle('weclaw:get-session', (_event, sessionId: string) => getWeclawSession(sessionId))
+  ipcMain.handle('weclaw:get-source-status', () => getWeclawSessionSourceStatus())
+  ipcMain.handle(
+    'weclaw:update-session-state',
+    (_event, canonicalSessionId: string, patch: Partial<{ hidden: boolean; archived: boolean }>) =>
+      updateWeclawSessionUiState(canonicalSessionId, patch),
+  )
   ipcMain.handle('capability-substrate:get-summary', buildCapabilitySubstrateSummary)
+  ipcMain.handle('capability-manager:get-settings', () => getCapabilityManagerSettings())
+  ipcMain.handle('capability-manager:update-settings', (_event, patch: unknown) =>
+    updateCapabilityManagerSettings(patch),
+  )
+  ipcMain.handle('capability-manager:get-registry', () => getRuntimeCapabilityRegistry())
+  ipcMain.handle(
+    'capability-manager:register',
+    (_event, payload: { kind: RuntimeCapabilityKind; sourcePath: string; label?: string }) =>
+      registerManagedCapability(payload),
+  )
+  ipcMain.handle('capability-manager:remove', (_event, registryId: string) =>
+    removeManagedCapability(registryId),
+  )
+  ipcMain.handle('capability-manager:rescan', () => rescanManagedCapabilities())
+  ipcMain.handle('runtime:get-local-seat-preference', () => getLocalRuntimeSeatPreference())
+  ipcMain.handle('runtime:set-local-seat-preference', (_event, value: unknown) => ({
+    preference: setLocalRuntimeSeatPreference(value),
+  }))
 
   // Control plane
   ipcMain.handle('control-plane:get-overview', async () => getControlPlaneClient().getOverview())

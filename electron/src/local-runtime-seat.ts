@@ -1,16 +1,21 @@
 import { inspectConfiguredAcpBridge } from './acp-client.js'
 
 export type LocalRuntimeSeat = 'acp_bridge' | 'local_runtime_api' | 'unavailable'
+export type LocalRuntimeSeatPreference =
+  | 'auto'
+  | 'force_acp'
+  | 'force_local_runtime_api'
 export type LocalRuntimeProfile =
   | 'dev_local_acp_bridge'
   | 'packaged_local_runtime'
   | 'cloud_managed_runtime'
 
 export type LocalRuntimeSeatResolution = {
+  preference: LocalRuntimeSeatPreference
   seat: LocalRuntimeSeat
   available: boolean
   runtimeProfile: LocalRuntimeProfile
-  runtimeTarget: 'local_runtime'
+  runtimeTarget: 'local_runtime' | 'cloud_runtime'
   modelPlane: 'cloud_provider'
   acpScript?: string
   acpSource?: string
@@ -35,38 +40,21 @@ function envValue(name: string): string | undefined {
   return value ? value : undefined
 }
 
-export function resolveLocalRuntimeSeat(): LocalRuntimeSeatResolution {
+export function normalizeLocalRuntimeSeatPreference(
+  value: unknown,
+): LocalRuntimeSeatPreference {
+  return value === 'force_acp' || value === 'force_local_runtime_api' ? value : 'auto'
+}
+
+export function resolveLocalRuntimeSeat(
+  preference: LocalRuntimeSeatPreference = 'auto',
+): LocalRuntimeSeatResolution {
   const acpBridge = inspectConfiguredAcpBridge()
   const localRuntimeApiUrl = envValue('LONGCLAW_LOCAL_RUNTIME_API_URL')
   const localRuntimeApiKey = envValue('LONGCLAW_LOCAL_RUNTIME_API_KEY')
 
-  if (acpBridge.available) {
-    return {
-      seat: 'acp_bridge',
-      available: true,
-      runtimeProfile: 'dev_local_acp_bridge',
-      runtimeTarget: 'local_runtime',
-      modelPlane: 'cloud_provider',
-      acpScript: acpBridge.path,
-      acpSource: acpBridge.source,
-      localRuntimeApiUrl,
-      localRuntimeApiKeyConfigured: Boolean(localRuntimeApiKey),
-    }
-  }
-
-  if (localRuntimeApiUrl) {
-    return {
-      seat: 'local_runtime_api',
-      available: true,
-      runtimeProfile: 'packaged_local_runtime',
-      runtimeTarget: 'local_runtime',
-      modelPlane: 'cloud_provider',
-      localRuntimeApiUrl,
-      localRuntimeApiKeyConfigured: Boolean(localRuntimeApiKey),
-    }
-  }
-
-  return {
+  const unavailableResolution: LocalRuntimeSeatResolution = {
+    preference,
     seat: 'unavailable',
     available: false,
     runtimeProfile: 'dev_local_acp_bridge',
@@ -77,12 +65,55 @@ export function resolveLocalRuntimeSeat(): LocalRuntimeSeatResolution {
     localRuntimeApiUrl,
     localRuntimeApiKeyConfigured: Boolean(localRuntimeApiKey),
   }
+
+  if (preference === 'force_acp') {
+    return acpBridge.available
+      ? {
+          ...unavailableResolution,
+          seat: 'acp_bridge',
+          available: true,
+          runtimeProfile: 'dev_local_acp_bridge',
+        }
+      : unavailableResolution
+  }
+
+  if (preference === 'force_local_runtime_api') {
+    return localRuntimeApiUrl
+      ? {
+          ...unavailableResolution,
+          seat: 'local_runtime_api',
+          available: true,
+          runtimeProfile: 'packaged_local_runtime',
+        }
+      : unavailableResolution
+  }
+
+  if (acpBridge.available) {
+    return {
+      ...unavailableResolution,
+      seat: 'acp_bridge',
+      available: true,
+      runtimeProfile: 'dev_local_acp_bridge',
+    }
+  }
+
+  if (localRuntimeApiUrl) {
+    return {
+      ...unavailableResolution,
+      seat: 'local_runtime_api',
+      available: true,
+      runtimeProfile: 'packaged_local_runtime',
+    }
+  }
+
+  return unavailableResolution
 }
 
 export async function probeLocalRuntimeSeat(
+  preference: LocalRuntimeSeatPreference = 'auto',
   fetchImpl: typeof fetch = fetch,
 ): Promise<LocalRuntimeSeatResolution & { healthOk: boolean }> {
-  const resolution = resolveLocalRuntimeSeat()
+  const resolution = resolveLocalRuntimeSeat(preference)
   if (resolution.seat !== 'local_runtime_api' || !resolution.localRuntimeApiUrl) {
     return {
       ...resolution,
@@ -124,9 +155,10 @@ function buildLocalRuntimeHeaders(): Record<string, string> {
 
 export async function dispatchToLocalRuntimeApi(
   payload: LocalRuntimeLaunchPayload,
+  preference: LocalRuntimeSeatPreference = 'auto',
   fetchImpl: typeof fetch = fetch,
 ): Promise<Record<string, unknown>> {
-  const resolution = resolveLocalRuntimeSeat()
+  const resolution = resolveLocalRuntimeSeat(preference)
   if (resolution.seat !== 'local_runtime_api' || !resolution.localRuntimeApiUrl) {
     throw new Error('Local Runtime API is not configured.')
   }

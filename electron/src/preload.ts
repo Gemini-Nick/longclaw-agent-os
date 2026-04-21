@@ -62,8 +62,36 @@ contextBridge.exposeInMainWorld('longclawLaunch', {
   getTask: (taskId: string) => ipcRenderer.invoke('launch:get-task', taskId),
 })
 
+contextBridge.exposeInMainWorld('weclawSessions', {
+  listWeclawSessions: () => ipcRenderer.invoke('weclaw:list-sessions'),
+  getWeclawSession: (sessionId: string) => ipcRenderer.invoke('weclaw:get-session', sessionId),
+  getStatus: () => ipcRenderer.invoke('weclaw:get-source-status'),
+  updateSessionState: (
+    canonicalSessionId: string,
+    patch: { hidden?: boolean; archived?: boolean },
+  ) => ipcRenderer.invoke('weclaw:update-session-state', canonicalSessionId, patch),
+})
+
 contextBridge.exposeInMainWorld('longclawCapabilitySubstrate', {
   getSummary: () => ipcRenderer.invoke('capability-substrate:get-summary'),
+})
+
+contextBridge.exposeInMainWorld('longclawCapabilityManager', {
+  getSettings: () => ipcRenderer.invoke('capability-manager:get-settings'),
+  updateSettings: (patch: Record<string, unknown>) =>
+    ipcRenderer.invoke('capability-manager:update-settings', patch),
+  getRegistry: () => ipcRenderer.invoke('capability-manager:get-registry'),
+  registerCapability: (payload: { kind: 'skill' | 'plugin'; sourcePath: string; label?: string }) =>
+    ipcRenderer.invoke('capability-manager:register', payload),
+  removeCapability: (registryId: string) =>
+    ipcRenderer.invoke('capability-manager:remove', registryId),
+  rescan: () => ipcRenderer.invoke('capability-manager:rescan'),
+})
+
+contextBridge.exposeInMainWorld('longclawRuntime', {
+  getLocalSeatPreference: () => ipcRenderer.invoke('runtime:get-local-seat-preference'),
+  setLocalSeatPreference: (preference: string) =>
+    ipcRenderer.invoke('runtime:set-local-seat-preference', preference),
 })
 
 contextBridge.exposeInMainWorld('longclawWindow', {

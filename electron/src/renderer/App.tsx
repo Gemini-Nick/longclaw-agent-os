@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
-  DueDiligenceDashboard,
   LongclawArtifact,
+  LongclawCapabilityEntry,
   LongclawCapabilitySubstrateSummary,
   LongclawControlPlaneOverview,
   LongclawLaunchIntent,
@@ -12,7 +12,6 @@ import type {
   LongclawRun,
   LongclawTask,
   LongclawWorkItem,
-  SignalsDashboard,
 } from '../../../src/services/longclawControlPlane/models.js'
 import {
   chromeStyles,
@@ -28,13 +27,79 @@ import {
 } from './designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, t, tf } from './i18n.js'
 import { createShellLayout, getViewportTier } from './layout.js'
+import {
+  ActionButtons,
+  QueueRow,
+  Section,
+  StatusStrip,
+} from './workspaces/shared.js'
+import { PackWorkspace } from './workspaces/PackWorkspace.js'
+import TaskWorkspace from './workspaces/TaskWorkspace.js'
+import WeChatWorkspace from './workspaces/WeChatWorkspace.js'
+import CapabilitiesWorkspace from './workspaces/CapabilitiesWorkspace.js'
 
-type Page = 'home' | 'runs' | 'work_items' | 'packs' | 'studio'
+type Page = 'wechat' | 'tasks' | 'capabilities' | 'rpa' | 'signals'
 type PackTab = 'due_diligence' | 'signals'
 type WorkMode = 'local' | 'cloud_sandbox' | 'weclaw_dispatch'
+type LocalRuntimeSeatPreference = 'auto' | 'force_acp' | 'force_local_runtime_api'
+type TaskFlowFilter = 'all' | 'running' | 'pending' | 'failed' | 'completed'
+type WeclawSessionVisibilityFilter = 'active' | 'hidden' | 'archived'
+type WeclawSessionSourceFilter = 'all' | 'wechat' | 'weclaw'
+type SignalsPanel = 'overview' | 'chart' | 'review' | 'backtest' | 'connectors'
 type NavItemSpec = { id: Page; label: string; glyph: string; title: string }
 type SkillInfo = { name: string; path: string; description: string; project?: string }
 type AgentModeInfo = { mode: string; alive: boolean }
+type WeclawSessionAttachment = {
+  attachmentId: string
+  title: string
+  kind: string
+  path?: string
+  url?: string
+  mimeType?: string
+  size?: number
+  text?: string
+  origin: 'session' | 'message'
+  messageId?: string
+  metadata: Record<string, unknown>
+}
+type WeclawSessionMessage = {
+  messageId: string
+  role: string
+  kind?: string
+  text?: string
+  agentName?: string
+  createdAt?: string
+  attachments: WeclawSessionAttachment[]
+  metadata: Record<string, unknown>
+}
+type WeclawSessionSummary = {
+  sessionId: string
+  canonicalSessionId: string
+  duplicateSessionIds: string[]
+  hidden: boolean
+  archived: boolean
+  filePath: string
+  userId?: string
+  updatedAt?: string
+  title: string
+  preview?: string
+  messageCount: number
+  agentReplyCount: number
+  mediaCount: number
+  sourceLabel: string
+  canonicalMetadata: Record<string, unknown>
+}
+type WeclawSessionDetail = WeclawSessionSummary & {
+  messages: WeclawSessionMessage[]
+  media: WeclawSessionAttachment[]
+}
+type WeclawSessionSourceStatus = {
+  workspaceRoot: string | null
+  workspaceSource: 'config' | 'env' | 'default' | 'unresolved'
+  sessionsDir: string | null
+  sessionsDirExists: boolean
+  sessionCount: number
+}
 type CapabilityItem = {
   id: string
   label: string
@@ -152,6 +217,8 @@ type RuntimeStatusSummary = {
   dueDiligenceBaseUrl?: string
   signalsAvailable: boolean
   signalsStateRoot?: string
+  signalsWebBaseUrl?: string
+  signalsWeb2BaseUrl?: string
   localRuntimeSeat?: string
   localRuntimeAvailable: boolean
   localRuntimeApiUrl?: string
@@ -159,12 +226,50 @@ type RuntimeStatusSummary = {
   localAcpAvailable: boolean
   localAcpScript?: string
   localAcpSource?: string
+  localRuntimeSeatPreference: LocalRuntimeSeatPreference
+  localRuntimeSeatOverrideActive: boolean
+  devMachineAcpTakeover: boolean
+  runtimeProfile?: string
   stackEnvLoaded: boolean
   stackEnvPath?: string
+}
+type CapabilityManagerSettings = {
+  disabled_capabilities: string[]
+  capability_groups: Record<string, string>
+  extra_skill_roots: string[]
+  extra_plugin_roots: string[]
+}
+type RuntimeCapabilityRegistryEntry = {
+  registry_id: string
+  kind: 'skill' | 'plugin'
+  label: string
+  source_path: string
+  managed_path: string
+  source: string
+  installed_at: string
+  removable: boolean
+  health: string
+  metadata: Record<string, unknown>
+}
+type RuntimeCapabilityRegistry = {
+  version: number
+  updated_at: string
+  entries: RuntimeCapabilityRegistryEntry[]
+}
+type TaskFlowItem = {
+  id: string
+  kind: 'launch' | 'task' | 'run' | 'work_item'
+  title: string
+  meta?: string
+  description?: string
+  status: string
+  filter: TaskFlowFilter
+  timestamp?: string
 }
 type DetailTarget =
   | { type: 'run'; title: string; run: LongclawRun; actions: LongclawOperatorAction[] }
   | { type: 'work_item'; title: string; workItem: LongclawWorkItem }
+  | { type: 'weclaw_session'; title: string; session: WeclawSessionDetail }
   | {
       type: 'record'
       title: string
@@ -172,7 +277,7 @@ type DetailTarget =
       actions: LongclawOperatorAction[]
     }
 
-const WORK_MODE_ORDER: WorkMode[] = ['local', 'cloud_sandbox', 'weclaw_dispatch']
+const WORK_MODE_ORDER: WorkMode[] = ['local', 'cloud_sandbox']
 
 const WORK_MODE_SPECS: Record<
   WorkMode,
@@ -184,6 +289,7 @@ const WORK_MODE_SPECS: Record<
     runtimeTarget: string
     interactionSurface: string
     modelPlane: string
+    runtimeProfile: string
     workspaceLabel: string
     workspaceHint: string
     surfaceLabel: string
@@ -202,6 +308,7 @@ const WORK_MODE_SPECS: Record<
     runtimeTarget: 'local_runtime',
     interactionSurface: 'electron_home',
     modelPlane: 'cloud_provider',
+    runtimeProfile: 'dev_local_acp_bridge',
     workspaceLabel: 'Current workspace',
     workspaceHint: 'Environment stays local. The model plane stays cloud-backed.',
     surfaceLabel: 'Electron Home',
@@ -221,6 +328,7 @@ const WORK_MODE_SPECS: Record<
     runtimeTarget: 'cloud_runtime',
     interactionSurface: 'electron_home',
     modelPlane: 'cloud_provider',
+    runtimeProfile: 'cloud_managed_runtime',
     workspaceLabel: 'Cloud sandbox',
     workspaceHint: 'Environment and model access both stay on the cloud side.',
     surfaceLabel: 'Electron Home',
@@ -240,6 +348,7 @@ const WORK_MODE_SPECS: Record<
     runtimeTarget: 'local_runtime',
     interactionSurface: 'weclaw',
     modelPlane: 'cloud_provider',
+    runtimeProfile: 'dev_local_acp_bridge',
     workspaceLabel: 'WeClaw thread',
     workspaceHint: 'WeChat controls the local environment. The model plane stays cloud-backed.',
     surfaceLabel: 'WeClaw + Electron',
@@ -325,8 +434,37 @@ declare global {
       listTasks: (limit?: number) => Promise<LongclawTask[]>
       getTask: (taskId: string) => Promise<LongclawTask>
     }
+    weclawSessions: {
+      listWeclawSessions: () => Promise<WeclawSessionSummary[]>
+      getWeclawSession: (sessionId: string) => Promise<WeclawSessionDetail | null>
+      getStatus: () => Promise<WeclawSessionSourceStatus>
+      updateSessionState: (
+        canonicalSessionId: string,
+        patch: { hidden?: boolean; archived?: boolean },
+      ) => Promise<Record<string, { hidden: boolean; archived: boolean; updated_at: string }>>
+    }
     longclawCapabilitySubstrate: {
       getSummary: () => Promise<LongclawCapabilitySubstrateSummary>
+    }
+    longclawCapabilityManager: {
+      getSettings: () => Promise<CapabilityManagerSettings>
+      updateSettings: (
+        patch: Partial<CapabilityManagerSettings>,
+      ) => Promise<CapabilityManagerSettings>
+      getRegistry: () => Promise<RuntimeCapabilityRegistry>
+      registerCapability: (payload: {
+        kind: 'skill' | 'plugin'
+        sourcePath: string
+        label?: string
+      }) => Promise<RuntimeCapabilityRegistry>
+      removeCapability: (registryId: string) => Promise<RuntimeCapabilityRegistry>
+      rescan: () => Promise<RuntimeCapabilityRegistry>
+    }
+    longclawRuntime: {
+      getLocalSeatPreference: () => Promise<LocalRuntimeSeatPreference>
+      setLocalSeatPreference: (
+        preference: LocalRuntimeSeatPreference,
+      ) => Promise<{ preference: LocalRuntimeSeatPreference }>
     }
     longclawWindow: {
       setLocale: (locale: LongclawLocale) => Promise<{ ok: boolean }>
@@ -360,29 +498,34 @@ function severityRank(value: string): number {
   return 3
 }
 
-function pageTitle(locale: LongclawLocale, page: Page, packTab: PackTab): string {
-  if (page === 'home') return t(locale, 'page.home.title')
-  if (page === 'runs') return t(locale, 'page.runs.title')
-  if (page === 'work_items') return t(locale, 'page.work_items.title')
-  if (page === 'studio') return t(locale, 'page.studio.title')
-  return packTab === 'due_diligence'
-    ? t(locale, 'page.packs.title.due_diligence')
-    : t(locale, 'page.packs.title.signals')
+function pageTitle(locale: LongclawLocale, page: Page): string {
+  if (page === 'wechat') return t(locale, 'page.wechat.title')
+  if (page === 'tasks') return t(locale, 'page.tasks.title')
+  if (page === 'capabilities') return t(locale, 'page.capabilities.title')
+  if (page === 'rpa') return t(locale, 'page.rpa.title')
+  return t(locale, 'page.signals.title')
 }
 
 function pageEyebrow(locale: LongclawLocale, page: Page): string {
-  if (page === 'home') return t(locale, 'page.home.eyebrow')
-  if (page === 'studio') return t(locale, 'page.studio.eyebrow')
-  if (page === 'packs') return t(locale, 'page.packs.eyebrow')
-  return t(locale, page === 'runs' ? 'page.runs.eyebrow' : 'page.work_items.eyebrow')
+  if (page === 'wechat') return t(locale, 'page.wechat.eyebrow')
+  if (page === 'tasks') return t(locale, 'page.tasks.eyebrow')
+  if (page === 'capabilities') return t(locale, 'page.capabilities.eyebrow')
+  if (page === 'rpa') return t(locale, 'page.rpa.eyebrow')
+  return t(locale, 'page.signals.eyebrow')
 }
 
 function pageDescription(locale: LongclawLocale, page: Page): string {
-  if (page === 'home') return t(locale, 'page.home.description')
-  if (page === 'runs') return t(locale, 'page.runs.description')
-  if (page === 'work_items') return t(locale, 'page.work_items.description')
-  if (page === 'studio') return t(locale, 'page.studio.description')
-  return t(locale, 'page.packs.description')
+  if (page === 'wechat') return t(locale, 'page.wechat.description')
+  if (page === 'tasks') return t(locale, 'page.tasks.description')
+  if (page === 'capabilities') return t(locale, 'page.capabilities.description')
+  if (page === 'rpa') return t(locale, 'page.rpa.description')
+  return t(locale, 'page.signals.description')
+}
+
+function normalizeLocalRuntimeSeatPreference(
+  value: unknown,
+): LocalRuntimeSeatPreference {
+  return value === 'force_acp' || value === 'force_local_runtime_api' ? value : 'auto'
 }
 
 function modeSpec(mode: WorkMode | string | undefined) {
@@ -465,6 +608,51 @@ function readMetadataRecord(
     }
   }
   return undefined
+}
+
+function recordSessionId(
+  value: { metadata?: Record<string, unknown> } | Record<string, unknown> | null | undefined,
+): string | undefined {
+  return (
+    readMetadataString(value, 'session_id') ??
+    readMetadataString(value, 'canonical_session_id') ??
+    readMetadataString(value, 'sessionId')
+  )
+}
+
+function weclawCanonicalSessionId(
+  session:
+    | Pick<WeclawSessionSummary, 'canonicalMetadata' | 'canonicalSessionId'>
+    | null
+    | undefined,
+): string | undefined {
+  return (
+    stringValue(session?.canonicalSessionId) ??
+    stringValue(session?.canonicalMetadata.canonical_session_id) ??
+    stringValue(session?.canonicalMetadata.canonicalSessionID)
+  )
+}
+
+function weclawCanonicalUserId(
+  session: Pick<WeclawSessionSummary, 'canonicalMetadata'> | null | undefined,
+): string | undefined {
+  return (
+    stringValue(session?.canonicalMetadata.canonical_user_id) ??
+    stringValue(session?.canonicalMetadata.canonicalUserID)
+  )
+}
+
+function weclawContextToken(
+  session: Pick<WeclawSessionSummary, 'canonicalMetadata'> | null | undefined,
+): string | undefined {
+  return (
+    stringValue(session?.canonicalMetadata.context_token) ??
+    stringValue(session?.canonicalMetadata.contextToken)
+  )
+}
+
+function weclawAttachmentUri(attachment: WeclawSessionAttachment): string | undefined {
+  return attachment.path ?? attachment.url ?? attachment.text
 }
 
 function workModeFromTask(task: LongclawTask): string | undefined {
@@ -572,6 +760,14 @@ function runtimeStatusFromSummary(
       typeof runtimeStatus.signals_state_root === 'string'
         ? runtimeStatus.signals_state_root
         : undefined,
+    signalsWebBaseUrl:
+      typeof runtimeStatus.signals_web_base_url === 'string'
+        ? runtimeStatus.signals_web_base_url
+        : undefined,
+    signalsWeb2BaseUrl:
+      typeof runtimeStatus.signals_web2_base_url === 'string'
+        ? runtimeStatus.signals_web2_base_url
+        : undefined,
     localRuntimeSeat:
       typeof runtimeStatus.local_runtime_seat === 'string'
         ? runtimeStatus.local_runtime_seat
@@ -591,6 +787,15 @@ function runtimeStatusFromSummary(
       typeof runtimeStatus.local_acp_source === 'string'
         ? runtimeStatus.local_acp_source
         : undefined,
+    localRuntimeSeatPreference: normalizeLocalRuntimeSeatPreference(
+      runtimeStatus.local_runtime_seat_preference,
+    ),
+    localRuntimeSeatOverrideActive: Boolean(runtimeStatus.local_runtime_seat_override_active),
+    devMachineAcpTakeover: Boolean(runtimeStatus.dev_machine_acp_takeover),
+    runtimeProfile:
+      typeof runtimeStatus.runtime_profile === 'string'
+        ? runtimeStatus.runtime_profile
+        : undefined,
     stackEnvLoaded: Boolean(runtimeStatus.stack_env_loaded),
     stackEnvPath:
       typeof runtimeStatus.stack_env_path === 'string'
@@ -599,18 +804,176 @@ function runtimeStatusFromSummary(
   }
 }
 
+function effectiveRuntimeProfile(
+  workMode: WorkMode,
+  runtimeStatus: RuntimeStatusSummary,
+  localSeatPreference: LocalRuntimeSeatPreference = runtimeStatus.localRuntimeSeatPreference,
+): string {
+  if (workMode === 'cloud_sandbox') return 'cloud_managed_runtime'
+  if (effectiveLocalRuntimeSeat(runtimeStatus, localSeatPreference) === 'local_runtime_api') {
+    return 'packaged_local_runtime'
+  }
+  return 'dev_local_acp_bridge'
+}
+
+function effectiveLocalRuntimeSeat(
+  runtimeStatus: RuntimeStatusSummary,
+  localSeatPreference: LocalRuntimeSeatPreference,
+): string {
+  if (localSeatPreference === 'force_acp') {
+    return runtimeStatus.localAcpAvailable ? 'acp_bridge' : 'unavailable'
+  }
+  if (localSeatPreference === 'force_local_runtime_api') {
+    return runtimeStatus.localRuntimeApiAvailable ? 'local_runtime_api' : 'unavailable'
+  }
+  return runtimeStatus.localRuntimeSeat ?? 'unavailable'
+}
+
+function localSeatPreferenceLabel(
+  locale: LongclawLocale,
+  preference: LocalRuntimeSeatPreference,
+): string {
+  if (preference === 'force_acp') return t(locale, 'seat_pref.force_acp')
+  if (preference === 'force_local_runtime_api') {
+    return t(locale, 'seat_pref.force_local_runtime_api')
+  }
+  return t(locale, 'seat_pref.auto')
+}
+
+function localSeatStateMessage(
+  locale: LongclawLocale,
+  runtimeStatus: RuntimeStatusSummary,
+  localSeatPreference: LocalRuntimeSeatPreference,
+): string | null {
+  if (localSeatPreference !== 'auto') {
+    return tf(locale, 'notice.local_seat_override', {
+      seat: localSeatPreferenceLabel(locale, localSeatPreference),
+    })
+  }
+  if (runtimeStatus.devMachineAcpTakeover) {
+    return t(locale, 'notice.local_acp_takeover')
+  }
+  return null
+}
+
+function weclawEmptyStateMessage(
+  locale: LongclawLocale,
+  status: WeclawSessionSourceStatus | null,
+): string {
+  if (!status?.sessionsDirExists) return t(locale, 'empty.weclaw_sessions_dir_missing')
+  if (status.sessionCount === 0) return t(locale, 'empty.weclaw_sessions_dir_empty')
+  return t(locale, 'empty.no_weclaw_sessions')
+}
+
+function defaultCapabilityManagerSettings(): CapabilityManagerSettings {
+  return {
+    disabled_capabilities: [],
+    capability_groups: {},
+    extra_skill_roots: [],
+    extra_plugin_roots: [],
+  }
+}
+
+function capabilityManagerSettingsFromSummary(
+  summary: LongclawCapabilitySubstrateSummary | null,
+): CapabilityManagerSettings {
+  const raw = readMetadataRecord(summary ?? undefined, 'capability_manager') ?? {}
+  const disabled = Array.isArray(raw.disabled_capabilities)
+    ? raw.disabled_capabilities.map(value => String(value ?? '')).filter(Boolean)
+    : []
+  const groups =
+    raw.capability_groups && typeof raw.capability_groups === 'object'
+      ? Object.fromEntries(
+          Object.entries(raw.capability_groups as Record<string, unknown>)
+            .map(([key, value]) => [key, String(value ?? '').trim()] as const)
+            .filter(([, value]) => Boolean(value)),
+        )
+      : {}
+  const extraSkillRoots = Array.isArray(raw.extra_skill_roots)
+    ? raw.extra_skill_roots.map(value => String(value ?? '')).filter(Boolean)
+    : []
+  const extraPluginRoots = Array.isArray(raw.extra_plugin_roots)
+    ? raw.extra_plugin_roots.map(value => String(value ?? '')).filter(Boolean)
+    : []
+  return {
+    disabled_capabilities: disabled,
+    capability_groups: groups,
+    extra_skill_roots: extraSkillRoots,
+    extra_plugin_roots: extraPluginRoots,
+  }
+}
+
+function capabilityDisabled(entry: LongclawCapabilityEntry): boolean {
+  return Boolean(readMetadataBoolean(entry, 'disabled'))
+}
+
+function capabilityGroup(entry: LongclawCapabilityEntry): string | undefined {
+  return readMetadataString(entry, 'group')
+}
+
+function capabilityPath(entry: LongclawCapabilityEntry): string | undefined {
+  return readMetadataString(entry, 'path')
+}
+
+function capabilityConfigPath(entry: LongclawCapabilityEntry): string | undefined {
+  return readMetadataString(entry, 'config_path')
+}
+
+function capabilityManaged(entry: LongclawCapabilityEntry): boolean {
+  return Boolean(readMetadataBoolean(entry, 'managed'))
+}
+
+function capabilityRegistryId(entry: LongclawCapabilityEntry): string | undefined {
+  return readMetadataString(entry, 'registry_id')
+}
+
+function capabilityHealth(entry: LongclawCapabilityEntry): string | undefined {
+  return readMetadataString(entry, 'health')
+}
+
+function taskFlowFilterForLaunch(record: LaunchRecord): TaskFlowFilter {
+  if (record.status === 'failed') return 'failed'
+  if (record.status === 'running') return 'running'
+  return 'completed'
+}
+
+function taskFlowFilterForTask(task: LongclawTask): TaskFlowFilter {
+  if (['queued', 'routing', 'running', 'blocked'].includes(task.status)) return 'running'
+  if (['failed', 'canceled'].includes(task.status)) return 'failed'
+  if (['needs_review', 'repair_required'].includes(task.status)) return 'pending'
+  return 'completed'
+}
+
+function taskFlowFilterForRun(run: LongclawRun): TaskFlowFilter {
+  if (['queued', 'routing', 'running', 'blocked'].includes(run.status)) return 'running'
+  if (['failed', 'canceled', 'repair_required'].includes(run.status)) return 'failed'
+  if (['partial'].includes(run.status)) return 'pending'
+  return 'completed'
+}
+
+function taskFlowFilterForWorkItem(item: LongclawWorkItem): TaskFlowFilter {
+  if (['critical', 'warning'].includes(item.severity)) return 'pending'
+  if (['resolved', 'completed', 'succeeded'].includes(item.status)) return 'completed'
+  return 'pending'
+}
+
 function workModeAvailabilityNotice(
   locale: LongclawLocale,
   workMode: WorkMode,
   runtimeStatus: RuntimeStatusSummary,
+  localSeatPreference: LocalRuntimeSeatPreference = runtimeStatus.localRuntimeSeatPreference,
 ): string | undefined {
-  if (workMode === 'local' && !runtimeStatus.localRuntimeAvailable) {
+  if (workMode === 'local' && effectiveLocalRuntimeSeat(runtimeStatus, localSeatPreference) === 'unavailable') {
     return t(locale, 'notice.local_unavailable')
   }
   if (workMode === 'cloud_sandbox' && !runtimeStatus.longclawCoreConnected) {
     return t(locale, 'notice.cloud_unavailable')
   }
-  if (workMode === 'weclaw_dispatch' && (!runtimeStatus.longclawCoreConnected || !runtimeStatus.localRuntimeAvailable)) {
+  if (
+    workMode === 'weclaw_dispatch' &&
+    (!runtimeStatus.longclawCoreConnected ||
+      effectiveLocalRuntimeSeat(runtimeStatus, localSeatPreference) === 'unavailable')
+  ) {
     return t(locale, 'notice.weclaw_unavailable')
   }
   return undefined
@@ -621,8 +984,14 @@ function workModeAvailabilityState(
   workMode: WorkMode,
   runtimeStatus: RuntimeStatusSummary,
   selected: boolean,
+  localSeatPreference: LocalRuntimeSeatPreference = runtimeStatus.localRuntimeSeatPreference,
 ): { tone: string; label: string } {
-  const unavailable = workModeAvailabilityNotice(locale, workMode, runtimeStatus)
+  const unavailable = workModeAvailabilityNotice(
+    locale,
+    workMode,
+    runtimeStatus,
+    localSeatPreference,
+  )
   if (unavailable) {
     return {
       tone: 'degraded',
@@ -799,6 +1168,8 @@ function buildLaunchIntent(
   rawText: string,
   workspaceRoot: string,
   workMode: WorkMode,
+  runtimeStatus: RuntimeStatusSummary,
+  localSeatPreference: LocalRuntimeSeatPreference,
 ): LongclawLaunchIntent {
   const mentions = parseLaunchMentions(rawText)
   const requestedOutcome = stripLaunchMentions(rawText)
@@ -814,17 +1185,26 @@ function buildLaunchIntent(
       : workMode === 'cloud_sandbox'
         ? 'sandbox://longclaw/default'
         : 'weclaw://active-thread'
+  const runtimeProfile = effectiveRuntimeProfile(workMode, runtimeStatus, localSeatPreference)
+  const localRuntimeSeat =
+    workMode === 'local'
+      ? effectiveLocalRuntimeSeat(runtimeStatus, localSeatPreference)
+      : 'unavailable'
 
   return {
     source: 'electron_cowork',
     raw_text: rawText,
     mentions,
     requested_outcome: requestedOutcome || rawText.trim(),
+    work_mode: workMode,
+    launch_surface: spec.interactionSurface,
     created_at: new Date().toISOString(),
     interaction_surface: spec.interactionSurface,
-    runtime_profile: 'dev_local_acp_bridge',
+    runtime_profile: runtimeProfile,
     runtime_target: spec.runtimeTarget,
     model_plane: spec.modelPlane,
+    local_runtime_seat: localRuntimeSeat,
+    workspace_target: workspaceTarget,
     session_context: {
       channel: 'desktop',
       user_id: 'desktop_operator',
@@ -848,12 +1228,15 @@ function buildLaunchIntent(
       launch_surface: spec.interactionSurface,
       origin_surface: spec.interactionSurface,
       interaction_surface: spec.interactionSurface,
-      runtime_profile: 'dev_local_acp_bridge',
+      runtime_profile: runtimeProfile,
       runtime_target: spec.runtimeTarget,
       model_plane: spec.modelPlane,
       workspace_root: workspaceRoot || undefined,
       workspace_target: workspaceTarget,
       execution_plane: spec.runtimeTarget === 'cloud_runtime' ? 'cloud_executor' : 'local_executor',
+      local_runtime_seat_preference: localSeatPreference,
+      local_runtime_seat: localRuntimeSeat,
+      dev_machine_acp_takeover: runtimeStatus.devMachineAcpTakeover,
       pack_id: firstPackId,
     },
   } as LongclawLaunchIntent
@@ -1102,7 +1485,7 @@ function deriveConversationEvents(
     events.push({
       id: `work-item:${item.work_item_id}`,
       type: 'work_item_receipt',
-      timestamp: item.updated_at ?? item.created_at,
+      timestamp: item.updated_at ?? item.created_at ?? new Date().toISOString(),
       status: item.severity,
       title: item.title,
       body: item.summary,
@@ -1129,120 +1512,6 @@ function deriveConversationEvents(
     const rightValue = new Date(right.timestamp).getTime()
     return leftValue - rightValue
   })
-}
-
-function QueueRow({
-  locale,
-  title,
-  meta,
-  status,
-  description,
-  nextAction,
-  onSelect,
-}: {
-  locale: LongclawLocale
-  title: string
-  meta?: string
-  status?: string
-  description?: string
-  nextAction?: string
-  onSelect: () => void
-}) {
-  return (
-    <button type="button" style={queueRowButtonStyle} onClick={onSelect}>
-      <div style={queueRowLeadStyle}>
-        <div style={queueRowTitleStyle}>{title}</div>
-        {meta && <div style={chromeStyles.quietMeta}>{meta}</div>}
-        {description && <div style={queueRowDescriptionStyle}>{description}</div>}
-      </div>
-      <div style={queueRowTailStyle}>
-        {nextAction && <div style={queueRowNextActionStyle}>{nextAction}</div>}
-        {status && (
-          <span style={statusBadgeStyle(status)}>{humanizeTokenLocale(locale, status)}</span>
-        )}
-      </div>
-    </button>
-  )
-}
-
-function StatusStrip({
-  locale,
-  items,
-}: {
-  locale: LongclawLocale
-  items: Array<{ label: string; value: number; tone?: string }>
-}) {
-  return (
-    <div style={surfaceStyles.strip}>
-      {items.map(item => {
-        const toneLabel = item.tone ? humanizeTokenLocale(locale, item.tone) : undefined
-        const showToneBadge =
-          Boolean(toneLabel) && toneLabel.toLowerCase() !== item.label.trim().toLowerCase()
-        return (
-          <div key={item.label} style={surfaceStyles.stripItem}>
-            <div style={statusStripValueStyle}>{item.value}</div>
-            <div style={statusStripLabelRowStyle}>
-              <span>{item.label}</span>
-              {item.tone && showToneBadge && (
-                <span style={statusBadgeStyle(item.tone)}>{toneLabel}</span>
-              )}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function Section({
-  title,
-  subtitle,
-  actions,
-  children,
-}: {
-  title: string
-  subtitle?: string
-  actions?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section style={surfaceStyles.section}>
-      <div style={sectionHeaderStyle}>
-        <div style={sectionHeadingBlockStyle}>
-          <h2 style={chromeStyles.sectionTitle}>{title}</h2>
-          {subtitle && <div style={chromeStyles.subtleText}>{subtitle}</div>}
-        </div>
-        {actions}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function ActionButtons({
-  actions,
-  onRun,
-}: {
-  actions: LongclawOperatorAction[]
-  onRun: (action: LongclawOperatorAction) => Promise<void>
-}) {
-  if (actions.length === 0) return null
-  return (
-    <div style={utilityStyles.buttonCluster}>
-      {actions.map(action => (
-        <button
-          key={action.action_id}
-          type="button"
-          style={secondaryButtonStyle}
-          onClick={() => {
-            void onRun(action)
-          }}
-        >
-          {action.label}
-        </button>
-      ))}
-    </div>
-  )
 }
 
 function ArtifactList({
@@ -1346,6 +1615,53 @@ function ArtifactRefList({
   )
 }
 
+function WeclawAttachmentList({
+  locale,
+  attachments,
+  onOpen,
+}: {
+  locale: LongclawLocale
+  attachments: WeclawSessionAttachment[]
+  onOpen: (uri: string) => Promise<void>
+}) {
+  if (attachments.length === 0) return null
+
+  return (
+    <div style={utilityStyles.stackedList}>
+      {attachments.map(attachment => {
+        const uri = weclawAttachmentUri(attachment)
+        return (
+          <div key={attachment.attachmentId} style={surfaceStyles.listRow}>
+            <div style={queueRowLeadStyle}>
+              <div style={queueRowTitleStyle}>{attachment.title}</div>
+              <div style={chromeStyles.quietMeta}>
+                {formatModeMeta([
+                  humanizeTokenLocale(locale, attachment.kind),
+                  attachment.mimeType,
+                  attachment.messageId ? `#${attachment.messageId}` : undefined,
+                ])}
+              </div>
+              {uri && <div style={chromeStyles.monoMeta}>{uri}</div>}
+              {attachment.text && <div style={queueRowDescriptionStyle}>{attachment.text}</div>}
+            </div>
+            {uri && (
+              <button
+                type="button"
+                style={secondaryButtonStyle}
+                onClick={() => {
+                  void onOpen(uri)
+                }}
+              >
+                {t(locale, 'action.open')}
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function CapabilityChip({
   item,
   onUse,
@@ -1371,235 +1687,8 @@ function CapabilityChip({
   )
 }
 
-function PackListSection({
-  locale,
-  title,
-  subtitle,
-  rows,
-  onOpen,
-}: {
-  locale: LongclawLocale
-  title: string
-  subtitle?: string
-  rows: Array<Record<string, unknown>>
-  onOpen: (item: Record<string, unknown>) => void
-}) {
-  return (
-    <Section title={title} subtitle={subtitle}>
-      <div style={utilityStyles.stackedList}>
-        {rows.length === 0 ? (
-          <div style={utilityStyles.emptyState}>{t(locale, 'empty.nothing_waiting')}</div>
-        ) : (
-          rows.map((row, index) => {
-            const key = String(
-              row.run_id ??
-                row.review_id ??
-                row.case_id ??
-                row.site_slug ??
-                row.connector_id ??
-                index,
-            )
-            const titleValue = String(
-              row.summary ??
-                row.title ??
-                row.run_id ??
-                row.review_id ??
-                row.case_id ??
-                row.site_slug ??
-                row.connector_id ??
-                key,
-            )
-            const meta = String(
-              row.lane ??
-                row.capability ??
-                row.failure_fingerprint ??
-                row.summary ??
-                row.channel ??
-                '',
-            ).trim()
-            const status = String(row.status ?? row.recommended_action ?? '')
-            return (
-              <QueueRow
-                key={key}
-                locale={locale}
-                title={titleValue}
-                meta={meta || undefined}
-                status={status || undefined}
-                onSelect={() => onOpen(row)}
-              />
-            )
-          })
-        )}
-      </div>
-    </Section>
-  )
-}
-
-function DueDiligencePackView({
-  locale,
-  dashboard,
-  onOpenRun,
-  onOpenRecord,
-}: {
-  locale: LongclawLocale
-  dashboard: DueDiligenceDashboard
-  onOpenRun: (run: LongclawRun) => Promise<void>
-  onOpenRecord: (
-    title: string,
-    record: Record<string, unknown>,
-    actions?: LongclawOperatorAction[],
-  ) => void
-}) {
-  return (
-    <div style={packGridStyle}>
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.due.recent_runs.title')}
-        subtitle={t(locale, 'section.pack.due.recent_runs.subtitle')}
-        rows={dashboard.recent_runs}
-        onOpen={run => {
-          void onOpenRun(run as LongclawRun)
-        }}
-      />
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.due.manual_review.title')}
-        subtitle={t(locale, 'section.pack.due.manual_review.subtitle')}
-        rows={dashboard.manual_review_queue}
-        onOpen={item =>
-          onOpenRecord(
-            `Review ${String(item.site_slug ?? item.review_id ?? 'record')}`,
-            item,
-            Array.isArray(item.operator_actions)
-              ? (item.operator_actions as LongclawOperatorAction[])
-              : [],
-          )
-        }
-      />
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.due.repair_cases.title')}
-        subtitle={t(locale, 'section.pack.due.repair_cases.subtitle')}
-        rows={dashboard.repair_cases}
-        onOpen={item =>
-          onOpenRecord(
-            `Repair ${String(item.site_slug ?? item.case_id ?? 'record')}`,
-            item,
-            Array.isArray(item.operator_actions)
-              ? (item.operator_actions as LongclawOperatorAction[])
-              : [],
-          )
-        }
-      />
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.due.site_health.title')}
-        subtitle={t(locale, 'section.pack.due.site_health.subtitle')}
-        rows={dashboard.site_health}
-        onOpen={item =>
-          onOpenRecord(
-            `Site ${String(item.site_slug ?? 'record')}`,
-            item,
-            Array.isArray(item.operator_actions)
-              ? (item.operator_actions as LongclawOperatorAction[])
-              : [],
-          )
-        }
-      />
-    </div>
-  )
-}
-
-function SignalsPackView({
-  locale,
-  dashboard,
-  onOpenRun,
-  onOpenRecord,
-}: {
-  locale: LongclawLocale
-  dashboard: SignalsDashboard
-  onOpenRun: (run: LongclawRun) => Promise<void>
-  onOpenRecord: (
-    title: string,
-    record: Record<string, unknown>,
-    actions?: LongclawOperatorAction[],
-  ) => void
-}) {
-  return (
-    <div style={packGridStyle}>
-      <Section
-        title={t(locale, 'section.pack.signals.backtest_backlog.title')}
-        subtitle={t(locale, 'section.pack.signals.backtest_backlog.subtitle')}
-      >
-        <StatusStrip
-          locale={locale}
-          items={[
-            { label: t(locale, 'label.total'), value: dashboard.backtest_summary.total },
-            {
-              label: t(locale, 'label.evaluated'),
-              value: dashboard.backtest_summary.evaluated,
-              tone: 'success',
-            },
-            {
-              label: t(locale, 'label.pending'),
-              value: dashboard.backtest_summary.pending,
-              tone: 'needs_review',
-            },
-          ]}
-        />
-        <div style={{ ...utilityStyles.stackedList, marginTop: 12 }}>
-          {dashboard.pending_backlog_preview.length === 0 ? (
-            <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_backlog')}</div>
-          ) : (
-            dashboard.pending_backlog_preview.map(item => (
-              <div
-                key={`${item.symbol}-${item.signal_date}-${item.signal_type}`}
-                style={surfaceStyles.listRow}
-              >
-                <div style={queueRowLeadStyle}>
-                  <div style={queueRowTitleStyle}>{item.symbol}</div>
-                  <div style={chromeStyles.quietMeta}>
-                    {item.signal_type} · {item.freq}
-                  </div>
-                </div>
-                <div style={chromeStyles.monoMeta}>{item.signal_date}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </Section>
-
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.signals.recent_runs.title')}
-        subtitle={t(locale, 'section.pack.signals.recent_runs.subtitle')}
-        rows={dashboard.recent_runs}
-        onOpen={run => {
-          void onOpenRun(run as LongclawRun)
-        }}
-      />
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.signals.review_runs.title')}
-        subtitle={t(locale, 'section.pack.signals.review_runs.subtitle')}
-        rows={dashboard.review_runs}
-        onOpen={run => {
-          void onOpenRun(run as LongclawRun)
-        }}
-      />
-      <PackListSection
-        locale={locale}
-        title={t(locale, 'section.pack.signals.connector_health.title')}
-        subtitle={t(locale, 'section.pack.signals.connector_health.subtitle')}
-        rows={dashboard.connector_health}
-        onOpen={item => onOpenRecord(`Connector ${String(item.connector_id ?? 'record')}`, item)}
-      />
-    </div>
-  )
-}
-
 export default function App() {
-  const [page, setPage] = useState<Page>('home')
+  const [page, setPage] = useState<Page>('tasks')
   const [packTab, setPackTab] = useState<PackTab>('due_diligence')
   const [overview, setOverview] = useState<LongclawControlPlaneOverview | null>(null)
   const [runs, setRuns] = useState<LongclawRun[]>([])
@@ -1611,8 +1700,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-  const [runFilter, setRunFilter] = useState('all')
-  const [workItemFilter, setWorkItemFilter] = useState('all')
+  const [taskFlowFilter, setTaskFlowFilter] = useState<TaskFlowFilter>('all')
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
   const [threadSidebarOpen, setThreadSidebarOpen] = useState(() => window.innerWidth >= 1080)
@@ -1621,7 +1709,17 @@ export default function App() {
   const [agentCwd, setAgentCwd] = useState('')
   const [substrateSummary, setSubstrateSummary] =
     useState<LongclawCapabilitySubstrateSummary | null>(null)
+  const [capabilityManagerSettings, setCapabilityManagerSettings] =
+    useState<CapabilityManagerSettings>(defaultCapabilityManagerSettings())
+  const [capabilityRegistry, setCapabilityRegistry] = useState<RuntimeCapabilityRegistry>({
+    version: 1,
+    updated_at: '',
+    entries: [],
+  })
   const [launchTasks, setLaunchTasks] = useState<LongclawTask[]>([])
+  const [weclawSessions, setWeclawSessions] = useState<WeclawSessionSummary[]>([])
+  const [weclawSessionSourceStatus, setWeclawSessionSourceStatus] =
+    useState<WeclawSessionSourceStatus | null>(null)
   const [locale, setLocale] = useState<LongclawLocale>(() => {
     try {
       return window.localStorage.getItem('longclaw.locale') === 'en-US' ? 'en-US' : 'zh-CN'
@@ -1629,11 +1727,31 @@ export default function App() {
       return 'zh-CN'
     }
   })
+  const [localSeatPreference, setLocalSeatPreference] = useState<LocalRuntimeSeatPreference>(() => {
+    try {
+      return normalizeLocalRuntimeSeatPreference(
+        window.localStorage.getItem('longclaw.localRuntimeSeatPreference'),
+      )
+    } catch {
+      return 'auto'
+    }
+  })
   const [selectedWorkMode, setSelectedWorkMode] = useState<WorkMode>('local')
   const [launchInput, setLaunchInput] = useState('')
   const [launchBusy, setLaunchBusy] = useState(false)
   const [launches, setLaunches] = useState<LaunchRecord[]>([])
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
+  const [selectedWeclawSessionId, setSelectedWeclawSessionId] = useState<string | null>(null)
+  const [wechatSearch, setWechatSearch] = useState('')
+  const [wechatSourceFilter, setWechatSourceFilter] =
+    useState<WeclawSessionSourceFilter>('all')
+  const [wechatVisibilityFilter, setWechatVisibilityFilter] =
+    useState<WeclawSessionVisibilityFilter>('active')
+  const [signalsPanel, setSignalsPanel] = useState<SignalsPanel>('chart')
+  const [extraSkillRootDraft, setExtraSkillRootDraft] = useState('')
+  const [extraPluginRootDraft, setExtraPluginRootDraft] = useState('')
+  const [managedSkillPathDraft, setManagedSkillPathDraft] = useState('')
+  const [managedPluginPathDraft, setManagedPluginPathDraft] = useState('')
   const activeLaunchIdRef = useRef<string | null>(null)
   const workModeTouchedRef = useRef(false)
 
@@ -1649,6 +1767,42 @@ export default function App() {
   const localizedDashboardNotice = useMemo(
     () => localizePackNotice(locale, dashboard?.notice),
     [dashboard?.notice, locale],
+  )
+  const filteredWeclawSessions = useMemo(() => {
+    const query = wechatSearch.trim().toLowerCase()
+    return weclawSessions.filter(session => {
+      if (wechatVisibilityFilter === 'active' && (session.hidden || session.archived)) return false
+      if (wechatVisibilityFilter === 'hidden' && !session.hidden) return false
+      if (wechatVisibilityFilter === 'archived' && !session.archived) return false
+      if (
+        wechatSourceFilter === 'wechat' &&
+        !session.sourceLabel.toLowerCase().includes('wechat')
+      ) {
+        return false
+      }
+      if (
+        wechatSourceFilter === 'weclaw' &&
+        !session.sourceLabel.toLowerCase().includes('weclaw')
+      ) {
+        return false
+      }
+      if (!query) return true
+      const haystack = [
+        session.title,
+        session.preview,
+        session.userId,
+        session.sessionId,
+        session.canonicalSessionId,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [weclawSessions, wechatSearch, wechatSourceFilter, wechatVisibilityFilter])
+  const managedRegistryEntries = useMemo(
+    () => capabilityRegistry.entries.filter(entry => entry.removable),
+    [capabilityRegistry.entries],
   )
 
   useEffect(() => {
@@ -1723,16 +1877,37 @@ export default function App() {
     }
   }, [locale])
 
+  const loadWeclawSessions = useCallback(async () => {
+    try {
+      setWeclawSessions(await window.weclawSessions.listWeclawSessions())
+    } catch {
+      setWeclawSessions([])
+      throw new Error(t(locale, 'error.weclaw_sessions_unavailable'))
+    }
+  }, [locale])
+
+  const loadWeclawSessionSourceStatus = useCallback(async () => {
+    try {
+      setWeclawSessionSourceStatus(await window.weclawSessions.getStatus())
+    } catch {
+      setWeclawSessionSourceStatus(null)
+    }
+  }, [])
+
   const loadCapabilitySubstrate = useCallback(async () => {
-    const [summaryResult, modeResult, cwdResult, skillsResult] = await Promise.allSettled([
-      window.longclawCapabilitySubstrate.getSummary(),
-      window.agentAPI.getMode(),
-      window.agentAPI.getCwd(),
-      window.agentAPI.getSkills(),
-    ])
+    const [summaryResult, modeResult, cwdResult, skillsResult, settingsResult, registryResult] =
+      await Promise.allSettled([
+        window.longclawCapabilitySubstrate.getSummary(),
+        window.agentAPI.getMode(),
+        window.agentAPI.getCwd(),
+        window.agentAPI.getSkills(),
+        window.longclawCapabilityManager.getSettings(),
+        window.longclawCapabilityManager.getRegistry(),
+      ])
 
     if (summaryResult.status === 'fulfilled') {
       setSubstrateSummary(summaryResult.value)
+      setCapabilityManagerSettings(capabilityManagerSettingsFromSummary(summaryResult.value))
       setSkills(
         summaryResult.value.skills.map(skill => ({
           name: skill.label,
@@ -1745,6 +1920,12 @@ export default function App() {
     } else {
       setSubstrateSummary(null)
       if (skillsResult.status === 'fulfilled') setSkills(skillsResult.value)
+    }
+    if (settingsResult.status === 'fulfilled') {
+      setCapabilityManagerSettings(settingsResult.value)
+    }
+    if (registryResult.status === 'fulfilled') {
+      setCapabilityRegistry(registryResult.value)
     }
     if (modeResult.status === 'fulfilled') setAgentMode(modeResult.value)
     else if (summaryResult.status === 'fulfilled') {
@@ -1759,6 +1940,20 @@ export default function App() {
       if (typeof cwd === 'string') setAgentCwd(cwd)
     }
   }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('longclaw.localRuntimeSeatPreference', localSeatPreference)
+    } catch {
+      // ignore storage failures in constrained environments
+    }
+    void window.longclawRuntime
+      .setLocalSeatPreference(localSeatPreference)
+      .then(() => loadCapabilitySubstrate())
+      .catch(() => {
+        // ignore runtime preference sync failures; substrate refresh will surface status later
+      })
+  }, [localSeatPreference, loadCapabilitySubstrate])
 
   useEffect(() => {
     const onResize = () => {
@@ -1845,7 +2040,13 @@ export default function App() {
     async (targetPage: Page = page, targetPack: PackTab = packTab) => {
       setLoading(true)
       setError(null)
-      if (targetPage === 'home') {
+      const resolvedPack =
+        targetPage === 'signals'
+          ? 'signals'
+          : targetPage === 'rpa'
+            ? 'due_diligence'
+            : targetPack
+      if (targetPage === 'tasks') {
         await Promise.allSettled([
           loadOverview(),
           loadRuns(),
@@ -1854,17 +2055,20 @@ export default function App() {
           loadCapabilitySubstrate(),
         ])
       }
-      if (targetPage === 'runs') {
-        await Promise.allSettled([loadRuns(), loadCapabilitySubstrate()])
+      if (targetPage === 'wechat') {
+        await Promise.allSettled([
+          loadRuns(),
+          loadLaunchTasks(),
+          loadWeclawSessions(),
+          loadWeclawSessionSourceStatus(),
+          loadCapabilitySubstrate(),
+        ])
       }
-      if (targetPage === 'work_items') {
-        await Promise.allSettled([loadWorkItems(), loadCapabilitySubstrate()])
-      }
-      if (targetPage === 'packs') {
-        await Promise.allSettled([loadDashboard(targetPack), loadCapabilitySubstrate()])
-      }
-      if (targetPage === 'studio') {
+      if (targetPage === 'capabilities') {
         await Promise.allSettled([loadOverview(), loadLaunchTasks(), loadCapabilitySubstrate()])
+      }
+      if (targetPage === 'rpa' || targetPage === 'signals') {
+        await Promise.allSettled([loadDashboard(resolvedPack), loadCapabilitySubstrate()])
       }
       setLoading(false)
     },
@@ -1874,6 +2078,8 @@ export default function App() {
       loadLaunchTasks,
       loadOverview,
       loadRuns,
+      loadWeclawSessionSourceStatus,
+      loadWeclawSessions,
       loadWorkItems,
       page,
       packTab,
@@ -1885,7 +2091,7 @@ export default function App() {
   }, [page, packTab, refresh])
 
   useEffect(() => {
-    const intervalMs = page === 'home' || page === 'work_items' ? 10_000 : 15_000
+    const intervalMs = page === 'tasks' ? 10_000 : 15_000
     const timer = window.setInterval(() => {
       void refresh(page, packTab)
     }, intervalMs)
@@ -1929,6 +2135,26 @@ export default function App() {
     },
     [],
   )
+
+  const openWeclawSession = useCallback(async (sessionId: string) => {
+    try {
+      const session = await window.weclawSessions.getWeclawSession(sessionId)
+      if (!session) {
+        setError(t(locale, 'error.weclaw_session_unavailable'))
+        return
+      }
+      setSelected({
+        type: 'weclaw_session',
+        title: session.title,
+        session,
+      })
+      setSelectedWeclawSessionId(session.sessionId)
+      setSelectedArtifacts([])
+      setPreview(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [locale])
 
   const runAction = useCallback(
     async (action: LongclawOperatorAction) => {
@@ -1991,18 +2217,19 @@ export default function App() {
     }
   }, [])
 
-  const filteredRuns = useMemo(
-    () => (runFilter === 'all' ? runs : runs.filter(run => run.status === runFilter)),
-    [runFilter, runs],
-  )
-
-  const filteredWorkItems = useMemo(
-    () =>
-      workItemFilter === 'all'
-        ? workItems
-        : workItems.filter(item => item.severity === workItemFilter),
-    [workItemFilter, workItems],
-  )
+  const selectedWeclawLinkedRecords = useMemo(() => {
+    if (selected?.type !== 'weclaw_session') {
+      return { tasks: [] as LongclawTask[], runs: [] as LongclawRun[] }
+    }
+    const canonicalSessionId = weclawCanonicalSessionId(selected.session)
+    if (!canonicalSessionId) {
+      return { tasks: [] as LongclawTask[], runs: [] as LongclawRun[] }
+    }
+    return {
+      tasks: launchTasks.filter(task => recordSessionId(task as unknown as Record<string, unknown>) === canonicalSessionId).slice(0, 3),
+      runs: runs.filter(run => recordSessionId(run as unknown as Record<string, unknown>) === canonicalSessionId).slice(0, 3),
+    }
+  }, [launchTasks, runs, selected])
 
   const priorityWorkItems = useMemo(
     () =>
@@ -2026,10 +2253,47 @@ export default function App() {
     [locale, overview, substrateSummary],
   )
 
+  const managedSkillEntries = useMemo<LongclawCapabilityEntry[]>(
+    () =>
+      substrateSummary?.skills ??
+      skills.map(skill => ({
+        capability_id: `skill:${skill.project ?? 'workspace'}:${skill.name}`,
+        kind: 'skill',
+        label: skill.name,
+        mention: `@skill ${skill.name}`,
+        source: 'filesystem',
+        description: skill.description,
+        summary: skill.project ?? 'workspace',
+        owner: skill.project ?? null,
+        curated: false,
+        provisional: true,
+        metadata: {
+          path: skill.path,
+          project: skill.project ?? null,
+          disabled: capabilityManagerSettings.disabled_capabilities.includes(
+            `skill:${skill.project ?? 'workspace'}:${skill.name}`,
+          ),
+          group:
+            capabilityManagerSettings.capability_groups[
+              `skill:${skill.project ?? 'workspace'}:${skill.name}`
+            ] ?? null,
+          config_path: skill.path,
+        },
+      })),
+    [capabilityManagerSettings, skills, substrateSummary?.skills],
+  )
+
+  const managedPluginEntries = useMemo<LongclawCapabilityEntry[]>(
+    () => substrateSummary?.plugins ?? [],
+    [substrateSummary?.plugins],
+  )
+
   const skillCapabilities = useMemo<CapabilityItem[]>(
     () =>
-      substrateSummary
-        ? substrateSummary.skills.slice(0, 8).map(skill => ({
+      managedSkillEntries
+        .filter(skill => !capabilityDisabled(skill))
+        .slice(0, 8)
+        .map(skill => ({
             id: skill.capability_id,
             label: skill.label,
             kind: 'skill',
@@ -2037,21 +2301,16 @@ export default function App() {
             hint:
               skill.summary || (skill.owner ? humanizeToken(skill.owner) : 'Workspace skill'),
             description: skill.description,
-          }))
-        : skills.slice(0, 8).map(skill => ({
-            id: `skill:${skill.project ?? 'workspace'}:${skill.name}`,
-            label: skill.name,
-            kind: 'skill',
-            mention: `@skill ${skill.name}`,
-            hint: skill.project ? humanizeToken(skill.project) : 'Workspace skill',
-            description: skill.description,
           })),
-    [skills, substrateSummary],
+    [managedSkillEntries],
   )
 
   const pluginCapabilities = useMemo<CapabilityItem[]>(
     () =>
-      (substrateSummary?.plugins ?? []).slice(0, 4).map(plugin => ({
+      managedPluginEntries
+        .filter(plugin => !capabilityDisabled(plugin))
+        .slice(0, 4)
+        .map(plugin => ({
         id: plugin.capability_id,
         label: plugin.label,
         kind: 'plugin',
@@ -2059,7 +2318,7 @@ export default function App() {
         hint: plugin.summary || 'Capability plugin',
         description: plugin.description,
       })),
-    [substrateSummary],
+    [managedPluginEntries],
   )
 
   const modeAwareCapabilities = useMemo(() => {
@@ -2085,35 +2344,35 @@ export default function App() {
   const selectedModeSpec = localizedWorkModeSpec(locale, selectedWorkMode)
   const selectedModeCapabilities = modeAwareCapabilities[selectedWorkMode]
   const selectedModeNotice = useMemo(
-    () => workModeAvailabilityNotice(locale, selectedWorkMode, runtimeStatus),
-    [locale, runtimeStatus, selectedWorkMode],
+    () => workModeAvailabilityNotice(locale, selectedWorkMode, runtimeStatus, localSeatPreference),
+    [localSeatPreference, locale, runtimeStatus, selectedWorkMode],
+  )
+  const localSeatBannerMessage = useMemo(
+    () =>
+      selectedWorkMode === 'local'
+        ? localSeatStateMessage(locale, runtimeStatus, localSeatPreference)
+        : null,
+    [localSeatPreference, locale, runtimeStatus, selectedWorkMode],
   )
   const launchDisabled = launchBusy || launchInput.trim().length === 0 || Boolean(selectedModeNotice)
-  const resetRuntimeDisabled = !runtimeStatus.localRuntimeAvailable
+  const resetRuntimeDisabled =
+    effectiveLocalRuntimeSeat(runtimeStatus, localSeatPreference) === 'unavailable'
 
-  const skillGroups = useMemo(() => {
-    const groups = new Map<string, SkillInfo[]>()
-    for (const skill of skills) {
-      const key = skill.project || 'workspace'
+  const capabilitySkillGroups = useMemo(() => {
+    const groups = new Map<string, LongclawCapabilityEntry[]>()
+    for (const skill of managedSkillEntries) {
+      const key = capabilityGroup(skill) || skill.owner || 'workspace'
       const bucket = groups.get(key)
       if (bucket) bucket.push(skill)
       else groups.set(key, [skill])
     }
     return [...groups.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
-      .map(([project, items]) => ({
-        project,
-        skills: [...items].sort((left, right) => left.name.localeCompare(right.name)),
+      .map(([group, items]) => ({
+        group,
+        items: [...items].sort((left, right) => left.label.localeCompare(right.label)),
       }))
-  }, [skills])
-
-  const flagshipPacks = useMemo(
-    () =>
-      (substrateSummary?.flagship_packs ?? overview?.packs ?? []).filter(pack =>
-        ['signals', 'due_diligence'].includes(pack.pack_id),
-      ),
-    [overview, substrateSummary],
-  )
+  }, [managedSkillEntries])
 
   const recentLaunches = useMemo(
     () => mergeLaunchRecords(launches, launchTasks.map(launchRecordFromTask)).slice(0, 8),
@@ -2124,20 +2383,20 @@ export default function App() {
     [launchTasks, locale, recentLaunches],
   )
   const latestLaunch = recentLaunches[0] ?? null
-  const studioSummaryItems = useMemo(
+  const capabilitySummaryItems = useMemo(
     () => [
       { label: t(locale, 'label.packs'), value: overview?.packs.length ?? 0, tone: 'running' },
-      { label: t(locale, 'label.skills'), value: skills.length, tone: 'open' },
-      { label: t(locale, 'label.plugins'), value: substrateSummary?.plugins.length ?? 0, tone: 'open' },
+      { label: t(locale, 'label.skills'), value: managedSkillEntries.length, tone: 'open' },
+      { label: t(locale, 'label.plugins'), value: managedPluginEntries.length, tone: 'open' },
       { label: t(locale, 'label.launches'), value: recentLaunches.length, tone: latestLaunch?.status },
     ],
     [
       latestLaunch?.status,
       locale,
+      managedPluginEntries.length,
+      managedSkillEntries.length,
       overview?.packs.length,
       recentLaunches.length,
-      skills.length,
-      substrateSummary?.plugins.length,
     ],
   )
 
@@ -2163,32 +2422,122 @@ export default function App() {
       ),
     [launchTasks, locale, recentLaunches, runs, selectedThreadId, threadSummaries, workItems],
   )
-  const compactHomeZeroState =
-    conversationEvents.length === 0 && (viewportTier !== 'wide' || viewportHeight < 820)
+  const taskFlowItems = useMemo<TaskFlowItem[]>(
+    () =>
+      [
+        ...recentLaunches.map(record => ({
+          id: `launch:${record.id}`,
+          kind: 'launch' as const,
+          title:
+            record.prompt.trim().slice(0, 72) ||
+            humanizeTokenLocale(locale, record.pack_id ?? 'launch'),
+          meta: formatModeMeta([
+            record.work_mode ? humanizeWorkMode(locale, record.work_mode) : undefined,
+            record.pack_id ? humanizeTokenLocale(locale, record.pack_id) : undefined,
+            record.started_at ? formatTime(record.started_at) : undefined,
+          ]),
+          description:
+            record.error || record.text.trim().slice(0, 140) || record.result_label || undefined,
+          status: record.status,
+          filter: taskFlowFilterForLaunch(record),
+          timestamp: record.finished_at ?? record.started_at,
+        })),
+        ...launchTasks.map(task => ({
+          id: `task:${task.task_id}`,
+          kind: 'task' as const,
+          title:
+            stringValue(task.input.requested_outcome) ||
+            stringValue(task.input.raw_text) ||
+            humanizeTokenLocale(locale, task.capability),
+          meta: formatModeMeta([
+            humanizeTokenLocale(locale, task.capability),
+            workModeFromTask(task) ? humanizeWorkMode(locale, workModeFromTask(task)) : undefined,
+            task.updated_at ? formatTime(task.updated_at) : task.created_at ? formatTime(task.created_at) : undefined,
+          ]),
+          description: formatModeMeta([
+            runtimeTargetFromRecord(task)
+              ? humanizeTokenLocale(locale, runtimeTargetFromRecord(task))
+              : undefined,
+            localRuntimeSeatFromRecord(task)
+              ? humanizeTokenLocale(locale, localRuntimeSeatFromRecord(task))
+              : undefined,
+          ]),
+          status: task.status,
+          filter: taskFlowFilterForTask(task),
+          timestamp: task.updated_at ?? task.created_at ?? undefined,
+        })),
+        ...runs.map(run => ({
+          id: `run:${run.run_id}`,
+          kind: 'run' as const,
+          title: run.summary || run.run_id,
+          meta: formatModeMeta([
+            humanizeTokenLocale(locale, run.pack_id ?? run.domain),
+            humanizeTokenLocale(locale, run.capability),
+            run.created_at ? formatTime(run.created_at) : undefined,
+          ]),
+          description: formatModeMeta([
+            workModeFromRun(run) ? humanizeWorkMode(locale, workModeFromRun(run)) : undefined,
+            runtimeTargetFromRecord(run)
+              ? humanizeTokenLocale(locale, runtimeTargetFromRecord(run))
+              : undefined,
+          ]),
+          status: run.status,
+          filter: taskFlowFilterForRun(run),
+          timestamp: run.started_at ?? run.created_at ?? undefined,
+        })),
+        ...workItems.map(item => ({
+          id: `work_item:${item.work_item_id}`,
+          kind: 'work_item' as const,
+          title: item.title,
+          meta: formatModeMeta([
+            humanizeTokenLocale(locale, item.pack_id),
+            humanizeTokenLocale(locale, item.kind),
+            item.updated_at ? formatTime(item.updated_at) : item.created_at ? formatTime(item.created_at) : undefined,
+          ]),
+          description: item.summary,
+          status: item.severity,
+          filter: taskFlowFilterForWorkItem(item),
+          timestamp: item.updated_at ?? item.created_at ?? undefined,
+        })),
+      ].sort((left, right) => {
+        const leftValue = left.timestamp ? new Date(left.timestamp).getTime() : 0
+        const rightValue = right.timestamp ? new Date(right.timestamp).getTime() : 0
+        return rightValue - leftValue
+      }),
+    [launchTasks, locale, recentLaunches, runs, workItems],
+  )
+  const filteredTaskFlowItems = useMemo(
+    () =>
+      taskFlowFilter === 'all'
+        ? taskFlowItems
+        : taskFlowItems.filter(item => item.filter === taskFlowFilter),
+    [taskFlowFilter, taskFlowItems],
+  )
   const selectedThread = useMemo(
     () => threadSummaries.find(thread => thread.id === selectedThreadId) ?? null,
     [selectedThreadId, threadSummaries],
   )
   const navItems = useMemo<NavItemSpec[]>(
-    () =>
-      [
-        { id: 'home', label: t(locale, 'nav.home'), glyph: locale === 'zh-CN' ? '首' : 'H' },
-        { id: 'runs', label: t(locale, 'nav.runs'), glyph: locale === 'zh-CN' ? '记' : 'R' },
+    () => {
+      const items: Array<Omit<NavItemSpec, 'title'>> = [
         {
-          id: 'work_items',
-          label: t(locale, 'nav.work_items'),
-          glyph: locale === 'zh-CN' ? '办' : 'T',
+          id: 'wechat',
+          label: t(locale, 'nav.wechat'),
+          glyph: locale === 'zh-CN' ? '微' : 'W',
         },
-        { id: 'packs', label: t(locale, 'nav.packs'), glyph: locale === 'zh-CN' ? '专' : 'P' },
+        { id: 'tasks', label: t(locale, 'nav.tasks'), glyph: locale === 'zh-CN' ? '任' : 'T' },
         {
-          id: 'studio',
-          label: t(locale, 'nav.studio'),
-          glyph: locale === 'zh-CN' ? '能' : 'C',
+          id: 'capabilities',
+          label: t(locale, 'nav.capabilities'),
+          glyph: locale === 'zh-CN' ? '扩' : 'E',
         },
-      ].map(item => ({ ...item, title: item.label })),
+        { id: 'rpa', label: t(locale, 'nav.rpa'), glyph: 'R' },
+        { id: 'signals', label: t(locale, 'nav.signals'), glyph: 'S' },
+      ]
+      return items.map(item => ({ ...item, title: item.label }))
+    },
     [locale],
   )
-  const homeRecentLaunches = recentLaunches.slice(0, 4)
   const homeRecentThreads = threadSummaries.slice(0, 4)
   const homePendingItems = priorityWorkItems.slice(0, 4)
   const sidebarStatusItems = useMemo<SidebarStatusItem[]>(
@@ -2214,9 +2563,12 @@ export default function App() {
       {
         id: 'seat',
         label: t(locale, 'runtime.local_runtime_seat'),
-        meta: runtimeStatus.localRuntimeSeat
-          ? humanizeTokenLocale(locale, runtimeStatus.localRuntimeSeat)
-          : humanizeTokenLocale(locale, 'unavailable'),
+        meta: formatModeMeta([
+          runtimeStatus.localRuntimeSeat
+            ? humanizeTokenLocale(locale, runtimeStatus.localRuntimeSeat)
+            : humanizeTokenLocale(locale, 'unavailable'),
+          localSeatPreferenceLabel(locale, localSeatPreference),
+        ]),
         status: runtimeStatus.localRuntimeAvailable ? 'available' : 'unavailable',
       },
       {
@@ -2232,8 +2584,12 @@ export default function App() {
         status: runtimeStatus.localRuntimeApiAvailable ? 'available' : 'unavailable',
       },
     ],
-    [locale, runtimeStatus],
+    [localSeatPreference, locale, runtimeStatus],
   )
+  const disabledCapabilityCount = capabilityManagerSettings.disabled_capabilities.length
+  const capabilityGroupsSummary = Object.entries(capabilityManagerSettings.capability_groups)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(0, 6)
 
   useEffect(() => {
     if (!threadSummaries.length) {
@@ -2245,9 +2601,44 @@ export default function App() {
     }
   }, [selectedThreadId, threadSummaries])
 
+  useEffect(() => {
+    if (!weclawSessions.length) {
+      setSelectedWeclawSessionId(null)
+      return
+    }
+    if (!selectedWeclawSessionId) {
+      return
+    }
+    if (!weclawSessions.some(session => session.sessionId === selectedWeclawSessionId)) {
+      setSelectedWeclawSessionId(null)
+    }
+  }, [selectedWeclawSessionId, weclawSessions])
+
+  useEffect(() => {
+    if (page !== 'wechat') return
+    if (!selectedWeclawSessionId && selected?.type === 'weclaw_session') {
+      setSelected(null)
+    }
+  }, [page, selected, selectedWeclawSessionId])
+
+  useEffect(() => {
+    if (page === 'wechat') return
+    if (selected?.type === 'weclaw_session') {
+      setSelected(null)
+    }
+  }, [page, selected])
+
+  useEffect(() => {
+    if (page !== 'wechat') return
+    if (filteredWeclawSessions.length > 0) return
+    if (selected?.type === 'weclaw_session') {
+      setSelected(null)
+    }
+  }, [filteredWeclawSessions.length, page, selected])
+
   const useCapability = useCallback((item: CapabilityItem) => {
     setLaunchInput(previous => withMention(previous, item.mention))
-    setPage('home')
+    setPage('tasks')
   }, [])
 
   const openLaunchRecord = useCallback(
@@ -2262,7 +2653,7 @@ export default function App() {
 
   const openPackWorkspace = useCallback((packId: PackTab) => {
     setPackTab(packId)
-    setPage('packs')
+    setPage(packId === 'signals' ? 'signals' : 'rpa')
   }, [])
 
   const openConversationEvent = useCallback(
@@ -2285,6 +2676,207 @@ export default function App() {
       openWorkItem(event.workItem)
     },
     [openLaunchRecord, openRecord, openRun, openWorkItem],
+  )
+
+  const syncCapabilityManagerSettings = useCallback(
+    async (patch: Partial<CapabilityManagerSettings>) => {
+      try {
+        const next = await window.longclawCapabilityManager.updateSettings(patch)
+        setCapabilityManagerSettings(next)
+        await loadCapabilitySubstrate()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [loadCapabilitySubstrate],
+  )
+
+  const syncCapabilityRegistry = useCallback(
+    async (
+      operation:
+        | { type: 'refresh' }
+        | { type: 'register'; kind: 'skill' | 'plugin'; sourcePath: string; label?: string }
+        | { type: 'remove'; registryId: string },
+    ) => {
+      try {
+        let next: RuntimeCapabilityRegistry
+        if (operation.type === 'refresh') {
+          next = await window.longclawCapabilityManager.rescan()
+        } else if (operation.type === 'register') {
+          next = await window.longclawCapabilityManager.registerCapability({
+            kind: operation.kind,
+            sourcePath: operation.sourcePath,
+            label: operation.label,
+          })
+        } else {
+          next = await window.longclawCapabilityManager.removeCapability(operation.registryId)
+        }
+        setCapabilityRegistry(next)
+        await loadCapabilitySubstrate()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [loadCapabilitySubstrate],
+  )
+
+  const updateWeclawSessionState = useCallback(
+    async (
+      session: Pick<WeclawSessionSummary, 'canonicalSessionId'>,
+      patch: { hidden?: boolean; archived?: boolean },
+    ) => {
+      try {
+        await window.weclawSessions.updateSessionState(session.canonicalSessionId, patch)
+        const nextSessions = await window.weclawSessions.listWeclawSessions()
+        setWeclawSessions(nextSessions)
+        if (
+          selected?.type === 'weclaw_session' &&
+          selected.session.canonicalSessionId === session.canonicalSessionId
+        ) {
+          const nextSelected = nextSessions.find(
+            item => item.sessionId === selected.session.sessionId,
+          )
+          if (nextSelected) {
+            setSelected({
+              type: 'weclaw_session',
+              title: selected.title,
+              session: {
+                ...selected.session,
+                hidden: nextSelected.hidden,
+                archived: nextSelected.archived,
+              },
+            })
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [selected],
+  )
+
+  const toggleCapabilityVisibility = useCallback(
+    (entry: LongclawCapabilityEntry) => {
+      const nextDisabled = capabilityDisabled(entry)
+        ? capabilityManagerSettings.disabled_capabilities.filter(
+            capabilityId => capabilityId !== entry.capability_id,
+          )
+        : [...capabilityManagerSettings.disabled_capabilities, entry.capability_id]
+      void syncCapabilityManagerSettings({
+        disabled_capabilities: nextDisabled,
+      })
+    },
+    [capabilityManagerSettings.disabled_capabilities, syncCapabilityManagerSettings],
+  )
+
+  const updateCapabilityGroup = useCallback(
+    (entry: LongclawCapabilityEntry, group: string) => {
+      const nextGroups = { ...capabilityManagerSettings.capability_groups }
+      if (group.trim()) nextGroups[entry.capability_id] = group.trim()
+      else delete nextGroups[entry.capability_id]
+      void syncCapabilityManagerSettings({
+        capability_groups: nextGroups,
+      })
+    },
+    [capabilityManagerSettings.capability_groups, syncCapabilityManagerSettings],
+  )
+
+  const addDiscoveryRoot = useCallback(
+    (kind: 'skill' | 'plugin') => {
+      const draft = kind === 'skill' ? extraSkillRootDraft : extraPluginRootDraft
+      const trimmed = draft.trim()
+      if (!trimmed) return
+      if (kind === 'skill') {
+        void syncCapabilityManagerSettings({
+          extra_skill_roots: [...capabilityManagerSettings.extra_skill_roots, trimmed],
+        })
+        setExtraSkillRootDraft('')
+        return
+      }
+      void syncCapabilityManagerSettings({
+        extra_plugin_roots: [...capabilityManagerSettings.extra_plugin_roots, trimmed],
+      })
+      setExtraPluginRootDraft('')
+    },
+    [
+      capabilityManagerSettings.extra_plugin_roots,
+      capabilityManagerSettings.extra_skill_roots,
+      extraPluginRootDraft,
+      extraSkillRootDraft,
+      syncCapabilityManagerSettings,
+    ],
+  )
+
+  const removeDiscoveryRoot = useCallback(
+    (kind: 'skill' | 'plugin', root: string) => {
+      if (kind === 'skill') {
+        void syncCapabilityManagerSettings({
+          extra_skill_roots: capabilityManagerSettings.extra_skill_roots.filter(
+            value => value !== root,
+          ),
+        })
+        return
+      }
+      void syncCapabilityManagerSettings({
+        extra_plugin_roots: capabilityManagerSettings.extra_plugin_roots.filter(
+          value => value !== root,
+        ),
+      })
+    },
+    [
+      capabilityManagerSettings.extra_plugin_roots,
+      capabilityManagerSettings.extra_skill_roots,
+      syncCapabilityManagerSettings,
+    ],
+  )
+
+  const openCapabilityLocalPath = useCallback(async (targetPath?: string) => {
+    if (!targetPath) return
+    try {
+      await window.longclawControlPlane.performLocalAction({
+        kind: 'open_path',
+        payload: { path: targetPath },
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [])
+
+  const copyCapabilityMention = useCallback(async (mention: string) => {
+    try {
+      await window.longclawControlPlane.performLocalAction({
+        kind: 'copy_value',
+        payload: { value: mention },
+      })
+      setActionMessage(t(locale, 'action.copy_mention_done'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [locale])
+
+  const openTaskFlowItem = useCallback(
+    (item: TaskFlowItem) => {
+      if (item.kind === 'launch') {
+        const launch = recentLaunches.find(record => `launch:${record.id}` === item.id)
+        if (launch) openLaunchRecord(launch)
+        return
+      }
+      if (item.kind === 'task') {
+        const task = launchTasks.find(record => `task:${record.task_id}` === item.id)
+        if (task) {
+          openRecord(item.title, task as unknown as Record<string, unknown>)
+        }
+        return
+      }
+      if (item.kind === 'run') {
+        const run = runs.find(record => `run:${record.run_id}` === item.id)
+        if (run) void openRun(run)
+        return
+      }
+      const workItem = workItems.find(record => `work_item:${record.work_item_id}` === item.id)
+      if (workItem) openWorkItem(workItem)
+    },
+    [launchTasks, openLaunchRecord, openRecord, openRun, openWorkItem, recentLaunches, runs, workItems],
   )
 
   const resetCoworkRuntime = useCallback(async () => {
@@ -2312,14 +2904,18 @@ export default function App() {
     const tempLaunchId = `launch-${Date.now()}`
     const selectedMode = selectedWorkMode
     const selectedSpec = localizedWorkModeSpec(locale, selectedMode)
+    const runtimeProfile = effectiveRuntimeProfile(
+      selectedMode,
+      runtimeStatus,
+      localSeatPreference,
+    )
     activeLaunchIdRef.current = tempLaunchId
     setLaunchBusy(true)
     setActionMessage(null)
     setError(null)
     setLaunchInput('')
-    setLaunches(previous =>
-      [
-        {
+    setLaunches(previous => {
+      const optimisticLaunch: LaunchRecord = {
           id: tempLaunchId,
           prompt,
           status: 'running',
@@ -2330,9 +2926,13 @@ export default function App() {
           work_mode: selectedMode,
           origin_surface: selectedSpec.interactionSurface,
           interaction_surface: selectedSpec.interactionSurface,
-          runtime_profile: 'dev_local_acp_bridge',
+          runtime_profile: runtimeProfile,
           runtime_target: selectedSpec.runtimeTarget,
           model_plane: selectedSpec.modelPlane,
+          local_runtime_seat:
+            selectedMode === 'local'
+              ? effectiveLocalRuntimeSeat(runtimeStatus, localSeatPreference)
+              : 'unavailable',
           execution_plane:
             selectedSpec.runtimeTarget === 'cloud_runtime' ? 'cloud_executor' : 'local_executor',
           workspace_target:
@@ -2341,14 +2941,19 @@ export default function App() {
               : selectedMode === 'cloud_sandbox'
                 ? 'sandbox://longclaw/default'
                 : 'weclaw://active-thread',
-        },
-        ...previous,
-      ].slice(0, 8),
-    )
+      }
+      return [optimisticLaunch, ...previous].slice(0, 8)
+    })
 
     try {
       const receipt = await window.longclawLaunch.launch(
-        buildLaunchIntent(prompt, agentCwd, selectedMode),
+        buildLaunchIntent(
+          prompt,
+          agentCwd,
+          selectedMode,
+          runtimeStatus,
+          localSeatPreference,
+        ),
       )
       activeLaunchIdRef.current = null
       setLaunchBusy(false)
@@ -2409,15 +3014,176 @@ export default function App() {
     loadLaunchTasks,
     loadOverview,
     loadWorkItems,
+    localSeatPreference,
     selectedModeNotice,
     selectedWorkMode,
     locale,
+    runtimeStatus,
   ])
 
-  const pageHeading = pageTitle(locale, page, packTab)
+  const pageHeading = pageTitle(locale, page)
   const selectedThreadModeSpec = workModeSpecFromValue(
     locale,
     selectedThread?.workMode ?? selectedWorkMode,
+  )
+  const taskWorkspaceContextItems = useMemo(
+    () => [
+      {
+        id: 'workspace',
+        label: t(locale, 'context.workspace_root'),
+        value: agentCwd
+          ? agentCwd.split('/').filter(Boolean).slice(-2).join('/')
+          : t(locale, 'context.workspace_pending'),
+        meta: agentCwd || t(locale, 'context.workspace_not_resolved'),
+      },
+      {
+        id: 'mode',
+        label: t(locale, 'context.selected_home_mode'),
+        value: selectedModeSpec.label,
+        meta: formatModeMeta([
+          selectedModeSpec.summary,
+          selectedWorkMode === 'local'
+            ? localSeatPreferenceLabel(locale, localSeatPreference)
+            : undefined,
+        ]),
+      },
+      {
+        id: 'thread',
+        label: t(locale, 'sidebar.session_ledger'),
+        value: selectedThread?.title || t(locale, 'state.pending'),
+        meta:
+          formatModeMeta([
+            selectedThreadModeSpec?.label,
+            selectedThread?.latestAt ? formatTime(selectedThread.latestAt) : undefined,
+          ]) || t(locale, 'section.continue_threads.subtitle'),
+      },
+    ],
+    [
+      agentCwd,
+      locale,
+      localSeatPreference,
+      selectedModeSpec.label,
+      selectedModeSpec.summary,
+      selectedThread,
+      selectedThreadModeSpec?.label,
+      selectedWorkMode,
+    ],
+  )
+  const taskWorkspaceStatusItems = useMemo(
+    () => [
+      {
+        label: t(locale, 'task_flow_filter.running'),
+        value: taskFlowItems.filter(item => item.filter === 'running').length,
+        tone: 'running',
+      },
+      {
+        label: t(locale, 'task_flow_filter.pending'),
+        value: taskFlowItems.filter(item => item.filter === 'pending').length,
+        tone: 'pending',
+      },
+      {
+        label: t(locale, 'task_flow_filter.failed'),
+        value: taskFlowItems.filter(item => item.filter === 'failed').length,
+        tone: 'failed',
+      },
+      {
+        label: t(locale, 'section.continue_threads.title'),
+        value: homeRecentThreads.length,
+        tone: homeRecentThreads.length > 0 ? 'running' : 'open',
+      },
+    ],
+    [homeRecentThreads.length, locale, taskFlowItems],
+  )
+  const taskWorkspaceTaskFlowItems = useMemo(
+    () =>
+      filteredTaskFlowItems.map(item => ({
+        id: item.id,
+        title: item.title,
+        meta: item.meta,
+        description: item.description,
+        status: item.status,
+        nextActionLabel: t(locale, 'action.inspect_launch'),
+      })),
+    [filteredTaskFlowItems, locale],
+  )
+  const taskWorkspaceContinueThreads = useMemo(
+    () =>
+      homeRecentThreads.map(thread => ({
+        id: thread.id,
+        title: thread.title,
+        meta: formatModeMeta([
+          thread.subtitle,
+          thread.latestAt ? formatTime(thread.latestAt) : undefined,
+        ]),
+        status: thread.status,
+        description: thread.localRuntimeSeat
+          ? humanizeTokenLocale(locale, thread.localRuntimeSeat)
+          : undefined,
+        nextActionLabel: t(locale, 'action.switch_context'),
+        active: selectedThreadId === thread.id,
+      })),
+    [homeRecentThreads, locale, selectedThreadId],
+  )
+  const taskWorkspacePendingItems = useMemo(
+    () =>
+      homePendingItems.map(item => ({
+        id: item.work_item_id,
+        title: item.title,
+        meta: formatModeMeta([
+          humanizeTokenLocale(locale, item.pack_id),
+          humanizeTokenLocale(locale, item.kind),
+          humanizeTokenLocale(locale, item.status),
+        ]),
+        status: item.severity,
+        description: item.summary,
+        nextActionLabel: item.operator_actions[0]?.label ?? t(locale, 'action.inspect_launch'),
+      })),
+    [homePendingItems, locale],
+  )
+  const taskWorkspaceWorkModeOptions = useMemo(
+    () =>
+      WORK_MODE_ORDER.map(mode => {
+        const spec = localizedWorkModeSpec(locale, mode)
+        return {
+          value: mode,
+          label: spec.label,
+          description: spec.detail,
+        }
+      }),
+    [locale],
+  )
+  const taskWorkspaceLocalSeatOptions = useMemo(
+    () =>
+      (['auto', 'force_acp', 'force_local_runtime_api'] as LocalRuntimeSeatPreference[]).map(
+        preference => ({
+          value: preference,
+          label: localSeatPreferenceLabel(locale, preference),
+        }),
+      ),
+    [locale],
+  )
+  const taskWorkspaceCapabilitySuggestions = useMemo(
+    () =>
+      selectedModeCapabilities.map(item => ({
+        id: item.id,
+        mention: item.mention,
+        label: item.label,
+      })),
+    [selectedModeCapabilities],
+  )
+  const selectedWeclawSession = useMemo(
+    () => (selected?.type === 'weclaw_session' ? selected.session : null),
+    [selected],
+  )
+  const clearWeclawSelection = useCallback(() => {
+    setSelected(null)
+    setSelectedWeclawSessionId(null)
+  }, [])
+  const openWeclawLinkedTask = useCallback(
+    (task: LongclawTask) => {
+      openRecord(t(locale, 'section.detail.weclaw_links.task'), task as unknown as Record<string, unknown>)
+    },
+    [locale, openRecord],
   )
 
   return (
@@ -2499,78 +3265,172 @@ export default function App() {
         </div>
 
         <div style={threadSidebarSectionStyle}>
-          <div style={threadSidebarSectionHeaderStyle}>
-            <div>
-              <div style={chromeStyles.eyebrowLight}>{t(locale, 'sidebar.threads')}</div>
-              <div style={threadSidebarHeadingStyle}>{t(locale, 'sidebar.session_ledger')}</div>
-            </div>
-            <span style={statusBadgeStyle('open')}>{threadSummaries.length}</span>
-          </div>
-          <div style={threadListStyle}>
-            {threadSummaries.length === 0 ? (
-              <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_launch_history')}</div>
-            ) : (
-              threadSummaries.map(thread => (
-                <button
-                  key={thread.id}
-                  type="button"
-                  style={threadRowStyle(selectedThreadId === thread.id)}
-                  onClick={() => {
-                    setSelectedThreadId(thread.id)
-                    setPage('home')
-                    if (viewportTier === 'narrow') setThreadSidebarOpen(false)
-                  }}
+          {page === 'wechat' && (
+            <>
+              <div style={threadSidebarSectionHeaderStyle}>
+                <div>
+                  <div style={chromeStyles.eyebrowLight}>{t(locale, 'section.wechat_sessions.source.title')}</div>
+                  <div style={threadSidebarHeadingStyle}>{t(locale, 'page.wechat.title')}</div>
+                </div>
+                <span
+                  style={statusBadgeStyle(
+                    weclawSessionSourceStatus?.sessionsDirExists ? 'open' : 'degraded',
+                  )}
                 >
-                  <div style={threadRowHeaderStyle}>
-                    <div style={threadRowTitleStyle}>{thread.title}</div>
-                    <span style={statusBadgeStyle(thread.status)}>{humanizeTokenLocale(locale, thread.status)}</span>
+                  {filteredWeclawSessions.length}
+                </span>
+              </div>
+              <div style={threadSidebarQuickListStyle}>
+                <div style={threadRowMetaStyle}>
+                  {weclawSessionSourceStatus?.sessionsDir ??
+                    weclawSessionSourceStatus?.workspaceRoot ??
+                    t(locale, 'empty.weclaw_sessions_dir_missing')}
+                </div>
+                {(filteredWeclawSessions.length === 0 ? [] : filteredWeclawSessions.slice(0, 5)).map(session => (
+                  <button
+                    key={session.sessionId}
+                    type="button"
+                    style={threadSidebarMiniRowStyle}
+                    onClick={() => {
+                      setSelectedWeclawSessionId(session.sessionId)
+                      void openWeclawSession(session.sessionId)
+                    }}
+                  >
+                    <div style={threadMiniTitleStyle}>{session.title}</div>
+                    <div style={threadRowMetaStyle}>
+                      {formatModeMeta([
+                        session.userId,
+                        session.updatedAt ? formatTime(session.updatedAt) : undefined,
+                      ])}
+                    </div>
+                  </button>
+                ))}
+                {filteredWeclawSessions.length === 0 && (
+                  <div style={utilityStyles.emptyState}>
+                    {weclawEmptyStateMessage(locale, weclawSessionSourceStatus)}
                   </div>
-                  {thread.subtitle && <div style={threadRowMetaStyle}>{thread.subtitle}</div>}
-                  <div style={threadRowMetaStyle}>
-                    {formatModeMeta([
-                      thread.latestAt ? formatTime(thread.latestAt) : undefined,
-                      thread.localRuntimeSeat
-                        ? humanizeTokenLocale(locale, thread.localRuntimeSeat)
-                        : undefined,
-                      tf(locale, 'sidebar.events_count', { count: thread.itemCount }),
-                    ])}
+                )}
+              </div>
+            </>
+          )}
+
+          {page === 'capabilities' && (
+            <>
+              <div style={threadSidebarSectionHeaderStyle}>
+                <div>
+                  <div style={chromeStyles.eyebrowLight}>{t(locale, 'nav.capabilities')}</div>
+                  <div style={threadSidebarHeadingStyle}>{t(locale, 'sidebar.capability_groups')}</div>
+                </div>
+                <span style={statusBadgeStyle(disabledCapabilityCount > 0 ? 'degraded' : 'open')}>
+                  {disabledCapabilityCount}
+                </span>
+              </div>
+              <div style={threadSidebarQuickListStyle}>
+                {capabilityGroupsSummary.length === 0 ? (
+                  <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_capability_groups')}</div>
+                ) : (
+                  capabilityGroupsSummary.map(([capabilityId, group]) => (
+                    <div key={capabilityId} style={threadSidebarMiniRowStyle}>
+                      <div style={threadMiniTitleStyle}>{group}</div>
+                      <div style={threadRowMetaStyle}>{capabilityId}</div>
+                    </div>
+                  ))
+                )}
+                <div style={threadRowMetaStyle}>
+                  {tf(locale, 'sidebar.extra_roots_summary', {
+                    skills: capabilityManagerSettings.extra_skill_roots.length,
+                    plugins: capabilityManagerSettings.extra_plugin_roots.length,
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+
+          {page === 'rpa' && (
+            <>
+              <div style={threadSidebarSectionHeaderStyle}>
+                <div>
+                  <div style={chromeStyles.eyebrowLight}>{t(locale, 'nav.rpa')}</div>
+                  <div style={threadSidebarHeadingStyle}>{t(locale, 'sidebar.rpa_flows')}</div>
+                </div>
+                <span style={statusBadgeStyle(runtimeStatus.dueDiligenceConnected ? 'open' : 'degraded')}>
+                  {runtimeStatus.dueDiligenceConnected ? t(locale, 'state.ready') : t(locale, 'state.degraded')}
+                </span>
+              </div>
+              <div style={threadSidebarQuickListStyle}>
+                <div style={threadSidebarMiniRowStyle}>
+                  <div style={threadMiniTitleStyle}>{t(locale, 'pack.due_diligence')}</div>
+                  <div style={threadRowMetaStyle}>{t(locale, 'sidebar.rpa_primary_flow')}</div>
+                </div>
+                {(dashboard && dashboard.pack_id === 'due_diligence'
+                  ? dashboard.recent_runs.slice(0, 3)
+                  : []
+                ).map(run => (
+                  <button
+                    key={run.run_id}
+                    type="button"
+                    style={threadSidebarMiniRowStyle}
+                    onClick={() => {
+                      void openRun(run as LongclawRun)
+                    }}
+                  >
+                    <div style={threadMiniTitleStyle}>
+                      {run.summary || run.run_id}
+                    </div>
+                    <div style={threadRowMetaStyle}>{formatTime(run.created_at)}</div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {page === 'signals' && (
+            <>
+              <div style={threadSidebarSectionHeaderStyle}>
+                <div>
+                  <div style={chromeStyles.eyebrowLight}>{t(locale, 'nav.signals')}</div>
+                  <div style={threadSidebarHeadingStyle}>{t(locale, 'sidebar.signals_connectors')}</div>
+                </div>
+                <span style={statusBadgeStyle(runtimeStatus.signalsAvailable ? 'open' : 'degraded')}>
+                  {runtimeStatus.signalsAvailable ? t(locale, 'state.ready') : t(locale, 'state.degraded')}
+                </span>
+              </div>
+              <div style={threadSidebarQuickListStyle}>
+                {(dashboard && dashboard.pack_id === 'signals'
+                  ? [
+                      ...(dashboard.connector_health ?? []).slice(0, 3).map(item => ({
+                        id: String(item.connector_id ?? 'connector'),
+                        title: String(item.connector_id ?? 'connector'),
+                        meta: [item.status, item.summary].filter(Boolean).join(' · '),
+                      })),
+                    ]
+                  : []
+                ).map(item => (
+                  <div key={item.id} style={threadSidebarMiniRowStyle}>
+                    <div style={threadMiniTitleStyle}>{item.title}</div>
+                    <div style={threadRowMetaStyle}>{item.meta}</div>
                   </div>
-                </button>
-              ))
-            )}
-          </div>
+                ))}
+                {dashboard && dashboard.pack_id === 'signals' && (
+                  (dashboard.review_runs ?? []).slice(0, 2).map(run => (
+                    <button
+                      key={run.run_id}
+                      type="button"
+                      style={threadSidebarMiniRowStyle}
+                      onClick={() => {
+                        void openRun(run as LongclawRun)
+                      }}
+                    >
+                      <div style={threadMiniTitleStyle}>{run.summary || run.run_id}</div>
+                      <div style={threadRowMetaStyle}>{formatTime(run.created_at)}</div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </div>
 
-        <div style={threadSidebarSectionStyle}>
-          <div style={threadSidebarSectionHeaderStyle}>
-            <div>
-              <div style={chromeStyles.eyebrowLight}>{t(locale, 'nav.work_items')}</div>
-              <div style={threadSidebarHeadingStyle}>{t(locale, 'section.priority_queue.title')}</div>
-            </div>
-          </div>
-          <div style={threadSidebarQuickListStyle}>
-            {priorityWorkItems.length === 0 ? (
-              <div style={utilityStyles.emptyState}>{t(locale, 'empty.priority_queue')}</div>
-            ) : (
-              priorityWorkItems.slice(0, 4).map(item => (
-                <button
-                  key={item.work_item_id}
-                  type="button"
-                  style={threadSidebarMiniRowStyle}
-                  onClick={() => {
-                    setPage('work_items')
-                    openWorkItem(item)
-                  }}
-                >
-                  <div style={threadMiniTitleStyle}>{item.title}</div>
-                  <div style={threadRowMetaStyle}>
-                    {humanizeTokenLocale(locale, item.pack_id)} · {humanizeTokenLocale(locale, item.severity)}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
       </aside>
 
       <main style={shellLayout.content}>
@@ -2591,259 +3451,54 @@ export default function App() {
             </div>
           )}
 
-          {page === 'home' ? (
+          {page === 'tasks' ? (
             <div style={workspaceScrollStyle}>
-              <div style={pageStackStyle}>
-                <div style={pageHeaderShellStyle}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={chromeStyles.eyebrow}>{pageEyebrow(locale, page)}</div>
-                    <h1 style={chromeStyles.headerTitle}>{pageHeading}</h1>
-                    <div style={chromeStyles.subtleText}>{pageDescription(locale, page)}</div>
-                  </div>
-                  <div style={pageHeaderActionsStyle}>
-                    <span style={statusBadgeStyle(selectedModeNotice ? 'degraded' : 'running')}>
-                      {selectedModeSpec.label}
-                    </span>
-                    <button
-                      type="button"
-                      style={buttonStyleForState(secondaryButtonStyle, loading)}
-                      disabled={loading}
-                      onClick={() => {
-                        void refresh(page, packTab)
-                      }}
-                    >
-                      {loading ? t(locale, 'action.refreshing') : t(locale, 'action.refresh')}
-                    </button>
-                  </div>
-                </div>
-
-                <Section
-                  title={t(locale, 'section.home.current_context.title')}
-                  subtitle={t(locale, 'section.home.current_context.subtitle')}
-                >
-                  <div style={homeContextGridStyle}>
-                    <div style={homeContextCardStyle}>
-                      <div style={chromeStyles.eyebrowLight}>{t(locale, 'context.workspace_root')}</div>
-                      <div style={homeContextValueStyle}>
-                        {agentCwd ? agentCwd.split('/').filter(Boolean).slice(-2).join('/') : t(locale, 'context.workspace_pending')}
-                      </div>
-                      <div style={homeContextMetaStyle}>
-                        {agentCwd || t(locale, 'context.workspace_not_resolved')}
-                      </div>
-                    </div>
-                    <div style={homeContextCardStyle}>
-                      <div style={chromeStyles.eyebrowLight}>{t(locale, 'context.selected_home_mode')}</div>
-                      <div style={homeContextValueStyle}>{selectedModeSpec.label}</div>
-                      <div style={homeContextMetaStyle}>{selectedModeSpec.summary}</div>
-                    </div>
-                    <div style={homeContextCardStyle}>
-                      <div style={chromeStyles.eyebrowLight}>{t(locale, 'sidebar.session_ledger')}</div>
-                      <div style={homeContextValueStyle}>
-                        {selectedThread?.title || t(locale, 'state.pending')}
-                      </div>
-                      <div style={homeContextMetaStyle}>
-                        {formatModeMeta([
-                          selectedThreadModeSpec?.label,
-                          selectedThread?.latestAt ? formatTime(selectedThread.latestAt) : undefined,
-                        ]) || t(locale, 'section.continue_threads.subtitle')}
-                      </div>
-                    </div>
-                  </div>
-                </Section>
-
-                <Section
-                  title={t(locale, 'section.mode_launcher.title')}
-                  subtitle={t(locale, 'section.mode_launcher.subtitle')}
-                  actions={
-                    <span style={statusBadgeStyle(selectedModeNotice ? 'degraded' : 'running')}>
-                      {selectedModeNotice
-                        ? selectedWorkMode === 'local'
-                          ? t(locale, 'state.unavailable')
-                          : t(locale, 'state.degraded')
-                        : t(locale, 'state.ready')}
-                    </span>
-                  }
-                >
-                  <div style={homeLauncherSurfaceStyle}>
-                    <div style={composerHeaderRowStyle}>
-                      <select
-                        value={selectedWorkMode}
-                        onChange={event => {
-                          workModeTouchedRef.current = true
-                          setSelectedWorkMode(event.target.value as WorkMode)
-                        }}
-                        style={chatComposerSelectStyle}
-                      >
-                        {WORK_MODE_ORDER.map(mode => {
-                          const spec = localizedWorkModeSpec(locale, mode)
-                          return (
-                            <option key={mode} value={mode}>
-                              {spec.label}
-                            </option>
-                          )
-                        })}
-                      </select>
-                      <div style={composerStatusRowStyle}>
-                        <div style={chromeStyles.quietMeta}>{selectedModeSpec.detail}</div>
-                        <div style={chromeStyles.monoMeta}>
-                          {formatModeMeta([
-                            selectedModeSpec.workspaceLabel,
-                            selectedModeSpec.surfaceLabel,
-                          ])}
-                        </div>
-                      </div>
-                    </div>
-
-                    <textarea
-                      value={launchInput}
-                      onChange={event => setLaunchInput(event.target.value)}
-                      onKeyDown={event => {
-                        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                          event.preventDefault()
-                          void submitLaunch()
-                        }
-                      }}
-                      placeholder={selectedModeSpec.placeholder}
-                      style={chatComposerTextareaStyle}
-                    />
-                    {selectedModeNotice && <div style={utilityStyles.warningBanner}>{selectedModeNotice}</div>}
-
-                    <div style={chatComposerFooterStyle}>
-                      <div style={chatComposerHintsStyle}>
-                        {selectedModeCapabilities.map(item => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            style={chatHintChipStyle}
-                            onClick={() => useCapability(item)}
-                          >
-                            {item.mention}
-                          </button>
-                        ))}
-                      </div>
-                      <div style={utilityStyles.buttonCluster}>
-                        <button
-                          type="button"
-                          style={buttonStyleForState(secondaryButtonStyle, resetRuntimeDisabled)}
-                          disabled={resetRuntimeDisabled}
-                          onClick={() => {
-                            void resetCoworkRuntime()
-                          }}
-                        >
-                          {t(locale, 'action.reset_runtime')}
-                        </button>
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => setLaunchInput('')}
-                        >
-                          {t(locale, 'action.clear_draft')}
-                        </button>
-                        <button
-                          type="button"
-                          style={buttonStyleForState(primaryButtonStyle, launchDisabled)}
-                          disabled={launchDisabled}
-                          onClick={() => {
-                            void submitLaunch()
-                          }}
-                        >
-                          {launchBusy ? t(locale, 'action.launching') : selectedModeSpec.launchButtonLabel}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </Section>
-
-                <div style={homeGridStyle}>
-                  <Section
-                    title={t(locale, 'section.recent_launches.title')}
-                    subtitle={t(locale, 'section.recent_launches.subtitle')}
-                  >
-                    <div style={utilityStyles.stackedList}>
-                      {homeRecentLaunches.length === 0 ? (
-                        <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_recent_launches')}</div>
-                      ) : (
-                        homeRecentLaunches.map(record => (
-                          <QueueRow
-                            key={record.id}
-                            locale={locale}
-                            title={record.prompt.trim().slice(0, 52) || humanizeTokenLocale(locale, record.pack_id ?? 'launch')}
-                            meta={formatModeMeta([
-                              record.work_mode ? humanizeWorkMode(locale, record.work_mode) : undefined,
-                              record.pack_id ? humanizeTokenLocale(locale, record.pack_id) : undefined,
-                              formatTime(record.started_at),
-                            ])}
-                            status={record.status}
-                            description={
-                              record.error ||
-                              record.text.trim().slice(0, 120) ||
-                              record.result_label ||
-                              undefined
-                            }
-                            nextAction={t(locale, 'action.inspect_launch')}
-                            onSelect={() => openLaunchRecord(record)}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </Section>
-
-                  <Section
-                    title={t(locale, 'section.continue_threads.title')}
-                    subtitle={t(locale, 'section.continue_threads.subtitle')}
-                  >
-                    <div style={utilityStyles.stackedList}>
-                      {homeRecentThreads.length === 0 ? (
-                        <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_continue_tasks')}</div>
-                      ) : (
-                        homeRecentThreads.map(thread => (
-                          <QueueRow
-                            key={thread.id}
-                            locale={locale}
-                            title={thread.title}
-                            meta={formatModeMeta([
-                              thread.subtitle,
-                              thread.latestAt ? formatTime(thread.latestAt) : undefined,
-                            ])}
-                            status={thread.status}
-                            description={thread.localRuntimeSeat ? humanizeTokenLocale(locale, thread.localRuntimeSeat) : undefined}
-                            nextAction={t(locale, 'action.switch_context')}
-                            onSelect={() => setSelectedThreadId(thread.id)}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </Section>
-                </div>
-
-                <Section
-                  title={t(locale, 'section.pending_actions.title')}
-                  subtitle={t(locale, 'section.pending_actions.subtitle')}
-                >
-                  <div style={utilityStyles.stackedList}>
-                    {homePendingItems.length === 0 ? (
-                      <div style={utilityStyles.emptyState}>{t(locale, 'empty.priority_queue')}</div>
-                    ) : (
-                      homePendingItems.map(item => (
-                        <QueueRow
-                          key={item.work_item_id}
-                          locale={locale}
-                          title={item.title}
-                          meta={formatModeMeta([
-                            humanizeTokenLocale(locale, item.pack_id),
-                            humanizeTokenLocale(locale, item.kind),
-                            humanizeTokenLocale(locale, item.status),
-                          ])}
-                          status={item.severity}
-                          description={item.summary}
-                          nextAction={item.operator_actions[0]?.label ?? t(locale, 'action.inspect_launch')}
-                          onSelect={() => openWorkItem(item)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </Section>
-              </div>
+              <TaskWorkspace
+                locale={locale}
+                loading={loading}
+                onRefresh={() => refresh(page, packTab)}
+                contextItems={taskWorkspaceContextItems}
+                statusItems={taskWorkspaceStatusItems}
+                workModeOptions={taskWorkspaceWorkModeOptions}
+                selectedWorkMode={selectedWorkMode}
+                onSelectWorkMode={mode => {
+                  workModeTouchedRef.current = true
+                  setSelectedWorkMode(mode)
+                }}
+                selectedModeSpec={selectedModeSpec}
+                selectedModeNotice={selectedModeNotice}
+                launchInput={launchInput}
+                onLaunchInputChange={setLaunchInput}
+                onSubmitLaunch={submitLaunch}
+                launchBusy={launchBusy}
+                launchDisabled={launchDisabled}
+                onClearDraft={() => setLaunchInput('')}
+                onResetRuntime={resetCoworkRuntime}
+                resetRuntimeDisabled={resetRuntimeDisabled}
+                capabilitySuggestions={taskWorkspaceCapabilitySuggestions}
+                onUseCapability={item => setLaunchInput(previous => withMention(previous, item.mention))}
+                localSeatPreference={localSeatPreference}
+                localSeatPreferenceOptions={taskWorkspaceLocalSeatOptions}
+                onSelectLocalSeatPreference={setLocalSeatPreference}
+                localSeatBannerMessage={localSeatBannerMessage}
+                taskFlowFilter={taskFlowFilter}
+                onSelectTaskFlowFilter={setTaskFlowFilter}
+                taskFlowItems={taskWorkspaceTaskFlowItems}
+                onOpenTaskFlowItem={item => {
+                  const nextItem = filteredTaskFlowItems.find(candidate => candidate.id === item.id)
+                  if (nextItem) openTaskFlowItem(nextItem)
+                }}
+                continueThreads={taskWorkspaceContinueThreads}
+                onSelectContinueThread={item => {
+                  setSelectedThreadId(item.id)
+                  if (viewportTier === 'narrow') setThreadSidebarOpen(true)
+                }}
+                pendingItems={taskWorkspacePendingItems}
+                onSelectPendingItem={item => {
+                  const nextItem = homePendingItems.find(candidate => candidate.work_item_id === item.id)
+                  if (nextItem) openWorkItem(nextItem)
+                }}
+              />
             </div>
           ) : (
             <div style={workspaceScrollStyle}>
@@ -2864,25 +3519,7 @@ export default function App() {
                   >
                     {loading ? t(locale, 'action.refreshing') : t(locale, 'action.refresh')}
                   </button>
-                  {page === 'packs' && (
-                    <>
-                      <button
-                        type="button"
-                        style={segmentedButtonStyle(packTab === 'due_diligence')}
-                        onClick={() => setPackTab('due_diligence')}
-                      >
-                        {t(locale, 'pack.due_diligence')}
-                      </button>
-                      <button
-                        type="button"
-                        style={segmentedButtonStyle(packTab === 'signals')}
-                        onClick={() => setPackTab('signals')}
-                      >
-                        {t(locale, 'pack.signals')}
-                      </button>
-                    </>
-                  )}
-                  {page === 'studio' && (
+                  {page === 'capabilities' && (
                     <>
                       <button
                         type="button"
@@ -2904,344 +3541,98 @@ export default function App() {
               </div>
 
               <div style={pageStackStyle}>
-                {page === 'runs' && (
-                  <Section
-                    title={t(locale, 'page.runs.title')}
-                    subtitle={t(locale, 'page.runs.description')}
-                    actions={
-                      <select
-                        value={runFilter}
-                        onChange={event => setRunFilter(event.target.value)}
-                        style={utilityStyles.select}
-                      >
-                        {['all', 'running', 'failed', 'repair_required', 'partial', 'succeeded'].map(
-                          filter => (
-                            <option key={filter} value={filter}>
-                              {humanizeTokenLocale(locale, filter)}
-                            </option>
-                          ),
-                        )}
-                      </select>
+                {page === 'wechat' && (
+                  <WeChatWorkspace
+                    locale={locale}
+                    viewportTier={viewportTier}
+                    sessions={weclawSessions}
+                    sourceStatus={weclawSessionSourceStatus}
+                    search={wechatSearch}
+                    sourceFilter={wechatSourceFilter}
+                    visibilityFilter={wechatVisibilityFilter}
+                    selectedSessionId={selectedWeclawSessionId}
+                    selectedSession={selectedWeclawSession}
+                    linkedTasks={selectedWeclawLinkedRecords.tasks}
+                    linkedRuns={selectedWeclawLinkedRecords.runs}
+                    preview={preview}
+                    onSearchChange={setWechatSearch}
+                    onSourceFilterChange={setWechatSourceFilter}
+                    onVisibilityFilterChange={setWechatVisibilityFilter}
+                    onSelectSession={session => {
+                      setSelectedWeclawSessionId(session.sessionId)
+                      void openWeclawSession(session.sessionId)
+                    }}
+                    onClearSelection={clearWeclawSelection}
+                    onToggleHidden={session =>
+                      updateWeclawSessionState(session, {
+                        hidden: !session.hidden,
+                        archived: false,
+                      })
                     }
-                  >
-                    <div style={utilityStyles.stackedList}>
-                      {filteredRuns.length === 0 ? (
-                        <div style={utilityStyles.emptyState}>
-                          {runtimeStatus.longclawCoreConnected
-                            ? t(locale, 'empty.runs_filtered_connected')
-                            : t(locale, 'empty.runs_filtered_disconnected')}
-                        </div>
-                      ) : (
-                        filteredRuns.map(run => (
-                          <QueueRow
-                            key={run.run_id}
-                            locale={locale}
-                            title={run.summary || run.run_id}
-                            meta={formatModeMeta([
-                              humanizeTokenLocale(locale, run.pack_id ?? run.domain),
-                              humanizeTokenLocale(locale, run.capability),
-                              workModeFromRun(run)
-                                ? humanizeWorkMode(locale, workModeFromRun(run))
-                                : undefined,
-                              runtimeTargetFromRecord(run)
-                                ? humanizeTokenLocale(locale, runtimeTargetFromRecord(run))
-                                : undefined,
-                              formatTime(run.created_at),
-                            ])}
-                            status={run.status}
-                            nextAction={t(locale, 'action.inspect_launch')}
-                            onSelect={() => {
-                              void openRun(run)
-                            }}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </Section>
+                    onToggleArchived={session =>
+                      updateWeclawSessionState(session, {
+                        archived: !session.archived,
+                        hidden: false,
+                      })
+                    }
+                    onOpenLinkedTask={openWeclawLinkedTask}
+                    onOpenLinkedRun={openRun}
+                    onOpenAttachment={openArtifact}
+                  />
                 )}
 
-                {page === 'work_items' && (
-                  <Section
-                    title={t(locale, 'page.work_items.title')}
-                    subtitle={t(locale, 'page.work_items.description')}
-                    actions={
-                      <select
-                        value={workItemFilter}
-                        onChange={event => setWorkItemFilter(event.target.value)}
-                        style={utilityStyles.select}
-                      >
-                        {['all', 'critical', 'warning', 'info'].map(filter => (
-                          <option key={filter} value={filter}>
-                            {humanizeTokenLocale(locale, filter)}
-                          </option>
-                        ))}
-                      </select>
-                    }
-                  >
-                    <div style={utilityStyles.stackedList}>
-                      {filteredWorkItems.length === 0 ? (
-                        <div style={utilityStyles.emptyState}>
-                          {runtimeStatus.longclawCoreConnected
-                            ? t(locale, 'empty.work_items_filtered_connected')
-                            : t(locale, 'empty.work_items_filtered_disconnected')}
-                        </div>
-                      ) : (
-                        filteredWorkItems.map(item => (
-                          <QueueRow
-                            key={item.work_item_id}
-                            locale={locale}
-                            title={item.title}
-                            meta={formatModeMeta([
-                              humanizeTokenLocale(locale, item.pack_id),
-                              humanizeTokenLocale(locale, item.kind),
-                              workModeFromWorkItem(item)
-                                ? humanizeWorkMode(locale, workModeFromWorkItem(item))
-                                : undefined,
-                              runtimeTargetFromRecord(item)
-                                ? humanizeTokenLocale(locale, runtimeTargetFromRecord(item))
-                                : undefined,
-                              humanizeTokenLocale(locale, item.status),
-                            ])}
-                            status={item.severity}
-                            description={item.summary}
-                            nextAction={item.operator_actions[0]?.label ?? t(locale, 'action.inspect_launch')}
-                            onSelect={() => openWorkItem(item)}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </Section>
+                {(page === 'rpa' || page === 'signals') && (
+                  <PackWorkspace
+                    locale={locale}
+                    page={page}
+                    dashboard={dashboard}
+                    localizedNotice={localizedDashboardNotice}
+                    signalsPanel={signalsPanel}
+                    onChangeSignalsPanel={setSignalsPanel}
+                    onRunAction={runAction}
+                    onOpenRun={openRun}
+                    onOpenRecord={openRecord}
+                  />
                 )}
 
-                {page === 'packs' && dashboard && (
-                  <Section
-                    title={packLabel(locale, dashboard.pack_id)}
-                    subtitle={
-                      dashboard.pack_id === 'due_diligence'
-                        ? locale === 'zh-CN'
-                          ? '这是重证据、重复核的专业工作面，运行、证据和复核统一回到 Longclaw Core。'
-                          : 'Evidence-heavy specialist workspace. Runs, evidence, and review converge in Longclaw Core.'
-                        : locale === 'zh-CN'
-                          ? '这是 Signals 的专业工作面，用来承接分析、回测与审核后洞察。'
-                          : 'Signals specialist workspace for analysis, backtesting, and reviewed insight.'
-                    }
-                    actions={
-                      'operator_actions' in dashboard && dashboard.operator_actions.length > 0 ? (
-                        <ActionButtons actions={dashboard.operator_actions} onRun={runAction} />
-                      ) : undefined
-                    }
-                  >
-                    {localizedDashboardNotice && (
-                      <div style={{ ...utilityStyles.warningBanner, marginBottom: 12 }}>
-                        {localizedDashboardNotice}
-                      </div>
-                    )}
-                    {dashboard.pack_id === 'due_diligence' ? (
-                      <DueDiligencePackView
-                        locale={locale}
-                        dashboard={dashboard as DueDiligenceDashboard}
-                        onOpenRun={openRun}
-                        onOpenRecord={openRecord}
-                      />
-                    ) : (
-                      <SignalsPackView
-                        locale={locale}
-                        dashboard={dashboard as SignalsDashboard}
-                        onOpenRun={openRun}
-                        onOpenRecord={openRecord}
-                      />
-                    )}
-                  </Section>
-                )}
-
-                {page === 'studio' && (
-                  <>
-                    <Section
-                      title={t(locale, 'section.studio.capability_posture.title')}
-                      subtitle={t(locale, 'section.studio.capability_posture.subtitle')}
-                    >
-                      <StatusStrip locale={locale} items={studioSummaryItems} />
-                    </Section>
-
-                    <Section
-                      title={t(locale, 'section.studio.mode_recommendations.title')}
-                      subtitle={t(locale, 'section.studio.mode_recommendations.subtitle')}
-                    >
-                      <div style={modePostureGridStyle}>
-                        {modePosture.map(({ mode, spec, capabilities }) => {
-                          const availabilityState = workModeAvailabilityState(
-                            locale,
-                            mode,
-                            runtimeStatus,
-                            selectedWorkMode === mode,
-                          )
-                          return (
-                            <div key={mode} style={modePostureCardStyle}>
-                              <div style={modeCardHeaderStyle}>
-                                <div style={chromeStyles.eyebrowLight}>{spec.eyebrow}</div>
-                                <span style={statusBadgeStyle(availabilityState.tone)}>
-                                  {selectedWorkMode === mode && availabilityState.tone === 'running'
-                                    ? t(locale, 'context.selected_home_mode')
-                                    : availabilityState.label}
-                                </span>
-                              </div>
-                              <div style={modeCardTitleStyle}>{spec.label}</div>
-                              <div style={queueRowDescriptionStyle}>{spec.detail}</div>
-                              <div style={chromeStyles.quietMeta}>
-                                {humanizeTokenLocale(locale, spec.runtimeTarget)} · {humanizeTokenLocale(locale, spec.modelPlane)} ·{' '}
-                                {humanizeTokenLocale(locale, spec.interactionSurface)}
-                              </div>
-                              <div style={chromeStyles.quietMeta}>{spec.workspaceHint}</div>
-                              {capabilities.length === 0 ? (
-                                <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_capabilities')}</div>
-                              ) : (
-                                <div style={capabilityRailStyle}>
-                                  {capabilities.map(item => (
-                                    <CapabilityChip
-                                      key={`${mode}:${item.id}`}
-                                      item={item}
-                                      onUse={useCapability}
-                                    />
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </Section>
-
-                    <div style={studioGridStyle}>
-                      <Section
-                        title={t(locale, 'section.runtime_health.title')}
-                        subtitle={t(locale, 'section.runtime_health.subtitle')}
-                      >
-                        <div style={utilityStyles.stackedList}>
-                          {sidebarStatusItems.map(item => (
-                            <div key={item.id} style={surfaceStyles.listRow}>
-                              <div style={queueRowLeadStyle}>
-                                <div style={queueRowTitleStyle}>{item.label}</div>
-                                {item.meta && <div style={chromeStyles.quietMeta}>{item.meta}</div>}
-                              </div>
-                              <span style={statusBadgeStyle(item.status)}>
-                                {humanizeTokenLocale(locale, item.status)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </Section>
-
-                      <Section
-                        title={t(locale, 'section.workspace_context.title')}
-                        subtitle={t(locale, 'section.workspace_context.subtitle')}
-                      >
-                        <div style={utilityStyles.stackedList}>
-                          <div style={surfaceStyles.listRow}>
-                            <div style={queueRowLeadStyle}>
-                              <div style={queueRowTitleStyle}>{t(locale, 'context.local_executor_runtime')}</div>
-                              <div style={chromeStyles.quietMeta}>{t(locale, 'context.local_executor_runtime_desc')}</div>
-                            </div>
-                            <span style={statusBadgeStyle(launchBusy ? 'running' : agentMode?.alive ? 'open' : 'info')}>
-                              {launchBusy
-                                ? t(locale, 'state.launching')
-                                : agentMode
-                                  ? humanizeTokenLocale(locale, agentMode.mode)
-                                  : t(locale, 'state.pending')}
-                            </span>
-                          </div>
-                          <div style={surfaceStyles.listRow}>
-                            <div style={queueRowLeadStyle}>
-                              <div style={queueRowTitleStyle}>{t(locale, 'runtime.local_runtime_seat')}</div>
-                              <div style={chromeStyles.quietMeta}>
-                                {runtimeStatus.localRuntimeApiUrl || runtimeStatus.localAcpScript
-                                  ? formatModeMeta([
-                                      runtimeStatus.localAcpScript,
-                                      runtimeStatus.localRuntimeApiUrl,
-                                    ])
-                                  : t(locale, 'runtime.no_local_runtime_api')}
-                              </div>
-                            </div>
-                            <span style={statusBadgeStyle(runtimeStatus.localRuntimeAvailable ? 'open' : 'degraded')}>
-                              {humanizeTokenLocale(locale, runtimeStatus.localRuntimeSeat ?? 'unavailable')}
-                            </span>
-                          </div>
-                          <div style={surfaceStyles.listRow}>
-                            <div style={queueRowLeadStyle}>
-                              <div style={queueRowTitleStyle}>{t(locale, 'context.selected_home_mode')}</div>
-                              <div style={chromeStyles.quietMeta}>{t(locale, 'context.selected_home_mode_desc')}</div>
-                            </div>
-                            <span style={statusBadgeStyle('running')}>{selectedModeSpec.label}</span>
-                          </div>
-                          <div style={surfaceStyles.listRow}>
-                            <div style={queueRowLeadStyle}>
-                              <div style={queueRowTitleStyle}>{t(locale, 'context.workspace_root')}</div>
-                              <div style={chromeStyles.quietMeta}>{t(locale, 'context.workspace_root_desc')}</div>
-                            </div>
-                            <div style={chromeStyles.monoMeta}>{agentCwd || humanizeTokenLocale(locale, 'unavailable')}</div>
-                          </div>
-                          <div style={surfaceStyles.listRow}>
-                            <div style={queueRowLeadStyle}>
-                              <div style={queueRowTitleStyle}>{t(locale, 'context.runtime_profile')}</div>
-                              <div style={chromeStyles.quietMeta}>{t(locale, 'context.runtime_profile_desc')}</div>
-                            </div>
-                            <span style={statusBadgeStyle('open')}>
-                              {humanizeTokenLocale(
-                                locale,
-                                String(substrateSummary?.metadata.runtime_profile ?? 'dev_local_acp_bridge'),
-                              )}
-                            </span>
-                          </div>
-                          <div style={surfaceStyles.listRow}>
-                            <div style={queueRowLeadStyle}>
-                              <div style={queueRowTitleStyle}>{t(locale, 'context.plugin_visibility')}</div>
-                              <div style={chromeStyles.quietMeta}>{t(locale, 'context.plugin_visibility_desc')}</div>
-                            </div>
-                            <span style={statusBadgeStyle((substrateSummary?.plugins.length ?? 0) > 0 ? 'open' : 'degraded')}>
-                              {(substrateSummary?.plugins.length ?? 0) > 0 ? t(locale, 'state.visible') : t(locale, 'state.pending')}
-                            </span>
-                          </div>
-                        </div>
-                      </Section>
-                    </div>
-
-                    <Section
-                      title={t(locale, 'section.skill_inventory.title')}
-                      subtitle={t(locale, 'section.skill_inventory.subtitle')}
-                    >
-                      {skillGroups.length === 0 ? (
-                        <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_local_skills')}</div>
-                      ) : (
-                        <div style={studioGroupStackStyle}>
-                          {skillGroups.map(group => (
-                            <div key={group.project} style={studioGroupStyle}>
-                              <div style={studioGroupHeaderStyle}>
-                                <div style={queueRowTitleStyle}>{humanizeToken(group.project)}</div>
-                                <div style={chromeStyles.quietMeta}>
-                                  {tf(locale, 'label.skill_count', { count: group.skills.length })}
-                                </div>
-                              </div>
-                              <div style={capabilityRailStyle}>
-                                {group.skills.map(skill => (
-                                  <CapabilityChip
-                                    key={`${group.project}:${skill.name}`}
-                                    item={{
-                                      id: `${group.project}:${skill.name}`,
-                                      label: skill.name,
-                                      kind: 'skill',
-                                      mention: `@skill ${skill.name}`,
-                                      hint: humanizeToken(group.project),
-                                      description: skill.description,
-                                    }}
-                                    onUse={useCapability}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </Section>
-                  </>
+                {page === 'capabilities' && (
+                  <CapabilitiesWorkspace
+                    locale={locale}
+                    capabilitySummaryItems={capabilitySummaryItems}
+                    modePosture={modePosture}
+                    sidebarStatusItems={sidebarStatusItems}
+                    runtimeStatus={runtimeStatus}
+                    selectedWorkMode={selectedWorkMode}
+                    selectedModeSpec={selectedModeSpec}
+                    localSeatPreference={localSeatPreference}
+                    launchBusy={launchBusy}
+                    agentMode={agentMode}
+                    agentCwd={agentCwd}
+                    substrateSummary={substrateSummary}
+                    managedSkillEntries={managedSkillEntries}
+                    capabilitySkillGroups={capabilitySkillGroups}
+                    managedPluginEntries={managedPluginEntries}
+                    managedRegistryEntries={managedRegistryEntries}
+                    capabilityManagerSettings={capabilityManagerSettings}
+                    managedSkillPathDraft={managedSkillPathDraft}
+                    onManagedSkillPathDraftChange={setManagedSkillPathDraft}
+                    managedPluginPathDraft={managedPluginPathDraft}
+                    onManagedPluginPathDraftChange={setManagedPluginPathDraft}
+                    extraSkillRootDraft={extraSkillRootDraft}
+                    onExtraSkillRootDraftChange={setExtraSkillRootDraft}
+                    extraPluginRootDraft={extraPluginRootDraft}
+                    onExtraPluginRootDraftChange={setExtraPluginRootDraft}
+                    useCapability={useCapability}
+                    syncCapabilityRegistry={operation => {
+                      void syncCapabilityRegistry(operation)
+                    }}
+                    updateCapabilityGroup={updateCapabilityGroup}
+                    toggleCapabilityVisibility={toggleCapabilityVisibility}
+                    openCapabilityLocalPath={openCapabilityLocalPath}
+                    copyCapabilityMention={copyCapabilityMention}
+                    addDiscoveryRoot={addDiscoveryRoot}
+                    removeDiscoveryRoot={removeDiscoveryRoot}
+                  />
                 )}
               </div>
             </div>
@@ -3511,6 +3902,229 @@ export default function App() {
                   </>
                 )}
 
+                {selected.type === 'weclaw_session' && (
+                  <>
+                    <Section
+                      title={t(locale, 'section.detail.weclaw_session.title')}
+                      subtitle={t(locale, 'section.detail.weclaw_session.subtitle')}
+                    >
+                      <div style={utilityStyles.stackedList}>
+                        <span
+                          style={statusBadgeStyle(
+                            selected.session.archived
+                              ? 'info'
+                              : selected.session.hidden
+                                ? 'degraded'
+                                : 'open',
+                          )}
+                        >
+                          {selected.session.archived
+                            ? locale === 'zh-CN'
+                              ? '已归档'
+                              : 'Archived'
+                            : selected.session.hidden
+                              ? locale === 'zh-CN'
+                                ? '已隐藏'
+                                : 'Hidden'
+                              : t(locale, 'state.readonly')}
+                        </span>
+                        <div style={chromeStyles.quietMeta}>
+                          {t(locale, 'label.user_id')}: {selected.session.userId ?? humanizeTokenLocale(locale, 'unknown')}
+                        </div>
+                        <div style={chromeStyles.quietMeta}>
+                          {t(locale, 'label.updated')}: {formatTime(selected.session.updatedAt)}
+                        </div>
+                        <div style={chromeStyles.monoMeta}>
+                          {t(locale, 'label.session_id')}: {selected.session.sessionId}
+                        </div>
+                        <div style={chromeStyles.monoMeta}>
+                          {t(locale, 'label.file_path')}: {selected.session.filePath}
+                        </div>
+                        <div style={chromeStyles.quietMeta}>
+                          {t(locale, 'label.message_count')}: {selected.session.messageCount}
+                        </div>
+                        <div style={chromeStyles.quietMeta}>
+                          {t(locale, 'label.agent_reply_count')}: {selected.session.agentReplyCount}
+                        </div>
+                        <div style={chromeStyles.quietMeta}>
+                          {t(locale, 'label.media_count')}: {selected.session.mediaCount}
+                        </div>
+                        {weclawCanonicalSessionId(selected.session) && (
+                          <div style={chromeStyles.monoMeta}>
+                            {t(locale, 'label.canonical_session')}: {weclawCanonicalSessionId(selected.session)}
+                          </div>
+                        )}
+                        {weclawCanonicalUserId(selected.session) && (
+                          <div style={chromeStyles.monoMeta}>
+                            {t(locale, 'label.canonical_user')}: {weclawCanonicalUserId(selected.session)}
+                          </div>
+                        )}
+                        {weclawContextToken(selected.session) && (
+                          <div style={chromeStyles.monoMeta}>
+                            {t(locale, 'label.context_token')}: {weclawContextToken(selected.session)}
+                          </div>
+                        )}
+                        <div style={managerActionsRowStyle}>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => {
+                              setSelected(null)
+                              setSelectedWeclawSessionId(null)
+                            }}
+                          >
+                            {locale === 'zh-CN' ? '取消选中' : 'Clear selection'}
+                          </button>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() =>
+                              updateWeclawSessionState(selected.session, {
+                                hidden: !selected.session.hidden,
+                                archived: false,
+                              })
+                            }
+                          >
+                            {selected.session.hidden
+                              ? locale === 'zh-CN'
+                                ? '取消隐藏'
+                                : 'Unhide'
+                              : locale === 'zh-CN'
+                                ? '隐藏会话'
+                                : 'Hide session'}
+                          </button>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() =>
+                              updateWeclawSessionState(selected.session, {
+                                archived: !selected.session.archived,
+                                hidden: false,
+                              })
+                            }
+                          >
+                            {selected.session.archived
+                              ? locale === 'zh-CN'
+                                ? '取消归档'
+                                : 'Restore'
+                              : locale === 'zh-CN'
+                                ? '归档会话'
+                                : 'Archive session'}
+                          </button>
+                        </div>
+                      </div>
+                    </Section>
+
+                    {(selectedWeclawLinkedRecords.tasks.length > 0 ||
+                      selectedWeclawLinkedRecords.runs.length > 0) && (
+                      <Section
+                        title={t(locale, 'section.detail.weclaw_links.title')}
+                        subtitle={t(locale, 'section.detail.weclaw_links.subtitle')}
+                      >
+                        <div style={utilityStyles.stackedList}>
+                          {selectedWeclawLinkedRecords.tasks.map(task => (
+                            <QueueRow
+                              key={task.task_id}
+                              locale={locale}
+                              title={readMetadataString(task as unknown as Record<string, unknown>, 'requested_outcome') ?? task.capability}
+                              meta={formatModeMeta([
+                                humanizeWorkMode(locale, workModeFromTask(task)),
+                                humanizeTokenLocale(locale, task.status),
+                              ])}
+                              status={task.status}
+                              nextAction={t(locale, 'action.inspect_launch')}
+                              onSelect={() =>
+                                openRecord(
+                                  t(locale, 'section.detail.weclaw_links.task'),
+                                  task as unknown as Record<string, unknown>,
+                                )
+                              }
+                            />
+                          ))}
+                          {selectedWeclawLinkedRecords.runs.map(run => (
+                            <QueueRow
+                              key={run.run_id}
+                              locale={locale}
+                              title={run.summary || run.run_id}
+                              meta={formatModeMeta([
+                                humanizeTokenLocale(locale, run.domain),
+                                formatTime(run.created_at),
+                              ])}
+                              status={run.status}
+                              nextAction={t(locale, 'action.inspect_launch')}
+                              onSelect={() => {
+                                void openRun(run)
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </Section>
+                    )}
+
+                    <Section
+                      title={t(locale, 'section.detail.weclaw_messages.title')}
+                      subtitle={t(locale, 'section.detail.weclaw_messages.subtitle')}
+                    >
+                      {selected.session.messages.length === 0 ? (
+                        <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_weclaw_messages')}</div>
+                      ) : (
+                        <div style={utilityStyles.stackedList}>
+                          {selected.session.messages.map(message => (
+                            <div key={message.messageId} style={weclawMessageCardStyle}>
+                              <div style={weclawMessageHeaderStyle}>
+                                <span
+                                  style={statusBadgeStyle(
+                                    ['agent', 'assistant'].includes(message.role) ? 'open' : 'info',
+                                  )}
+                                >
+                                  {humanizeTokenLocale(locale, message.role)}
+                                </span>
+                                <div style={chromeStyles.quietMeta}>
+                                  {formatModeMeta([
+                                    message.agentName,
+                                    message.kind ? humanizeTokenLocale(locale, message.kind) : undefined,
+                                    message.createdAt ? formatTime(message.createdAt) : undefined,
+                                  ])}
+                                </div>
+                              </div>
+                              {message.text && <div style={weclawMessageBodyStyle}>{message.text}</div>}
+                              <WeclawAttachmentList
+                                locale={locale}
+                                attachments={message.attachments}
+                                onOpen={openArtifact}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Section>
+
+                    <Section
+                      title={t(locale, 'section.detail.weclaw_media.title')}
+                      subtitle={t(locale, 'section.detail.weclaw_media.subtitle')}
+                    >
+                      {selected.session.media.length === 0 ? (
+                        <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_weclaw_media')}</div>
+                      ) : (
+                        <WeclawAttachmentList
+                          locale={locale}
+                          attachments={selected.session.media}
+                          onOpen={openArtifact}
+                        />
+                      )}
+                    </Section>
+
+                    <Section
+                      title={t(locale, 'section.detail.record_payload.title')}
+                      subtitle={t(locale, 'section.detail.record_payload.subtitle')}
+                    >
+                      <pre style={surfaceStyles.drawerPre}>
+                        {JSON.stringify(selected.session.canonicalMetadata, null, 2)}
+                      </pre>
+                    </Section>
+                  </>
+                )}
+
                 {preview && (
                   <Section title={t(locale, 'section.detail.preview.title')} subtitle={preview.uri}>
                     <pre style={surfaceStyles.drawerPre}>{preview.text}</pre>
@@ -3533,42 +4147,25 @@ const pageStackStyle: React.CSSProperties = {
   gap: 12,
 }
 
-const sectionHeaderStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 12,
-  marginBottom: 12,
-}
-
-const sectionHeadingBlockStyle: React.CSSProperties = {
-  display: 'flex',
+const weclawMessageCardStyle: React.CSSProperties = {
+  ...surfaceStyles.listRow,
   flexDirection: 'column',
-  gap: 4,
+  alignItems: 'stretch',
 }
 
-const statusStripValueStyle: React.CSSProperties = {
-  fontFamily: chromeStyles.headerTitle.fontFamily,
-  fontSize: 28,
-  lineHeight: 1,
-  fontWeight: 600,
-  color: palette.ink,
-  letterSpacing: '-0.03em',
-}
-
-const statusStripLabelRowStyle: React.CSSProperties = {
+const weclawMessageHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  gap: 10,
-  marginTop: 10,
-  color: palette.textMuted,
-  fontSize: 12,
+  gap: 12,
+  flexWrap: 'wrap',
 }
 
-const queueRowButtonStyle: React.CSSProperties = {
-  ...surfaceStyles.listRow,
-  ...surfaceStyles.listRowInteractive,
+const weclawMessageBodyStyle: React.CSSProperties = {
+  color: palette.ink,
+  fontSize: 14,
+  lineHeight: 1.7,
+  whiteSpace: 'pre-wrap',
 }
 
 const queueRowLeadStyle: React.CSSProperties = {
@@ -3589,21 +4186,6 @@ const queueRowDescriptionStyle: React.CSSProperties = {
   color: palette.textMuted,
   fontSize: 13,
   lineHeight: 1.45,
-}
-
-const queueRowTailStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-end',
-  gap: 8,
-  minWidth: 140,
-}
-
-const queueRowNextActionStyle: React.CSSProperties = {
-  color: palette.copper,
-  fontSize: 12,
-  lineHeight: 1.3,
-  textAlign: 'right',
 }
 
 const healthGridStyle: React.CSSProperties = {
@@ -3981,6 +4563,18 @@ const homeLauncherSurfaceStyle: React.CSSProperties = {
   marginTop: 0,
 }
 
+const localSeatPreferenceSurfaceStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  flexWrap: 'wrap',
+  padding: '10px 12px',
+  borderRadius: 16,
+  border: `1px solid ${palette.border}`,
+  background: palette.panel,
+}
+
 const composerHeaderRowStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -4321,4 +4915,41 @@ const studioGroupHeaderStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'baseline',
   gap: 10,
+}
+
+const managerCardStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  padding: 12,
+  borderRadius: 14,
+  border: `1px solid ${palette.border}`,
+  background: palette.panelRaised,
+}
+
+const managerRowMetaStyle: React.CSSProperties = {
+  color: palette.textMuted,
+  fontSize: 12,
+  lineHeight: 1.5,
+  wordBreak: 'break-all',
+}
+
+const managerActionsRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+  alignItems: 'center',
+}
+
+const managerInputStyle: React.CSSProperties = {
+  minWidth: 180,
+  flex: '1 1 220px',
+  borderRadius: 12,
+  border: `1px solid ${palette.borderStrong}`,
+  background: palette.panel,
+  color: palette.ink,
+  padding: '10px 12px',
+  fontSize: 13,
+  lineHeight: 1.4,
+  outline: 'none',
 }

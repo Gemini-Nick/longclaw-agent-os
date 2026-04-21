@@ -36,6 +36,8 @@ export type LongclawControlPlaneClientOptions = {
   hermesApiKey?: string
   dueDiligenceBaseUrl?: string
   signalsStateRoot?: string
+  signalsWebBaseUrl?: string
+  signalsWeb2BaseUrl?: string
   fetchImpl?: typeof fetch
 }
 
@@ -188,6 +190,12 @@ export function createLongclawControlPlaneClientFromEnv(
     signalsStateRoot:
       overrides.signalsStateRoot ??
       envValue('LONGCLAW_SIGNALS_STATE_ROOT'),
+    signalsWebBaseUrl:
+      overrides.signalsWebBaseUrl ??
+      envValue('LONGCLAW_SIGNALS_WEB_BASE_URL'),
+    signalsWeb2BaseUrl:
+      overrides.signalsWeb2BaseUrl ??
+      envValue('LONGCLAW_SIGNALS_WEB2_BASE_URL'),
     fetchImpl: overrides.fetchImpl,
   })
 }
@@ -213,7 +221,7 @@ const defaultPacks = (
       }),
     )
   }
-  if (options.signalsStateRoot) {
+  if (options.signalsStateRoot || options.signalsWebBaseUrl || options.signalsWeb2BaseUrl) {
     packs.push(
       LongclawDomainPackDescriptorSchema.parse({
         pack_id: 'signals',
@@ -225,6 +233,8 @@ const defaultPacks = (
         metadata: {
           transport: 'filesystem',
           stateRoot: options.signalsStateRoot,
+          webBaseUrl: options.signalsWebBaseUrl ?? null,
+          web2BaseUrl: options.signalsWeb2BaseUrl ?? null,
         },
       }),
     )
@@ -241,6 +251,7 @@ function degradedDueDiligenceDashboard(
     title: 'Due Diligence',
     status,
     notice,
+    diagnostics: [],
     recent_runs: [],
     manual_review_queue: [],
     repair_cases: [],
@@ -258,13 +269,116 @@ function degradedSignalsDashboard(
     title: 'Signals',
     status,
     notice,
+    diagnostics: [],
+    overview: {
+      market_regime: {},
+      cluster_summary: {},
+      review_summary: {},
+      data_warning: '',
+    },
     recent_runs: [],
     review_runs: [],
+    buy_candidates: [],
+    sell_warnings: [],
+    chart_context: null,
     backtest_summary: { total: 0, evaluated: 0, pending: 0 },
+    backtest_jobs: [],
     pending_backlog_preview: [],
     connector_health: [],
+    deep_links: [],
     operator_actions: [],
   })
+}
+
+function localAction(
+  actionId: string,
+  runId: string,
+  kind: 'open_path' | 'open_url' | 'copy_value',
+  label: string,
+  payload: Record<string, unknown>,
+) {
+  return {
+    action_id: actionId,
+    run_id: runId,
+    kind,
+    label,
+    payload,
+    metadata: {},
+  }
+}
+
+function packDiagnostic(
+  diagnosticId: string,
+  status: string,
+  label: string,
+  detail: string,
+  metadata: Record<string, unknown> = {},
+) {
+  return {
+    diagnostic_id: diagnosticId,
+    status,
+    label,
+    detail,
+    metadata,
+  }
+}
+
+async function fetchJsonOrNull<T>(
+  url: string | undefined,
+  parse: (value: unknown) => T,
+  fetchImpl: typeof fetch,
+  init?: RequestInit,
+): Promise<T | null> {
+  if (!url) return null
+  try {
+    return await fetchJson(url, parse, fetchImpl, init)
+  } catch {
+    return null
+  }
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function connectorHealthEntry(
+  connectorId: string,
+  status: string,
+  summary: string,
+  details: Record<string, unknown> = {},
+) {
+  return {
+    connector_id: connectorId,
+    status,
+    summary,
+    details,
+  }
+}
+
+function candidateRecord(
+  symbol: string,
+  source: Record<string, unknown>,
+  defaults: { direction?: string; reason?: string; status?: string } = {},
+) {
+  return {
+    symbol,
+    name: stringValue(source.name) ?? '',
+    score:
+      numberValue(source.fused_total) ??
+      numberValue(source.total_score) ??
+      numberValue(source.score) ??
+      numberValue(source.momentum_score) ??
+      0,
+    direction: stringValue(source.direction) ?? defaults.direction ?? '',
+    reason:
+      stringValue(source.detail) ??
+      stringValue(source.summary) ??
+      stringValue(source.signal_level) ??
+      defaults.reason ??
+      '',
+    status: defaults.status ?? 'open',
+    metadata: source,
+  }
 }
 
 async function fetchJson<T>(
@@ -388,6 +502,8 @@ export class LongclawControlPlaneClient {
   private readonly hermesApiKey?: string
   private readonly dueDiligenceBaseUrl?: string
   private readonly signalsStateRoot?: string
+  private readonly signalsWebBaseUrl?: string
+  private readonly signalsWeb2BaseUrl?: string
   private readonly fetchImpl: typeof fetch
 
   constructor(options: LongclawControlPlaneClientOptions = {}) {
@@ -395,6 +511,8 @@ export class LongclawControlPlaneClient {
     this.hermesApiKey = options.hermesApiKey
     this.dueDiligenceBaseUrl = options.dueDiligenceBaseUrl?.replace(/\/$/, '')
     this.signalsStateRoot = options.signalsStateRoot
+    this.signalsWebBaseUrl = options.signalsWebBaseUrl?.replace(/\/$/, '')
+    this.signalsWeb2BaseUrl = options.signalsWeb2BaseUrl?.replace(/\/$/, '')
     this.fetchImpl = options.fetchImpl ?? fetch
   }
 
@@ -696,6 +814,8 @@ export class LongclawControlPlaneClient {
     }
 
     if (packId === 'due_diligence' && this.dueDiligenceBaseUrl) {
+      const runtimeDir = join(process.env.HOME ?? '', '.longclaw', 'runtime-v2')
+      const healthUrl = `${this.dueDiligenceBaseUrl}/healthz`
       try {
         const [runs, manualReviewQueue, repairCases, siteHealth] = await Promise.all([
           this.listRuns(),
@@ -720,6 +840,15 @@ export class LongclawControlPlaneClient {
           title: 'Due Diligence',
           status: 'healthy',
           notice: '',
+          diagnostics: [
+            packDiagnostic(
+              'due-runtime',
+              'available',
+              'due-diligence runtime',
+              this.dueDiligenceBaseUrl,
+              { base_url: this.dueDiligenceBaseUrl },
+            ),
+          ],
           recent_runs: runs.filter(run => run.domain === 'due_diligence').slice(0, 20),
           manual_review_queue: manualReviewQueue.map(item => ({
             ...item,
@@ -735,55 +864,587 @@ export class LongclawControlPlaneClient {
             ...item,
             operator_actions: [],
           })),
-          operator_actions: [],
+          operator_actions: [
+            localAction(
+              'pack:due_diligence:open:url',
+              'pack:due_diligence',
+              'open_url',
+              'Open runtime',
+              { url: this.dueDiligenceBaseUrl },
+            ),
+            localAction(
+              'pack:due_diligence:health:url',
+              'pack:due_diligence',
+              'copy_value',
+              'Copy env check',
+              { value: `curl -fsS ${healthUrl}` },
+            ),
+            localAction(
+              'pack:due_diligence:config:path',
+              'pack:due_diligence',
+              'open_path',
+              'Open config',
+              { path: join(runtimeDir, 'stack.env') },
+            ),
+            localAction(
+              'pack:due_diligence:logs:path',
+              'pack:due_diligence',
+              'open_path',
+              'Open runtime dir',
+              { path: runtimeDir },
+            ),
+          ],
         })
       } catch (error) {
-        return degradedDueDiligenceDashboard(
-          'degraded',
+        const message =
           error instanceof Error
             ? error.message
-            : 'Due Diligence runtime is configured but currently unavailable.',
-        )
+            : 'Due Diligence runtime is configured but currently unavailable.'
+        return DueDiligenceDashboardSchema.parse({
+          ...degradedDueDiligenceDashboard('degraded', message),
+          diagnostics: [
+            packDiagnostic(
+              'due-runtime',
+              'degraded',
+              'due-diligence runtime',
+              message,
+              { base_url: this.dueDiligenceBaseUrl },
+            ),
+          ],
+          operator_actions: [
+            localAction(
+              'pack:due_diligence:health:url',
+              'pack:due_diligence',
+              'copy_value',
+              'Copy env check',
+              { value: `curl -fsS ${healthUrl}` },
+            ),
+            localAction(
+              'pack:due_diligence:config:path',
+              'pack:due_diligence',
+              'open_path',
+              'Open config',
+              { path: join(runtimeDir, 'stack.env') },
+            ),
+            localAction(
+              'pack:due_diligence:logs:path',
+              'pack:due_diligence',
+              'open_path',
+              'Open runtime dir',
+              { path: runtimeDir },
+            ),
+          ],
+        })
       }
     }
 
     if (packId === 'signals') {
-      if (!this.signalsStateRoot) {
-        return degradedSignalsDashboard(
-          'not_connected',
-          'Signals state root is not configured for this Electron runtime.',
-        )
+      const runtimeDir = join(process.env.HOME ?? '', '.longclaw', 'runtime-v2')
+      const web1 = this.signalsWebBaseUrl
+      const web2 = this.signalsWeb2BaseUrl
+      const stateRoot = this.signalsStateRoot
+      const stateRootConfigured = Boolean(stateRoot)
+      const stateRootEntries = stateRoot ? await readdir(stateRoot).catch(() => null) : null
+      const stateRootExists = Array.isArray(stateRootEntries) && stateRootEntries.length > 0
+      if (!stateRoot && !web1 && !web2) {
+        return SignalsDashboardSchema.parse({
+          ...degradedSignalsDashboard(
+            'not_connected',
+            'Signals state root and web endpoints are not configured for this Electron runtime.',
+          ),
+          diagnostics: [
+            packDiagnostic(
+              'signals-connectivity',
+              'not_connected',
+              'signals endpoints',
+              'No state root, web1, or web2 endpoint is configured.',
+            ),
+          ],
+          operator_actions: [
+            localAction(
+              'pack:signals:config:path',
+              'pack:signals',
+              'open_path',
+              'Open config',
+              { path: join(runtimeDir, 'stack.env') },
+            ),
+          ],
+        })
       }
 
       try {
         const runs = await this.listRuns()
+        const recentRuns = runs.filter(run => run.domain === 'financial_analysis').slice(0, 20)
+        const reviewRuns = runs.filter(run => run.capability === 'review').slice(0, 10)
+        const [marketContext, indexReports, predictionOverview, reviewResults, reviewStatus, clusterLatest, tradeSummary] =
+          await Promise.all([
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/index/context` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/index/reports` : undefined,
+              value =>
+                Array.isArray(value)
+                  ? value.map(item => recordValue(item))
+                  : [],
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/prediction/overview` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/review/results` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/review/status` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web2 ? `${web2}/api/cluster/latest?top=5` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/trade/summary` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+          ])
+
+        const prediction = predictionOverview ?? {}
+        const review = reviewResults ?? {}
+        const reviewRunning = reviewStatus ?? {}
+        const buyCandidates = [
+          ...((Array.isArray(prediction.stock_buy) ? prediction.stock_buy : [])
+            .map(item => candidateRecord(
+              stringValue(recordValue(item).symbol) ?? '',
+              recordValue(item),
+              { direction: 'buy', reason: 'prediction overview' },
+            ))),
+          ...((Array.isArray(review.scored_symbols) ? review.scored_symbols : [])
+            .slice(0, 8)
+            .map(item => candidateRecord(
+              stringValue(recordValue(item).symbol) ?? '',
+              recordValue(item),
+              { direction: 'buy', reason: 'review results' },
+            ))),
+        ].filter(item => item.symbol)
+        const uniqueBuyCandidates = [...new Map(
+          buyCandidates.map(item => [item.symbol, item] as const),
+        ).values()].slice(0, 12)
+
+        const sellWarnings = (Array.isArray(prediction.stock_sell) ? prediction.stock_sell : [])
+          .map(item => candidateRecord(
+            stringValue(recordValue(item).symbol) ?? '',
+            recordValue(item),
+            { direction: 'sell', reason: 'prediction overview', status: 'warning' },
+          ))
+          .filter(item => item.symbol)
+          .slice(0, 10)
+
+        const chartSeed =
+          stringValue(indexReports?.[0]?.symbol) ??
+          stringValue(indexReports?.[0]?.name) ??
+          uniqueBuyCandidates[0]?.symbol ??
+          'sh000300'
+        const chartData = await fetchJsonOrNull(
+          web1 ? `${web1}/api/chart/${encodeURIComponent(chartSeed)}?freq=daily` : undefined,
+          value => recordValue(value),
+          this.fetchImpl,
+        )
+        const chartMeta = recordValue(chartData?.meta)
+        const chartReport = recordValue(chartData?.report)
+        const chartReportSignals = Array.isArray(chartData?.report_signals)
+          ? chartData.report_signals
+          : []
+
+        const backtestSeedRaw = uniqueBuyCandidates[0]?.symbol ?? stringValue(chartMeta.symbol) ?? ''
+        const backtestSeed = backtestSeedRaw.includes('.')
+          ? backtestSeedRaw.split('.').at(-1) ?? backtestSeedRaw
+          : backtestSeedRaw.replace(/^[a-z]{2}/i, '')
+        const backtestAnalysis = await fetchJsonOrNull(
+          web2 && backtestSeed
+            ? `${web2}/api/backtest/analyze?code=${encodeURIComponent(backtestSeed)}&freq=daily&signal_group=all&lookback=180`
+            : undefined,
+          value => recordValue(value),
+          this.fetchImpl,
+        )
+
+        const backtestSummary = recordValue(backtestAnalysis?.forward_kpi ?? backtestAnalysis?.kpi)
+        const totalSignals = numberValue(backtestSummary.total) ?? 0
+        const evaluatedSignals = numberValue(backtestSummary.evaluated) ?? totalSignals
+        const pendingSignals = Math.max(totalSignals - evaluatedSignals, 0)
+        const pendingBacklogPreview = uniqueBuyCandidates.slice(0, 6).map(item => ({
+          symbol: item.symbol,
+          signal_date:
+            stringValue(review.start_date) ??
+            stringValue(review.start_label) ??
+            new Date().toISOString().slice(0, 10),
+          signal_type: item.direction || 'buy',
+          freq: 'daily',
+          created_at: null,
+        }))
+
+        const diagnostics = [
+          packDiagnostic(
+            'signals-state-root',
+            stateRootConfigured ? (stateRootExists ? 'available' : 'degraded') : 'not_connected',
+            'signals state root',
+            stateRoot ?? 'not configured',
+            { state_root: stateRoot ?? '' },
+          ),
+          packDiagnostic(
+            'signals-web1',
+            web1 ? (marketContext || indexReports ? 'available' : 'degraded') : 'not_connected',
+            'signals web1',
+            web1 ?? 'not configured',
+            { base_url: web1 ?? '' },
+          ),
+          packDiagnostic(
+            'signals-web2',
+            web2 ? (clusterLatest || backtestAnalysis ? 'available' : 'degraded') : 'not_connected',
+            'signals web2',
+            web2 ?? 'not configured',
+            { base_url: web2 ?? '' },
+          ),
+        ]
+
+        const connectorHealth = [
+          connectorHealthEntry(
+            'signals-state-root',
+            stateRootConfigured ? (stateRootExists ? 'available' : 'degraded') : 'not_connected',
+            stateRootExists ? 'Signals state root is mounted.' : 'Signals state root is empty or missing.',
+            { state_root: stateRoot ?? '' },
+          ),
+          connectorHealthEntry(
+            'signals-web1',
+            web1 ? (marketContext || indexReports ? 'available' : 'degraded') : 'not_connected',
+            web1 ? 'Signals web1 supplies chart, review, and prediction data.' : 'Signals web1 is not configured.',
+            { base_url: web1 ?? '' },
+          ),
+          connectorHealthEntry(
+            'signals-web2',
+            web2 ? (clusterLatest || backtestAnalysis ? 'available' : 'degraded') : 'not_connected',
+            web2 ? 'Signals web2 supplies backtests and cluster scans.' : 'Signals web2 is not configured.',
+            { base_url: web2 ?? '' },
+          ),
+        ]
+
+        const signalsTerminalUrl = web1 ?? null
+        const signalsLegacyUrl = web1 ? `${web1}/legacy` : null
+
+        const operatorActions = [
+          signalsTerminalUrl
+            ? localAction(
+                'pack:signals:web1:url',
+                'pack:signals',
+                'open_url',
+                'Open Signals Terminal',
+                { url: signalsTerminalUrl },
+              )
+            : null,
+          signalsLegacyUrl
+            ? localAction(
+                'pack:signals:legacy:url',
+                'pack:signals',
+                'open_url',
+                'Open Signals Legacy',
+                { url: signalsLegacyUrl },
+              )
+            : null,
+          web2
+            ? localAction(
+                'pack:signals:web2:url',
+                'pack:signals',
+                'open_url',
+                'Open Signals Web2',
+                { url: web2 },
+              )
+            : null,
+          stateRoot
+            ? localAction(
+                'pack:signals:state-root:path',
+                'pack:signals',
+                'open_path',
+                'Open state root',
+                { path: stateRoot },
+              )
+            : null,
+          localAction(
+            'pack:signals:config:path',
+            'pack:signals',
+            'open_path',
+            'Open config',
+            { path: join(runtimeDir, 'stack.env') },
+          ),
+          web2
+            ? localAction(
+                'pack:signals:health:copy',
+                'pack:signals',
+                'copy_value',
+                'Copy env check',
+                { value: `curl -fsS ${web2}/api/cluster/latest?top=1` },
+              )
+            : null,
+        ].filter(Boolean)
+
+        const chartContext = chartData
+          ? {
+              symbol:
+                stringValue(chartMeta.symbol) ??
+                stringValue(chartMeta.name) ??
+                chartSeed,
+              freq: stringValue(chartMeta.freq) ?? 'daily',
+              conclusion: stringValue(chartReport.conclusion) ?? '',
+              latest_signal:
+                stringValue(recordValue(chartReportSignals[0]).type) ??
+                '',
+              key_levels: Array.isArray(chartReport.key_levels)
+                ? chartReport.key_levels
+                    .map(item => recordValue(item))
+                    .map(item => ({
+                      name: stringValue(item.name) ?? '',
+                      value: numberValue(item.value) ?? 0,
+                      position: stringValue(item.position) ?? '',
+                      distance_pct: numberValue(item.distance_pct),
+                    }))
+                : [],
+              signal_markers: Array.isArray(chartData.signals)
+                ? chartData.signals.slice(-8).map(item => {
+                    const record = recordValue(item)
+                    return {
+                      time: numberValue(record.time) ?? numberValue(record.dt),
+                      date_str: stringValue(record.date_str) ?? '',
+                      type: stringValue(record.type) ?? '',
+                      price: numberValue(record.price),
+                      confidence: numberValue(record.confidence),
+                    }
+                  })
+                : [],
+              ohlcv_preview: Array.isArray(chartData.ohlcv)
+                ? chartData.ohlcv.slice(-24).map(item => {
+                    const record = recordValue(item)
+                    return {
+                      time: numberValue(record.time) ?? 0,
+                      close: numberValue(record.close) ?? 0,
+                    }
+                  })
+                : [],
+              metadata: {
+                report: chartReport,
+              },
+            }
+          : null
+
+        const deepLinks = [
+          signalsTerminalUrl
+            ? {
+                link_id: 'signals-terminal',
+                label: 'Signals Terminal',
+                url: signalsTerminalUrl,
+                kind: 'web',
+              }
+            : null,
+          signalsLegacyUrl
+            ? {
+                link_id: 'signals-legacy',
+                label: 'Signals Legacy',
+                url: signalsLegacyUrl,
+                kind: 'web',
+              }
+            : null,
+          web2
+            ? {
+                link_id: 'signals-web2',
+                label: 'Signals Web2',
+                url: web2,
+                kind: 'web',
+              }
+            : null,
+          web1 && chartContext?.symbol
+            ? {
+                link_id: 'signals-chart',
+                label: 'Chart Terminal',
+                url: `${web1}/?symbol=${encodeURIComponent(chartContext.symbol)}&freq=${encodeURIComponent(chartContext.freq || 'daily')}`,
+                kind: 'chart',
+              }
+            : null,
+          web1 && backtestSeedRaw
+            ? {
+                link_id: 'signals-backtest',
+                label: 'Backtest In Terminal',
+                url: `${web1}/?symbol=${encodeURIComponent(backtestSeedRaw)}&kind=stock&freq=daily`,
+                kind: 'backtest',
+              }
+            : null,
+        ].filter(Boolean)
+
+        const backtestJobs = [
+          backtestAnalysis
+            ? {
+                job_id: `backtest:${backtestSeed || 'daily'}`,
+                status: 'ready',
+                symbol: backtestSeedRaw,
+                freq: stringValue(backtestAnalysis.freq) ?? 'daily',
+                summary:
+                  stringValue(recordValue(backtestAnalysis.sim_kpi).summary) ??
+                  `Win rate ${numberValue(recordValue(backtestAnalysis.sim_kpi).win_rate) ?? 0}%`,
+                updated_at: new Date().toISOString(),
+                source: 'web2',
+                metadata: {
+                  forward_kpi: recordValue(backtestAnalysis.forward_kpi),
+                  sim_kpi: recordValue(backtestAnalysis.sim_kpi),
+                },
+              }
+            : null,
+          ...recentRuns.slice(0, 3).map(run => ({
+            job_id: run.run_id,
+            status: run.status,
+            symbol: stringValue(recordValue(run.metadata).symbol) ?? '',
+            freq: stringValue(recordValue(run.metadata).freq) ?? '',
+            summary: run.summary ?? run.run_id,
+            updated_at: run.finished_at ?? run.created_at,
+            source: 'state_root',
+            metadata: recordValue(run.metadata),
+          })),
+        ].filter(Boolean)
+
+        const status =
+          diagnostics.some(item => item.status === 'degraded')
+            ? 'degraded'
+            : diagnostics.every(item => item.status === 'not_connected')
+              ? 'not_connected'
+              : 'healthy'
+        const noticeParts = [
+          !stateRootExists && stateRootConfigured ? 'Signals state root is empty.' : '',
+          web1 && !(marketContext || indexReports) ? 'Signals web1 is configured but unavailable.' : '',
+          web2 && !(clusterLatest || backtestAnalysis) ? 'Signals web2 is configured but unavailable.' : '',
+        ].filter(Boolean)
+
         return SignalsDashboardSchema.parse({
           pack_id: 'signals',
           title: 'Signals',
-          status: 'healthy',
-          notice: '',
-          recent_runs: runs.filter(run => run.domain === 'financial_analysis').slice(0, 20),
-          review_runs: runs.filter(run => run.capability === 'review').slice(0, 10),
-          backtest_summary: { total: 0, evaluated: 0, pending: 0 },
-          pending_backlog_preview: [],
-          connector_health: [],
-          operator_actions: [],
+          status,
+          notice: noticeParts.join(' '),
+          diagnostics,
+          overview: {
+            market_regime: recordValue(prediction.market_regime ?? marketContext),
+            cluster_summary: {
+              market_status: recordValue(clusterLatest?.market_status),
+              industry_top: Array.isArray(recordValue(clusterLatest?.industry).top)
+                ? recordValue(clusterLatest?.industry).top
+                : [],
+              concept_top: Array.isArray(recordValue(clusterLatest?.concept).top)
+                ? recordValue(clusterLatest?.concept).top
+                : [],
+            },
+            review_summary: {
+              start_date: stringValue(review.start_date) ?? '',
+              start_label: stringValue(review.start_label) ?? '',
+              is_running: reviewRunning.is_running === true,
+              completed: reviewRunning.completed === true,
+              trade_summary: tradeSummary,
+            },
+            data_warning: stringValue(clusterLatest?.data_warning) ?? '',
+          },
+          recent_runs: recentRuns,
+          review_runs: reviewRuns,
+          buy_candidates: uniqueBuyCandidates,
+          sell_warnings: sellWarnings,
+          chart_context: chartContext,
+          backtest_summary: {
+            total: totalSignals,
+            evaluated: evaluatedSignals,
+            pending: pendingSignals,
+          },
+          backtest_jobs: backtestJobs,
+          pending_backlog_preview: pendingBacklogPreview,
+          connector_health: connectorHealth,
+          deep_links: deepLinks,
+          operator_actions: operatorActions,
         })
       } catch (error) {
-        return degradedSignalsDashboard(
-          'degraded',
+        const message =
           error instanceof Error
             ? error.message
-            : 'Signals runtime is configured but currently unavailable.',
-        )
+            : 'Signals runtime is configured but currently unavailable.'
+        return SignalsDashboardSchema.parse({
+          ...degradedSignalsDashboard('degraded', message),
+          diagnostics: [
+            packDiagnostic(
+              'signals-runtime',
+              'degraded',
+              'signals runtime',
+              message,
+              {
+                state_root: stateRoot ?? '',
+                web1: web1 ?? '',
+                web2: web2 ?? '',
+              },
+            ),
+          ],
+          connector_health: [
+            connectorHealthEntry(
+              'signals-state-root',
+              stateRoot ? 'degraded' : 'not_connected',
+              stateRoot ?? 'not configured',
+              { state_root: stateRoot ?? '' },
+            ),
+          ],
+          operator_actions: [
+            localAction(
+              'pack:signals:config:path',
+              'pack:signals',
+              'open_path',
+              'Open config',
+              { path: join(runtimeDir, 'stack.env') },
+            ),
+            stateRoot
+              ? localAction(
+                  'pack:signals:state-root:path',
+                  'pack:signals',
+                  'open_path',
+                  'Open state root',
+                  { path: stateRoot },
+                )
+              : null,
+          ].filter(Boolean),
+        })
       }
     }
 
     if (packId === 'due_diligence') {
-      return degradedDueDiligenceDashboard(
-        'not_connected',
-        'Due Diligence runtime is not configured for this Electron session.',
-      )
+      const runtimeDir = join(process.env.HOME ?? '', '.longclaw', 'runtime-v2')
+      return DueDiligenceDashboardSchema.parse({
+        ...degradedDueDiligenceDashboard(
+          'not_connected',
+          'Due Diligence runtime is not configured for this Electron session.',
+        ),
+        diagnostics: [
+          packDiagnostic(
+            'due-runtime',
+            'not_connected',
+            'due-diligence runtime',
+            'Due Diligence runtime is not configured for this Electron session.',
+          ),
+        ],
+        operator_actions: [
+          localAction(
+            'pack:due_diligence:config:path',
+            'pack:due_diligence',
+            'open_path',
+            'Open config',
+            { path: join(runtimeDir, 'stack.env') },
+          ),
+        ],
+      })
     }
 
     throw new Error(`Unknown pack: ${packId}`)

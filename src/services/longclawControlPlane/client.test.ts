@@ -1,6 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { LongclawControlPlaneClient } from './client.js'
+
+const tempDirs: string[] = []
+
+function makeTempDir(prefix: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+  tempDirs.push(dir)
+  return dir
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop()
+    if (dir) fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
   it('launches through Hermes and exposes mode-aware task/run/work item shape consumed by Electron', async () => {
@@ -428,5 +447,161 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.pack_id).toBe('due_diligence')
     expect(dashboard.status).toBe('degraded')
     expect(dashboard.notice).toContain('unreachable:http://due.local')
+  })
+
+  it('synthesizes a mixed web1+web2 Signals dashboard with native panels populated', async () => {
+    const signalsStateRoot = makeTempDir('signals-state-')
+    fs.mkdirSync(path.join(signalsStateRoot, 'runs'), { recursive: true })
+
+    const fetchImpl: typeof fetch = async input => {
+      const url = String(input)
+
+      if (url === 'http://signals-web.local/api/index/context') {
+        return new Response(
+          JSON.stringify({ label: '偏增量', zt_total: 42, lianban_max: 4 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/index/reports') {
+        return new Response(
+          JSON.stringify([{ symbol: 'sh000300', name: '沪深300', summary: 'risk on' }]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/prediction/overview') {
+        return new Response(
+          JSON.stringify({
+            stock_buy: [{ symbol: 'SZ.002759', name: 'Test Buy', fused_total: 61, direction: 'bullish' }],
+            stock_sell: [{ symbol: 'SH.600519', name: 'Test Sell', sell_warning: { score: 55 } }],
+            market_regime: { label: '偏增量', lianban_max: 3 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/review/results') {
+        return new Response(
+          JSON.stringify({
+            start_date: '2026-04-18',
+            scored_symbols: [{ symbol: 'SZ.002759', total_score: 58, direction: 'buy' }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/review/status') {
+        return new Response(
+          JSON.stringify({ is_running: false, completed: true }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/trade/summary') {
+        return new Response(
+          JSON.stringify({ total_trades: 8, win_rate: 62.5 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/chart/sh000300?freq=daily') {
+        return new Response(
+          JSON.stringify({
+            meta: { symbol: 'sh000300', freq: 'daily' },
+            report: {
+              conclusion: 'watch for buy setup',
+              key_levels: [{ name: 'support', value: 3200, position: '下方', distance_pct: 1.2 }],
+            },
+            report_signals: [{ type: '一买' }],
+            signals: [{ dt: 1713571200, type: '一买', price: 3201.3, confidence: 0.8 }],
+            ohlcv: [{ time: 1713571200, close: 3201.3 }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web2.local/api/cluster/latest?top=5') {
+        return new Response(
+          JSON.stringify({
+            industry: { top: [{ label: 'AI' }] },
+            concept: { top: [{ label: '机器人' }] },
+            market_status: { session_label: '盘中' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (
+        url ===
+        'http://signals-web2.local/api/backtest/analyze?code=002759&freq=daily&signal_group=all&lookback=180'
+      ) {
+        return new Response(
+          JSON.stringify({
+            freq: 'daily',
+            forward_kpi: { total: 12, evaluated: 9 },
+            sim_kpi: { win_rate: 66.7 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsStateRoot,
+      signalsWebBaseUrl: 'http://signals-web.local',
+      signalsWeb2BaseUrl: 'http://signals-web2.local',
+      fetchImpl,
+    })
+
+    const dashboard = await client.getPackDashboard('signals')
+
+    expect(dashboard.pack_id).toBe('signals')
+    expect(dashboard.status).toBe('healthy')
+    expect(dashboard.buy_candidates[0]?.symbol).toBe('SZ.002759')
+    expect(dashboard.sell_warnings[0]?.symbol).toBe('SH.600519')
+    expect(dashboard.chart_context?.symbol).toBe('sh000300')
+    expect(dashboard.backtest_summary.total).toBe(12)
+    expect(dashboard.backtest_jobs[0]?.symbol).toBe('SZ.002759')
+    expect(dashboard.connector_health).toHaveLength(3)
+    expect(dashboard.deep_links.map(link => link.label)).toContain('Signals Terminal')
+    expect(dashboard.deep_links.map(link => link.label)).toContain('Signals Web2')
+    expect(dashboard.diagnostics.some(item => item.diagnostic_id === 'signals-state-root')).toBe(
+      true,
+    )
+  })
+
+  it('keeps Signals open in web2-only mode and marks empty state roots as degraded', async () => {
+    const signalsStateRoot = makeTempDir('signals-state-empty-')
+    const fetchImpl: typeof fetch = async input => {
+      const url = String(input)
+
+      if (url === 'http://signals-web2.local/api/cluster/latest?top=5') {
+        return new Response(
+          JSON.stringify({
+            industry: { top: [{ label: '军工' }] },
+            concept: { top: [{ label: '卫星' }] },
+            market_status: { session_label: '盘后' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsStateRoot,
+      signalsWeb2BaseUrl: 'http://signals-web2.local',
+      fetchImpl,
+    })
+
+    const dashboard = await client.getPackDashboard('signals')
+
+    expect(dashboard.pack_id).toBe('signals')
+    expect(dashboard.status).toBe('degraded')
+    expect(dashboard.connector_health.find(item => item.connector_id === 'signals-web2')?.status).toBe(
+      'available',
+    )
+    expect(
+      dashboard.connector_health.find(item => item.connector_id === 'signals-state-root')?.status,
+    ).toBe('degraded')
+    expect(dashboard.operator_actions.some(action => action.label.includes('Open config'))).toBe(
+      true,
+    )
   })
 })

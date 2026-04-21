@@ -28,7 +28,7 @@ import { logForDebugging } from '../debug.js'
 import { errorMessage } from '../errors.js'
 import { logError } from '../log.js'
 import { clearAllCaches } from './cacheUtils.js'
-import { getPluginCommands } from './loadPluginCommands.js'
+import { getPluginCommands, getPluginSkills } from './loadPluginCommands.js'
 import { loadPluginHooks } from './loadPluginHooks.js'
 import { loadPluginLspServers } from './lspPluginIntegration.js'
 import { loadPluginMcpServers } from './mcpPluginIntegration.js'
@@ -52,7 +52,7 @@ export type RefreshActivePluginsResult = {
   /** The refreshed agent definitions, for callers (e.g. print.ts) that also
    * maintain a local mutable reference outside AppState. */
   agentDefinitions: AgentDefinitionsResult
-  /** The refreshed plugin commands, same rationale as agentDefinitions. */
+  /** The refreshed plugin slash commands, including skills loaded from plugins. */
   pluginCommands: Command[]
 }
 
@@ -86,10 +86,12 @@ export async function refreshActivePlugins(
   // the plugin, returning plugin-cache-miss. loadAllPlugins warms the
   // cache-only memoize on completion, so the awaits below are ~free.
   const pluginResult = await loadAllPlugins()
-  const [pluginCommands, agentDefinitions] = await Promise.all([
+  const [pluginCommands, pluginSkills, agentDefinitions] = await Promise.all([
     getPluginCommands(),
+    getPluginSkills(),
     getAgentDefinitionsWithOverrides(getOriginalCwd()),
   ])
+  const activePluginCommands = [...pluginCommands, ...pluginSkills]
 
   const { enabled, disabled, errors } = pluginResult
 
@@ -126,7 +128,7 @@ export async function refreshActivePlugins(
       ...prev.plugins,
       enabled,
       disabled,
-      commands: pluginCommands,
+      commands: activePluginCommands,
       errors: mergePluginErrors(prev.plugins.errors, errors),
       needsRefresh: false,
     },
@@ -173,20 +175,20 @@ export async function refreshActivePlugins(
   }, 0)
 
   logForDebugging(
-    `refreshActivePlugins: ${enabled.length} enabled, ${pluginCommands.length} commands, ${agentDefinitions.allAgents.length} agents, ${hook_count} hooks, ${mcp_count} MCP, ${lsp_count} LSP`,
+    `refreshActivePlugins: ${enabled.length} enabled, ${activePluginCommands.length} commands, ${agentDefinitions.allAgents.length} agents, ${hook_count} hooks, ${mcp_count} MCP, ${lsp_count} LSP`,
   )
 
   return {
     enabled_count: enabled.length,
     disabled_count: disabled.length,
-    command_count: pluginCommands.length,
+    command_count: activePluginCommands.length,
     agent_count: agentDefinitions.allAgents.length,
     hook_count,
     mcp_count,
     lsp_count,
     error_count: errors.length + (hook_load_failed ? 1 : 0),
     agentDefinitions,
-    pluginCommands,
+    pluginCommands: activePluginCommands,
   }
 }
 
