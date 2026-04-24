@@ -237,9 +237,9 @@ describe('Chinese IA surface scoping', () => {
 
     expect(strategyMarkup).toContain('没有配置 LONGCLAW_SIGNALS_WEB_BASE_URL')
     expect(strategyMarkup).toContain('买入候选')
-    expect(strategyMarkup).not.toContain('回测作业')
-    expect(backtestMarkup).toContain('回测作业')
-    expect(backtestMarkup).toContain('回测输入候选')
+    expect(strategyMarkup).not.toContain('WEB2 回测')
+    expect(backtestMarkup).toContain('没有配置 LONGCLAW_SIGNALS_WEB2_BASE_URL')
+    expect(backtestMarkup).toContain('回测队列')
     expect(backtestMarkup).not.toContain('没有配置 LONGCLAW_SIGNALS_WEB_BASE_URL')
   })
 

@@ -1839,7 +1839,7 @@ export default function App() {
     () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, Boolean(selected)),
     [selected, threadSidebarOpen, viewportTier, viewportWidth],
   )
-  const isStrategyTerminalPage = page === 'strategy'
+  const isFullBleedPackPage = page === 'strategy' || page === 'backtest'
   const runtimeStatus = useMemo(
     () => runtimeStatusFromSummary(substrateSummary),
     [substrateSummary],
@@ -3449,7 +3449,7 @@ export default function App() {
 
       <aside
         style={
-          isStrategyTerminalPage
+          isFullBleedPackPage
             ? { ...shellLayout.threadSidebar, display: 'none' }
             : shellLayout.threadSidebar
         }
@@ -3674,12 +3674,12 @@ export default function App() {
 
           <div
             style={
-              isStrategyTerminalPage
+              isFullBleedPackPage
                 ? strategyWorkspaceScrollStyle
                 : workspaceScrollStyle
             }
           >
-            {!isStrategyTerminalPage && (
+            {!isFullBleedPackPage && (
               <div style={pageHeaderShellStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={chromeStyles.eyebrow}>{pageEyebrow(locale, page)}</div>
@@ -3719,13 +3719,14 @@ export default function App() {
               </div>
             )}
 
-            <div style={isStrategyTerminalPage ? strategyPageStackStyle : pageStackStyle}>
+            <div style={isFullBleedPackPage ? strategyPageStackStyle : pageStackStyle}>
               {page === 'strategy' && (
                 <PackWorkspace
                   locale={locale}
                   surface="strategy"
                   dashboard={dashboard}
                   signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
+                  signalsWeb2BaseUrl={runtimeStatus.signalsWeb2BaseUrl}
                   localizedNotice={localizedDashboardNotice}
                   onRunAction={runAction}
                   onOpenRun={openRun}
@@ -3739,6 +3740,7 @@ export default function App() {
                   surface="backtest"
                   dashboard={dashboard}
                   signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
+                  signalsWeb2BaseUrl={runtimeStatus.signalsWeb2BaseUrl}
                   localizedNotice={localizedDashboardNotice}
                   onRunAction={runAction}
                   onOpenRun={openRun}
@@ -3925,7 +3927,7 @@ export default function App() {
             </div>
           </div>
 
-          {!isStrategyTerminalPage && (
+          {!isFullBleedPackPage && (
           <aside aria-label={t(locale, 'section.detail.drawer')} style={shellLayout.detailPane}>
             {selected ? (
               <div style={pageStackStyle}>

@@ -10,12 +10,9 @@ import {
   type Styles,
 } from 'klinecharts'
 
-import type {
-  LongclawRun,
-  SignalsDashboard,
-} from '../../../../src/services/longclawControlPlane/models.js'
+import type { SignalsDashboard } from '../../../../src/services/longclawControlPlane/models.js'
 import { statusBadgeStyle } from '../designSystem.js'
-import { type LongclawLocale, humanizeTokenLocale } from '../i18n.js'
+import { type LongclawLocale } from '../i18n.js'
 
 type StrategyDashboard = Pick<
   SignalsDashboard,
@@ -31,7 +28,6 @@ type StrategyChartTerminalProps = {
   locale: LongclawLocale
   dashboard: StrategyDashboard
   signalsWebBaseUrl?: string
-  onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }
 
@@ -138,29 +134,29 @@ const terminalRootStyle: React.CSSProperties = {
 
 const terminalTopBarStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(260px, 380px) minmax(260px, 1fr) auto',
+  gridTemplateColumns: 'minmax(240px, 340px) minmax(220px, 1fr) auto',
   alignItems: 'center',
-  gap: 8,
-  padding: '6px 10px',
+  gap: 6,
+  padding: '4px 8px',
   borderBottom: '1px solid #1C2633',
   background: '#0F1620',
 }
 
 const searchFormStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(180px, 1fr) auto',
-  gap: 8,
+  gridTemplateColumns: 'minmax(160px, 1fr) auto',
+  gap: 6,
   minWidth: 0,
 }
 
 const searchInputStyle: React.CSSProperties = {
-  height: 32,
+  height: 28,
   minWidth: 0,
   border: '1px solid #263244',
   borderRadius: 5,
   background: '#0B1118',
   color: '#F2F6FB',
-  padding: '0 10px',
+  padding: '0 8px',
   fontFamily: '"IBM Plex Mono", Menlo, monospace',
   fontSize: 13,
   outline: 'none',
@@ -169,7 +165,7 @@ const searchInputStyle: React.CSSProperties = {
 const terminalGridStyle: React.CSSProperties = {
   flex: 1,
   display: 'grid',
-  gridTemplateColumns: 'minmax(190px, 240px) minmax(520px, 1fr) minmax(230px, 310px)',
+  gridTemplateColumns: '216px minmax(580px, 1fr) 268px',
   gridTemplateRows: 'minmax(0, 1fr)',
   gap: 1,
   alignItems: 'stretch',
@@ -183,17 +179,18 @@ const terminalSideStyle: React.CSSProperties = {
   gap: 1,
   minWidth: 0,
   minHeight: 0,
-  overflow: 'hidden',
+  overflow: 'auto',
   background: '#1C2633',
 }
 
 const terminalPanelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 8,
+  gap: 5,
   minWidth: 0,
   minHeight: 0,
-  padding: 10,
+  flexShrink: 0,
+  padding: 7,
   border: 'none',
   borderRadius: 0,
   background: '#0F1620',
@@ -205,12 +202,12 @@ const panelHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  gap: 8,
+  gap: 6,
 }
 
 const panelTitleStyle: React.CSSProperties = {
   color: '#F2F6FB',
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 700,
 }
 
@@ -247,11 +244,11 @@ const rowTitleStyle: React.CSSProperties = {
 const dataRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
+  gap: 6,
   border: '1px solid #222D3B',
   borderRadius: 5,
   background: '#121B27',
-  padding: '7px 8px',
+  padding: '5px 7px',
   minWidth: 0,
 }
 
@@ -269,8 +266,8 @@ const noticeDarkStyle: React.CSSProperties = {
   border: '1px solid rgba(70, 132, 194, 0.35)',
   background: 'rgba(43, 91, 137, 0.16)',
   color: '#BFD9F5',
-  padding: '8px 10px',
-  fontSize: 13,
+  padding: '5px 8px',
+  fontSize: 12,
 }
 
 const warningDarkStyle: React.CSSProperties = {
@@ -290,13 +287,13 @@ const errorDarkStyle: React.CSSProperties = {
 const compactListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
+  gap: 5,
 }
 
 const targetButtonStyle: React.CSSProperties = {
   border: '1px solid #222D3B',
   borderRadius: 5,
-  padding: '7px 8px',
+  padding: '5px 7px',
   textAlign: 'left',
   cursor: 'pointer',
   width: '100%',
@@ -308,10 +305,10 @@ const targetButtonStyle: React.CSSProperties = {
 const chartStageStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 8,
+  gap: 5,
   minWidth: 0,
   minHeight: 0,
-  padding: 10,
+  padding: 7,
   border: 'none',
   borderRadius: 0,
   background: '#0B1118',
@@ -321,13 +318,13 @@ const chartStageStyle: React.CSSProperties = {
 const chartHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 12,
+  alignItems: 'center',
+  gap: 10,
 }
 
 const chartTitleStyle: React.CSSProperties = {
   color: '#F2F6FB',
-  fontSize: 22,
+  fontSize: 19,
   lineHeight: 1.1,
   fontWeight: 800,
 }
@@ -336,7 +333,36 @@ const chartMetaRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   flexWrap: 'wrap',
+  gap: 6,
+}
+
+const chartHeaderRightStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
   gap: 8,
+  justifyContent: 'flex-end',
+  minWidth: 0,
+}
+
+const headerMetricsStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(62px, 78px))',
+  gap: 4,
+}
+
+const headerMetricStyle: React.CSSProperties = {
+  border: '1px solid #222D3B',
+  borderRadius: 4,
+  background: '#101926',
+  padding: '4px 6px',
+  minWidth: 0,
+}
+
+const chartConclusionStyle: React.CSSProperties = {
+  ...noticeDarkStyle,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 }
 
 const chartCanvasShellStyle: React.CSSProperties = {
@@ -368,26 +394,12 @@ const chartOverlayMessageStyle: React.CSSProperties = {
   zIndex: 2,
 }
 
-const statGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-  gap: 8,
-}
-
-const statTileStyle: React.CSSProperties = {
-  border: '1px solid #222D3B',
-  borderRadius: 5,
-  padding: '7px 8px',
-  background: '#101926',
-  minWidth: 0,
-}
-
 const signalRowStyle: React.CSSProperties = {
   display: 'flex',
   border: '1px solid #222D3B',
   borderRadius: 5,
   background: '#121B27',
-  padding: '7px 8px',
+  padding: '5px 7px',
   alignItems: 'center',
 }
 
@@ -396,13 +408,13 @@ const quickChipStyle: React.CSSProperties = {
   borderRadius: 5,
   background: '#111A25',
   color: '#B7C2D0',
-  padding: '7px 8px',
+  padding: '5px 7px',
   cursor: 'pointer',
   fontFamily: '"Instrument Sans", "PingFang SC", "Noto Sans SC", sans-serif',
   fontSize: 13,
   fontWeight: 600,
   justifyContent: 'center',
-  minHeight: 30,
+  minHeight: 26,
 }
 
 const quickChipActiveStyle: React.CSSProperties = {
@@ -411,16 +423,17 @@ const quickChipActiveStyle: React.CSSProperties = {
   background: 'rgba(208, 138, 84, 0.18)',
   color: '#FFD0A8',
   justifyContent: 'center',
-  minHeight: 30,
+  minHeight: 26,
 }
 
 function terminalButtonStyle(active = false, disabled = false): React.CSSProperties {
   return {
+    height: 28,
     border: `1px solid ${active ? '#D08A54' : '#263244'}`,
     borderRadius: 5,
     background: active ? 'rgba(208, 138, 84, 0.18)' : '#111A25',
     color: active ? '#FFD0A8' : '#B7C2D0',
-    padding: '7px 10px',
+    padding: '0 9px',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.45 : 1,
     fontFamily: '"Instrument Sans", "PingFang SC", "Noto Sans SC", sans-serif',
@@ -944,7 +957,6 @@ export function StrategyChartTerminal({
   locale,
   dashboard,
   signalsWebBaseUrl,
-  onOpenRun,
   onOpenRecord,
 }: StrategyChartTerminalProps) {
   const baseUrl = trimTrailingSlash(signalsWebBaseUrl) || urlFromDashboard(dashboard)
@@ -1380,39 +1392,47 @@ export function StrategyChartTerminal({
                 {[summarySubtitle, currentFreq, latestSignal || undefined].filter(Boolean).join(' · ')}
               </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
-              <span style={statusBadgeStyle(booting ? 'warning' : loading ? 'running' : 'open')}>
-                {booting
-                  ? (locale === 'zh-CN' ? '启动中' : 'Booting')
-                  : loading
-                    ? (locale === 'zh-CN' ? '刷新中' : 'Refreshing')
-                    : marketLabel(shell?.session, locale)}
-              </span>
-              <div style={mutedTextStyle}>
-                {lastUpdated
-                  ? `${locale === 'zh-CN' ? '更新' : 'Updated'} ${readableTime(lastUpdated, locale)}`
-                  : (locale === 'zh-CN' ? '等待数据' : 'Waiting for data')}
+            <div style={chartHeaderRightStyle}>
+              <div style={headerMetricsStyle}>
+                {[
+                  [locale === 'zh-CN' ? '最新价' : 'Last', formatNumber(symbolData?.summary?.latest_price ?? latestClose(klineData))],
+                  [locale === 'zh-CN' ? '信号' : 'Signal', latestSignal || 'N/A'],
+                  [locale === 'zh-CN' ? '涨幅' : 'Change', formatPercent(symbolData?.summary?.gain_pct)],
+                ].map(([label, value]) => (
+                  <div key={label} style={headerMetricStyle}>
+                    <div style={eyebrowDarkStyle}>{label}</div>
+                    <div style={{ color: '#F2F6FB', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  {connectorAlerts > 0 ? (
+                    <span style={statusBadgeStyle('warning')}>
+                      {locale === 'zh-CN' ? `连接 ${connectorAlerts}` : `${connectorAlerts} connectors`}
+                    </span>
+                  ) : null}
+                  <span style={statusBadgeStyle(booting ? 'warning' : loading ? 'running' : 'open')}>
+                    {booting
+                      ? (locale === 'zh-CN' ? '启动中' : 'Booting')
+                      : loading
+                        ? (locale === 'zh-CN' ? '刷新中' : 'Refreshing')
+                        : marketLabel(shell?.session, locale)}
+                  </span>
+                </div>
+                <div style={mutedTextStyle}>
+                  {lastUpdated
+                    ? `${locale === 'zh-CN' ? '更新' : 'Updated'} ${readableTime(lastUpdated, locale)}`
+                    : (locale === 'zh-CN' ? '等待数据' : 'Waiting for data')}
+                </div>
               </div>
             </div>
           </div>
 
-          <div style={statGridStyle}>
-            <StatTile
-              label={locale === 'zh-CN' ? '最新价' : 'Last'}
-              value={formatNumber(symbolData?.summary?.latest_price ?? latestClose(klineData))}
-            />
-            <StatTile
-              label={locale === 'zh-CN' ? '信号' : 'Signal'}
-              value={latestSignal || 'N/A'}
-            />
-            <StatTile
-              label={locale === 'zh-CN' ? '涨幅' : 'Change'}
-              value={formatPercent(symbolData?.summary?.gain_pct)}
-            />
-          </div>
-
           {symbolData?.summary?.conclusion ? (
-            <div style={noticeDarkStyle}>{String(symbolData.summary.conclusion)}</div>
+            <div style={chartConclusionStyle}>{String(symbolData.summary.conclusion)}</div>
           ) : null}
 
           <div style={chartCanvasShellStyle}>
@@ -1486,55 +1506,6 @@ export function StrategyChartTerminal({
             )}
           </Panel>
 
-          <Panel
-            title={locale === 'zh-CN' ? '图表侧边 Review' : 'Chart-side review'}
-            meta={String(dashboard.review_runs.length)}
-          >
-            {dashboard.review_runs.length === 0 ? (
-              <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无 review run。' : 'No review runs.'}
-              </div>
-            ) : (
-              <div style={compactListStyle}>
-                {dashboard.review_runs.slice(0, 4).map(run => (
-                  <button
-                    key={run.run_id}
-                    type="button"
-                    style={targetButtonStyle}
-                    onClick={() => {
-                      void onOpenRun(run as LongclawRun)
-                    }}
-                  >
-                    <div style={rowTitleStyle}>
-                      {run.summary || run.run_id}
-                    </div>
-                    <div style={mutedTextStyle}>{run.status}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '连接状态' : 'Connectors'}
-            meta={connectorAlerts > 0 ? String(connectorAlerts) : (locale === 'zh-CN' ? '正常' : 'OK')}
-          >
-            <div style={compactListStyle}>
-              {dashboard.connector_health.slice(0, 3).map(item => (
-                <div key={String(item.connector_id ?? item.label ?? 'connector')} style={dataRowStyle}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                    <div style={rowTitleStyle}>
-                      {String(item.connector_id ?? item.label ?? 'connector')}
-                    </div>
-                    <div style={mutedTextStyle}>{String(item.summary ?? '')}</div>
-                  </div>
-                  <span style={statusBadgeStyle(String(item.status ?? 'open'))}>
-                    {humanizeTokenLocale(locale, String(item.status ?? 'open'))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Panel>
         </div>
       </div>
     </div>
@@ -1600,17 +1571,6 @@ function TargetRows({
           </button>
         )
       })}
-    </div>
-  )
-}
-
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={statTileStyle}>
-      <div style={eyebrowDarkStyle}>{label}</div>
-      <div style={{ color: '#F2F6FB', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-        {value}
-      </div>
     </div>
   )
 }

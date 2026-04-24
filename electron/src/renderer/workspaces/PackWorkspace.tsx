@@ -23,6 +23,7 @@ import {
   StatusStrip,
   normalizePackRows,
 } from './shared.js'
+import { BacktestWorkbench } from './BacktestWorkbench.js'
 import { StrategyChartTerminal } from './StrategyChartTerminal.js'
 
 type SignalsPanel = 'overview' | 'chart' | 'review' | 'backtest' | 'connectors'
@@ -34,6 +35,7 @@ type PackWorkspaceProps = {
   surface: PackSurface
   dashboard: LongclawPackDashboard | null
   signalsWebBaseUrl?: string
+  signalsWeb2BaseUrl?: string
   localizedNotice?: string | null
   onRunAction: (action: LongclawOperatorAction) => Promise<void>
   onOpenRun: (run: LongclawRun) => Promise<void>
@@ -871,7 +873,7 @@ export type SignalsStrategyVM = Pick<
 
 export type SignalsBacktestVM = Pick<
   SignalsDashboard,
-  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs'
+  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates'
 >
 
 export type SignalsFactoryVM = Pick<
@@ -899,6 +901,7 @@ function toSignalsBacktestVM(dashboard: SignalsDashboard): SignalsBacktestVM {
     backtest_jobs: dashboard.backtest_jobs,
     pending_backlog_preview: dashboard.pending_backlog_preview,
     review_runs: dashboard.review_runs,
+    buy_candidates: dashboard.buy_candidates,
   }
 }
 
@@ -914,13 +917,11 @@ function SignalsStrategyView({
   locale,
   dashboard,
   signalsWebBaseUrl,
-  onOpenRun,
   onOpenRecord,
 }: {
   locale: LongclawLocale
   dashboard: SignalsStrategyVM
   signalsWebBaseUrl?: string
-  onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (
     title: string,
     record: Record<string, unknown>,
@@ -932,7 +933,6 @@ function SignalsStrategyView({
       locale={locale}
       dashboard={dashboard}
       signalsWebBaseUrl={signalsWebBaseUrl}
-      onOpenRun={onOpenRun}
       onOpenRecord={onOpenRecord}
     />
   )
@@ -941,11 +941,13 @@ function SignalsStrategyView({
 function SignalsBacktestView({
   locale,
   dashboard,
+  signalsWeb2BaseUrl,
   onOpenRun,
   onOpenRecord,
 }: {
   locale: LongclawLocale
   dashboard: SignalsBacktestVM
+  signalsWeb2BaseUrl?: string
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (
     title: string,
@@ -954,73 +956,13 @@ function SignalsBacktestView({
   ) => void
 }) {
   return (
-    <div style={packGridStyle}>
-      <Section
-        title={t(locale, 'section.pack.signals.backtest_backlog.title')}
-        subtitle={t(locale, 'section.pack.signals.backtest_backlog.subtitle')}
-      >
-        <StatusStrip
-          locale={locale}
-          items={[
-            { label: t(locale, 'label.total'), value: dashboard.backtest_summary.total },
-            {
-              label: t(locale, 'label.evaluated'),
-              value: dashboard.backtest_summary.evaluated,
-              tone: 'success',
-            },
-            {
-              label: t(locale, 'label.pending'),
-              value: dashboard.backtest_summary.pending,
-              tone: 'needs_review',
-            },
-          ]}
-        />
-        <div style={{ ...denseListStyle, marginTop: 12 }}>
-          {dashboard.pending_backlog_preview.length === 0 ? (
-            <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_backlog')}</div>
-          ) : (
-            dashboard.pending_backlog_preview.map(item => (
-              <div
-                key={`${item.symbol}-${item.signal_date}-${item.signal_type}`}
-                style={surfaceStyles.listRow}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: palette.ink }}>{item.symbol}</div>
-                  <div style={chromeStyles.quietMeta}>
-                    {item.signal_type} · {item.freq}
-                  </div>
-                </div>
-                <div style={chromeStyles.monoMeta}>{item.signal_date}</div>
-              </div>
-            ))
-          )}
-        </div>
-      </Section>
-      <PackListSection
-        locale={locale}
-        title={locale === 'zh-CN' ? '回测输入候选' : 'Backtest input queue'}
-        subtitle={
-          locale === 'zh-CN'
-            ? 'Review runs 在这里作为 web2 回测的输入候选，而不是广义研究工作台。'
-            : 'Review runs stay here as backtest inputs rather than a general research workspace.'
-        }
-        rows={dashboard.review_runs as Array<Record<string, unknown>>}
-        onOpen={run => {
-          void onOpenRun(run as LongclawRun)
-        }}
-      />
-      <PackListSection
-        locale={locale}
-        title={locale === 'zh-CN' ? '回测作业' : 'Backtest jobs'}
-        subtitle={
-          locale === 'zh-CN'
-            ? '来自 web2 分析和本地运行记录的回测摘要。'
-            : 'Backtest summaries from web2 analysis and local runs.'
-        }
-        rows={dashboard.backtest_jobs as Array<Record<string, unknown>>}
-        onOpen={item => onOpenRecord(`Backtest ${String(item.job_id ?? 'job')}`, item)}
-      />
-    </div>
+    <BacktestWorkbench
+      locale={locale}
+      dashboard={dashboard}
+      signalsWeb2BaseUrl={signalsWeb2BaseUrl}
+      onOpenRun={onOpenRun}
+      onOpenRecord={onOpenRecord}
+    />
   )
 }
 
@@ -1092,6 +1034,7 @@ export function PackWorkspace({
   surface,
   dashboard,
   signalsWebBaseUrl,
+  signalsWeb2BaseUrl,
   localizedNotice,
   onRunAction,
   onOpenRun,
@@ -1134,15 +1077,23 @@ export function PackWorkspace({
   if (surface === 'strategy') {
     return (
       <div style={strategyPackShellStyle}>
-        {localizedNotice || normalizedDashboard.notice ? (
-          <div style={{ ...utilityStyles.warningBanner, margin: 10 }}>
-            {localizedNotice || normalizedDashboard.notice}
-          </div>
-        ) : null}
         <SignalsStrategyView
           locale={locale}
           dashboard={toSignalsStrategyVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
+          onOpenRecord={onOpenRecord}
+        />
+      </div>
+    )
+  }
+
+  if (surface === 'backtest') {
+    return (
+      <div style={strategyPackShellStyle}>
+        <SignalsBacktestView
+          locale={locale}
+          dashboard={toSignalsBacktestVM(normalizedDashboard as SignalsDashboard)}
+          signalsWeb2BaseUrl={signalsWeb2BaseUrl}
           onOpenRun={onOpenRun}
           onOpenRecord={onOpenRecord}
         />
@@ -1173,13 +1124,13 @@ export function PackWorkspace({
           locale={locale}
           dashboard={toSignalsStrategyVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
-          onOpenRun={onOpenRun}
           onOpenRecord={onOpenRecord}
         />
       ) : surface === 'backtest' ? (
         <SignalsBacktestView
           locale={locale}
           dashboard={toSignalsBacktestVM(normalizedDashboard as SignalsDashboard)}
+          signalsWeb2BaseUrl={signalsWeb2BaseUrl}
           onOpenRun={onOpenRun}
           onOpenRecord={onOpenRecord}
         />
