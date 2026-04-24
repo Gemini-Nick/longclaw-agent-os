@@ -187,12 +187,40 @@ function ensureObservationFiles() {
   }
 }
 
+function readExistingObservationJson(): Record<string, unknown> {
+  try {
+    if (!fs.existsSync(observationJsonPath)) return {}
+    const parsed = JSON.parse(fs.readFileSync(observationJsonPath, 'utf-8')) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+function mergeMemoryRefs(...values: unknown[]): string[] {
+  const refs = new Set<string>()
+  for (const value of values) {
+    if (!Array.isArray(value)) continue
+    for (const item of value) {
+      if (typeof item === 'string' && item.trim()) refs.add(item)
+    }
+  }
+  return [...refs].sort()
+}
+
 function writeObservationJson() {
   try {
     fs.mkdirSync(observationDir, { recursive: true })
+    const existing = readExistingObservationJson()
+    const payload = {
+      ...existing,
+      ...observationState,
+      memory_refs: mergeMemoryRefs(existing.memory_refs, observationState.memory_refs),
+    }
     fs.writeFileSync(
       observationJsonPath,
-      `${JSON.stringify(observationState, null, 2)}\n`,
+      `${JSON.stringify(payload, null, 2)}\n`,
       'utf-8',
     )
   } catch (error) {

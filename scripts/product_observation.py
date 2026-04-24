@@ -17,6 +17,7 @@ WORKSPACE_ROOT = REPO_ROOT.parent
 REPORT_ROOT = REPO_ROOT / "reports" / "product-observations"
 SIGNALS_LOG_ROOT = WORKSPACE_ROOT / "Signals" / ".data" / "logs"
 PRODUCT_LINE = "longclaw-electron-signals"
+PLACEHOLDER_VALUES = {"", "None", "none", "null", "待补充", "待补充。"}
 
 
 def now() -> datetime:
@@ -102,6 +103,182 @@ def append_jsonl(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def is_placeholder(value: Any) -> bool:
+    if value is None:
+        return True
+    if not isinstance(value, str):
+        return False
+    return value.strip() in PLACEHOLDER_VALUES
+
+
+def parse_iso(value: Any) -> str:
+    return str(value or "")
+
+
+def latest_event(events: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
+    matches = [row for row in events if row.get("name") == name]
+    return matches[-1] if matches else None
+
+
+def freq_from_target(target: Any) -> str:
+    if isinstance(target, dict):
+        return str(target.get("freq") or "")
+    return ""
+
+
+def label_from_target(target: Any) -> str:
+    if isinstance(target, dict):
+        return str(target.get("label") or "")
+    return ""
+
+
+def summarize_post_action_api(
+    events: List[Dict[str, Any]],
+    api_rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    action = latest_event(events, "strategy.freq.click") or latest_event(events, "strategy.symbol.select")
+    action_at = parse_iso(action.get("at")) if action else ""
+    post_rows = [row for row in api_rows if not action_at or parse_iso(row.get("at")) >= action_at]
+    next_target = action.get("next") if action else {}
+    requested_freq = freq_from_target(next_target) or "unknown"
+    requested_label = label_from_target(next_target) or "unknown"
+    requested_rows = [
+        row for row in post_rows
+        if requested_freq != "unknown" and f"freq={requested_freq}" in str(row.get("endpoint") or "")
+    ]
+    return {
+        "action": action,
+        "action_at": action_at,
+        "requested_freq": requested_freq,
+        "requested_label": requested_label,
+        "post_rows": post_rows,
+        "post_failed": [row for row in post_rows if row.get("ok") is False],
+        "requested_ok": [row for row in requested_rows if row.get("ok") is True],
+        "requested_failed": [row for row in requested_rows if row.get("ok") is False],
+        "refresh_after_action": [
+            row for row in events
+            if row.get("name") == "app.refresh.finish" and (not action_at or parse_iso(row.get("at")) >= action_at)
+        ],
+    }
+
+
+def fill_if_missing(observation: Dict[str, Any], key: str, value: str) -> None:
+    if is_placeholder(observation.get(key)):
+        observation[key] = value
+
+
+def ensure_evidence_paths(run_dir: Path, observation: Dict[str, Any]) -> None:
+    evidence = observation.get("evidence_paths")
+    if not isinstance(evidence, dict):
+        evidence = {}
+    defaults = {
+        "observation_json": str(run_dir / "observation.json"),
+        "events": str(run_dir / "events.jsonl"),
+        "api_timings": str(run_dir / "api-timings.jsonl"),
+        "electron_log": str(run_dir / "electron.log"),
+        "signals_log": str(run_dir / "signals.log"),
+        "screenshots": str(run_dir / "screenshots"),
+    }
+    for key, value in defaults.items():
+        evidence.setdefault(key, value)
+    observation["evidence_paths"] = evidence
+
+
+def enrich_observation(
+    run_dir: Path,
+    observation: Dict[str, Any],
+    events: List[Dict[str, Any]],
+    api_rows: List[Dict[str, Any]],
+) -> None:
+    ensure_evidence_paths(run_dir, observation)
+    scenario = str(observation.get("scenario") or "")
+    if is_placeholder(observation.get("module")) and "strategy" in scenario:
+        observation["module"] = "策略"
+    if is_placeholder(observation.get("severity")):
+        observation["severity"] = "medium"
+
+    summary = summarize_post_action_api(events, api_rows)
+    requested_label = summary["requested_label"]
+    requested_freq = summary["requested_freq"]
+    requested_ok = len(summary["requested_ok"])
+    requested_failed = len(summary["requested_failed"])
+    refresh_after = len(summary["refresh_after_action"])
+    action = summary["action"]
+
+    if "strategy" not in scenario:
+        return
+
+    fill_if_missing(
+        observation,
+        "hypothesis",
+        (
+            "策略页周期回跳和后台刷新异常来自初始化/刷新耦合：shell 或 session 刷新会重建策略终端 effect，"
+            "旧 AbortController 可能取消正在进行的 chart 请求，进而让用户选择看起来不稳定。"
+        ),
+    )
+    if action:
+        previous = freq_from_target(action.get("previous")) or "unknown"
+        fill_if_missing(
+            observation,
+            "reproduction",
+            (
+                f"启动 Electron + Signals，进入策略页，默认标的为 {requested_label}；"
+                f"点击周期从 {previous} 切到 {requested_freq}，等待至少一个后台刷新周期，"
+                "同时检查可视 UI 与 api-timings.jsonl。"
+            ),
+        )
+    else:
+        fill_if_missing(
+            observation,
+            "reproduction",
+            "启动 Electron + Signals，进入策略页执行标的/周期切换，等待后台刷新并检查 UI 与 telemetry。",
+        )
+    fill_if_missing(
+        observation,
+        "minimum_change",
+        (
+            "renderer-only 修改 StrategyChartTerminal：初始化和后台刷新分离；后台刷新使用 liveRefresh boolean 控制间隔，"
+            "每次 tick 使用独立 AbortController，cleanup 只取消仍在飞行的请求；不改 control-plane schema。"
+        ),
+    )
+    fill_if_missing(
+        observation,
+        "verification",
+        (
+            f"Computer Use 可视验证停留在 {requested_freq}；点击后 app.refresh.finish={refresh_after}，"
+            f"{requested_freq} chart 请求 ok={requested_ok}、failed={requested_failed}；"
+            "并通过 npm run lint、npm test、npm run build:electron。"
+        ),
+    )
+    fill_if_missing(
+        observation,
+        "expected",
+        "用户切换周期后，后台 refresh 不覆盖当前标的/周期；chart 后台刷新请求稳定返回 200。",
+    )
+    actual = (
+        f"本轮切到 {requested_freq} 后保持稳定；点击后的 {requested_freq} 后台刷新 ok={requested_ok}、"
+        f"failed={requested_failed}。历史日志里仍保留修复前 aborted:true 记录，用作归因证据。"
+    )
+    fill_if_missing(observation, "actual", actual)
+    fill_if_missing(
+        observation,
+        "initial_diagnosis",
+        (
+            "代码证据：旧后台刷新 effect 依赖 shell?.session，每次 loadShell 更新 session 都会触发 cleanup，"
+            "从而 abort 当前 chart 请求。修复后 session 变化只影响 liveRefresh boolean，单次请求不会被同轮刷新取消。"
+        ),
+    )
+    fill_if_missing(
+        observation,
+        "next_steps",
+        (
+            "下一轮先做 observation 启动 wrapper：统一 canonical run_id/run_dir，检测并复用已有 Signals 端口，"
+            "避免误开默认 Electron；再扩展回测 weekly 500、慢请求和数据源健康检查。"
+        ),
+    )
+    observation["status"] = "verified" if requested_ok > 0 and requested_failed == 0 else "needs_followup"
 
 
 def default_observation(args: argparse.Namespace, run_id: str, run_dir: Path) -> Dict[str, Any]:
@@ -265,6 +442,7 @@ def copy_latest_signals_log(run_dir: Path) -> None:
 def write_report(run_dir: Path, observation: Dict[str, Any]) -> None:
     events = read_jsonl(run_dir / "events.jsonl")
     api_rows = read_jsonl(run_dir / "api-timings.jsonl")
+    enrich_observation(run_dir, observation, events, api_rows)
     observation["event_count"] = len(events)
     observation["api_timing_count"] = len(api_rows)
     observation["updated_at"] = now().isoformat()

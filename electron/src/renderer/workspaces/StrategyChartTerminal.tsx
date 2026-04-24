@@ -975,6 +975,7 @@ export function StrategyChartTerminal({
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
+  const liveRefresh = shouldUseLiveRefresh(shell?.session)
   const connectorAlerts = useMemo(
     () =>
       dashboard.connector_health.filter(item => {
@@ -1148,17 +1149,23 @@ export function StrategyChartTerminal({
 
   useEffect(() => {
     if (!baseUrl || !target.label) return
-    const controller = new AbortController()
-    const refreshMs = shouldUseLiveRefresh(shell?.session) ? 5_000 : 30_000
+    const controllers = new Set<AbortController>()
+    const refreshMs = liveRefresh ? 5_000 : 30_000
     const timer = window.setInterval(() => {
+      const controller = new AbortController()
+      controllers.add(controller)
       void loadShell(controller.signal).catch(() => undefined)
       void loadSymbol(target, { signal: controller.signal, silent: true })
+        .finally(() => {
+          controllers.delete(controller)
+        })
     }, refreshMs)
     return () => {
-      controller.abort()
       window.clearInterval(timer)
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
     }
-  }, [baseUrl, loadShell, loadSymbol, shell?.session, target])
+  }, [baseUrl, liveRefresh, loadShell, loadSymbol, target])
 
   useEffect(() => {
     if (!baseUrl || !booting || !target.label) return
