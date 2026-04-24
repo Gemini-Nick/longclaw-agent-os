@@ -16,6 +16,7 @@ import type {
 } from '../../../../src/services/longclawControlPlane/models.js'
 import { statusBadgeStyle } from '../designSystem.js'
 import type { LongclawLocale } from '../i18n.js'
+import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
 type BacktestDashboard = Pick<
   SignalsDashboard,
@@ -374,30 +375,10 @@ function toKLineData(rawRows: Record<string, unknown>[] | undefined): KLineData[
 }
 
 async function fetchJson<T>(baseUrl: string, path: string, timeoutMs = 120_000): Promise<T> {
-  const controller = new AbortController()
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const response = await fetch(`${baseUrl}${path}`, { signal: controller.signal })
-    let payload: unknown = {}
-    try {
-      payload = await response.json()
-    } catch {
-      payload = {}
-    }
-    if (!response.ok) {
-      const error = new Error(
-        stringValue(recordValue(payload).detail) ??
-          stringValue(recordValue(payload).error) ??
-          `${response.status} ${path}`,
-      ) as ApiError
-      error.status = response.status
-      error.payload = recordValue(payload)
-      throw error
-    }
-    return payload as T
-  } finally {
-    window.clearTimeout(timer)
-  }
+  return observedFetchJson<T>(baseUrl, path, {
+    timeoutMs,
+    source: 'backtest.api',
+  })
 }
 
 function chartStyles(): DeepPartial<Styles> {
@@ -611,6 +592,13 @@ export function BacktestWorkbench({
 
   const runAnalyze = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
+    const hadResult = Boolean(result)
+    recordObservationEvent('backtest.analyze.submit', {
+      code: code.trim(),
+      freq,
+      signal_type: signalType,
+      had_result: hadResult,
+    })
     setLoading(true)
     setError(null)
     try {
@@ -618,17 +606,38 @@ export function BacktestWorkbench({
       const data = await fetchJson<BacktestResult>(baseUrl, `/api/backtest/analyze?${params.toString()}`)
       setResult(data)
       setScan(null)
-      setTab('perf')
+      if (!hadResult) setTab('perf')
+      recordObservationEvent('backtest.analyze.success', {
+        code: data.code ?? code.trim(),
+        symbol: data.symbol,
+        freq: data.freq ?? freq,
+        signals: data.signals?.length ?? 0,
+        trades: data.sim_trades?.length ?? 0,
+      })
     } catch (rawError) {
       const apiError = rawError as ApiError
       setError(apiError.message || (locale === 'zh-CN' ? '回测分析失败。' : 'Backtest analysis failed.'))
+      recordObservationEvent('backtest.analyze.error', {
+        code: code.trim(),
+        freq,
+        signal_type: signalType,
+        status: apiError.status,
+        error: apiError.message,
+        level: 'error',
+      })
     } finally {
       setLoading(false)
     }
-  }, [baseUrl, code, freq, locale, signalType, simParams])
+  }, [baseUrl, code, freq, locale, result, signalType, simParams])
 
   const runScan = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
+    recordObservationEvent('backtest.scan.submit', {
+      code: code.trim(),
+      freq,
+      signal_type: signalType,
+      scan_params: scanParams,
+    })
     setScanLoading(true)
     setError(null)
     try {
@@ -640,9 +649,24 @@ export function BacktestWorkbench({
       setScan(data)
       setTab('scan')
       if (data.error) setError(data.error)
+      recordObservationEvent('backtest.scan.finish', {
+        code: code.trim(),
+        freq,
+        result_count: data.scan_results?.length ?? 0,
+        error: data.error,
+        level: data.error ? 'error' : 'info',
+      })
     } catch (rawError) {
       const apiError = rawError as ApiError
       setError(apiError.message || (locale === 'zh-CN' ? '参数扫描失败。' : 'Parameter scan failed.'))
+      recordObservationEvent('backtest.scan.error', {
+        code: code.trim(),
+        freq,
+        signal_type: signalType,
+        status: apiError.status,
+        error: apiError.message,
+        level: 'error',
+      })
     } finally {
       setScanLoading(false)
     }
@@ -740,14 +764,35 @@ export function BacktestWorkbench({
           placeholder="002759 / 600519 / 09988"
           onChange={event => setCode(event.target.value)}
         />
-        <select style={selectStyle} value={freq} onChange={event => setFreq(event.target.value)}>
+        <select
+          style={selectStyle}
+          value={freq}
+          onChange={event => {
+            const nextFreq = event.target.value
+            recordObservationEvent('backtest.freq.change', {
+              previous: freq,
+              next: nextFreq,
+              code: code.trim(),
+            })
+            setFreq(nextFreq)
+          }}
+        >
           <option value="daily">{locale === 'zh-CN' ? '日线' : 'Daily'}</option>
           <option value="weekly">{locale === 'zh-CN' ? '周线' : 'Weekly'}</option>
         </select>
         <select
           style={selectStyle}
           value={signalType}
-          onChange={event => setSignalType(event.target.value as SignalType)}
+          onChange={event => {
+            const nextSignalType = event.target.value as SignalType
+            recordObservationEvent('backtest.signal-type.change', {
+              previous: signalType,
+              next: nextSignalType,
+              code: code.trim(),
+              freq,
+            })
+            setSignalType(nextSignalType)
+          }}
         >
           <option value="all">{locale === 'zh-CN' ? '全部信号' : 'All signals'}</option>
           <option value="macd">MACD</option>
@@ -850,7 +895,15 @@ export function BacktestWorkbench({
                   key={item}
                   type="button"
                   style={buttonStyle(tab === item)}
-                  onClick={() => setTab(item)}
+                  onClick={() => {
+                    recordObservationEvent('backtest.tab.click', {
+                      previous: tab,
+                      next: item,
+                      code: code.trim(),
+                      freq,
+                    })
+                    setTab(item)
+                  }}
                 >
                   {item}
                 </button>

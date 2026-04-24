@@ -13,6 +13,7 @@ import {
 import type { SignalsDashboard } from '../../../../src/services/longclawControlPlane/models.js'
 import { statusBadgeStyle } from '../designSystem.js'
 import { type LongclawLocale } from '../i18n.js'
+import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
 type StrategyDashboard = Pick<
   SignalsDashboard,
@@ -526,25 +527,19 @@ function shouldUseLiveRefresh(session?: WorkbenchSession): boolean {
   return Boolean(session?.a_live || session?.hk_live || session?.us_live)
 }
 
-async function fetchJson<T>(baseUrl: string, path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, { signal })
-  let payload: unknown = {}
-  try {
-    payload = await response.json()
-  } catch {
-    payload = {}
-  }
-  if (!response.ok) {
-    const error = new Error(
-      stringValue(recordValue(payload).detail) ??
-        stringValue(recordValue(payload).error) ??
-        `${response.status} ${path}`,
-    ) as ApiError
-    error.status = response.status
-    error.payload = recordValue(payload)
-    throw error
-  }
-  return payload as T
+async function fetchJson<T>(
+  baseUrl: string,
+  path: string,
+  signal: AbortSignal | undefined,
+  source: string,
+  action?: string,
+): Promise<T> {
+  return observedFetchJson<T>(baseUrl, path, {
+    signal,
+    source,
+    action,
+    timeoutMs: 45_000,
+  })
 }
 
 function symbolDataFromIndexChart(
@@ -965,6 +960,7 @@ export function StrategyChartTerminal({
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const resizeFrameRef = useRef<number | null>(null)
   const activeRequestRef = useRef(0)
+  const dashboardRef = useRef(dashboard)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
   const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
   const [symbolData, setSymbolData] = useState<WorkbenchSymbolData | null>(null)
@@ -1006,11 +1002,24 @@ export function StrategyChartTerminal({
     compactText(symbolData?.target?.symbol) ||
     compactText(symbolData?.target?.kind, target.kind)
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const requestedFreq = symbolData?.target?.requested_freq
+  const effectiveFreq = symbolData?.target?.effective_freq
+  const freqFallbackNotice =
+    requestedFreq && effectiveFreq && requestedFreq !== effectiveFreq
+      ? (locale === 'zh-CN'
+          ? `${requestedFreq} 暂不可用，已使用 ${effectiveFreq}。`
+          : `${requestedFreq} is unavailable; using ${effectiveFreq}.`)
+      : null
 
   const loadShell = useCallback(
     async (signal?: AbortSignal) => {
       if (!baseUrl) return null
-      const nextShell = await fetchJson<WorkbenchShell>(baseUrl, '/api/workbench/shell', signal)
+      const nextShell = await fetchJson<WorkbenchShell>(
+        baseUrl,
+        '/api/workbench/shell',
+        signal,
+        'strategy.shell',
+      )
       setShell(nextShell)
       return nextShell
     },
@@ -1034,6 +1043,8 @@ export function StrategyChartTerminal({
                   baseUrl,
                   `/api/chart/${encodeURIComponent(nextTarget.label)}?freq=${encodeURIComponent(nextTarget.freq || 'daily')}`,
                   options.signal,
+                  'strategy.chart',
+                  options.silent ? 'background-refresh' : 'load-symbol',
                 ),
               )
             : await fetchJson<WorkbenchSymbolData>(
@@ -1043,6 +1054,8 @@ export function StrategyChartTerminal({
                   freq: nextTarget.freq || 'daily',
                 }).toString()}`,
                 options.signal,
+                'strategy.symbol',
+                options.silent ? 'background-refresh' : 'load-symbol',
               )
         if (requestId !== activeRequestRef.current) return
         setSymbolData(nextSymbolData)
@@ -1051,6 +1064,18 @@ export function StrategyChartTerminal({
         setLastUpdated(new Date())
         const effectiveTarget = nextSymbolData.target
         if (effectiveTarget) {
+          const requested = compactText(effectiveTarget.requested_freq, nextTarget.freq)
+          const effective = compactText(effectiveTarget.effective_freq, nextTarget.freq)
+          if (requested && effective && requested !== effective) {
+            recordObservationEvent('strategy.freq.fallback', {
+              requested_freq: requested,
+              effective_freq: effective,
+              target: nextTarget.label,
+              kind: nextTarget.kind,
+              silent: Boolean(options.silent),
+              level: 'warning',
+            })
+          }
           setTarget(previous => {
             const effectiveKind = compactText(effectiveTarget.kind, previous.kind)
             return {
@@ -1084,6 +1109,10 @@ export function StrategyChartTerminal({
   )
 
   useEffect(() => {
+    dashboardRef.current = dashboard
+  }, [dashboard])
+
+  useEffect(() => {
     setSearchDraft(target.label)
   }, [target.label])
 
@@ -1098,7 +1127,11 @@ export function StrategyChartTerminal({
     void (async () => {
       try {
         const nextShell = await loadShell(controller.signal)
-        const nextTarget = initialTargetFrom(nextShell, dashboard)
+        const nextTarget = initialTargetFrom(nextShell, dashboardRef.current)
+        recordObservationEvent('strategy.init-target', {
+          target: nextTarget,
+          reason: 'initial-shell-load',
+        })
         setTarget(nextTarget)
         setSearchDraft(nextTarget.label)
         await loadSymbol(nextTarget, { signal: controller.signal })
@@ -1111,7 +1144,7 @@ export function StrategyChartTerminal({
       }
     })()
     return () => controller.abort()
-  }, [baseUrl, dashboard, loadShell, loadSymbol, locale])
+  }, [baseUrl, loadShell, loadSymbol, locale])
 
   useEffect(() => {
     if (!baseUrl || !target.label) return
@@ -1201,12 +1234,16 @@ export function StrategyChartTerminal({
   }, [klineData, keyLevels, signals])
 
   const selectTarget = useCallback(
-    (next: ChartTarget) => {
+    (next: ChartTarget, source = 'strategy.target.select') => {
+      recordObservationEvent(source, {
+        previous: target,
+        next,
+      })
       setTarget(next)
       setSearchDraft(next.label)
       void loadSymbol(next)
     },
-    [loadSymbol],
+    [loadSymbol, target],
   )
 
   const submitSearch = useCallback(
@@ -1215,13 +1252,17 @@ export function StrategyChartTerminal({
       const value = searchDraft.trim()
       if (!value) return
       const isIndex = indexTargets.some(row => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value)
-      selectTarget({ label: value, kind: isIndex ? 'index' : 'auto', freq: target.freq || 'daily' })
+      selectTarget(
+        { label: value, kind: isIndex ? 'index' : 'auto', freq: target.freq || 'daily' },
+        'strategy.search.submit',
+      )
     },
     [indexTargets, searchDraft, selectTarget, target.freq],
   )
 
   const refreshNow = useCallback(() => {
     if (!target.label) return
+    recordObservationEvent('strategy.refresh.click', { target })
     void loadShell().catch(() => undefined)
     void loadSymbol(target)
   }, [loadShell, loadSymbol, target])
@@ -1283,7 +1324,7 @@ export function StrategyChartTerminal({
                 type="button"
                 style={terminalButtonStyle(active, disabled)}
                 disabled={disabled}
-                onClick={() => selectTarget({ ...target, freq })}
+                onClick={() => selectTarget({ ...target, freq }, 'strategy.freq.click')}
               >
                 {freq}
               </button>
@@ -1302,6 +1343,9 @@ export function StrategyChartTerminal({
 
       {shell?.notices?.length ? (
         <div style={noticeDarkStyle}>{shell.notices.join(' ')}</div>
+      ) : null}
+      {freqFallbackNotice ? (
+        <div style={warningDarkStyle}>{freqFallbackNotice}</div>
       ) : null}
       {error ? (
         <div style={booting ? warningDarkStyle : errorDarkStyle}>{error}</div>
@@ -1328,7 +1372,9 @@ export function StrategyChartTerminal({
                       key={label}
                       type="button"
                       style={active ? quickChipActiveStyle : quickChipStyle}
-                      onClick={() => selectTarget({ label, kind: 'index', freq: target.freq })}
+                      onClick={() =>
+                        selectTarget({ label, kind: 'index', freq: target.freq }, 'strategy.watchlist.click')
+                      }
                     >
                       {label}
                     </button>
@@ -1347,7 +1393,12 @@ export function StrategyChartTerminal({
               emptyText={locale === 'zh-CN' ? '暂无买入候选。' : 'No buy candidates.'}
               onSelect={row => {
                 const label = labelForTarget(row)
-                if (label) selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq })
+                if (label) {
+                  selectTarget(
+                    { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
+                    'strategy.buy-candidate.click',
+                  )
+                }
               }}
             />
           </Panel>
@@ -1361,7 +1412,12 @@ export function StrategyChartTerminal({
               emptyText={locale === 'zh-CN' ? '暂无卖出预警。' : 'No sell warnings.'}
               onSelect={row => {
                 const label = labelForTarget(row)
-                if (label) selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq })
+                if (label) {
+                  selectTarget(
+                    { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
+                    'strategy.sell-warning.click',
+                  )
+                }
               }}
             />
           </Panel>
@@ -1375,7 +1431,7 @@ export function StrategyChartTerminal({
               emptyText={locale === 'zh-CN' ? '暂无聚类方向。' : 'No cluster directions.'}
               onSelect={row => {
                 const label = labelForTarget(row)
-                if (label) selectTarget({ label, kind: 'industry', freq: 'daily' })
+                if (label) selectTarget({ label, kind: 'industry', freq: 'daily' }, 'strategy.cluster.click')
               }}
             />
           </Panel>

@@ -97,3 +97,11 @@ contextBridge.exposeInMainWorld('longclawRuntime', {
 contextBridge.exposeInMainWorld('longclawWindow', {
   setLocale: (locale: 'zh-CN' | 'en-US') => ipcRenderer.invoke('window:set-locale', locale),
 })
+
+contextBridge.exposeInMainWorld('longclawObservation', {
+  getContext: () => ipcRenderer.invoke('observation:get-context'),
+  recordEvent: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('observation:record-event', payload),
+  recordApiTiming: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('observation:record-api-timing', payload),
+})

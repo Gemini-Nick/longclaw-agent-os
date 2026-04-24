@@ -37,6 +37,7 @@ import { PackWorkspace } from './workspaces/PackWorkspace.js'
 import { ExecutionConsole } from './workspaces/TaskWorkspace.js'
 import WeChatWorkspace from './workspaces/WeChatWorkspace.js'
 import CapabilitiesWorkspace from './workspaces/CapabilitiesWorkspace.js'
+import { recordObservationEvent } from './observation.js'
 
 export type SurfaceId = 'strategy' | 'backtest' | 'execution' | 'wechat' | 'factory'
 type Page = SurfaceId
@@ -2121,6 +2122,7 @@ export default function App() {
 
   const refresh = useCallback(
     async (targetPage: Page = page) => {
+      recordObservationEvent('app.refresh.start', { page: targetPage })
       setLoading(true)
       setError(null)
       if (targetPage === 'strategy') {
@@ -2164,6 +2166,7 @@ export default function App() {
         ])
       }
       setLoading(false)
+      recordObservationEvent('app.refresh.finish', { page: targetPage })
     },
     [
       loadCapabilitySubstrate,
@@ -2179,6 +2182,7 @@ export default function App() {
   )
 
   useEffect(() => {
+    recordObservationEvent('app.page.visible', { page })
     void refresh(page)
   }, [page, refresh])
 

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
+import { execFileSync } from 'child_process'
 import { fileURLToPath } from 'url'
 import { createBackend, AgentBackend, AgentMode } from './agent-backend.js'
 import { inspectConfiguredAcpBridge } from './acp-client.js'
@@ -45,10 +46,266 @@ import {
   LongclawWorkItemSchema,
 } from '../../src/services/longclawControlPlane/models.js'
 
-function log(...args: any[]) {
-  const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')
-  process.stderr.write(`[longxiaoxia] ${msg}\n`)
+const ELECTRON_DIST_DIR = __dirname
+const REPO_ROOT = path.resolve(ELECTRON_DIST_DIR, '..', '..')
+const PRODUCT_OBSERVATION_ROOT = path.join(REPO_ROOT, 'reports', 'product-observations')
+const LONGCLAW_LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Longclaw')
+const OBSERVATION_PRODUCT_LINE = 'longclaw-electron-signals'
+
+type ObservationCounterKey = 'events' | 'api_timings' | 'main_logs' | 'renderer_errors'
+
+type ObservationState = {
+  run_id: string
+  product_line: string
+  scenario: string
+  started_at: string
+  repo_root: string
+  observation_dir: string
+  logs: {
+    electron_current: string
+    electron_session: string
+    electron_observation: string
+  }
+  git: {
+    sha: string | null
+    dirty: boolean
+    status_short: string
+  }
+  runtime: {
+    electron_pid: number
+    node_version: string
+    platform: string
+    signals_web_port: string
+    signals_web2_port: string
+  }
+  counters: Record<ObservationCounterKey, number>
+  memory_refs: string[]
 }
+
+function timestampSlug(value = new Date()): string {
+  return value.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
+}
+
+function sanitizeSlug(value: string, fallback: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized || fallback
+}
+
+function stringifyLogValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function safeExecGit(args: string[]): string | null {
+  try {
+    return execFileSync('git', args, {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+const observationStartedAt = new Date()
+const observationScenario = sanitizeSlug(
+  process.env.LONGCLAW_OBSERVATION_SCENARIO ?? 'manual-electron-session',
+  'manual-electron-session',
+)
+const observationRunId = sanitizeSlug(
+  process.env.LONGCLAW_OBSERVATION_RUN_ID ?? `${timestampSlug(observationStartedAt)}-${observationScenario}`,
+  `${timestampSlug(observationStartedAt)}-${observationScenario}`,
+)
+const observationDir = path.resolve(
+  process.env.LONGCLAW_OBSERVATION_DIR || path.join(PRODUCT_OBSERVATION_ROOT, observationRunId),
+)
+const observationScreenshotsDir = path.join(observationDir, 'screenshots')
+const electronSessionLogPath = path.join(
+  LONGCLAW_LOG_DIR,
+  `electron-${timestampSlug(observationStartedAt)}.log`,
+)
+const electronCurrentLogPath = path.join(LONGCLAW_LOG_DIR, 'electron-current.log')
+const observationElectronLogPath = path.join(observationDir, 'electron.log')
+const observationEventsPath = path.join(observationDir, 'events.jsonl')
+const observationApiTimingsPath = path.join(observationDir, 'api-timings.jsonl')
+const observationJsonPath = path.join(observationDir, 'observation.json')
+const observationMarkdownPath = path.join(observationDir, 'observation.md')
+
+const gitStatusShort = safeExecGit(['status', '--short']) ?? ''
+const observationState: ObservationState = {
+  run_id: observationRunId,
+  product_line: OBSERVATION_PRODUCT_LINE,
+  scenario: observationScenario,
+  started_at: observationStartedAt.toISOString(),
+  repo_root: REPO_ROOT,
+  observation_dir: observationDir,
+  logs: {
+    electron_current: electronCurrentLogPath,
+    electron_session: electronSessionLogPath,
+    electron_observation: observationElectronLogPath,
+  },
+  git: {
+    sha: safeExecGit(['rev-parse', '--short', 'HEAD']),
+    dirty: Boolean(gitStatusShort),
+    status_short: gitStatusShort,
+  },
+  runtime: {
+    electron_pid: process.pid,
+    node_version: process.version,
+    platform: `${process.platform}-${process.arch}`,
+    signals_web_port: process.env.LONGCLAW_SIGNALS_WEB_PORT ?? '8011',
+    signals_web2_port: process.env.LONGCLAW_SIGNALS_WEB2_PORT ?? '6008',
+  },
+  counters: {
+    events: 0,
+    api_timings: 0,
+    main_logs: 0,
+    renderer_errors: 0,
+  },
+  memory_refs: [],
+}
+
+function ensureObservationFiles() {
+  fs.mkdirSync(LONGCLAW_LOG_DIR, { recursive: true })
+  fs.mkdirSync(observationScreenshotsDir, { recursive: true })
+  fs.writeFileSync(electronCurrentLogPath, '', 'utf-8')
+  for (const filePath of [observationEventsPath, observationApiTimingsPath, observationElectronLogPath]) {
+    if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, '', 'utf-8')
+  }
+  writeObservationJson()
+  if (!fs.existsSync(observationMarkdownPath)) {
+    fs.writeFileSync(observationMarkdownPath, renderObservationMarkdown(), 'utf-8')
+  }
+}
+
+function writeObservationJson() {
+  try {
+    fs.mkdirSync(observationDir, { recursive: true })
+    fs.writeFileSync(
+      observationJsonPath,
+      `${JSON.stringify(observationState, null, 2)}\n`,
+      'utf-8',
+    )
+  } catch (error) {
+    process.stderr.write(`[longxiaoxia] failed to write observation.json ${String(error)}\n`)
+  }
+}
+
+function renderObservationMarkdown(): string {
+  return [
+    `# Longclaw 产品观察日记`,
+    ``,
+    `## 假设`,
+    ``,
+    `本次观察用于保留 Electron + Signals 人工体验和自动 smoke 的上下文；具体问题由 events/api-timings/electron.log 共同复盘。`,
+    ``,
+    `## 复现`,
+    ``,
+    `打开 Electron 后按场景执行操作，页面行为、tab/周期/标的切换和 API 请求会写入本目录。`,
+    ``,
+    `## 最小改动`,
+    ``,
+    `本轮先建立观察日记、持久日志和 API telemetry，不改 control-plane schema。`,
+    ``,
+    `## 验证`,
+    ``,
+    `检查 observation.json、events.jsonl、api-timings.jsonl、electron.log 是否完整生成；必要时运行 observation:finalize 写入 MemPalace。`,
+    ``,
+    `## 上下文`,
+    ``,
+    `- run_id: ${observationState.run_id}`,
+    `- product_line: ${observationState.product_line}`,
+    `- scenario: ${observationState.scenario}`,
+    `- started_at: ${observationState.started_at}`,
+    `- git_sha: ${observationState.git.sha ?? 'unknown'}`,
+    `- git_dirty: ${observationState.git.dirty ? 'yes' : 'no'}`,
+    `- electron_pid: ${observationState.runtime.electron_pid}`,
+    `## 证据路径`,
+    ``,
+    `- observation.json: ${observationJsonPath}`,
+    `- events.jsonl: ${observationEventsPath}`,
+    `- api-timings.jsonl: ${observationApiTimingsPath}`,
+    `- electron.log: ${observationElectronLogPath}`,
+    `- screenshots: ${observationScreenshotsDir}`,
+    ``,
+  ].join('\n')
+}
+
+function appendLine(filePath: string, line: string) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.appendFileSync(filePath, `${line}\n`, 'utf-8')
+}
+
+function writePersistentLog(line: string) {
+  try {
+    appendLine(electronSessionLogPath, line)
+    fs.writeFileSync(electronCurrentLogPath, `${line}\n`, { encoding: 'utf-8', flag: 'a' })
+    appendLine(observationElectronLogPath, line)
+    observationState.counters.main_logs += 1
+    writeObservationJson()
+  } catch (error) {
+    process.stderr.write(`[longxiaoxia] failed to persist log ${String(error)}\n`)
+  }
+}
+
+function log(...args: any[]) {
+  const msg = args.map(stringifyLogValue).join(' ')
+  const line = `[${new Date().toISOString()}] [longxiaoxia] ${msg}`
+  process.stderr.write(`${line}\n`)
+  writePersistentLog(line)
+}
+
+function compactObservationValue(value: unknown): unknown {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'string') {
+    return value.length > 2_000 ? `${value.slice(0, 2_000)}…[truncated]` : value
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return value.slice(0, 50).map(compactObservationValue)
+  if (typeof value === 'object') {
+    const result: Record<string, unknown> = {}
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>).slice(0, 80)) {
+      result[key] = compactObservationValue(nested)
+    }
+    return result
+  }
+  return String(value)
+}
+
+function appendObservationJsonl(
+  filePath: string,
+  counter: 'events' | 'api_timings',
+  payload: Record<string, unknown>,
+) {
+  try {
+    appendLine(
+      filePath,
+      JSON.stringify({
+        at: new Date().toISOString(),
+        run_id: observationState.run_id,
+        ...(compactObservationValue(payload) as Record<string, unknown>),
+      }),
+    )
+    observationState.counters[counter] += 1
+    if (payload.level === 'error' || payload.ok === false) {
+      observationState.counters.renderer_errors += 1
+    }
+    writeObservationJson()
+  } catch (error) {
+    log('failed to append observation jsonl', { filePath, error: String(error) })
+  }
+}
+
+ensureObservationFiles()
 
 const STACK_ENV_PATH = path.join(os.homedir(), '.longclaw', 'runtime-v2', 'stack.env')
 const LONGCLAW_RUNTIME_DIR = path.join(os.homedir(), '.longclaw', 'runtime-v2')
@@ -133,6 +390,10 @@ function applyWindowLocale(locale: string) {
 }
 
 function createWindow() {
+  log('creating electron window', {
+    run_id: observationState.run_id,
+    observation_dir: observationState.observation_dir,
+  })
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -154,21 +415,67 @@ function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (_event, code, description, validatedURL) => {
     log('renderer did-fail-load', { code, description, validatedURL })
+    appendObservationJsonl(observationEventsPath, 'events', {
+      source: 'electron-main',
+      name: 'renderer.did-fail-load',
+      level: 'error',
+      code,
+      description,
+      validatedURL,
+    })
   })
 
   mainWindow.webContents.on(
     'console-message',
     (_event, level, message, line, sourceId) => {
       log('renderer console', { level, message, line, sourceId })
+      appendObservationJsonl(observationEventsPath, 'events', {
+        source: 'renderer-console',
+        name: 'console-message',
+        level: level >= 2 ? 'error' : 'info',
+        console_level: level,
+        message,
+        line,
+        sourceId,
+      })
     },
   )
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     log('renderer process gone', details)
+    appendObservationJsonl(observationEventsPath, 'events', {
+      source: 'electron-main',
+      name: 'renderer.render-process-gone',
+      level: 'error',
+      details,
+    })
   })
 
   mainWindow.webContents.on('unresponsive', () => {
     log('renderer unresponsive')
+    appendObservationJsonl(observationEventsPath, 'events', {
+      source: 'electron-main',
+      name: 'renderer.unresponsive',
+      level: 'error',
+    })
+  })
+
+  mainWindow.webContents.on('responsive', () => {
+    log('renderer responsive')
+    appendObservationJsonl(observationEventsPath, 'events', {
+      source: 'electron-main',
+      name: 'renderer.responsive',
+      level: 'info',
+    })
+  })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    log('renderer did-finish-load')
+    appendObservationJsonl(observationEventsPath, 'events', {
+      source: 'electron-main',
+      name: 'renderer.did-finish-load',
+      level: 'info',
+    })
   })
 }
 
@@ -1976,6 +2283,11 @@ async function handleQuery(_event: Electron.IpcMainInvokeEvent, message: string)
 }
 
 app.whenReady().then(() => {
+  log('app ready', {
+    run_id: observationState.run_id,
+    observation_dir: observationState.observation_dir,
+    logs: observationState.logs,
+  })
   // Agent
   ipcMain.handle('agent:query', handleQuery)
   ipcMain.handle('agent:clear', async () => {
@@ -2073,15 +2385,71 @@ app.whenReady().then(() => {
     applyWindowLocale(locale === 'en-US' ? 'en-US' : 'zh-CN')
     return { ok: true }
   })
+  ipcMain.handle('observation:get-context', () => ({
+    ok: true,
+    run_id: observationState.run_id,
+    product_line: observationState.product_line,
+    scenario: observationState.scenario,
+    observation_dir: observationState.observation_dir,
+    logs: observationState.logs,
+    git: observationState.git,
+    runtime: observationState.runtime,
+  }))
+  ipcMain.handle('observation:record-event', (_event, payload: Record<string, unknown>) => {
+    appendObservationJsonl(observationEventsPath, 'events', {
+      source: 'renderer',
+      ...(compactObservationValue(payload) as Record<string, unknown>),
+    })
+    return {
+      ok: true,
+      run_id: observationState.run_id,
+      observation_dir: observationState.observation_dir,
+    }
+  })
+  ipcMain.handle('observation:record-api-timing', (_event, payload: Record<string, unknown>) => {
+    appendObservationJsonl(observationApiTimingsPath, 'api_timings', {
+      source: 'renderer-api',
+      ...(compactObservationValue(payload) as Record<string, unknown>),
+    })
+    return {
+      ok: true,
+      run_id: observationState.run_id,
+      observation_dir: observationState.observation_dir,
+    }
+  })
 
   createWindow()
 })
 
 app.on('window-all-closed', () => {
+  log('window-all-closed')
   backend?.close()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('activate', () => {
+  log('app activate')
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
+})
+
+process.on('uncaughtException', error => {
+  log('uncaughtException', error?.stack || error?.message || String(error))
+  appendObservationJsonl(observationEventsPath, 'events', {
+    source: 'electron-main',
+    name: 'process.uncaughtException',
+    level: 'error',
+    message: error?.message,
+    stack: error?.stack,
+  })
+})
+
+process.on('unhandledRejection', reason => {
+  log('unhandledRejection', reason instanceof Error ? reason.stack || reason.message : String(reason))
+  appendObservationJsonl(observationEventsPath, 'events', {
+    source: 'electron-main',
+    name: 'process.unhandledRejection',
+    level: 'error',
+    message: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  })
 })
