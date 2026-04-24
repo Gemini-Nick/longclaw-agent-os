@@ -135,10 +135,10 @@ const terminalRootStyle: React.CSSProperties = {
 
 const terminalTopBarStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(240px, 340px) minmax(220px, 1fr) auto',
+  gridTemplateColumns: 'minmax(220px, 320px) minmax(190px, 1fr) auto',
   alignItems: 'center',
   gap: 6,
-  padding: '4px 8px',
+  padding: '3px 7px',
   borderBottom: '1px solid #1C2633',
   background: '#0F1620',
 }
@@ -166,7 +166,7 @@ const searchInputStyle: React.CSSProperties = {
 const terminalGridStyle: React.CSSProperties = {
   flex: 1,
   display: 'grid',
-  gridTemplateColumns: '216px minmax(580px, 1fr) 268px',
+  gridTemplateColumns: '198px minmax(600px, 1fr) 246px',
   gridTemplateRows: 'minmax(0, 1fr)',
   gap: 1,
   alignItems: 'stretch',
@@ -187,11 +187,11 @@ const terminalSideStyle: React.CSSProperties = {
 const terminalPanelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 5,
+  gap: 4,
   minWidth: 0,
   minHeight: 0,
   flexShrink: 0,
-  padding: 7,
+  padding: 6,
   border: 'none',
   borderRadius: 0,
   background: '#0F1620',
@@ -208,7 +208,7 @@ const panelHeaderStyle: React.CSSProperties = {
 
 const panelTitleStyle: React.CSSProperties = {
   color: '#F2F6FB',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 700,
 }
 
@@ -249,7 +249,7 @@ const dataRowStyle: React.CSSProperties = {
   border: '1px solid #222D3B',
   borderRadius: 5,
   background: '#121B27',
-  padding: '5px 7px',
+  padding: '4px 6px',
   minWidth: 0,
 }
 
@@ -306,10 +306,10 @@ const targetButtonStyle: React.CSSProperties = {
 const chartStageStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 5,
+  gap: 4,
   minWidth: 0,
   minHeight: 0,
-  padding: 7,
+  padding: 6,
   border: 'none',
   borderRadius: 0,
   background: '#0B1118',
@@ -325,7 +325,7 @@ const chartHeaderStyle: React.CSSProperties = {
 
 const chartTitleStyle: React.CSSProperties = {
   color: '#F2F6FB',
-  fontSize: 19,
+  fontSize: 17,
   lineHeight: 1.1,
   fontWeight: 800,
 }

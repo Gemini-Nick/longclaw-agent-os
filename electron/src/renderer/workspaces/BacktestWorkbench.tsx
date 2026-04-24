@@ -77,6 +77,14 @@ type BacktestResult = {
   symbol?: string
   code?: string
   freq?: string
+  data_source?: string
+  data_source_detail?: string
+  as_of?: string
+  bar_count?: number
+  freshness?: string
+  derived_from?: string
+  partial?: boolean
+  last_upstream_error?: string
   ohlcv?: Record<string, unknown>[]
   signals?: BacktestSignal[]
   kpi?: Record<string, unknown>
@@ -286,6 +294,61 @@ const warningStyle: React.CSSProperties = {
   color: '#FFD0A8',
   padding: '8px 10px',
   fontSize: 13,
+}
+
+function backtestDataSourceLabel(result: BacktestResult | null, locale: LongclawLocale): string {
+  if (!result?.data_source) return ''
+  if (result.data_source_detail) return result.data_source_detail
+  const labels: Record<string, string> = locale === 'zh-CN'
+    ? {
+        disk_cache: '磁盘缓存',
+        daily_cache_resampled_weekly: '日线聚合周线',
+        daily_cache_resampled_monthly: '日线聚合月线',
+        mongodb: 'MongoDB',
+        mongodb_bars: 'MongoDB bars',
+        mongodb_daily_resampled_weekly: 'Mongo日线聚合周线',
+        mongodb_daily_resampled_monthly: 'Mongo日线聚合月线',
+        eastmoney: '东财',
+        eastmoney_minute: '东财分钟线',
+        sina: '新浪',
+      }
+    : {
+        disk_cache: 'Disk cache',
+        daily_cache_resampled_weekly: 'Daily cache to weekly',
+        daily_cache_resampled_monthly: 'Daily cache to monthly',
+        mongodb: 'MongoDB',
+        mongodb_bars: 'MongoDB bars',
+        mongodb_daily_resampled_weekly: 'Mongo daily to weekly',
+        mongodb_daily_resampled_monthly: 'Mongo daily to monthly',
+        eastmoney: 'Eastmoney',
+        eastmoney_minute: 'Eastmoney intraday',
+        sina: 'Sina',
+      }
+  return labels[result.data_source] ?? result.data_source
+}
+
+function isFallbackDataSource(result: BacktestResult | null): boolean {
+  return [
+    'disk_cache',
+    'daily_cache_resampled_weekly',
+    'daily_cache_resampled_monthly',
+    'mongodb',
+    'mongodb_bars',
+    'mongodb_daily_resampled_weekly',
+    'mongodb_daily_resampled_monthly',
+  ].includes(result?.data_source ?? '')
+}
+
+function dataHealthText(result: BacktestResult | null, locale: LongclawLocale): string {
+  if (!result) return ''
+  const parts = [
+    result.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${result.as_of}` : '',
+    typeof result.bar_count === 'number' ? `${result.bar_count} bars` : '',
+    result.freshness ? result.freshness : '',
+    result.derived_from ? `${locale === 'zh-CN' ? '聚合自' : 'derived from'} ${result.derived_from}` : '',
+    result.partial ? (locale === 'zh-CN' ? 'partial' : 'partial') : '',
+  ].filter(Boolean)
+  return parts.join(' · ')
 }
 
 function buttonStyle(active = false, disabled = false): React.CSSProperties {
@@ -581,6 +644,8 @@ export function BacktestWorkbench({
   const signals = result?.signals ?? []
   const trades = result?.sim_trades ?? []
   const filledTrades = trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
+  const dataSourceLabel = backtestDataSourceLabel(result, locale)
+  const dataHealthLabel = dataHealthText(result, locale)
 
   const updateSimParam = useCallback((key: string, value: string) => {
     setSimParams(previous => ({ ...previous, [key]: value }))
@@ -611,6 +676,14 @@ export function BacktestWorkbench({
         code: data.code ?? code.trim(),
         symbol: data.symbol,
         freq: data.freq ?? freq,
+        data_source: data.data_source,
+        data_source_detail: data.data_source_detail,
+        as_of: data.as_of,
+        bar_count: data.bar_count,
+        freshness: data.freshness,
+        derived_from: data.derived_from,
+        partial: data.partial,
+        last_upstream_error: data.last_upstream_error,
         signals: data.signals?.length ?? 0,
         trades: data.sim_trades?.length ?? 0,
       })
@@ -623,6 +696,8 @@ export function BacktestWorkbench({
         signal_type: signalType,
         status: apiError.status,
         error: apiError.message,
+        upstream_error: apiError.payload?.last_upstream_error,
+        payload_error: apiError.payload?.error,
         level: 'error',
       })
     } finally {
@@ -779,6 +854,7 @@ export function BacktestWorkbench({
         >
           <option value="daily">{locale === 'zh-CN' ? '日线' : 'Daily'}</option>
           <option value="weekly">{locale === 'zh-CN' ? '周线' : 'Weekly'}</option>
+          <option value="monthly">{locale === 'zh-CN' ? '月线' : 'Monthly'}</option>
         </select>
         <select
           style={selectStyle}
@@ -810,6 +886,7 @@ export function BacktestWorkbench({
           {error ??
             (result
               ? `${result.symbol ?? result.code ?? code} · ${signals.length} signals · ${filledTrades.length} trades`
+                + (dataSourceLabel ? ` · ${dataSourceLabel}` : '')
               : locale === 'zh-CN'
                 ? '输入代码后运行增强回测'
                 : 'Enter a symbol to run enhanced backtest')}
@@ -854,10 +931,20 @@ export function BacktestWorkbench({
         <div style={chartPanelStyle}>
           <div style={chartHeaderStyle}>
             <div style={{ minWidth: 0 }}>
-              <div style={labelStyle}>{result?.freq ?? freq}</div>
+              <div style={labelStyle}>{[result?.freq ?? freq, dataSourceLabel].filter(Boolean).join(' · ')}</div>
               <div style={chartTitleStyle}>{result?.symbol ?? result?.code ?? code}</div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {dataSourceLabel ? (
+                <span style={statusBadgeStyle(isFallbackDataSource(result) ? 'warning' : 'success')}>
+                  {dataSourceLabel}
+                </span>
+              ) : null}
+              {result?.freshness ? (
+                <span style={statusBadgeStyle(result.freshness === 'fresh' ? 'success' : 'warning')}>
+                  {result.freshness}
+                </span>
+              ) : null}
               {(result?.warnings ?? []).slice(0, 2).map(item => (
                 <span key={item} style={statusBadgeStyle('warning')}>{item}</span>
               ))}
@@ -866,6 +953,11 @@ export function BacktestWorkbench({
               </span>
             </div>
           </div>
+          {dataHealthLabel ? (
+            <div style={{ ...mutedStyle, padding: '0 2px', minHeight: 16 }}>
+              {dataHealthLabel}
+            </div>
+          ) : null}
           <MetricStrip result={result} />
           <div style={chartShellStyle}>
             <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
