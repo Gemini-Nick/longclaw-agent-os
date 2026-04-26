@@ -23,6 +23,10 @@ type StrategyDashboard = Pick<
   | 'review_runs'
   | 'connector_health'
   | 'deep_links'
+  | 'daily_brief'
+  | 'decision_queue'
+  | 'strategy_kpis'
+  | 'source_confidence'
 >
 
 type StrategyChartTerminalProps = {
@@ -902,6 +906,13 @@ function formatPercent(value: unknown): string {
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
+function formatConfidence(value: unknown): string {
+  const number = numberValue(value)
+  if (number === undefined) return compactText(value, 'N/A')
+  const percent = number <= 1 ? number * 100 : number
+  return `${percent.toFixed(0)}%`
+}
+
 function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN'): string {
   if (!value) return ''
   return value.toLocaleTimeString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
@@ -996,6 +1007,11 @@ export function StrategyChartTerminal({
     [dashboard.connector_health],
   )
 
+  const dailyBrief = dashboard.daily_brief
+  const dailyBriefBullets = Array.isArray(dailyBrief.bullets) ? dailyBrief.bullets : []
+  const decisionRows = dashboard.decision_queue as Array<Record<string, unknown>>
+  const strategyKpis = dashboard.strategy_kpis as Array<Record<string, unknown>>
+  const sourceConfidence = dashboard.source_confidence as Array<Record<string, unknown>>
   const shellBuyCandidates = Array.isArray(shell?.buy_candidates) ? shell.buy_candidates : []
   const buyRows = shellBuyCandidates.length > 0
     ? shellBuyCandidates
@@ -1294,6 +1310,28 @@ export function StrategyChartTerminal({
             : 'Signals live endpoint is not configured. Showing a degraded summary.'}
         </div>
         <div style={fallbackGridStyle}>
+          <Panel
+            title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
+            meta={compactText(dailyBrief.market_bias)}
+          >
+            <div style={compactListStyle}>
+              <div style={dataRowStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                  <div style={rowTitleStyle}>
+                    {compactText(dailyBrief.headline, locale === 'zh-CN' ? '暂无摘要标题' : 'No brief headline')}
+                  </div>
+                  <div style={mutedTextStyle}>
+                    {compactText(dailyBrief.summary, locale === 'zh-CN' ? '暂无策略摘要。' : 'No strategy summary yet.')}
+                  </div>
+                </div>
+              </div>
+              {dailyBriefBullets.slice(0, 3).map((item, index) => (
+                <div key={`${item}-${index}`} style={dataRowStyle}>
+                  <div style={mutedTextStyle}>{item}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
           <FallbackList
             locale={locale}
             title={locale === 'zh-CN' ? '买入候选' : 'Buy candidates'}
@@ -1316,6 +1354,65 @@ export function StrategyChartTerminal({
                 locale === 'zh-CN'
                   ? `卖出 ${String(item.symbol ?? '预警')}`
                   : `Sell ${String(item.symbol ?? 'warning')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? 'Decision queue' : 'Decision queue'}
+            rows={decisionRows.map(item => ({
+              ...item,
+              name: compactText(item.title) || compactText(item.symbol) || compactText(item.decision_id),
+            }))}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `决策 ${String(item.symbol ?? item.decision_id ?? 'queue')}`
+                  : `Decision ${String(item.symbol ?? item.decision_id ?? 'queue')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? 'Strategy KPI' : 'Strategy KPIs'}
+            rows={strategyKpis.map(item => ({
+              ...item,
+              name: compactText(item.label) || compactText(item.kpi_id),
+              summary: [
+                compactText(item.value),
+                compactText(item.unit),
+                compactText(item.status),
+              ].filter(Boolean).join(' '),
+            }))}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `KPI ${String(item.label ?? item.kpi_id ?? 'strategy')}`
+                  : `KPI ${String(item.label ?? item.kpi_id ?? 'strategy')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? 'Source confidence' : 'Source confidence'}
+            rows={sourceConfidence.map(item => ({
+              ...item,
+              connector_id: compactText(item.source_id) || compactText(item.label),
+              name: compactText(item.label) || compactText(item.source_id),
+              summary: [
+                formatConfidence(item.confidence),
+                compactText(item.status),
+                compactText(item.summary),
+              ].filter(Boolean).join(' · '),
+            }))}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `来源 ${String(item.label ?? item.source_id ?? 'source')}`
+                  : `Source ${String(item.label ?? item.source_id ?? 'source')}`,
                 item,
               )
             }
@@ -1389,6 +1486,17 @@ export function StrategyChartTerminal({
       {error ? (
         <div style={booting ? warningDarkStyle : errorDarkStyle}>{error}</div>
       ) : null}
+      {compactText(dailyBrief.headline) || compactText(dailyBrief.summary) ? (
+        <div style={noticeDarkStyle}>
+          {[
+            compactText(dailyBrief.headline),
+            compactText(dailyBrief.summary),
+            compactText(dailyBrief.market_bias),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      ) : null}
 
       <div style={terminalGridStyle}>
         <div style={terminalSideStyle}>
@@ -1440,6 +1548,47 @@ export function StrategyChartTerminal({
                 }
               }}
             />
+          </Panel>
+
+          <Panel
+            title={locale === 'zh-CN' ? 'Decision queue' : 'Decision queue'}
+            meta={String(decisionRows.length)}
+          >
+            {decisionRows.length === 0 ? (
+              <div style={emptyStateDarkStyle}>
+                {locale === 'zh-CN' ? '暂无待决策事项。' : 'No decisions waiting.'}
+              </div>
+            ) : (
+              <div style={compactListStyle}>
+                {decisionRows.slice(0, 6).map((row, index) => (
+                  <button
+                    key={`${compactText(row.decision_id, 'decision')}-${index}`}
+                    type="button"
+                    style={targetButtonStyle}
+                    onClick={() =>
+                      onOpenRecord(
+                        locale === 'zh-CN'
+                          ? `决策 ${String(row.symbol ?? row.decision_id ?? 'queue')}`
+                          : `Decision ${String(row.symbol ?? row.decision_id ?? 'queue')}`,
+                        row,
+                      )
+                    }
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={rowTitleStyle}>
+                        {compactText(row.title) || compactText(row.symbol) || 'Decision'}
+                      </div>
+                      <div style={monoTextStyle}>{compactText(row.priority)}</div>
+                    </div>
+                    <div style={mutedTextStyle}>
+                      {[compactText(row.action), compactText(row.summary)]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </Panel>
 
           <Panel
@@ -1595,6 +1744,67 @@ export function StrategyChartTerminal({
                       </div>
                     </div>
                     <div style={monoTextStyle}>{formatNumber(level.value)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title={locale === 'zh-CN' ? 'Strategy KPI' : 'Strategy KPIs'}
+            meta={String(strategyKpis.length)}
+          >
+            {strategyKpis.length === 0 ? (
+              <div style={emptyStateDarkStyle}>
+                {locale === 'zh-CN' ? '暂无策略 KPI。' : 'No strategy KPIs.'}
+              </div>
+            ) : (
+              <div style={compactListStyle}>
+                {strategyKpis.slice(0, 5).map((row, index) => (
+                  <div key={`${compactText(row.kpi_id, 'kpi')}-${index}`} style={dataRowStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={rowTitleStyle}>
+                        {compactText(row.label) || compactText(row.kpi_id) || 'KPI'}
+                      </div>
+                      <div style={mutedTextStyle}>
+                        {[compactText(row.status), compactText(row.trend)]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    </div>
+                    <div style={monoTextStyle}>
+                      {compactText(row.value, 'N/A')}
+                      {compactText(row.unit) ? ` ${compactText(row.unit)}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title={locale === 'zh-CN' ? 'Source confidence' : 'Source confidence'}
+            meta={String(sourceConfidence.length)}
+          >
+            {sourceConfidence.length === 0 ? (
+              <div style={emptyStateDarkStyle}>
+                {locale === 'zh-CN' ? '暂无来源置信度。' : 'No source confidence.'}
+              </div>
+            ) : (
+              <div style={compactListStyle}>
+                {sourceConfidence.slice(0, 5).map((row, index) => (
+                  <div key={`${compactText(row.source_id, 'source')}-${index}`} style={dataRowStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={rowTitleStyle}>
+                        {compactText(row.label) || compactText(row.source_id) || 'Source'}
+                      </div>
+                      <div style={mutedTextStyle}>
+                        {[compactText(row.status), compactText(row.summary)]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    </div>
+                    <div style={monoTextStyle}>{formatConfidence(row.confidence)}</div>
                   </div>
                 ))}
               </div>

@@ -90,7 +90,6 @@ type ObservationState = {
     node_version: string
     platform: string
     signals_web_port: string
-    signals_web2_port: string
   }
   counters: Record<ObservationCounterKey, number>
   memory_refs: string[]
@@ -177,7 +176,6 @@ const observationState: ObservationState = {
     node_version: process.version,
     platform: `${process.platform}-${process.arch}`,
     signals_web_port: process.env.LONGCLAW_SIGNALS_WEB_PORT ?? '8011',
-    signals_web2_port: process.env.LONGCLAW_SIGNALS_WEB2_PORT ?? '6008',
   },
   counters: {
     events: 0,
@@ -1480,7 +1478,6 @@ async function collectRuntimeStatus(
   const dueDiligenceBaseUrl = process.env.LONGCLAW_DUE_DILIGENCE_BASE_URL
   const signalsStateRoot = process.env.LONGCLAW_SIGNALS_STATE_ROOT
   const signalsWebBaseUrl = process.env.LONGCLAW_SIGNALS_WEB_BASE_URL
-  const signalsWeb2BaseUrl = process.env.LONGCLAW_SIGNALS_WEB2_BASE_URL
   const acpBridge = inspectConfiguredAcpBridge()
   const currentSeatPreference = getLocalRuntimeSeatPreference()
   const localRuntimeSeat = await probeLocalRuntimeSeat(currentSeatPreference)
@@ -1520,12 +1517,10 @@ async function collectRuntimeStatus(
     signals_available: Boolean(
       signalsPackVisible ||
         (signalsStateRoot && fs.existsSync(signalsStateRoot)) ||
-        signalsWebBaseUrl ||
-        signalsWeb2BaseUrl,
+        signalsWebBaseUrl,
     ),
     signals_state_root: signalsStateRoot ?? '',
     signals_web_base_url: signalsWebBaseUrl ?? '',
-    signals_web2_base_url: signalsWeb2BaseUrl ?? '',
     local_acp_available: acpBridge.available,
     local_acp_script: acpBridge.path,
     local_acp_source: acpBridge.source,

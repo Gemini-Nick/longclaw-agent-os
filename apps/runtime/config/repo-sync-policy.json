@@ -13,7 +13,8 @@
       "allow_local_commits": true
     },
     "Signals": {
-      "mode": "mirror_origin"
+      "mode": "owned_push_main",
+      "allow_local_commits": true
     },
     "aippt/PPTAgent": {
       "mode": "mirror_origin"
@@ -50,6 +51,11 @@
     },
     "superpowers": {
       "mode": "mirror_origin"
+    },
+    "hermes-agent": {
+      "mode": "fork_origin_with_upstream",
+      "allow_local_commits": true,
+      "upstream_remote": "upstream"
     },
     "weclaw": {
       "mode": "fork_origin_with_upstream",

@@ -53,7 +53,6 @@ export type RuntimeStatusSummary = {
   signalsAvailable: boolean
   signalsStateRoot?: string
   signalsWebBaseUrl?: string
-  signalsWeb2BaseUrl?: string
   localRuntimeSeat?: string
   localRuntimeAvailable: boolean
   localRuntimeApiUrl?: string

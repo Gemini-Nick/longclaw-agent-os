@@ -452,6 +452,80 @@ def render_markdown(observation: Dict[str, Any], events: List[Dict[str, Any]], a
     return "\n".join(lines)
 
 
+def render_current_context(
+    observation: Dict[str, Any],
+    events: List[Dict[str, Any]],
+    api_rows: List[Dict[str, Any]],
+) -> str:
+    evidence = observation.get("evidence_paths") or {}
+    failed_api = [row for row in api_rows if row.get("ok") is False]
+    error_events = [row for row in events if row.get("level") == "error" or row.get("ok") is False]
+    non_refresh_events = [
+        row for row in events
+        if str(row.get("name") or "") not in {"app.refresh.start", "app.refresh.finish"}
+    ]
+    latest_event = (non_refresh_events or events)[-1] if events else {}
+    latest_api = api_rows[-1] if api_rows else {}
+    slow_api = sorted(
+        [row for row in api_rows if isinstance(row.get("duration_ms"), (int, float))],
+        key=lambda row: float(row.get("duration_ms") or 0),
+        reverse=True,
+    )[:3]
+
+    lines = [
+        "# Current Context",
+        "",
+        "## What Happened",
+        "",
+        f"- run_id: {observation.get('run_id')}",
+        f"- scenario: {observation.get('scenario')}",
+        f"- module: {observation.get('module')}",
+        f"- status: {observation.get('status') or 'unknown'}",
+        f"- events: {len(events)}",
+        f"- api_timings: {len(api_rows)}",
+        f"- error_events: {len(error_events)}",
+        f"- failed_api: {len(failed_api)}",
+        f"- latest_event: {latest_event.get('name') or 'none'}",
+        f"- latest_api: {latest_api.get('endpoint') or 'none'}",
+        "",
+        "## Signals",
+        "",
+        f"- actual: {observation.get('actual') or 'pending'}",
+        f"- diagnosis: {observation.get('initial_diagnosis') or 'pending'}",
+        "",
+    ]
+
+    if failed_api:
+        lines.extend(["## Failed API", ""])
+        for row in failed_api[:5]:
+            lines.append(f"- {row.get('status')} {row.get('endpoint')} error={row.get('error')}")
+        lines.append("")
+
+    if slow_api:
+        lines.extend(["## Slow API", ""])
+        for row in slow_api:
+            lines.append(f"- {row.get('duration_ms')}ms {row.get('status')} {row.get('endpoint')}")
+        lines.append("")
+
+    lines.extend([
+        "## Evidence",
+        "",
+    ])
+    for key in ("observation_json", "events", "api_timings", "electron_log", "signals_log", "screenshots"):
+        value = evidence.get(key)
+        if value:
+            lines.append(f"- {key}: {value}")
+
+    lines.extend([
+        "",
+        "## Suggested Next Step",
+        "",
+        str(observation.get("next_steps") or "Review the evidence paths above and decide the next bounded task."),
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def ensure_run_files(run_dir: Path) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "screenshots").mkdir(parents=True, exist_ok=True)
@@ -483,6 +557,10 @@ def write_report(run_dir: Path, observation: Dict[str, Any]) -> None:
     )
     (run_dir / "observation.md").write_text(
         render_markdown(observation, events, api_rows),
+        encoding="utf-8",
+    )
+    (run_dir / "current_context.md").write_text(
+        render_current_context(observation, events, api_rows),
         encoding="utf-8",
     )
 

@@ -192,20 +192,21 @@
       "repo_url": "https://github.com/Gemini-Nick/watchdog",
       "required_commands": ["bash", "launchctl"],
       "required_paths": [
+        "bin/longclaw-runtime.sh",
         "bin/repo-scheduler-service.sh",
         "bin/guardian-monitor.sh",
         "bin/weguard"
       ],
       "entry_commands": [
-        "~/.longclaw/runtime-v2/bin/weguard status",
-        "launchctl print gui/$(id -u)/com.zhangqilong.ai.repo.scheduler",
-        "launchctl print gui/$(id -u)/com.zhangqilong.ai.guardian.monitor"
+        "~/.longclaw/runtime-v2/bin/longclaw-runtime.sh status",
+        "~/.longclaw/runtime-v2/bin/weguard status"
       ],
       "eval": {
         "type": "watchdog-runtime",
         "command": "~/.longclaw/runtime-v2/bin/weguard status"
       },
       "recheck_commands": [
+        "~/.longclaw/runtime-v2/bin/longclaw-runtime.sh status",
         "~/.longclaw/runtime-v2/bin/weguard status"
       ],
       "autofix_enabled": false,

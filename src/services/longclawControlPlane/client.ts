@@ -276,6 +276,18 @@ function degradedSignalsDashboard(
       review_summary: {},
       data_warning: '',
     },
+    daily_brief: {
+      as_of: '',
+      headline: status === 'not_connected' ? 'Signals is not connected' : 'Signals is degraded',
+      summary: notice,
+      bullets: [],
+      market_bias: '',
+      risk_note: notice,
+      metadata: {},
+    },
+    decision_queue: [],
+    strategy_kpis: [],
+    source_confidence: [],
     recent_runs: [],
     review_runs: [],
     buy_candidates: [],
@@ -335,6 +347,21 @@ async function fetchJsonOrNull<T>(
   } catch {
     return null
   }
+}
+
+async function fetchSignalsJsonWithFallback<T>(
+  primary: { url: string | undefined; source: 'web1' },
+  secondary: { url: string | undefined; source: 'web2' },
+  parse: (value: unknown) => T,
+  fetchImpl: typeof fetch,
+): Promise<{ value: T | null; source: 'web1' | 'web2' | null }> {
+  const primaryValue = await fetchJsonOrNull(primary.url, parse, fetchImpl)
+  if (primaryValue) return { value: primaryValue, source: primary.source }
+
+  const secondaryValue = await fetchJsonOrNull(secondary.url, parse, fetchImpl)
+  if (secondaryValue) return { value: secondaryValue, source: secondary.source }
+
+  return { value: null, source: null }
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -985,7 +1012,7 @@ export class LongclawControlPlaneClient {
         const runs = await this.listRuns()
         const recentRuns = runs.filter(run => run.domain === 'financial_analysis').slice(0, 20)
         const reviewRuns = runs.filter(run => run.capability === 'review').slice(0, 10)
-        const [marketContext, indexReports, predictionOverview, reviewResults, reviewStatus, clusterLatest, tradeSummary] =
+        const [marketContext, indexReports, predictionOverview, reviewResults, reviewStatus, tradeSummary] =
           await Promise.all([
             fetchJsonOrNull(
               web1 ? `${web1}/api/index/context` : undefined,
@@ -1016,16 +1043,18 @@ export class LongclawControlPlaneClient {
               this.fetchImpl,
             ),
             fetchJsonOrNull(
-              web2 ? `${web2}/api/cluster/latest?top=5` : undefined,
-              value => recordValue(value),
-              this.fetchImpl,
-            ),
-            fetchJsonOrNull(
               web1 ? `${web1}/api/trade/summary` : undefined,
               value => recordValue(value),
               this.fetchImpl,
             ),
           ])
+        const clusterLatestResult = await fetchSignalsJsonWithFallback(
+          { url: web1 ? `${web1}/api/cluster/latest?top=5` : undefined, source: 'web1' },
+          { url: web2 ? `${web2}/api/cluster/latest?top=5` : undefined, source: 'web2' },
+          value => recordValue(value),
+          this.fetchImpl,
+        )
+        const clusterLatest = clusterLatestResult.value
 
         const prediction = predictionOverview ?? {}
         const review = reviewResults ?? {}
@@ -1078,13 +1107,16 @@ export class LongclawControlPlaneClient {
         const backtestSeed = backtestSeedRaw.includes('.')
           ? backtestSeedRaw.split('.').at(-1) ?? backtestSeedRaw
           : backtestSeedRaw.replace(/^[a-z]{2}/i, '')
-        const backtestAnalysis = await fetchJsonOrNull(
-          web2 && backtestSeed
-            ? `${web2}/api/backtest/analyze?code=${encodeURIComponent(backtestSeed)}&freq=daily&signal_group=all&lookback=180`
-            : undefined,
+        const backtestPath = backtestSeed
+          ? `/api/backtest/analyze?code=${encodeURIComponent(backtestSeed)}&freq=daily&signal_group=all&lookback=180`
+          : ''
+        const backtestAnalysisResult = await fetchSignalsJsonWithFallback(
+          { url: web1 && backtestPath ? `${web1}${backtestPath}` : undefined, source: 'web1' },
+          { url: web2 && backtestPath ? `${web2}${backtestPath}` : undefined, source: 'web2' },
           value => recordValue(value),
           this.fetchImpl,
         )
+        const backtestAnalysis = backtestAnalysisResult.value
 
         const backtestSummary = recordValue(backtestAnalysis?.forward_kpi ?? backtestAnalysis?.kpi)
         const totalSignals = numberValue(backtestSummary.total) ?? 0
@@ -1101,6 +1133,29 @@ export class LongclawControlPlaneClient {
           created_at: null,
         }))
 
+        const web1Available = Boolean(
+          marketContext ||
+            indexReports ||
+            predictionOverview ||
+            reviewResults ||
+            reviewStatus ||
+            tradeSummary ||
+            chartData ||
+            clusterLatestResult.source === 'web1' ||
+            backtestAnalysisResult.source === 'web1',
+        )
+        const web2Used =
+          clusterLatestResult.source === 'web2' || backtestAnalysisResult.source === 'web2'
+        const web2Status = web2
+          ? web2Used
+            ? 'available'
+            : web1Available
+              ? 'standby'
+              : 'degraded'
+          : 'not_connected'
+        const clusterSource = clusterLatestResult.source ?? ''
+        const backtestSource = backtestAnalysisResult.source ?? ''
+
         const diagnostics = [
           packDiagnostic(
             'signals-state-root',
@@ -1111,17 +1166,17 @@ export class LongclawControlPlaneClient {
           ),
           packDiagnostic(
             'signals-web1',
-            web1 ? (marketContext || indexReports ? 'available' : 'degraded') : 'not_connected',
+            web1 ? (web1Available ? 'available' : 'degraded') : 'not_connected',
             'signals web1',
             web1 ?? 'not configured',
-            { base_url: web1 ?? '' },
+            { base_url: web1 ?? '', cluster_source: clusterSource, backtest_source: backtestSource },
           ),
           packDiagnostic(
             'signals-web2',
-            web2 ? (clusterLatest || backtestAnalysis ? 'available' : 'degraded') : 'not_connected',
+            web2Status,
             'signals web2',
             web2 ?? 'not configured',
-            { base_url: web2 ?? '' },
+            { base_url: web2 ?? '', cluster_source: clusterSource, backtest_source: backtestSource },
           ),
         ]
 
@@ -1134,20 +1189,29 @@ export class LongclawControlPlaneClient {
           ),
           connectorHealthEntry(
             'signals-web1',
-            web1 ? (marketContext || indexReports ? 'available' : 'degraded') : 'not_connected',
+            web1 ? (web1Available ? 'available' : 'degraded') : 'not_connected',
             web1 ? 'Signals web1 supplies chart, review, and prediction data.' : 'Signals web1 is not configured.',
-            { base_url: web1 ?? '' },
+            { base_url: web1 ?? '', cluster_source: clusterSource, backtest_source: backtestSource },
           ),
           connectorHealthEntry(
             'signals-web2',
-            web2 ? (clusterLatest || backtestAnalysis ? 'available' : 'degraded') : 'not_connected',
-            web2 ? 'Signals web2 supplies backtests and cluster scans.' : 'Signals web2 is not configured.',
-            { base_url: web2 ?? '' },
+            web2Status,
+            web2
+              ? web2Used
+                ? 'Signals web2 supplied fallback backtests or cluster scans.'
+                : 'Signals web2 is configured as standby; web1 served native strategy endpoints.'
+              : 'Signals web2 is not configured.',
+            { base_url: web2 ?? '', cluster_source: clusterSource, backtest_source: backtestSource },
           ),
         ]
 
         const signalsTerminalUrl = web1 ?? null
         const signalsLegacyUrl = web1 ? `${web1}/legacy` : null
+        const clusterCheckUrl = web1
+          ? `${web1}/api/cluster/latest?top=1`
+          : web2
+            ? `${web2}/api/cluster/latest?top=1`
+            : null
 
         const operatorActions = [
           signalsTerminalUrl
@@ -1193,13 +1257,13 @@ export class LongclawControlPlaneClient {
             'Open config',
             { path: join(runtimeDir, 'stack.env') },
           ),
-          web2
+          clusterCheckUrl
             ? localAction(
                 'pack:signals:health:copy',
                 'pack:signals',
                 'copy_value',
                 'Copy env check',
-                { value: `curl -fsS ${web2}/api/cluster/latest?top=1` },
+                { value: `curl -fsS ${clusterCheckUrl}` },
               )
             : null,
         ].filter(Boolean)
@@ -1306,10 +1370,11 @@ export class LongclawControlPlaneClient {
                   stringValue(recordValue(backtestAnalysis.sim_kpi).summary) ??
                   `Win rate ${numberValue(recordValue(backtestAnalysis.sim_kpi).win_rate) ?? 0}%`,
                 updated_at: new Date().toISOString(),
-                source: 'web2',
+                source: backtestSource || 'web1',
                 metadata: {
                   forward_kpi: recordValue(backtestAnalysis.forward_kpi),
                   sim_kpi: recordValue(backtestAnalysis.sim_kpi),
+                  source: backtestSource,
                 },
               }
             : null,
@@ -1325,6 +1390,143 @@ export class LongclawControlPlaneClient {
           })),
         ].filter(Boolean)
 
+        const availableConnectorCount = connectorHealth.filter(item =>
+          ['available', 'standby'].includes(String(item.status)),
+        ).length
+        const marketBias =
+          stringValue(recordValue(prediction.market_regime).label) ??
+          stringValue(marketContext?.label) ??
+          stringValue(recordValue(clusterLatest?.market_status).session_label) ??
+          ''
+        const clusterIndustryTop = recordValue(clusterLatest?.industry).top
+        const clusterConceptTop = recordValue(clusterLatest?.concept).top
+        const clusterLabels = [
+          ...(Array.isArray(clusterIndustryTop)
+            ? clusterIndustryTop
+            : []),
+          ...(Array.isArray(clusterConceptTop)
+            ? clusterConceptTop
+            : []),
+        ]
+          .map(item => stringValue(recordValue(item).label) ?? stringValue(recordValue(item).name))
+          .filter((item): item is string => Boolean(item))
+          .slice(0, 3)
+        const dataWarning = stringValue(clusterLatest?.data_warning) ?? ''
+        const dailyBrief = {
+          as_of: new Date().toISOString(),
+          headline: marketBias || 'Signals fallback dashboard',
+          summary: [
+            `${uniqueBuyCandidates.length} buy candidates`,
+            `${sellWarnings.length} sell warnings`,
+            totalSignals ? `${evaluatedSignals}/${totalSignals} backtest signals evaluated` : '',
+          ].filter(Boolean).join(' · '),
+          bullets: [
+            clusterLabels.length ? `Cluster focus: ${clusterLabels.join(', ')}` : '',
+            chartContext?.latest_signal ? `Latest chart signal: ${chartContext.latest_signal}` : '',
+            dataWarning ? `Data warning: ${dataWarning}` : '',
+          ].filter(Boolean),
+          market_bias: marketBias,
+          risk_note: dataWarning,
+          metadata: {
+            source: 'agent-os-fallback',
+            cluster_source: clusterSource,
+            backtest_source: backtestSource,
+          },
+        }
+        const decisionQueue = [
+          ...sellWarnings.slice(0, 3).map(item => ({
+            decision_id: `sell:${item.symbol}`,
+            title: `Review sell warning ${item.symbol}`,
+            summary: item.reason,
+            status: 'open',
+            priority: 'high',
+            symbol: item.symbol,
+            action: 'review_exit',
+            rationale: item.reason,
+            metadata: item.metadata,
+          })),
+          ...uniqueBuyCandidates.slice(0, 3).map(item => ({
+            decision_id: `buy:${item.symbol}`,
+            title: `Review buy candidate ${item.symbol}`,
+            summary: item.reason,
+            status: 'open',
+            priority: 'medium',
+            symbol: item.symbol,
+            action: backtestAnalysis ? 'review_entry' : 'run_backtest',
+            rationale: item.reason,
+            metadata: item.metadata,
+          })),
+          pendingSignals > 0
+            ? {
+                decision_id: `backtest:${backtestSeed || 'pending'}`,
+                title: 'Evaluate pending backtest signals',
+                summary: `${pendingSignals} pending signals need backtest review.`,
+                status: 'open',
+                priority: 'medium',
+                symbol: backtestSeedRaw,
+                action: 'evaluate_backtest',
+                rationale: 'Backtest endpoint returned unevaluated signals.',
+                metadata: {
+                  source: backtestSource,
+                  total: totalSignals,
+                  evaluated: evaluatedSignals,
+                },
+              }
+            : null,
+        ].filter(Boolean)
+        const strategyKpis = [
+          {
+            kpi_id: 'buy_candidates',
+            label: 'Buy candidates',
+            value: uniqueBuyCandidates.length,
+            unit: 'count',
+            status: uniqueBuyCandidates.length > 0 ? 'open' : 'idle',
+            trend: '',
+            metadata: { source: 'prediction_review' },
+          },
+          {
+            kpi_id: 'sell_warnings',
+            label: 'Sell warnings',
+            value: sellWarnings.length,
+            unit: 'count',
+            status: sellWarnings.length > 0 ? 'warning' : 'idle',
+            trend: '',
+            metadata: { source: 'prediction' },
+          },
+          {
+            kpi_id: 'backtest_evaluated',
+            label: 'Backtest evaluated',
+            value: `${evaluatedSignals}/${totalSignals}`,
+            unit: 'signals',
+            status: pendingSignals > 0 ? 'needs_review' : 'ready',
+            trend: '',
+            metadata: { source: backtestSource },
+          },
+          {
+            kpi_id: 'connector_sources',
+            label: 'Connector sources',
+            value: `${availableConnectorCount}/${connectorHealth.length}`,
+            unit: 'sources',
+            status: availableConnectorCount > 0 ? 'available' : 'degraded',
+            trend: '',
+            metadata: { source: 'agent-os-fallback' },
+          },
+        ]
+        const confidenceScore = (statusValue: string): number => {
+          if (statusValue === 'available') return 0.9
+          if (statusValue === 'standby') return 0.65
+          if (statusValue === 'degraded') return 0.3
+          return 0
+        }
+        const sourceConfidence = connectorHealth.map(item => ({
+          source_id: item.connector_id,
+          label: item.connector_id,
+          confidence: confidenceScore(item.status),
+          status: item.status,
+          summary: item.summary,
+          metadata: item.details,
+        }))
+
         const status =
           diagnostics.some(item => item.status === 'degraded')
             ? 'degraded'
@@ -1333,8 +1535,8 @@ export class LongclawControlPlaneClient {
               : 'healthy'
         const noticeParts = [
           !stateRootExists && stateRootConfigured ? 'Signals state root is empty.' : '',
-          web1 && !(marketContext || indexReports) ? 'Signals web1 is configured but unavailable.' : '',
-          web2 && !(clusterLatest || backtestAnalysis) ? 'Signals web2 is configured but unavailable.' : '',
+          web1 && !web1Available ? 'Signals web1 is configured but unavailable.' : '',
+          web2 && !web2Used && !web1Available ? 'Signals web2 is configured but unavailable.' : '',
         ].filter(Boolean)
 
         return SignalsDashboardSchema.parse({
@@ -1361,8 +1563,12 @@ export class LongclawControlPlaneClient {
               completed: reviewRunning.completed === true,
               trade_summary: tradeSummary,
             },
-            data_warning: stringValue(clusterLatest?.data_warning) ?? '',
+            data_warning: dataWarning,
           },
+          daily_brief: dailyBrief,
+          decision_queue: decisionQueue,
+          strategy_kpis: strategyKpis,
+          source_confidence: sourceConfidence,
           recent_runs: recentRuns,
           review_runs: reviewRuns,
           buy_candidates: uniqueBuyCandidates,

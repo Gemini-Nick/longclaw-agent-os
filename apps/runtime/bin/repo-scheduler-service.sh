@@ -8,6 +8,7 @@ LOG_DIR="${LONGCLAW_LOG_DIR:-/tmp/longclaw-guardian}"
 LOG_FILE="$LOG_DIR/scheduler.task.log"
 STATE_FILE="$LOG_DIR/repo-scheduler.state"
 LOCK_DIR="$LOG_DIR/repo-scheduler.lock"
+LOCK_STALE_SECONDS="${LONGCLAW_LOCK_STALE_SECONDS:-7200}"
 BOOTSTRAP="${LONGCLAW_BOOTSTRAP:-$HOME/.longclaw/bootstrap-longclaw-repos.sh}"
 REPO_ROOT="${REPO_ROOT:-$HOME/github代码仓库}"
 SOURCE_ROOT="${LONGCLAW_SOURCE_ROOT:-$REPO_ROOT/longclaw-agent-os}"
@@ -33,6 +34,7 @@ RUNTIME_VERSION="workspace-v2-2026-04-06"
 mkdir -p "$LOG_DIR"
 
 CURRENT_DISCOVERY_FILE=""
+LOCK_ACQUIRED=0
 
 ts() {
   date '+%F %T'
@@ -46,9 +48,47 @@ cleanup() {
   if [[ -n "$CURRENT_DISCOVERY_FILE" && -f "$CURRENT_DISCOVERY_FILE" ]]; then
     rm -f "$CURRENT_DISCOVERY_FILE"
   fi
-  if [[ -d "$LOCK_DIR" ]]; then
+  if [[ "$LOCK_ACQUIRED" == "1" && -d "$LOCK_DIR" ]]; then
+    rm -f "$LOCK_DIR/pid" "$LOCK_DIR/started_at" 2>/dev/null || true
     rmdir "$LOCK_DIR" 2>/dev/null || true
   fi
+}
+
+acquire_lock() {
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    LOCK_ACQUIRED=1
+    printf '%s\n' "$$" >"$LOCK_DIR/pid"
+    date '+%s' >"$LOCK_DIR/started_at"
+    return 0
+  fi
+
+  local lock_pid lock_started now age
+  lock_pid="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+  lock_started="$(cat "$LOCK_DIR/started_at" 2>/dev/null || true)"
+  now="$(date '+%s')"
+  age=0
+  if [[ "$lock_started" =~ ^[0-9]+$ ]]; then
+    age=$((now - lock_started))
+  fi
+
+  if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" >/dev/null 2>&1 && [[ "$age" -lt "$LOCK_STALE_SECONDS" ]]; then
+    log "scheduler skipped: lock_active path=$LOCK_DIR pid=$lock_pid age=${age}s"
+    return 1
+  fi
+
+  log "scheduler lock stale: path=$LOCK_DIR pid=${lock_pid:-unknown} age=${age}s"
+  rm -f "$LOCK_DIR/pid" "$LOCK_DIR/started_at" 2>/dev/null || true
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    LOCK_ACQUIRED=1
+    printf '%s\n' "$$" >"$LOCK_DIR/pid"
+    date '+%s' >"$LOCK_DIR/started_at"
+    return 0
+  fi
+
+  log "scheduler skipped: lock_active_after_stale_cleanup path=$LOCK_DIR"
+  return 1
 }
 
 resolve_harness_bin() {
@@ -347,6 +387,60 @@ repo_has_tracked_changes() {
     return 0
   fi
   return 1
+}
+
+repo_has_unmerged() {
+  local repo="$1"
+  git -C "$repo" status --porcelain=v1 --untracked-files=all |
+    awk '/^[AU][AU]|^DD|^UU|^AA|^UD|^DU/{found=1} END{exit found ? 0 : 1}'
+}
+
+repo_has_worktree_changes() {
+  local repo="$1"
+  [[ -n "$(git -C "$repo" status --porcelain=v1 --untracked-files=all 2>/dev/null || true)" ]]
+}
+
+remote_relation() {
+  local repo="$1"
+  local remote_ref="$2"
+  local local_head remote_head
+  local_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
+  remote_head="$(git -C "$repo" rev-parse --verify "$remote_ref" 2>/dev/null || true)"
+  if [[ -z "$local_head" || -z "$remote_head" ]]; then
+    printf 'missing_ref\n'
+  elif [[ "$local_head" == "$remote_head" ]]; then
+    printf 'equal\n'
+  elif git -C "$repo" merge-base --is-ancestor "$remote_head" HEAD 2>/dev/null; then
+    printf 'local_ahead\n'
+  elif git -C "$repo" merge-base --is-ancestor HEAD "$remote_head" 2>/dev/null; then
+    printf 'local_behind\n'
+  else
+    printf 'diverged\n'
+  fi
+}
+
+stage_allowed_changes() {
+  local repo="$1"
+  local rel_path skipped_count
+  skipped_count=0
+
+  git -C "$repo" add -u >>"$LOG_FILE" 2>&1 || true
+
+  while IFS= read -r -d '' rel_path; do
+    case "$rel_path" in
+      .longclaw/domain-pack/runs/*|reports/desktop-observations/*|reports/uiux-cdp-audit/*)
+        skipped_count=$((skipped_count + 1))
+        log "workspace=$repo auto_commit skipped_untracked_artifact=$rel_path"
+        ;;
+      *)
+        git -C "$repo" add -- "$rel_path" >>"$LOG_FILE" 2>&1 || true
+        ;;
+    esac
+  done < <(git -C "$repo" ls-files --others --exclude-standard -z)
+
+  if [[ "$skipped_count" -gt 0 ]]; then
+    log "workspace=$repo auto_commit skipped_untracked_artifacts=$skipped_count"
+  fi
 }
 
 load_repo_policy() {
@@ -776,15 +870,14 @@ PY
 }
 
 main() {
-  local trigger dep_updates auto_commits cloud_syncs cloud_pushes workspace_total tool_mappings
+  local trigger dep_updates auto_commits cloud_syncs cloud_pushes sync_issues workspace_total tool_mappings
   local result_text commit_made discovery_file line path category sources source_display
   local tool_only_count unresolved_tool_only_count broad_tool_only_count container_tool_only_count runtime_tool_only_count
   local unresolved_mapping_alert_threshold obsidian_raw obsidian_line source reason detail routing_status harness_status roadmap_sync_status
 
   trap cleanup EXIT
 
-  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-    log "scheduler skipped: lock_active path=$LOCK_DIR"
+  if ! acquire_lock; then
     return 0
   fi
 
@@ -793,6 +886,7 @@ main() {
   auto_commits=0
   cloud_syncs=0
   cloud_pushes=0
+  sync_issues=0
   workspace_total=0
   tool_mappings=0
   tool_only_count=0
@@ -827,7 +921,7 @@ main() {
         ;;
       WORKSPACE)
         source_display="${sources:-scan}"
-        local repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote
+        local repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote sync_blocked remote_ref relation should_push
         IFS='|' read -r repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote <<<"$(load_repo_policy "$path")"
         log "workspace category=$category path=$path repo_key=$repo_key policy_mode=$policy_mode sources=$source_display"
 
@@ -836,14 +930,48 @@ main() {
           continue
         fi
 
-        if has_remote "$path" "$canonical_remote"; then
-          cloud_syncs=$((cloud_syncs + 1))
+        sync_blocked=0
+        remote_ref="$canonical_remote/$branch"
+        relation="unknown"
+        if repo_has_unmerged "$path"; then
+          sync_blocked=1
+          sync_issues=$((sync_issues + 1))
+          log "workspace=$path cloud_sync blocked=unmerged_files policy_mode=$policy_mode"
+        elif has_remote "$path" "$canonical_remote"; then
           if [[ "$DRY_RUN" == "1" ]]; then
             log "workspace=$path cloud_sync skipped=dry_run remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
           else
-            log "workspace=$path cloud_sync action=pull remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
-            if ! git -C "$path" pull --ff-only "$canonical_remote" "$branch" >>"$LOG_FILE" 2>&1; then
-              log "workspace=$path cloud_sync_failed action=pull remote=$canonical_remote branch=$branch"
+            log "workspace=$path cloud_sync action=fetch remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
+            if git -C "$path" fetch --prune "$canonical_remote" "$branch" >>"$LOG_FILE" 2>&1; then
+              cloud_syncs=$((cloud_syncs + 1))
+              relation="$(remote_relation "$path" "$remote_ref")"
+              log "workspace=$path cloud_sync relation=$relation remote_ref=$remote_ref"
+              case "$relation" in
+                equal|local_ahead)
+                  ;;
+                local_behind)
+                  if repo_has_worktree_changes "$path"; then
+                    sync_blocked=1
+                    sync_issues=$((sync_issues + 1))
+                    log "workspace=$path cloud_sync blocked=remote_ahead_with_local_changes remote_ref=$remote_ref"
+                  elif git -C "$path" merge --ff-only "$remote_ref" >>"$LOG_FILE" 2>&1; then
+                    log "workspace=$path cloud_sync_result=fast_forwarded remote_ref=$remote_ref"
+                  else
+                    sync_blocked=1
+                    sync_issues=$((sync_issues + 1))
+                    log "workspace=$path cloud_sync_result=fast_forward_failed remote_ref=$remote_ref"
+                  fi
+                  ;;
+                diverged|missing_ref)
+                  sync_blocked=1
+                  sync_issues=$((sync_issues + 1))
+                  log "workspace=$path cloud_sync blocked=$relation remote_ref=$remote_ref"
+                  ;;
+              esac
+            else
+              sync_blocked=1
+              sync_issues=$((sync_issues + 1))
+              log "workspace=$path cloud_sync_failed action=fetch remote=$canonical_remote branch=$branch"
             fi
           fi
         else
@@ -858,15 +986,17 @@ main() {
         fi
 
         commit_made=0
-        if [[ "$DRY_RUN" == "1" ]]; then
+        if [[ "$sync_blocked" == "1" ]]; then
+          log "workspace=$path auto_commit skipped=sync_blocked"
+        elif [[ "$DRY_RUN" == "1" ]]; then
           log "workspace=$path auto_commit skipped=dry_run"
         elif [[ "$AUTO_COMMIT" != "1" ]]; then
           log "workspace=$path auto_commit skipped=disabled"
         elif [[ "$allow_local_commits" != "1" ]]; then
           log "workspace=$path auto_commit skipped=policy_disallow_local_commits policy_mode=$policy_mode"
-        elif repo_has_tracked_changes "$path"; then
-          log "workspace=$path auto_commit action=git_add_u"
-          git -C "$path" add -u >>"$LOG_FILE" 2>&1 || true
+        elif repo_has_worktree_changes "$path"; then
+          log "workspace=$path auto_commit action=stage_allowed_changes"
+          stage_allowed_changes "$path"
           if ! git -C "$path" diff --cached --quiet --ignore-submodules --; then
             if git -C "$path" commit -m "$AUTO_COMMIT_MESSAGE" >>"$LOG_FILE" 2>&1; then
               auto_commits=$((auto_commits + 1))
@@ -879,20 +1009,30 @@ main() {
             log "workspace=$path auto_commit skipped=no_staged_tracked_changes"
           fi
         else
-          log "workspace=$path auto_commit skipped=clean_or_untracked_only"
+          log "workspace=$path auto_commit skipped=clean"
         fi
 
+        should_push=0
         if [[ "$commit_made" -eq 1 ]]; then
+          should_push=1
+        elif has_remote "$path" "$canonical_remote" && [[ "$(remote_relation "$path" "$remote_ref")" == "local_ahead" ]]; then
+          should_push=1
+        fi
+
+        if [[ "$sync_blocked" == "1" ]]; then
+          log "workspace=$path cloud_push skipped=sync_blocked"
+        elif [[ "$should_push" -eq 1 ]]; then
           if has_remote "$path" "$canonical_remote"; then
             if [[ "$DRY_RUN" == "1" ]]; then
               log "workspace=$path cloud_push skipped=dry_run"
             elif [[ "$AUTO_PUSH" != "1" ]]; then
               log "workspace=$path cloud_push skipped=disabled"
             else
-              if git -C "$path" push "$canonical_remote" "$branch" >>"$LOG_FILE" 2>&1; then
+              if git -C "$path" push "$canonical_remote" "HEAD:$branch" >>"$LOG_FILE" 2>&1; then
                 cloud_pushes=$((cloud_pushes + 1))
                 log "workspace=$path cloud_push_result=pushed"
               else
+                sync_issues=$((sync_issues + 1))
                 log "workspace=$path cloud_push_result=failed"
               fi
             fi
@@ -931,6 +1071,9 @@ main() {
   done <"$discovery_file"
 
   result_text="👌 工作区巡检完成"
+  if [[ "$sync_issues" -gt 0 ]]; then
+    result_text="$result_text"$'\n'"⚠️ GitHub 同步有 $sync_issues 项需要人工处理，已停止相关仓库的提交/推送"
+  fi
 
   if [[ -x "$WECLAW_BIN" ]]; then
     obsidian_raw="$("$WECLAW_BIN" obsidian maintain --formal 2>>"$LOG_FILE" || true)"
@@ -1018,7 +1161,7 @@ main() {
     result_text="$result_text"$'\n'"⚠️ 部分工具目录未映射到真实工作区，请看日志"
   fi
 
-  log "summary counters workspaces=$workspace_total dependency_updates=$dep_updates auto_commits=$auto_commits cloud_syncs=$cloud_syncs cloud_pushes=$cloud_pushes tool_mapping_only=$tool_only_count unresolved_tool_only=$unresolved_tool_only_count broad_tool_only=$broad_tool_only_count container_tool_only=$container_tool_only_count runtime_tool_only=$runtime_tool_only_count routing_status=$routing_status harness_status=$harness_status roadmap_sync_status=$roadmap_sync_status wechat_summary_status=$wechat_summary_status dispatch_status=$dispatch_status queue_file=$ROADMAP_QUEUE_FILE"
+  log "summary counters workspaces=$workspace_total dependency_updates=$dep_updates auto_commits=$auto_commits cloud_syncs=$cloud_syncs cloud_pushes=$cloud_pushes sync_issues=$sync_issues tool_mapping_only=$tool_only_count unresolved_tool_only=$unresolved_tool_only_count broad_tool_only=$broad_tool_only_count container_tool_only=$container_tool_only_count runtime_tool_only=$runtime_tool_only_count routing_status=$routing_status harness_status=$harness_status roadmap_sync_status=$roadmap_sync_status wechat_summary_status=$wechat_summary_status dispatch_status=$dispatch_status queue_file=$ROADMAP_QUEUE_FILE"
   CURRENT_DISCOVERY_FILE=""
   write_state "$trigger"
 }

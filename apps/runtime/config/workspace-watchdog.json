@@ -7,6 +7,8 @@
   "explicit_workspaces": [
     "~/github代码仓库/longclaw-agent-os",
     "~/github代码仓库/weclaw",
+    "~/github代码仓库/Signals",
+    "~/github代码仓库/Chanless",
     "~/github代码仓库/hermes-agent"
   ],
   "tool_mapping_ignored_names": [

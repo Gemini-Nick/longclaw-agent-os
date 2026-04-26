@@ -149,6 +149,23 @@ function signalTone(value?: string | null): string {
   return 'open'
 }
 
+function displayText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string' && value.trim()) return value
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  return fallback
+}
+
+function displayPercent(value: unknown): string {
+  const number = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim()
+      ? Number(value)
+      : Number.NaN
+  if (!Number.isFinite(number)) return displayText(value, 'N/A')
+  const percent = number <= 1 ? number * 100 : number
+  return `${percent.toFixed(0)}%`
+}
+
 function normalizeDueDashboard(
   dashboard: LongclawPackDashboard | null,
   locale: LongclawLocale,
@@ -193,6 +210,18 @@ function normalizeSignalsDashboard(
       review_summary: {},
       data_warning: '',
     },
+    daily_brief: candidate.daily_brief ?? {
+      as_of: '',
+      headline: '',
+      summary: '',
+      bullets: [],
+      market_bias: '',
+      risk_note: '',
+      metadata: {},
+    },
+    decision_queue: normalizePackRows(candidate.decision_queue),
+    strategy_kpis: normalizePackRows(candidate.strategy_kpis),
+    source_confidence: normalizePackRows(candidate.source_confidence),
     recent_runs: normalizePackRows(candidate.recent_runs),
     review_runs: normalizePackRows(candidate.review_runs),
     buy_candidates: normalizePackRows(candidate.buy_candidates),
@@ -385,6 +414,11 @@ function SignalsPackView({
   ) => void
 }) {
   const chartContext = dashboard.chart_context
+  const dailyBrief = dashboard.daily_brief
+  const dailyBriefBullets = Array.isArray(dailyBrief.bullets) ? dailyBrief.bullets : []
+  const strategyKpis = dashboard.strategy_kpis as Array<Record<string, unknown>>
+  const sourceConfidence = dashboard.source_confidence as Array<Record<string, unknown>>
+  const decisionQueue = dashboard.decision_queue as Array<Record<string, unknown>>
   const panels: Array<{ id: SignalsPanel; label: string }> = [
     { id: 'overview', label: locale === 'zh-CN' ? '概览' : 'Overview' },
     { id: 'chart', label: locale === 'zh-CN' ? '图表' : 'Chart' },
@@ -502,6 +536,130 @@ function SignalsPackView({
                 <div style={utilityStyles.warningBanner}>{dashboard.overview.data_warning}</div>
               ) : null}
             </div>
+          </Section>
+          <Section
+            title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
+            subtitle={
+              locale === 'zh-CN'
+                ? '策略 dashboard 的当日摘要、风险提示和关键观察。'
+                : 'Daily strategy summary, risk notes, and key observations from the dashboard.'
+            }
+          >
+            <div style={denseListStyle}>
+              <div style={statCardStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: palette.ink }}>
+                    {displayText(dailyBrief.headline, locale === 'zh-CN' ? '暂无摘要标题' : 'No brief headline')}
+                  </div>
+                  <div style={chromeStyles.quietMeta}>
+                    {displayText(dailyBrief.summary, locale === 'zh-CN' ? '暂无策略摘要。' : 'No strategy summary yet.')}
+                  </div>
+                </div>
+                <span style={statusBadgeStyle(dailyBrief.risk_note ? 'warning' : 'open')}>
+                  {displayText(dailyBrief.market_bias, locale === 'zh-CN' ? '观察中' : 'Watching')}
+                </span>
+              </div>
+              {dailyBrief.risk_note ? (
+                <div style={utilityStyles.warningBanner}>{dailyBrief.risk_note}</div>
+              ) : null}
+              {dailyBriefBullets.length > 0 ? (
+                <div style={denseListStyle}>
+                  {dailyBriefBullets.slice(0, 4).map((item, index) => (
+                    <div key={`${item}-${index}`} style={surfaceStyles.listRow}>
+                      <div style={chromeStyles.quietMeta}>{item}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </Section>
+          <Section
+            title={locale === 'zh-CN' ? 'Strategy KPI' : 'Strategy KPIs'}
+            subtitle={
+              locale === 'zh-CN'
+                ? '从策略候选、回测和连接源合成的核心指标。'
+                : 'Core metrics synthesized from candidates, backtests, and source coverage.'
+            }
+          >
+            {strategyKpis.length === 0 ? (
+              <div style={utilityStyles.emptyState}>
+                {locale === 'zh-CN' ? '暂无策略 KPI。' : 'No strategy KPIs yet.'}
+              </div>
+            ) : (
+              <div style={chartStatGridStyle}>
+                {strategyKpis.slice(0, 6).map((item, index) => (
+                  <div
+                    key={displayText(item.kpi_id, `${displayText(item.label, 'kpi')}-${index}`)}
+                    style={chartStatCardStyle}
+                  >
+                    <div style={chromeStyles.eyebrowLight}>
+                      {displayText(item.label, displayText(item.kpi_id, 'KPI'))}
+                    </div>
+                    <div style={{ fontWeight: 700, color: palette.ink }}>
+                      {displayText(item.value, 'N/A')}
+                      {displayText(item.unit) ? ` ${displayText(item.unit)}` : ''}
+                    </div>
+                    {displayText(item.status) ? (
+                      <span style={statusBadgeStyle(displayText(item.status))}>
+                        {humanizeTokenLocale(locale, displayText(item.status))}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+          <PackListSection
+            locale={locale}
+            title={locale === 'zh-CN' ? 'Decision queue' : 'Decision queue'}
+            subtitle={
+              locale === 'zh-CN'
+                ? '需要策略员确认的买卖、回测和风险决策。'
+                : 'Buy, sell, backtest, and risk decisions that need operator review.'
+            }
+            rows={decisionQueue}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `决策 ${String(item.symbol ?? item.decision_id ?? 'queue')}`
+                  : `Decision ${String(item.symbol ?? item.decision_id ?? 'queue')}`,
+                item,
+                operatorActionsFromRecord(item),
+              )
+            }
+          />
+          <Section
+            title={locale === 'zh-CN' ? 'Source confidence' : 'Source confidence'}
+            subtitle={
+              locale === 'zh-CN'
+                ? '显示每个策略数据源在当前 dashboard 中的置信度和状态。'
+                : 'Confidence and status for each strategy source in the current dashboard.'
+            }
+          >
+            {sourceConfidence.length === 0 ? (
+              <div style={utilityStyles.emptyState}>
+                {locale === 'zh-CN' ? '暂无来源置信度。' : 'No source confidence yet.'}
+              </div>
+            ) : (
+              <div style={denseListStyle}>
+                {sourceConfidence.slice(0, 6).map((item, index) => (
+                  <div
+                    key={displayText(item.source_id, `${displayText(item.label, 'source')}-${index}`)}
+                    style={surfaceStyles.listRow}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: palette.ink }}>
+                        {displayText(item.label, displayText(item.source_id, 'source'))}
+                      </div>
+                      <div style={chromeStyles.quietMeta}>{displayText(item.summary)}</div>
+                    </div>
+                    <span style={statusBadgeStyle(displayText(item.status, 'open'))}>
+                      {displayPercent(item.confidence)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
           <PackListSection
             locale={locale}
@@ -887,6 +1045,10 @@ export type SignalsStrategyVM = Pick<
   | 'review_runs'
   | 'connector_health'
   | 'deep_links'
+  | 'daily_brief'
+  | 'decision_queue'
+  | 'strategy_kpis'
+  | 'source_confidence'
 >
 
 export type SignalsBacktestVM = Pick<
@@ -910,6 +1072,10 @@ function toSignalsStrategyVM(dashboard: SignalsDashboard): SignalsStrategyVM {
     review_runs: dashboard.review_runs,
     connector_health: dashboard.connector_health,
     deep_links: dashboard.deep_links,
+    daily_brief: dashboard.daily_brief,
+    decision_queue: dashboard.decision_queue,
+    strategy_kpis: dashboard.strategy_kpis,
+    source_confidence: dashboard.source_confidence,
   }
 }
 

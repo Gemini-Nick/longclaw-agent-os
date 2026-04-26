@@ -854,8 +854,7 @@ function evalWatchdogRuntime(project) {
   const failures = [];
   const nextActions = [];
   const weguardBin = path.join(project.root, "bin", "weguard");
-  const schedulerLabel = "com.zhangqilong.ai.repo.scheduler";
-  const guardianLabel = "com.zhangqilong.ai.guardian.monitor";
+  const runtimeBin = path.join(project.root, "bin", "longclaw-runtime.sh");
   const servicesFile = path.join(process.env.HOME || "", ".weclaw", "services.json");
 
   if (fs.existsSync(servicesFile)) {
@@ -876,46 +875,30 @@ function evalWatchdogRuntime(project) {
     failures.push(...collectOutput(weguardStatus));
   }
 
-  const schedulerPrint = runShell(`launchctl print gui/$(id -u)/${schedulerLabel}`, repoRoot);
-  if (schedulerPrint.status === 0) {
-    const output = collectOutput(schedulerPrint);
-    const stateLine = output.find((line) => line.includes("state ="));
-    const exitLine = output.find((line) => line.includes("last exit code ="));
-    const intervalLine = output.find((line) => line.includes("run interval ="));
-    if (stateLine) checks.push(`scheduler: ${stateLine}`);
-    if (exitLine) {
-      checks.push(`scheduler: ${exitLine}`);
-      if (!/last exit code = 0\b/.test(exitLine)) {
-        failures.push(`scheduler unhealthy: ${exitLine}`);
-      }
-    }
-    if (intervalLine) checks.push(`scheduler: ${intervalLine}`);
+  const runtimeStatus = runShell(`${shellQuote(runtimeBin)} status`, repoRoot);
+  if (runtimeStatus.status === 0) {
+    const output = collectOutput(runtimeStatus);
+    const runtimeState = output.find((line) => line.includes("state = running"));
+    const guardianLine = output.find((line) => line.startsWith("guardian:"));
+    const schedulerLine = output.find((line) => line.startsWith("scheduler-loop:"));
+    const lockLine = output.find((line) => line.startsWith("scheduler_lock:"));
+    if (runtimeState) checks.push(`longclaw-runtime: ${runtimeState.trim()}`);
+    if (guardianLine) checks.push(guardianLine);
+    if (schedulerLine) checks.push(schedulerLine);
+    if (lockLine) checks.push(lockLine);
+    if (!runtimeState) failures.push("longclaw runtime launchd service is not running");
+    if (!guardianLine || !/running pid=/.test(guardianLine)) failures.push("guardian child is not running under longclaw runtime");
+    if (!schedulerLine || !/running pid=/.test(schedulerLine)) failures.push("scheduler-loop child is not running under longclaw runtime");
   } else {
-    failures.push(`Missing launchd label: ${schedulerLabel}`);
-  }
-
-  const guardianPrint = runShell(`launchctl print gui/$(id -u)/${guardianLabel}`, repoRoot);
-  if (guardianPrint.status === 0) {
-    const output = collectOutput(guardianPrint);
-    const stateLine = output.find((line) => line.includes("state ="));
-    const pidLine = output.find((line) => line.includes("pid ="));
-    if (stateLine) {
-      checks.push(`guardian: ${stateLine}`);
-      if (!/state = running\b/.test(stateLine)) {
-        failures.push(`guardian unhealthy: ${stateLine}`);
-      }
-    }
-    if (pidLine) checks.push(`guardian: ${pidLine}`);
-  } else {
-    failures.push(`Missing launchd label: ${guardianLabel}`);
+    failures.push(...collectOutput(runtimeStatus));
   }
 
   const status = failures.length === 0 ? "pass" : "fail";
   const category = status === "pass" ? null : "runtime_config_drift";
   if (status === "pass") {
-    nextActions.push("Watchdog control plane is healthy. Keep scheduler and guardian monitor under launchd.");
+    nextActions.push("Watchdog control plane is healthy. Keep longclaw runtime supervising guardian and scheduler-loop.");
   } else {
-    nextActions.push("Repair watchdog runtime labels or weguard state before relying on control-plane automation.");
+    nextActions.push("Repair longclaw runtime child process state before relying on GitHub automation.");
   }
 
   return persistWorkflowResult(project, {

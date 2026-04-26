@@ -238,7 +238,6 @@ export type RuntimeStatusSummary = {
   signalsAvailable: boolean
   signalsStateRoot?: string
   signalsWebBaseUrl?: string
-  signalsWeb2BaseUrl?: string
   localRuntimeSeat?: string
   localRuntimeAvailable: boolean
   localRuntimeApiUrl?: string
@@ -814,10 +813,6 @@ function runtimeStatusFromSummary(
     signalsWebBaseUrl:
       typeof runtimeStatus.signals_web_base_url === 'string'
         ? runtimeStatus.signals_web_base_url
-        : undefined,
-    signalsWeb2BaseUrl:
-      typeof runtimeStatus.signals_web2_base_url === 'string'
-        ? runtimeStatus.signals_web2_base_url
         : undefined,
     localRuntimeSeat:
       typeof runtimeStatus.local_runtime_seat === 'string'

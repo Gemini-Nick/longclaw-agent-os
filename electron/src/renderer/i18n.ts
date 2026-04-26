@@ -872,10 +872,9 @@ const tokenLabels: Record<LongclawLocale, Record<string, string>> = {
     plugin: '插件',
     pack: '包',
     due_diligence: '尽调',
-    signals: '信号',
-    signals_state_root: '信号状态目录',
-    signals_web1: '信号服务一',
-    signals_web2: '信号服务二',
+	    signals: '信号',
+	    signals_state_root: '信号状态目录',
+	    signals_web1: 'Signals Web',
     connector: '连接器',
     cloud: '云端',
     local_runtime: '本地运行态',
@@ -940,9 +939,6 @@ export function humanizeTokenLocale(locale: LongclawLocale, value?: string | nul
 const systemTextLabels: Record<string, string> = {
   'signals state root is empty or missing.': '信号状态目录为空',
   'signals web1 is not configured.': '信号服务一未配置',
-  'signals web2 supplies backtests and cluster scans.': '信号服务二提供回测和聚类扫描',
-  'signals state root is empty. signals web2 is configured but unavailable.':
-    '信号状态目录为空，信号服务二暂不可用',
   'fetch failed': '连接失败',
   'failed to fetch': '连接失败',
   'not configured': '未配置',

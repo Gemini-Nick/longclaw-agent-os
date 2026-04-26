@@ -470,6 +470,34 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
               review_summary: {},
               data_warning: '',
             },
+            daily_brief: {
+              title: '2026-04-24 Signals 策略简报',
+              summary: '偏进攻，主线关注半导体',
+              market_line: '偏进攻',
+              next_actions: ['打开图表复核'],
+              risk_notes: ['避免追高'],
+              changed_since_last: { new_candidates: ['SZ.002759'] },
+            },
+            decision_queue: [
+              {
+                action_id: 'signals:candidate:SZ.002759:0',
+                symbol: 'SZ.002759',
+                action: 'review_entry',
+                next_action: '打开图表复核',
+                status: 'open',
+              },
+            ],
+            strategy_kpis: {
+              signals_total: 12,
+              signals_pending: 3,
+              groups: [{ signal_type: '日线候选', count: 8 }],
+            },
+            source_confidence: {
+              overall: 0.9,
+              sources: [
+                { name: 'signal', source: 'signals', freshness: 'fresh', score: 0.9 },
+              ],
+            },
             backtest_summary: { total: 3, evaluated: 2, pending: 1 },
             connector_health: [
               {
@@ -496,6 +524,15 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     const dashboard = await client.getPackDashboard('signals')
 
     expect(dashboard.pack_id).toBe('signals')
+    expect(dashboard.daily_brief.headline).toContain('Signals')
+    expect(dashboard.daily_brief.market_bias).toBe('偏进攻')
+    expect(dashboard.daily_brief.bullets[0]).toBe('打开图表复核')
+    expect(dashboard.daily_brief.risk_note).toBe('避免追高')
+    expect(dashboard.decision_queue[0]?.decision_id).toBe('signals:candidate:SZ.002759:0')
+    expect(dashboard.strategy_kpis.find(item => item.kpi_id === 'signals_total')?.value).toBe(12)
+    expect(dashboard.strategy_kpis.find(item => item.kpi_id === 'groups')?.value).toBe(1)
+    expect(dashboard.source_confidence[0]?.source_id).toBe('signal')
+    expect(dashboard.source_confidence[0]?.status).toBe('fresh')
     expect(dashboard.backtest_summary.pending).toBe(1)
     expect(dashboard.connector_health[0]?.connector_id).toBe('signals-pack')
     expect(requests).toEqual(['http://signals-web.local/api/pack/dashboard'])
@@ -615,6 +652,122 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.diagnostics.some(item => item.diagnostic_id === 'signals-state-root')).toBe(
       true,
     )
+  })
+
+  it('synthesizes a web1-only Signals dashboard with native cluster and backtest fields', async () => {
+    const requests: string[] = []
+    const fetchImpl: typeof fetch = async input => {
+      const url = String(input)
+      requests.push(url)
+
+      if (url === 'http://signals-web.local/api/pack/dashboard') {
+        return new Response(JSON.stringify({ error: 'not found' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+      if (url === 'http://signals-web.local/api/index/context') {
+        return new Response(
+          JSON.stringify({ label: '结构性机会', zt_total: 18 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/index/reports') {
+        return new Response(
+          JSON.stringify([{ symbol: 'sh000300', name: '沪深300' }]),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/prediction/overview') {
+        return new Response(
+          JSON.stringify({
+            stock_buy: [{ symbol: 'SZ.000001', name: 'Ping An', fused_total: 70 }],
+            stock_sell: [],
+            market_regime: { label: '结构性机会' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/review/results') {
+        return new Response(
+          JSON.stringify({ start_date: '2026-04-24', scored_symbols: [] }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/review/status') {
+        return new Response(
+          JSON.stringify({ is_running: false, completed: true }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/trade/summary') {
+        return new Response(
+          JSON.stringify({ total_trades: 2 }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/cluster/latest?top=5') {
+        return new Response(
+          JSON.stringify({
+            industry: { top: [{ label: '银行' }] },
+            concept: { top: [{ label: '中特估' }] },
+            market_status: { session_label: '盘中' },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/chart/sh000300?freq=daily') {
+        return new Response(
+          JSON.stringify({
+            meta: { symbol: 'sh000300', freq: 'daily' },
+            report: { conclusion: 'index stable', key_levels: [] },
+            report_signals: [],
+            signals: [],
+            ohlcv: [{ time: 1714003200, close: 3600 }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (
+        url ===
+        'http://signals-web.local/api/backtest/analyze?code=000001&freq=daily&signal_group=all&lookback=180'
+      ) {
+        return new Response(
+          JSON.stringify({
+            freq: 'daily',
+            forward_kpi: { total: 5, evaluated: 4 },
+            sim_kpi: { win_rate: 60 },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsWebBaseUrl: 'http://signals-web.local',
+      fetchImpl,
+    })
+
+    const dashboard = await client.getPackDashboard('signals')
+
+    expect(dashboard.pack_id).toBe('signals')
+    expect(dashboard.status).toBe('healthy')
+    expect(dashboard.overview.cluster_summary.industry_top[0]).toMatchObject({ label: '银行' })
+    expect(dashboard.backtest_summary.total).toBe(5)
+    expect(dashboard.backtest_jobs[0]?.source).toBe('web1')
+    expect(dashboard.daily_brief.market_bias).toBe('结构性机会')
+    expect(dashboard.decision_queue.some(item => item.symbol === 'SZ.000001')).toBe(true)
+    expect(dashboard.strategy_kpis.find(item => item.kpi_id === 'backtest_evaluated')?.value).toBe('4/5')
+    expect(
+      dashboard.source_confidence.find(item => item.source_id === 'signals-web1')?.status,
+    ).toBe('available')
+    expect(requests).toContain('http://signals-web.local/api/cluster/latest?top=5')
+    expect(requests).toContain(
+      'http://signals-web.local/api/backtest/analyze?code=000001&freq=daily&signal_group=all&lookback=180',
+    )
+    expect(requests.some(url => url.includes('signals-web2'))).toBe(false)
   })
 
   it('keeps Signals open in web2-only mode and marks empty state roots as degraded', async () => {

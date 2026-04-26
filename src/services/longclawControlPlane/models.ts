@@ -34,6 +34,38 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
 
+function stringListValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => stringValue(item) ?? (typeof item === 'number' ? String(item) : undefined))
+    .filter((item): item is string => Boolean(item))
+}
+
+function recordListValue(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  return value.map(item => recordValue(item))
+}
+
+function metricRecordListValue(
+  value: unknown,
+  labelKey: string,
+  valueKey: string,
+): Record<string, unknown>[] {
+  if (Array.isArray(value)) return recordListValue(value)
+  const record = recordValue(value)
+  const nested = record.items ?? record.kpis ?? record.metrics ?? record.sources
+  if (Array.isArray(nested)) return recordListValue(nested)
+  return Object.entries(record).map(([key, item]) => {
+    const itemRecord = recordValue(item)
+    if (Array.isArray(item)) {
+      return { [labelKey]: key, [valueKey]: item.length, metadata: { items: item } }
+    }
+    return Object.keys(itemRecord).length > 0
+      ? { [labelKey]: key, ...itemRecord }
+      : { [labelKey]: key, [valueKey]: item }
+  })
+}
+
 function enumValue<T extends readonly string[]>(value: unknown, candidates: T): T[number] | undefined {
   const normalized = stringValue(value)
   return normalized && (candidates as readonly string[]).includes(normalized)
@@ -832,6 +864,174 @@ const SignalsOverviewSchema = z.object({
   data_warning: z.string().default(''),
 })
 
+const SignalsDailyBriefSchema = z.preprocess(value => {
+  if (typeof value === 'string') return { summary: value }
+  const record = recordValue(value)
+  const riskNotes = stringListValue(record.risk_notes).join(' · ')
+  return {
+    ...record,
+    as_of:
+      stringValue(record.as_of) ??
+      stringValue(record.updated_at) ??
+      stringValue(record.generated_at) ??
+      '',
+    headline:
+      stringValue(record.headline) ??
+      stringValue(record.title) ??
+      '',
+    summary:
+      stringValue(record.summary) ??
+      stringValue(record.text) ??
+      stringValue(record.brief) ??
+      '',
+    bullets: stringListValue(
+      record.bullets ??
+        record.items ??
+        record.highlights ??
+        record.next_actions,
+    ),
+    market_bias:
+      stringValue(record.market_bias) ??
+      stringValue(record.market_line) ??
+      stringValue(record.bias) ??
+      '',
+    risk_note:
+      stringValue(record.risk_note) ??
+      (riskNotes || stringValue(record.warning)) ??
+      '',
+    metadata: recordValue(record.metadata),
+  }
+}, z.object({
+  as_of: z.string().default(''),
+  headline: z.string().default(''),
+  summary: z.string().default(''),
+  bullets: z.array(z.string()).default([]),
+  market_bias: z.string().default(''),
+  risk_note: z.string().default(''),
+  metadata: JsonRecordSchema.default({}),
+}).passthrough().default({
+  as_of: '',
+  headline: '',
+  summary: '',
+  bullets: [],
+  market_bias: '',
+  risk_note: '',
+  metadata: {},
+}))
+
+const SignalsDecisionQueueItemSchema = z.preprocess(value => {
+  if (typeof value === 'string') return { title: value }
+  const record = recordValue(value)
+  return {
+    ...record,
+    decision_id:
+      stringValue(record.decision_id) ??
+      stringValue(record.action_id) ??
+      stringValue(record.id) ??
+      stringValue(record.queue_id) ??
+      '',
+    title:
+      stringValue(record.title) ??
+      stringValue(record.label) ??
+      stringValue(record.symbol) ??
+      '',
+    summary:
+      stringValue(record.summary) ??
+      stringValue(record.next_action) ??
+      stringValue(record.reason) ??
+      stringValue(record.rationale) ??
+      '',
+    status: stringValue(record.status) ?? 'open',
+    priority: stringValue(record.priority) ?? '',
+    symbol: stringValue(record.symbol) ?? '',
+    action:
+      stringValue(record.action) ??
+      stringValue(record.recommended_action) ??
+      '',
+    rationale:
+      stringValue(record.rationale) ??
+      stringValue(record.reason) ??
+      '',
+    metadata: recordValue(record.metadata),
+    operator_actions: Array.isArray(record.operator_actions) ? record.operator_actions : [],
+  }
+}, z.object({
+  decision_id: z.string().default(''),
+  title: z.string().default(''),
+  summary: z.string().default(''),
+  status: z.string().default('open'),
+  priority: z.string().default(''),
+  symbol: z.string().default(''),
+  action: z.string().default(''),
+  rationale: z.string().default(''),
+  metadata: JsonRecordSchema.default({}),
+  operator_actions: z.array(LongclawOperatorActionSchema).default([]),
+}).passthrough())
+
+const SignalsStrategyKpiSchema = z.preprocess(value => {
+  const record = recordValue(value)
+  return {
+    ...record,
+    kpi_id:
+      stringValue(record.kpi_id) ??
+      stringValue(record.id) ??
+      stringValue(record.label) ??
+      '',
+    label:
+      stringValue(record.label) ??
+      stringValue(record.name) ??
+      stringValue(record.kpi_id) ??
+      '',
+    value: record.value ?? record.current ?? record.count ?? 0,
+    unit: stringValue(record.unit) ?? '',
+    status: stringValue(record.status) ?? '',
+    trend: stringValue(record.trend) ?? '',
+    metadata: recordValue(record.metadata),
+  }
+}, z.object({
+  kpi_id: z.string().default(''),
+  label: z.string().default(''),
+  value: z.union([z.number(), z.string()]).default(0),
+  unit: z.string().default(''),
+  status: z.string().default(''),
+  trend: z.string().default(''),
+  metadata: JsonRecordSchema.default({}),
+}).passthrough())
+
+const SignalsSourceConfidenceSchema = z.preprocess(value => {
+  const record = recordValue(value)
+  return {
+    ...record,
+    source_id:
+      stringValue(record.source_id) ??
+      stringValue(record.connector_id) ??
+      stringValue(record.name) ??
+      stringValue(record.id) ??
+      stringValue(record.label) ??
+      '',
+    label:
+      stringValue(record.label) ??
+      stringValue(record.name) ??
+      stringValue(record.source_id) ??
+      '',
+    confidence: record.confidence ?? record.score ?? 0,
+    status: stringValue(record.status) ?? stringValue(record.freshness) ?? '',
+    summary:
+      stringValue(record.summary) ??
+      stringValue(record.source) ??
+      stringValue(record.detail) ??
+      '',
+    metadata: recordValue(record.metadata),
+  }
+}, z.object({
+  source_id: z.string().default(''),
+  label: z.string().default(''),
+  confidence: z.union([z.number(), z.string()]).default(0),
+  status: z.string().default(''),
+  summary: z.string().default(''),
+  metadata: JsonRecordSchema.default({}),
+}).passthrough())
+
 export const SignalsDashboardSchema = z.object({
   pack_id: z.literal('signals'),
   title: z.string().default('Signals'),
@@ -844,6 +1044,16 @@ export const SignalsDashboardSchema = z.object({
     review_summary: {},
     data_warning: '',
   }),
+  daily_brief: SignalsDailyBriefSchema,
+  decision_queue: z.array(SignalsDecisionQueueItemSchema).default([]),
+  strategy_kpis: z.preprocess(
+    value => metricRecordListValue(value, 'label', 'value'),
+    z.array(SignalsStrategyKpiSchema).default([]),
+  ),
+  source_confidence: z.preprocess(
+    value => metricRecordListValue(value, 'label', 'confidence'),
+    z.array(SignalsSourceConfidenceSchema).default([]),
+  ),
   recent_runs: z.array(LongclawRunSchema).default([]),
   review_runs: z.array(LongclawRunSchema).default([]),
   buy_candidates: z.array(SignalsCandidateSchema).default([]),
