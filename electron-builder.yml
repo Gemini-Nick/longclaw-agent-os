@@ -1,0 +1,32 @@
+appId: com.zhangqilong.longclaw.agentos
+productName: 隆小侠 Agent OS
+copyright: Copyright © 2026 zhangqilong
+
+directories:
+  output: release
+  buildResources: electron/build-resources
+
+files:
+  - dist/**/*
+  - electron/dist/**/*
+  - package.json
+
+extraMetadata:
+  main: electron/dist/main.cjs
+
+extraResources:
+  - from: electron/build-resources/icon.png
+    to: icon.png
+
+asar: true
+compression: normal
+
+mac:
+  category: public.app-category.finance
+  icon: electron/build-resources/icon.icns
+  target:
+    - target: dir
+      arch:
+        - arm64
+  hardenedRuntime: false
+  gatekeeperAssess: false

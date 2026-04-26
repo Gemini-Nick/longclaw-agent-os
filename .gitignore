@@ -4,6 +4,11 @@ node_modules/
 # Build output
 dist/
 cli.mjs
+release/
+electron/build-resources/icon.iconset/
+electron/build-resources/icon.svg
+electron/build-resources/icon.png
+electron/build-resources/icon.icns
 
 # Native vendor binaries (platform-specific, download at install)
 vendor/

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, nativeImage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -62,9 +62,24 @@ import {
 
 const ELECTRON_DIST_DIR = __dirname
 const REPO_ROOT = path.resolve(ELECTRON_DIST_DIR, '..', '..')
-const PRODUCT_OBSERVATION_ROOT = path.join(REPO_ROOT, 'reports', 'product-observations')
+const PRODUCT_OBSERVATION_ROOT = path.resolve(
+  process.env.LONGCLAW_OBSERVATION_ROOT
+    || (
+      app.isPackaged
+        ? path.join(app.getPath('userData'), 'product-observations')
+        : path.join(REPO_ROOT, 'reports', 'product-observations')
+    ),
+)
 const LONGCLAW_LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Longclaw')
 const OBSERVATION_PRODUCT_LINE = 'longclaw-electron-signals'
+
+function resolveAppIconPath(): string | undefined {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'icon.png'),
+    path.join(REPO_ROOT, 'electron', 'build-resources', 'icon.png'),
+  ]
+  return candidates.find(candidate => candidate && fs.existsSync(candidate))
+}
 
 type ObservationCounterKey = 'events' | 'api_timings' | 'main_logs' | 'renderer_errors'
 
@@ -790,15 +805,21 @@ function applyWindowLocale(locale: string) {
 }
 
 function createWindow() {
+  const appIconPath = resolveAppIconPath()
+  if (process.platform === 'darwin' && appIconPath) {
+    app.dock?.setIcon(nativeImage.createFromPath(appIconPath))
+  }
   log('creating electron window', {
     run_id: observationState.run_id,
     observation_dir: observationState.observation_dir,
+    app_icon_path: appIconPath,
   })
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     y: 30,
     title: windowTitleForLocale(DEFAULT_LOCALE),
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

@@ -56,6 +56,11 @@ type WorkbenchShell = {
   indices?: Record<string, unknown>[]
   buy_candidates?: Record<string, unknown>[]
   watchlist?: Record<string, unknown>[]
+  watchlist_groups?: {
+    macro_indices?: Record<string, unknown>[]
+    sector_boards?: Record<string, unknown>[]
+    focus_stocks?: Record<string, unknown>[]
+  }
   watchlist_range_columns?: Record<string, unknown>[]
   cluster_summary?: Record<string, unknown>
   default_target?: {
@@ -73,6 +78,8 @@ type WorkbenchTarget = {
   requested_freq?: string
   effective_freq?: string
   available_freqs?: string[]
+  carrier_kind?: string
+  carrier_symbol?: string
 }
 
 type StrategySignal = {
@@ -137,8 +144,15 @@ type WatchlistRow = {
   latest: string
   dayChange: string
   rangeValues: string[]
+  signal: string
+  tags: string[]
+  targetKind: string
+  targetLabel: string
+  targetFreq: string
   raw: Record<string, unknown>
 }
+
+type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks'
 
 type ApiError = Error & {
   status?: number
@@ -149,6 +163,41 @@ type SignalOverlayData = {
   label: string
   side: 'buy' | 'sell'
   color: string
+}
+
+type DivergenceOverlayData = {
+  label: string
+  side: 'top' | 'bottom'
+  color: string
+  compact?: boolean
+}
+
+type MacdPoint = {
+  timestamp: number
+  dif?: number
+  dea?: number
+  histogram?: number
+}
+
+type PivotPoint = {
+  index: number
+  timestamp: number
+  price: number
+  dif: number
+  histogram: number
+}
+
+type MacdDivergenceSignal = {
+  id: string
+  type: 'bearish' | 'bullish'
+  timestamp: number
+  price: number
+  previousTimestamp: number
+  previousPrice: number
+  macdValue: number
+  previousMacdValue: number
+  confidence: number
+  metric: 'dif' | 'histogram'
 }
 
 const FREQ_OPTIONS: FrequencyOption[] = [
@@ -165,6 +214,8 @@ const WATCHLIST_RANGE_COLUMNS: WatchlistRangeColumn[] = [
 ]
 const SIGNAL_OVERLAY_NAME = 'longclawSignalMarker'
 const SIGNAL_OVERLAY_GROUP = 'longclaw-signals'
+const DIVERGENCE_OVERLAY_NAME = 'longclawMacdDivergenceMarker'
+const DIVERGENCE_OVERLAY_GROUP = 'longclaw-macd-divergence'
 const LEVEL_OVERLAY_GROUP = 'longclaw-levels'
 const CANDLE_PANE_ID = 'candle_pane'
 const MACD_PANE_ID = 'macd_pane'
@@ -181,8 +232,13 @@ const MA_COLORS = [
 const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
 
 let signalOverlayRegistered = false
+let divergenceOverlayRegistered = false
 let macdZeroIndicatorRegistered = false
 const terminalTheme = tradingDeskTheme.colors
+
+function solidLineStyle(color: string, size = 1) {
+  return { color, size, style: 'solid' as const, dashedValue: [0, 0] }
+}
 
 const terminalRootStyle: React.CSSProperties = {
   height: '100%',
@@ -228,7 +284,7 @@ const searchInputStyle: React.CSSProperties = {
 const terminalGridStyle: React.CSSProperties = {
   flex: 1,
   display: 'grid',
-  gridTemplateColumns: 'minmax(190px, 240px) minmax(0, 1fr) minmax(218px, 276px)',
+  gridTemplateColumns: 'minmax(420px, 460px) minmax(0, 1fr) minmax(218px, 276px)',
   gridTemplateRows: 'minmax(0, 1fr)',
   gap: 1,
   alignItems: 'stretch',
@@ -387,7 +443,7 @@ const watchlistTableStyle: React.CSSProperties = {
 
 const watchlistGridRowStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(84px, 1.35fr) 54px 50px repeat(3, 45px)',
+  gridTemplateColumns: 'minmax(126px, 1.35fr) 58px 52px 76px repeat(4, 56px)',
   minWidth: 0,
 }
 
@@ -479,6 +535,53 @@ const indicatorLegendItemStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 4,
   whiteSpace: 'nowrap',
+}
+
+const watchlistTabsStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 4,
+}
+
+const watchlistTabButtonStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  height: 28,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 12,
+  fontWeight: 800,
+  whiteSpace: 'nowrap',
+}
+
+const watchlistTabButtonActiveStyle: React.CSSProperties = {
+  ...watchlistTabButtonStyle,
+  border: `1px solid ${terminalTheme.accent}`,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+}
+
+const signalBadgeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 3,
+  justifyContent: 'flex-end',
+  alignItems: 'center',
+  minWidth: 0,
+  overflow: 'hidden',
+}
+
+const miniSignalBadgeStyle: React.CSSProperties = {
+  border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
+  borderRadius: 3,
+  background: tradingDeskTheme.alpha.infoSurface,
+  color: terminalTheme.infoText,
+  padding: '1px 3px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.2,
+  fontWeight: 800,
 }
 
 const indicatorLegendSwatchStyle: React.CSSProperties = {
@@ -727,46 +830,6 @@ async function fetchJson<T>(
   })
 }
 
-function symbolDataFromIndexChart(
-  label: string,
-  requestedFreq: string,
-  chart: Record<string, unknown>,
-): WorkbenchSymbolData {
-  const meta = recordValue(chart.meta)
-  const report = recordValue(chart.report)
-  const reportSignals = Array.isArray(chart.report_signals)
-    ? chart.report_signals.map(item => recordValue(item))
-    : []
-  const ohlcv = Array.isArray(chart.ohlcv) ? chart.ohlcv.map(item => recordValue(item)) : []
-  const lastBar = ohlcv[ohlcv.length - 1] ?? {}
-  return {
-    target: {
-      kind: 'index',
-      label,
-      symbol: compactText(meta.symbol) || compactText(meta.name) || label,
-      requested_freq: requestedFreq,
-      effective_freq: compactText(meta.freq, requestedFreq),
-      available_freqs: ['daily', '30min', '15min'],
-    },
-    chart,
-    summary: {
-      title: label,
-      subtitle: compactText(meta.symbol) || compactText(meta.name),
-      latest_price: numberValue(lastBar.close),
-      conclusion: compactText(report.conclusion),
-      latest_signal:
-        compactText(report.daily_latest_signal) ||
-        compactText(reportSignals[0]?.type),
-      key_levels: Array.isArray(report.key_levels) ? report.key_levels : [],
-    },
-    signals: Array.isArray(chart.signals) ? (chart.signals as StrategySignal[]) : [],
-    review: {},
-    trade: {},
-    analysis_target: '',
-    candidate_stocks: [],
-  }
-}
-
 function chartStyles(): DeepPartial<Styles> {
   return {
     grid: {
@@ -794,7 +857,7 @@ function chartStyles(): DeepPartial<Styles> {
       },
       priceMark: {
         last: {
-          line: { show: true, color: tradingDeskTheme.chart.line, size: 1 },
+          line: { show: true, ...solidLineStyle(tradingDeskTheme.chart.line, 1) },
           text: {
             show: true,
             color: terminalTheme.white,
@@ -806,7 +869,7 @@ function chartStyles(): DeepPartial<Styles> {
       },
     },
     indicator: {
-      lines: MA_COLORS.map(color => ({ color, size: 1, style: 'solid' })),
+      lines: MA_COLORS.map(color => solidLineStyle(color, 1)),
       bars: [
         {
           upColor: tradingDeskTheme.market.up,
@@ -832,11 +895,11 @@ function chartStyles(): DeepPartial<Styles> {
     },
     crosshair: {
       horizontal: {
-        line: { color: tradingDeskTheme.market.flat, size: 1 },
+        line: solidLineStyle(tradingDeskTheme.market.flat, 1),
         text: { color: terminalTheme.white, backgroundColor: terminalTheme.crosshair },
       },
       vertical: {
-        line: { color: tradingDeskTheme.market.flat, size: 1 },
+        line: solidLineStyle(tradingDeskTheme.market.flat, 1),
         text: { color: terminalTheme.white, backgroundColor: terminalTheme.crosshair },
       },
     },
@@ -853,7 +916,7 @@ function maPeriodsForFreq(freq?: string): number[] {
     return [5, 10, 20, 50]
   }
   if (normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily') {
-    return [5, 10, 20, 50, 60, 200]
+    return [5, 10, 20, 60]
   }
   return [5, 10, 20, 60]
 }
@@ -861,16 +924,14 @@ function maPeriodsForFreq(freq?: string): number[] {
 function maIndicatorStyles(periods: number[]): DeepPartial<IndicatorStyle> {
   return {
     lines: periods.map((period, index) => ({
-      color: MA_COLORS[index % MA_COLORS.length],
-      size: period >= 100 ? 1 : 1.2,
-      style: 'solid',
+      ...solidLineStyle(MA_COLORS[index % MA_COLORS.length], period >= 100 ? 1 : 1.2),
     })),
   }
 }
 
 function macdIndicatorStyles(): DeepPartial<IndicatorStyle> {
   return {
-    lines: MACD_LINE_COLORS.map(color => ({ color, size: 1.2, style: 'solid' })),
+    lines: MACD_LINE_COLORS.map(color => solidLineStyle(color, 1.2)),
     bars: [
       {
         upColor: tradingDeskTheme.market.up,
@@ -988,7 +1049,7 @@ function ensureSignalOverlay() {
               { x: point.x, y: stemEndY },
             ],
           },
-          styles: { color, size: 1 },
+          styles: solidLineStyle(color, 1),
           ignoreEvent: true,
         },
         {
@@ -1036,6 +1097,88 @@ function ensureSignalOverlay() {
   signalOverlayRegistered = true
 }
 
+function ensureDivergenceOverlay() {
+  if (divergenceOverlayRegistered) return
+  registerOverlay({
+    name: DIVERGENCE_OVERLAY_NAME,
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates }: OverlayCreateFiguresCallbackParams) => {
+      const previous = coordinates[0]
+      const current = coordinates[1] ?? coordinates[0]
+      if (!previous || !current) return []
+      const data = recordValue(overlay.extendData) as DivergenceOverlayData
+      const side = data.side === 'bottom' ? 'bottom' : 'top'
+      const color = data.color || (side === 'top' ? tradingDeskTheme.market.up : tradingDeskTheme.market.down)
+      const label = data.label || (side === 'top' ? '顶背离' : '底背离')
+      const compact = Boolean(data.compact)
+      const width = compact ? Math.max(42, label.length * 8 + 12) : 58
+      const height = compact ? 16 : 20
+      const gap = compact ? 6 : 10
+      const rectX = current.x - width / 2
+      const rectY = side === 'top' ? current.y - gap - height : current.y + gap
+      const pointerY = side === 'top' ? rectY + height : rectY
+      const tipY = side === 'top' ? current.y - 2 : current.y + 2
+
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: previous.x, y: previous.y },
+              { x: current.x, y: current.y },
+            ],
+          },
+          styles: { color, size: compact ? 1 : 1.4, style: 'dashed', dashedValue: [4, 3] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: current.x, y: tipY },
+              { x: current.x, y: pointerY },
+            ],
+          },
+          styles: solidLineStyle(color, 1),
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color,
+            borderColor: tradingDeskTheme.alpha.textBorderStrong,
+            borderRadius: 4,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: current.x,
+            y: rectY + height / 2,
+            text: label,
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: {
+            color: terminalTheme.white,
+            size: compact ? 9 : 10,
+            weight: 800,
+            family: fontStacks.ui,
+          },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+  divergenceOverlayRegistered = true
+}
+
 function toKLineData(rawChart: Record<string, unknown> | undefined): KLineData[] {
   const rows = Array.isArray(rawChart?.ohlcv) ? rawChart.ohlcv : []
   return rows
@@ -1079,6 +1222,227 @@ function keyLevelsFromSymbolData(symbolData: WorkbenchSymbolData | null): Strate
 
 function latestClose(data: KLineData[]): number | undefined {
   return data[data.length - 1]?.close
+}
+
+function movingAverageLevel(data: KLineData[], period: number): number | undefined {
+  if (data.length < period) return undefined
+  const window = data.slice(-period)
+  const sum = window.reduce((total, item) => total + item.close, 0)
+  return sum / period
+}
+
+function isDailyFreq(freq?: string): boolean {
+  const normalized = String(freq ?? '').toLowerCase()
+  return normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily'
+}
+
+function derivedMaKeyLevels(data: KLineData[], freq?: string): StrategyKeyLevel[] {
+  if (!isDailyFreq(freq)) return []
+  return [50, 200]
+    .map(period => {
+      const value = movingAverageLevel(data, period)
+      if (value === undefined) return null
+      const close = latestClose(data)
+      return {
+        name: `${period}日线`,
+        value,
+        role: period === 200 ? '长期趋势压力/支撑' : '阶段底部/成本线',
+        position: close !== undefined && close >= value ? '下方' : '上方',
+        distance_pct: close !== undefined && value > 0 ? ((value - close) / close) * 100 : null,
+        timeframe: 'daily',
+      } satisfies StrategyKeyLevel
+    })
+    .filter((item): item is StrategyKeyLevel => Boolean(item))
+}
+
+function mergeKeyLevels(base: StrategyKeyLevel[], derived: StrategyKeyLevel[]): StrategyKeyLevel[] {
+  const output: StrategyKeyLevel[] = []
+  const seen = new Set<string>()
+  ;[...base, ...derived].forEach(level => {
+    const value = numberValue(level.value)
+    const name = compactText(level.name)
+    const key = `${name}:${value === undefined ? '' : value.toFixed(2)}`
+    if (!name && value === undefined) return
+    if (seen.has(key)) return
+    seen.add(key)
+    output.push(level)
+  })
+  return output
+}
+
+function divergenceWindowForFreq(freq?: string): number {
+  const normalized = String(freq ?? '').toLowerCase()
+  if (normalized.includes('week') || normalized === 'w' || normalized === '1w') return 2
+  if (normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily') return 3
+  return 4
+}
+
+function divergenceMinPriceMoveForFreq(freq?: string): number {
+  const normalized = String(freq ?? '').toLowerCase()
+  if (normalized.includes('week') || normalized === 'w' || normalized === '1w') return 0.012
+  if (normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily') return 0.008
+  return 0.003
+}
+
+function calculateMacdPoints(data: KLineData[]): MacdPoint[] {
+  let closeSum = 0
+  let emaShort: number | undefined
+  let emaLong: number | undefined
+  let dif = 0
+  let difSum = 0
+  let dea = 0
+  const [shortPeriod, longPeriod, signalPeriod] = MACD_PARAMS
+  const maxPeriod = Math.max(shortPeriod, longPeriod)
+
+  return data.map((item, index) => {
+    const close = item.close
+    closeSum += close
+    if (index >= shortPeriod - 1) {
+      emaShort = index > shortPeriod - 1 && emaShort !== undefined
+        ? (2 * close + (shortPeriod - 1) * emaShort) / (shortPeriod + 1)
+        : closeSum / shortPeriod
+    }
+    if (index >= longPeriod - 1) {
+      emaLong = index > longPeriod - 1 && emaLong !== undefined
+        ? (2 * close + (longPeriod - 1) * emaLong) / (longPeriod + 1)
+        : closeSum / longPeriod
+    }
+    const macd: MacdPoint = { timestamp: item.timestamp }
+    if (index >= maxPeriod - 1 && emaShort !== undefined && emaLong !== undefined) {
+      dif = emaShort - emaLong
+      macd.dif = dif
+      difSum += dif
+      if (index >= maxPeriod + signalPeriod - 2) {
+        dea = index > maxPeriod + signalPeriod - 2
+          ? (dif * 2 + dea * (signalPeriod - 1)) / (signalPeriod + 1)
+          : difSum / signalPeriod
+        macd.dea = dea
+        macd.histogram = (dif - dea) * 2
+      }
+    }
+    return macd
+  })
+}
+
+function hasMacdValue(value: MacdPoint | undefined): value is MacdPoint & { dif: number; histogram: number } {
+  return value?.dif !== undefined && value.histogram !== undefined
+}
+
+function findSwingHighs(data: KLineData[], macd: MacdPoint[], windowSize: number): PivotPoint[] {
+  const output: PivotPoint[] = []
+  for (let index = windowSize; index < data.length - windowSize; index += 1) {
+    const current = data[index]
+    const macdPoint = macd[index]
+    if (!current || !hasMacdValue(macdPoint)) continue
+    let isPivot = true
+    for (let offset = 1; offset <= windowSize; offset += 1) {
+      if (current.high <= data[index - offset].high || current.high < data[index + offset].high) {
+        isPivot = false
+        break
+      }
+    }
+    if (isPivot) {
+      output.push({
+        index,
+        timestamp: current.timestamp,
+        price: current.high,
+        dif: macdPoint.dif,
+        histogram: macdPoint.histogram,
+      })
+    }
+  }
+  return output
+}
+
+function findSwingLows(data: KLineData[], macd: MacdPoint[], windowSize: number): PivotPoint[] {
+  const output: PivotPoint[] = []
+  for (let index = windowSize; index < data.length - windowSize; index += 1) {
+    const current = data[index]
+    const macdPoint = macd[index]
+    if (!current || !hasMacdValue(macdPoint)) continue
+    let isPivot = true
+    for (let offset = 1; offset <= windowSize; offset += 1) {
+      if (current.low >= data[index - offset].low || current.low > data[index + offset].low) {
+        isPivot = false
+        break
+      }
+    }
+    if (isPivot) {
+      output.push({
+        index,
+        timestamp: current.timestamp,
+        price: current.low,
+        dif: macdPoint.dif,
+        histogram: macdPoint.histogram,
+      })
+    }
+  }
+  return output
+}
+
+function weakeningRatio(previousValue: number, currentValue: number, type: 'bearish' | 'bullish'): number {
+  const denominator = Math.max(Math.abs(previousValue), Math.abs(currentValue), 0.000001)
+  const delta = type === 'bearish' ? previousValue - currentValue : currentValue - previousValue
+  return delta / denominator
+}
+
+function divergenceConfidence(priceMove: number, indicatorWeakening: number): number {
+  return Math.min(0.99, 0.45 + Math.min(priceMove * 18, 0.28) + Math.min(indicatorWeakening * 1.1, 0.26))
+}
+
+function divergenceFromPivots(
+  previous: PivotPoint,
+  current: PivotPoint,
+  type: 'bearish' | 'bullish',
+  minPriceMove: number,
+): MacdDivergenceSignal | null {
+  const priceMove = type === 'bearish'
+    ? (current.price - previous.price) / Math.max(Math.abs(previous.price), 0.000001)
+    : (previous.price - current.price) / Math.max(Math.abs(previous.price), 0.000001)
+  if (priceMove < minPriceMove) return null
+
+  const difWeakening = weakeningRatio(previous.dif, current.dif, type)
+  const histogramWeakening = weakeningRatio(previous.histogram, current.histogram, type)
+  const metric = histogramWeakening >= difWeakening ? 'histogram' : 'dif'
+  const indicatorWeakening = Math.max(difWeakening, histogramWeakening)
+  if (indicatorWeakening < 0.08) return null
+
+  const macdValue = metric === 'histogram' ? current.histogram : current.dif
+  const previousMacdValue = metric === 'histogram' ? previous.histogram : previous.dif
+  return {
+    id: `${type}:${previous.timestamp}:${current.timestamp}:${metric}`,
+    type,
+    timestamp: current.timestamp,
+    price: current.price,
+    previousTimestamp: previous.timestamp,
+    previousPrice: previous.price,
+    macdValue,
+    previousMacdValue,
+    confidence: divergenceConfidence(priceMove, indicatorWeakening),
+    metric,
+  }
+}
+
+function macdDivergences(data: KLineData[], freq?: string): MacdDivergenceSignal[] {
+  if (data.length < 42) return []
+  const windowSize = divergenceWindowForFreq(freq)
+  const minPriceMove = divergenceMinPriceMoveForFreq(freq)
+  const macd = calculateMacdPoints(data)
+  const highs = findSwingHighs(data, macd, windowSize)
+  const lows = findSwingLows(data, macd, windowSize)
+  const candidates: MacdDivergenceSignal[] = []
+  for (let index = 1; index < highs.length; index += 1) {
+    const signal = divergenceFromPivots(highs[index - 1], highs[index], 'bearish', minPriceMove)
+    if (signal) candidates.push(signal)
+  }
+  for (let index = 1; index < lows.length; index += 1) {
+    const signal = divergenceFromPivots(lows[index - 1], lows[index], 'bullish', minPriceMove)
+    if (signal) candidates.push(signal)
+  }
+  return candidates
+    .filter(signal => signal.confidence >= 0.58)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-6)
 }
 
 function signalTimestamp(signal: StrategySignal): number | undefined {
@@ -1126,7 +1490,24 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
   chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
   const timestamp = data[data.length - 1]?.timestamp
   if (!timestamp) return
-  keyLevels.slice(0, 8).forEach(level => {
+  const close = latestClose(data)
+  const visibleLevels: StrategyKeyLevel[] = []
+  keyLevels
+    .map(level => ({ level, value: numberValue(level.value) }))
+    .filter((item): item is { level: StrategyKeyLevel; value: number } => item.value !== undefined)
+    .sort((left, right) => {
+      if (close === undefined) return 0
+      return Math.abs(left.value - close) - Math.abs(right.value - close)
+    })
+    .forEach(item => {
+      const tooClose = visibleLevels.some(existing => {
+        const existingValue = numberValue(existing.value)
+        if (existingValue === undefined) return false
+        return Math.abs(existingValue - item.value) / Math.max(Math.abs(item.value), 0.000001) < 0.003
+      })
+      if (!tooClose && visibleLevels.length < 8) visibleLevels.push(item.level)
+    })
+  visibleLevels.forEach(level => {
     const value = numberValue(level.value)
     if (value === undefined) return
     chart.createOverlay({
@@ -1136,7 +1517,7 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
       points: [{ timestamp, value }],
       extendData: [level.name, value.toFixed(2)].filter(Boolean).join(' '),
       styles: {
-        line: { color: tradingDeskTheme.chart.line, size: 1 },
+        line: solidLineStyle(tradingDeskTheme.chart.line, 1),
         text: {
           color: terminalTheme.white,
           backgroundColor: tradingDeskTheme.chart.line,
@@ -1144,6 +1525,51 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
         },
       },
     })
+  })
+}
+
+function createDivergenceOverlays(chart: Chart, divergences: MacdDivergenceSignal[]) {
+  chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
+  divergences.forEach(signal => {
+    const bearish = signal.type === 'bearish'
+    const color = bearish ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
+    const label = bearish ? '顶背离' : '底背离'
+    const side = bearish ? 'top' : 'bottom'
+    chart.createOverlay(
+      {
+        name: DIVERGENCE_OVERLAY_NAME,
+        groupId: DIVERGENCE_OVERLAY_GROUP,
+        lock: true,
+        points: [
+          { timestamp: signal.previousTimestamp, value: signal.previousPrice },
+          { timestamp: signal.timestamp, value: signal.price },
+        ],
+        extendData: {
+          label,
+          side,
+          color,
+        } satisfies DivergenceOverlayData,
+      },
+      CANDLE_PANE_ID,
+    )
+    chart.createOverlay(
+      {
+        name: DIVERGENCE_OVERLAY_NAME,
+        groupId: DIVERGENCE_OVERLAY_GROUP,
+        lock: true,
+        points: [
+          { timestamp: signal.previousTimestamp, value: signal.previousMacdValue },
+          { timestamp: signal.timestamp, value: signal.macdValue },
+        ],
+        extendData: {
+          label: signal.metric === 'histogram' ? '柱背离' : 'DIF背离',
+          side,
+          color,
+          compact: true,
+        } satisfies DivergenceOverlayData,
+      },
+      MACD_PANE_ID,
+    )
   })
 }
 
@@ -1319,6 +1745,53 @@ function readRangeReturn(row: Record<string, unknown>, column: WatchlistRangeCol
   return undefined
 }
 
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(item => compactText(item)).filter(Boolean)
+    : []
+}
+
+function timeframeBadges(row: Record<string, unknown>): string[] {
+  const raw = row.buy_timeframes
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map(item => {
+      const record = recordValue(item)
+      return compactText(record.badge) || compactText(record.freq)
+    })
+    .filter(Boolean)
+}
+
+function signalForWatchlist(row: Record<string, unknown>, kind: string): string {
+  const badges = timeframeBadges(row)
+  if (badges.length > 0) return badges.join('/')
+  if (kind === 'industry' || kind === 'concept') {
+    return compactText(row.leader) || compactText(recordValue(row.carrier).name) || compactText(row.source)
+  }
+  return (
+    compactText(row.latest_signal) ||
+    compactText(row.signal) ||
+    compactText(row.reason) ||
+    compactText(row.direction)
+  )
+}
+
+function tagsForWatchlist(row: Record<string, unknown>, kind: string): string[] {
+  const mapping = recordValue(row.mapping_chain)
+  const carrier = recordValue(row.carrier)
+  const tags = [
+    ...stringArrayValue(row.theme_tags),
+    compactText(mapping.chain_name),
+    compactText(mapping.node_name),
+    compactText(carrier.name),
+    compactText(row.source),
+  ].filter(Boolean)
+  if (kind === 'stock') {
+    tags.unshift(...timeframeBadges(row))
+  }
+  return Array.from(new Set(tags)).slice(0, 4)
+}
+
 function latestValueForWatchlist(row: Record<string, unknown>): string {
   const value =
     row.latest_price ??
@@ -1397,6 +1870,8 @@ function toWatchlistRow(
     if (columnIndex === 0) return dayChange
     return 'N/A'
   })
+  const targetKind = compactText(row.target_kind) || kind
+  const targetLabel = compactText(row.target_label) || label
   return {
     id: `${watchlistDedupeKey(row, kind)}:${index}`,
     kind,
@@ -1407,8 +1882,31 @@ function toWatchlistRow(
     latest: latestValueForWatchlist(row),
     dayChange,
     rangeValues,
+    signal: signalForWatchlist(row, kind),
+    tags: tagsForWatchlist(row, kind),
+    targetKind,
+    targetLabel,
+    targetFreq: compactText(row.target_freq) || (kind === 'industry' || kind === 'concept' ? 'daily' : ''),
     raw: row,
   }
+}
+
+function buildRowsForGroup(
+  rows: Record<string, unknown>[],
+  fallbackKind: string,
+  rangeColumns: WatchlistRangeColumn[],
+): WatchlistRow[] {
+  const seen = new Set<string>()
+  const output: WatchlistRow[] = []
+  rows.forEach((row, index) => {
+    const kind = kindForTarget(row, fallbackKind)
+    const key = watchlistDedupeKey(row, kind)
+    if (seen.has(key)) return
+    seen.add(key)
+    const item = toWatchlistRow(row, kind, index, rangeColumns)
+    if (item) output.push(item)
+  })
+  return output
 }
 
 function buildWatchlistRows({
@@ -1467,12 +1965,12 @@ function watchlistRangeColumnsFromShell(shell: WorkbenchShell | null): Watchlist
       } satisfies WatchlistRangeColumn
     })
     .filter((column): column is WatchlistRangeColumn => Boolean(column))
-  return columns.length > 0 ? columns.slice(0, 4) : WATCHLIST_RANGE_COLUMNS
+  return columns.length > 0 ? columns : WATCHLIST_RANGE_COLUMNS
 }
 
 function watchlistRowIsActive(row: WatchlistRow, target: ChartTarget): boolean {
-  if (row.kind !== target.kind) return false
-  return row.label === target.label || row.code === target.label || row.name === target.label
+  if ((row.targetKind || row.kind) !== target.kind) return false
+  return row.targetLabel === target.label || row.label === target.label || row.code === target.label || row.name === target.label
 }
 
 export function StrategyChartTerminal({
@@ -1498,6 +1996,7 @@ export function StrategyChartTerminal({
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
+  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('macro_indices')
 
   const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
@@ -1522,24 +2021,42 @@ export function StrategyChartTerminal({
   const buyRows = shellBuyCandidates.length > 0
     ? shellBuyCandidates
     : dashboard.buy_candidates as Array<Record<string, unknown>>
+  const targetCandidateRows = Array.isArray(symbolData?.candidate_stocks) ? symbolData.candidate_stocks : []
   const sellRows = dashboard.sell_warnings as Array<Record<string, unknown>>
   const indexTargets = shell?.indices ?? []
   const clusterRows = rowsFromCluster(shell?.cluster_summary)
   const shellWatchlist = Array.isArray(shell?.watchlist) ? shell.watchlist : []
   const watchlistRangeColumns = useMemo(() => watchlistRangeColumnsFromShell(shell), [shell])
-  const watchlistRows = useMemo(
-    () =>
-      buildWatchlistRows({
-        watchlist: shellWatchlist,
-        indices: indexTargets,
-        buyRows,
-        sellRows,
-        decisionRows,
-        clusterRows,
-        rangeColumns: watchlistRangeColumns,
-      }),
-    [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shellWatchlist, watchlistRangeColumns],
-  )
+  const groupedWatchlistRows = useMemo(() => {
+    const groups = shell?.watchlist_groups ?? {}
+    const macroRows = Array.isArray(groups.macro_indices) && groups.macro_indices.length > 0
+      ? groups.macro_indices
+      : indexTargets
+    const sectorRows = Array.isArray(groups.sector_boards) && groups.sector_boards.length > 0
+      ? groups.sector_boards
+      : clusterRows
+    const focusRows = Array.isArray(groups.focus_stocks) && groups.focus_stocks.length > 0
+      ? groups.focus_stocks
+      : buyRows
+    const legacyRows = buildWatchlistRows({
+      watchlist: shellWatchlist,
+      indices: indexTargets,
+      buyRows,
+      sellRows,
+      decisionRows,
+      clusterRows,
+      rangeColumns: watchlistRangeColumns,
+    })
+    return {
+      macro_indices: buildRowsForGroup(macroRows, 'index', watchlistRangeColumns),
+      sector_boards: buildRowsForGroup(sectorRows, 'industry', watchlistRangeColumns),
+      focus_stocks: buildRowsForGroup(focusRows, 'stock', watchlistRangeColumns),
+      legacy: legacyRows,
+    }
+  }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, watchlistRangeColumns])
+  const activeWatchlistRows = groupedWatchlistRows[activeWatchlistTab].length > 0
+    ? groupedWatchlistRows[activeWatchlistTab]
+    : groupedWatchlistRows.legacy
   const latestSignal = compactText(symbolData?.summary?.latest_signal, dashboard.chart_context?.latest_signal ?? '')
   const summaryTitle =
     compactText(symbolData?.summary?.title) ||
@@ -1551,6 +2068,11 @@ export function StrategyChartTerminal({
     compactText(symbolData?.target?.kind, target.kind)
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
   const activeMaPeriods = useMemo(() => maPeriodsForFreq(currentFreq), [currentFreq])
+  const divergences = useMemo(() => macdDivergences(klineData, currentFreq), [currentFreq, klineData])
+  const chartKeyLevels = useMemo(
+    () => mergeKeyLevels(keyLevels, derivedMaKeyLevels(klineData, currentFreq)),
+    [currentFreq, keyLevels, klineData],
+  )
   const requestedFreq = symbolData?.target?.requested_freq
   const effectiveFreq = symbolData?.target?.effective_freq
   const freqFallbackNotice =
@@ -1583,29 +2105,16 @@ export function StrategyChartTerminal({
       if (!options.silent) setLoading(true)
       setError(null)
       try {
-        const nextSymbolData =
-          nextTarget.kind === 'index'
-            ? symbolDataFromIndexChart(
-                nextTarget.label,
-                nextTarget.freq || 'daily',
-                await fetchJson<Record<string, unknown>>(
-                  baseUrl,
-                  `/api/chart/${encodeURIComponent(nextTarget.label)}?freq=${encodeURIComponent(nextTarget.freq || 'daily')}`,
-                  options.signal,
-                  'strategy.chart',
-                  options.silent ? 'background-refresh' : 'load-symbol',
-                ),
-              )
-            : await fetchJson<WorkbenchSymbolData>(
-                baseUrl,
-                `/api/workbench/symbol/${encodeURIComponent(nextTarget.label)}?${new URLSearchParams({
-                  kind: nextTarget.kind || 'auto',
-                  freq: nextTarget.freq || 'daily',
-                }).toString()}`,
-                options.signal,
-                'strategy.symbol',
-                options.silent ? 'background-refresh' : 'load-symbol',
-              )
+        const nextSymbolData = await fetchJson<WorkbenchSymbolData>(
+          baseUrl,
+          `/api/workbench/symbol/${encodeURIComponent(nextTarget.label)}?${new URLSearchParams({
+            kind: nextTarget.kind || 'auto',
+            freq: nextTarget.freq || 'daily',
+          }).toString()}`,
+          options.signal,
+          'strategy.symbol',
+          options.silent ? 'background-refresh' : 'load-symbol',
+        )
         if (requestId !== activeRequestRef.current) return
         lastChartUpdateSilentRef.current = Boolean(options.silent)
         setSymbolData(nextSymbolData)
@@ -1628,11 +2137,11 @@ export function StrategyChartTerminal({
           }
           setTarget(previous => {
             const effectiveKind = compactText(effectiveTarget.kind, previous.kind)
+            const keepsLogicalLabel = ['index', 'industry', 'concept'].includes(effectiveKind)
             return {
-              label:
-                effectiveKind === 'index'
-                  ? previous.label
-                  : compactText(effectiveTarget.symbol) || compactText(effectiveTarget.label) || previous.label,
+              label: keepsLogicalLabel
+                ? compactText(effectiveTarget.label, previous.label)
+                : compactText(effectiveTarget.symbol) || compactText(effectiveTarget.label) || previous.label,
               kind: effectiveKind,
               freq: compactText(effectiveTarget.effective_freq, previous.freq),
             }
@@ -1733,6 +2242,7 @@ export function StrategyChartTerminal({
   useEffect(() => {
     if (!chartContainerRef.current) return
     ensureSignalOverlay()
+    ensureDivergenceOverlay()
     ensureMacdZeroIndicator()
     const chart = init(chartContainerRef.current, {
       locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
@@ -1784,18 +2294,20 @@ export function StrategyChartTerminal({
     if (!chart) return
     chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
     if (klineData.length === 0) {
       chart.clearData()
       return
     }
     chart.applyNewData(klineData)
     createSignalOverlays(chart, klineData, signals)
-    createLevelOverlays(chart, klineData, keyLevels)
+    createLevelOverlays(chart, klineData, chartKeyLevels)
+    createDivergenceOverlays(chart, divergences)
     if (!lastChartUpdateSilentRef.current) {
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [klineData, keyLevels, signals])
+  }, [chartKeyLevels, divergences, klineData, signals])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
@@ -1890,7 +2402,7 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? 'Decision queue' : 'Decision queue'}
+            title={locale === 'zh-CN' ? '交易员待办' : 'Trader queue'}
             rows={decisionRows.map(item => ({
               ...item,
               name: compactText(item.title) || compactText(item.symbol) || compactText(item.decision_id),
@@ -1906,7 +2418,7 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? 'Strategy KPI' : 'Strategy KPIs'}
+            title={locale === 'zh-CN' ? '策略验收' : 'Strategy checks'}
             rows={strategyKpis.map(item => ({
               ...item,
               name: compactText(item.label) || compactText(item.kpi_id),
@@ -1927,7 +2439,7 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? 'Source confidence' : 'Source confidence'}
+            title={locale === 'zh-CN' ? '数据可信度' : 'Data confidence'}
             rows={sourceConfidence.map(item => ({
               ...item,
               connector_id: compactText(item.source_id) || compactText(item.label),
@@ -2034,110 +2546,25 @@ export function StrategyChartTerminal({
             title={locale === 'zh-CN' ? '主观察列表' : 'Watchlist'}
             meta={marketLabel(shell?.session, locale)}
           >
-            <WatchlistTable
-              rows={watchlistRows}
+            <WatchlistTabbedTable
+              locale={locale}
+              activeTab={activeWatchlistTab}
+              onTabChange={setActiveWatchlistTab}
+              groups={groupedWatchlistRows}
+              rows={activeWatchlistRows}
               target={target}
               rangeColumns={watchlistRangeColumns}
               emptyText={locale === 'zh-CN' ? '等待 Signals shell。' : 'Waiting for Signals shell.'}
               onSelect={row =>
                 selectTarget(
-                  { label: row.label, kind: row.kind, freq: target.freq },
+                  {
+                    label: row.targetLabel || row.label,
+                    kind: row.targetKind || row.kind,
+                    freq: row.targetFreq || target.freq,
+                  },
                   'strategy.watchlist.click',
                 )
               }
-            />
-          </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '买入候选' : 'Buy candidates'}
-            meta={String(buyRows.length)}
-          >
-            <TargetRows
-              rows={buyRows}
-              emptyText={locale === 'zh-CN' ? '暂无买入候选。' : 'No buy candidates.'}
-              onSelect={row => {
-                const label = labelForTarget(row)
-                if (label) {
-                  selectTarget(
-                    { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
-                    'strategy.buy-candidate.click',
-                  )
-                }
-              }}
-            />
-          </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '交易员待办' : 'Trader queue'}
-            meta={String(decisionRows.length)}
-          >
-            {decisionRows.length === 0 ? (
-              <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无待决策事项。' : 'No decisions waiting.'}
-              </div>
-            ) : (
-              <div style={compactListStyle}>
-                {decisionRows.slice(0, 6).map((row, index) => (
-                  <button
-                    key={`${compactText(row.decision_id, 'decision')}-${index}`}
-                    type="button"
-                    style={targetButtonStyle}
-                    onClick={() =>
-                      onOpenRecord(
-                        locale === 'zh-CN'
-                          ? `决策 ${String(row.symbol ?? row.decision_id ?? 'queue')}`
-                          : `Decision ${String(row.symbol ?? row.decision_id ?? 'queue')}`,
-                        row,
-                      )
-                    }
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={rowTitleStyle}>
-                        {compactText(row.title) || compactText(row.symbol) || 'Decision'}
-                      </div>
-                      <div style={monoTextStyle}>{compactText(row.priority)}</div>
-                    </div>
-                    <div style={mutedTextStyle}>
-                      {[compactText(row.action_label) || compactText(row.action), compactText(row.summary), compactText(row.recommended_action)]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '卖出预警' : 'Sell warnings'}
-            meta={String(sellRows.length)}
-          >
-            <TargetRows
-              rows={sellRows}
-              emptyText={locale === 'zh-CN' ? '暂无卖出预警。' : 'No sell warnings.'}
-              onSelect={row => {
-                const label = labelForTarget(row)
-                if (label) {
-                  selectTarget(
-                    { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
-                    'strategy.sell-warning.click',
-                  )
-                }
-              }}
-            />
-          </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '行业 / 概念' : 'Sectors'}
-            meta={clusterRows.length ? 'gateway' : ''}
-          >
-            <TargetRows
-              rows={clusterRows.slice(0, 8)}
-              emptyText={locale === 'zh-CN' ? '暂无聚类方向。' : 'No cluster directions.'}
-              onSelect={row => {
-                const label = labelForTarget(row)
-                if (label) selectTarget({ label, kind: kindForTarget(row, 'industry'), freq: 'daily' }, 'strategy.cluster.click')
-              }}
             />
           </Panel>
         </div>
@@ -2168,6 +2595,16 @@ export function StrategyChartTerminal({
                 <span style={indicatorLegendItemStyle}>
                   <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.alpha.textBorderStrong }} />
                   MACD 0
+                </span>
+                {isDailyFreq(currentFreq) ? (
+                  <span style={indicatorLegendItemStyle}>
+                    <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.chart.line }} />
+                    MA50/200关键位
+                  </span>
+                ) : null}
+                <span style={indicatorLegendItemStyle}>
+                  <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up }} />
+                  {locale === 'zh-CN' ? `背离 ${divergences.length}` : `Divergence ${divergences.length}`}
                 </span>
               </div>
             </div>
@@ -2228,6 +2665,66 @@ export function StrategyChartTerminal({
 
         <div style={terminalSideStyle}>
           <Panel
+            title={locale === 'zh-CN' ? '交易员待办' : 'Trader queue'}
+            meta={String(decisionRows.length)}
+          >
+            {decisionRows.length === 0 ? (
+              <div style={emptyStateDarkStyle}>
+                {locale === 'zh-CN' ? '暂无待决策事项。' : 'No decisions waiting.'}
+              </div>
+            ) : (
+              <div style={compactListStyle}>
+                {decisionRows.slice(0, 5).map((row, index) => (
+                  <button
+                    key={`${compactText(row.decision_id, 'decision')}-${index}`}
+                    type="button"
+                    style={targetButtonStyle}
+                    onClick={() =>
+                      onOpenRecord(
+                        locale === 'zh-CN'
+                          ? `决策 ${String(row.symbol ?? row.decision_id ?? 'queue')}`
+                          : `Decision ${String(row.symbol ?? row.decision_id ?? 'queue')}`,
+                        row,
+                      )
+                    }
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={rowTitleStyle}>
+                        {compactText(row.title) || compactText(row.symbol) || 'Decision'}
+                      </div>
+                      <div style={monoTextStyle}>{compactText(row.priority)}</div>
+                    </div>
+                    <div style={mutedTextStyle}>
+                      {[compactText(row.action_label) || compactText(row.action), compactText(row.summary), compactText(row.recommended_action)]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title={locale === 'zh-CN' ? '卖出预警' : 'Sell warnings'}
+            meta={String(sellRows.length)}
+          >
+            <TargetRows
+              rows={sellRows}
+              emptyText={locale === 'zh-CN' ? '暂无卖出预警。' : 'No sell warnings.'}
+              onSelect={row => {
+                const label = labelForTarget(row)
+                if (label) {
+                  selectTarget(
+                    { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
+                    'strategy.sell-warning.click',
+                  )
+                }
+              }}
+            />
+          </Panel>
+
+          <Panel
             title={locale === 'zh-CN' ? '买卖点' : 'Signals'}
             meta={String(signals.length)}
           >
@@ -2258,17 +2755,38 @@ export function StrategyChartTerminal({
             )}
           </Panel>
 
+          {targetCandidateRows.length > 0 ? (
+            <Panel
+              title={locale === 'zh-CN' ? '代表股候选' : 'Representatives'}
+              meta={String(targetCandidateRows.length)}
+            >
+              <TargetRows
+                rows={targetCandidateRows}
+                emptyText={locale === 'zh-CN' ? '暂无代表股候选。' : 'No representatives.'}
+                onSelect={row => {
+                  const label = labelForTarget(row)
+                  if (label) {
+                    selectTarget(
+                      { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
+                      'strategy.representative.click',
+                    )
+                  }
+                }}
+              />
+            </Panel>
+          ) : null}
+
           <Panel
             title={locale === 'zh-CN' ? '关键位' : 'Key levels'}
-            meta={String(keyLevels.length)}
+            meta={String(chartKeyLevels.length)}
           >
-            {keyLevels.length === 0 ? (
+            {chartKeyLevels.length === 0 ? (
               <div style={emptyStateDarkStyle}>
                 {locale === 'zh-CN' ? '暂无关键位。' : 'No key levels.'}
               </div>
             ) : (
               <div style={compactListStyle}>
-                {keyLevels.slice(0, 8).map(level => (
+                {chartKeyLevels.slice(0, 8).map(level => (
                   <div key={`${level.name ?? 'level'}-${level.value ?? ''}`} style={dataRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                       <div style={rowTitleStyle}>{level.name || 'Level'}</div>
@@ -2377,6 +2895,74 @@ function Panel({
   )
 }
 
+function WatchlistTabbedTable({
+  locale,
+  activeTab,
+  onTabChange,
+  groups,
+  rows,
+  target,
+  rangeColumns,
+  emptyText,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  activeTab: WatchlistTabKey
+  onTabChange: (tab: WatchlistTabKey) => void
+  groups: {
+    macro_indices: WatchlistRow[]
+    sector_boards: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    legacy: WatchlistRow[]
+  }
+  rows: WatchlistRow[]
+  target: ChartTarget
+  rangeColumns: WatchlistRangeColumn[]
+  emptyText: string
+  onSelect: (row: WatchlistRow) => void
+}) {
+  const tabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
+    {
+      key: 'macro_indices',
+      label: locale === 'zh-CN' ? '宏观指数' : 'Macro',
+      count: groups.macro_indices.length,
+    },
+    {
+      key: 'sector_boards',
+      label: locale === 'zh-CN' ? '行业板块' : 'Sectors',
+      count: groups.sector_boards.length,
+    },
+    {
+      key: 'focus_stocks',
+      label: locale === 'zh-CN' ? '关注个股' : 'Stocks',
+      count: groups.focus_stocks.length,
+    },
+  ]
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+      <div style={watchlistTabsStyle}>
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            type="button"
+            style={tab.key === activeTab ? watchlistTabButtonActiveStyle : watchlistTabButtonStyle}
+            onClick={() => onTabChange(tab.key)}
+          >
+            {tab.label} {tab.count}
+          </button>
+        ))}
+      </div>
+      <WatchlistTable
+        rows={rows}
+        target={target}
+        rangeColumns={rangeColumns}
+        emptyText={emptyText}
+        onSelect={onSelect}
+      />
+    </div>
+  )
+}
+
 function WatchlistTable({
   rows,
   target,
@@ -2393,7 +2979,7 @@ function WatchlistTable({
   if (rows.length === 0) {
     return <div style={emptyStateDarkStyle}>{emptyText}</div>
   }
-  const gridTemplateColumns = `minmax(92px, 1.35fr) 54px 50px repeat(${rangeColumns.length}, 54px)`
+  const gridTemplateColumns = `minmax(132px, 1.35fr) 58px 52px 76px repeat(${rangeColumns.length}, 56px)`
   const headerRowStyle = { ...watchlistGridRowStyle, gridTemplateColumns }
   const buttonRowStyle = { ...watchlistButtonRowStyle, gridTemplateColumns }
   const activeButtonRowStyle = { ...watchlistButtonActiveRowStyle, gridTemplateColumns }
@@ -2403,6 +2989,7 @@ function WatchlistTable({
         <div style={watchlistNameHeaderCellStyle}>标的</div>
         <div style={watchlistHeaderCellStyle}>最新</div>
         <div style={watchlistHeaderCellStyle}>日</div>
+        <div style={watchlistHeaderCellStyle}>信号</div>
         {rangeColumns.map(column => (
           <div key={column.key} style={watchlistHeaderCellStyle}>{column.label}</div>
         ))}
@@ -2419,11 +3006,22 @@ function WatchlistTable({
             <div style={watchlistNameCellStyle}>
               <div style={watchlistNameStyle}>{row.name}</div>
               <div style={watchlistSubStyle}>
-                {[row.typeLabel, row.code].filter(Boolean).join(' · ')}
+                {[row.typeLabel, row.code, ...row.tags].filter(Boolean).join(' · ')}
               </div>
             </div>
             <div style={watchlistCellStyle}>{row.latest}</div>
             <div style={{ ...watchlistCellStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+            <div style={watchlistCellStyle}>
+              {row.signal.includes('/') ? (
+                <span style={signalBadgeRowStyle}>
+                  {row.signal.split('/').filter(Boolean).slice(0, 4).map(part => (
+                    <span key={`${row.id}-${part}`} style={miniSignalBadgeStyle}>{part}</span>
+                  ))}
+                </span>
+              ) : (
+                row.signal || 'N/A'
+              )}
+            </div>
             {row.rangeValues.map((value, index) => (
               <div key={`${row.id}-range-${index}`} style={{ ...watchlistCellStyle, ...percentTone(value) }}>
                 {value}
@@ -2468,7 +3066,14 @@ function TargetRows({
               </div>
             </div>
             <div style={mutedTextStyle}>
-              {[compactText(row.symbol) || compactText(row.code), compactText(row.direction), compactText(row.reason)]
+              {[
+                compactText(row.symbol) || compactText(row.code),
+                compactText(row.representative_type),
+                compactText(row.relation),
+                compactText(row.source),
+                compactText(row.direction),
+                compactText(row.reason),
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </div>
