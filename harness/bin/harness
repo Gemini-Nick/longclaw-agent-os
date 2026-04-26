@@ -376,6 +376,9 @@ function runBrief(projects, options = {}) {
     headline: payload.headline,
     summary_signature: payload.summary_signature,
     next_steps_effective: payload.next_steps,
+    current_failure_count: payload.current_failure_count,
+    manual_review_count: payload.manual_review_count,
+    open_failure_count: payload.open_failure_count,
     should_notify: false,
     notify_reason: "plan_only_brief",
   };
@@ -773,7 +776,7 @@ function evalSignals(project) {
   const checks = [];
   const failures = [];
   const nextActions = [];
-  const python = preferredSignalsPython();
+  const python = preferredSignalsPython(project.root);
   checks.push(`Python command: ${python}`);
 
   if (!commandExists("python3")) {
@@ -1334,12 +1337,14 @@ function runRechecks(project, checksPrefix) {
 
 function normalizeCommand(project, command) {
   if (project.id === "signals") {
-    return command.replace(/^python3\b/g, shellQuote(preferredSignalsPython()));
+    return command.replace(/^python3\b/g, shellQuote(preferredSignalsPython(project.root)));
   }
   return command;
 }
 
-function preferredSignalsPython() {
+function preferredSignalsPython(projectRoot = null) {
+  const projectManaged = projectRoot ? path.join(projectRoot, ".venv", "bin", "python") : null;
+  if (projectManaged && fs.existsSync(projectManaged)) return projectManaged;
   const managed = path.join(venvRoot, "signals", "bin", "python");
   return fs.existsSync(managed) ? managed : "python3";
 }
@@ -1632,9 +1637,12 @@ function buildProgressSummary(projects) {
     payload: latestPayloadForProject(project.id),
   }));
   const localProjects = projects.filter((project) => project.kind !== "remote");
-  const activeFailures = loadFailures().failures
+  const openFailures = loadFailures().failures
     .filter((item) => !["resolved", "autofix_pass"].includes(item.status))
     .sort((a, b) => Date.parse(b.last_seen_at) - Date.parse(a.last_seen_at));
+  const currentFailures = openFailures.filter((item) => !["held", "rolled_back"].includes(item.status));
+  const manualReviewFailures = openFailures.filter((item) => ["held", "rolled_back"].includes(item.status));
+  const headlineFailures = currentFailures.length > 0 ? currentFailures : manualReviewFailures;
   const recentResolved = loadFailures().failures
     .filter((item) => item.resolved_at)
     .sort((a, b) => Date.parse(b.resolved_at) - Date.parse(a.resolved_at))
@@ -1645,11 +1653,14 @@ function buildProgressSummary(projects) {
     .filter((row) => localProjects.some((project) => project.id === row.id))
     .filter((row) => row.payload?.status === "pass")
     .map((row) => row.id);
-  const currentWork = activeFailures.length > 0
-    ? `正在处理 ${activeFailures[0].project} 的 ${activeFailures[0].category} 问题`
-    : `当前 ${passingLocal.length} 个本地试点项目已绿，正在维持本地闭环并推进控制面收口`;
-  const blockers = activeFailures.length > 0
-    ? activeFailures.slice(0, 3).map((failure) =>
+  const currentWork = currentFailures.length > 0
+    ? `正在处理 ${currentFailures[0].project} 的 ${currentFailures[0].category} 问题`
+    : manualReviewFailures.length > 0
+      ? `本轮无新增自动处理故障，待人工审阅 ${manualReviewFailures.length} 项`
+      : `当前 ${passingLocal.length} 个本地试点项目已绿，正在维持本地闭环并推进控制面收口`;
+  const blockersSource = currentFailures.length > 0 ? currentFailures : manualReviewFailures;
+  const blockers = blockersSource.length > 0
+    ? blockersSource.slice(0, 3).map((failure) =>
         `${riskEmoji(failure.risk_level || riskLevelForCategory(failure.category))} ${failure.project} · ${failure.category} · ${notificationSummaryLine(failure)}`,
       )
     : ["无阻塞项，系统处于绿色巡航状态。"];
@@ -1659,14 +1670,18 @@ function buildProgressSummary(projects) {
       )
     : ["近期没有新关闭的问题。"];
   const uniqueCompleted = uniqueLines(completed);
-  const nextSteps = activeFailures.length > 0
-    ? uniqueLines(activeFailures.slice(0, 5).map((failure) => actionSummaryForFailure(failure)))
+  const nextStepSource = currentFailures.length > 0 ? currentFailures : manualReviewFailures;
+  const nextSteps = nextStepSource.length > 0
+    ? uniqueLines(nextStepSource.slice(0, 5).map((failure) => actionSummaryForFailure(failure)))
     : ["当前无待执行动作"];
+  const headline = currentFailures.length > 0
+    ? `当前有 ${currentFailures.length} 个运行中问题，最高风险 ${riskEmoji(riskLevelForCategory(headlineFailures[0].category))}`
+    : manualReviewFailures.length > 0
+      ? `本轮无新增自动处理故障，待人工审阅 ${manualReviewFailures.length} 项`
+      : `当前 ${passingLocal.length} 个本地试点项目已绿，正在维持本地闭环并推进控制面收口`;
   const summarySignature = hashText(
     JSON.stringify({
-      headline: activeFailures.length > 0
-        ? `当前有 ${activeFailures.length} 个待处理问题`
-        : `当前 ${passingLocal.length}/${localProjects.length} 个本地试点项目为 pass`,
+      headline,
       blockers,
       nextSteps,
     }),
@@ -1674,10 +1689,11 @@ function buildProgressSummary(projects) {
 
   return {
     timestamp,
-    headline: activeFailures.length > 0
-      ? `当前有 ${activeFailures.length} 个待处理问题，最高风险 ${riskEmoji(riskLevelForCategory(activeFailures[0].category))}`
-      : `当前 ${passingLocal.length}/${localProjects.length} 个本地试点项目为 pass，系统处于绿色状态`,
+    headline,
     summary_signature: summarySignature,
+    current_failure_count: currentFailures.length,
+    manual_review_count: manualReviewFailures.length,
+    open_failure_count: openFailures.length,
     project_rows: latestRows.map((row) =>
       `${row.id}: ${row.payload?.status || "unknown"} (${row.payload?.workflow || "no report"})`,
     ),

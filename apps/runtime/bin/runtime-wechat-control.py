@@ -118,6 +118,8 @@ def build_summary_text(queue: dict, task_summary: dict) -> tuple[str, str]:
     pending_reviews = queue.get("pending_reviews", [])
     blocked_items = queue.get("blocked_items", [])
     next_steps = queue.get("next_steps", [])
+    manual_review_count = int(harness.get("manual_review_count") or 0)
+    review_total = manual_review_count + len(pending_reviews)
     pending_count = task_summary["counts"]["pending"]
     running_count = task_summary["counts"]["running"]
     cycle_signature = hashlib.sha256(
@@ -141,7 +143,7 @@ def build_summary_text(queue: dict, task_summary: dict) -> tuple[str, str]:
         f"主备: {routing.get('effective_agent', 'unknown')} (primary={routing.get('preferred_primary', 'unknown')}, backup={routing.get('preferred_backup', 'unknown')})",
         f"送达模式: summary={summary_delivery_mode}, conversation={conversation_delivery_mode}, reliable_local",
         f"最值得盯: {most_worth_watching}",
-        f"阻塞/待审阅: {len(blocked_items)}/{len(pending_reviews)}",
+        f"阻塞/人工审阅: {len(blocked_items)}/{review_total}",
         f"微信任务队列: pending={pending_count}, running={running_count}",
     ]
     if next_steps:

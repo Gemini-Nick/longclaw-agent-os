@@ -17,8 +17,7 @@ NEW_LABELS=(
   "com.zhangqilong.ai.codex.appserver"
   "com.zhangqilong.ai.claude.worker"
   "com.zhangqilong.ai.weclaw.bridge"
-  "com.zhangqilong.ai.repo.scheduler"
-  "com.zhangqilong.ai.guardian.monitor"
+  "com.zhangqilong.ai.longclaw.runtime"
 )
 
 LEGACY_LABELS=(

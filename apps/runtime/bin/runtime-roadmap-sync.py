@@ -371,9 +371,15 @@ def is_blocking_routing_reason(reason: str | None) -> bool:
     return any(marker in normalized for marker in blocking_markers)
 
 
+def is_permission_boundary_error(error: str | None) -> bool:
+    if not error:
+        return False
+    return "Operation not permitted" in error or "Permission denied" in error
+
+
 def build_most_worth_watching(blocked_items: list[str], pending_reviews: list[str], task_queue: dict, headline: str) -> str:
     if blocked_items:
-        return blocked_items[0]
+        return summarize_watch_item(blocked_items[0])
     if pending_reviews:
         return pending_reviews[0]
     pending = task_queue.get("pending", [])
@@ -385,6 +391,12 @@ def build_most_worth_watching(blocked_items: list[str], pending_reviews: list[st
         task = running[0]
         return f"微信任务执行中：{task.get('task_text', 'unknown')}"
     return headline
+
+
+def summarize_watch_item(item: str) -> str:
+    if item.startswith("knowledge_signal_read_failed:") or item.startswith("knowledge_projection_failed:"):
+        return "知识库 Desktop 权限阻止 Runtime Dashboard 投影"
+    return item
 
 
 def build_delivery_policy(
@@ -827,7 +839,11 @@ def main() -> int:
             if not bridge_health or bridge_health.get("upstream_reachable", False)
             else [f"weclaw_bridge_unreachable: {bridge_health.get('last_error') or 'upstream probe failed'}"]
         )
-        + ([] if not knowledge_signal_error else [f"knowledge_signal_read_failed: {knowledge_signal_error}"])
+        + (
+            []
+            if not knowledge_signal_error or is_permission_boundary_error(knowledge_signal_error)
+            else [f"knowledge_signal_read_failed: {knowledge_signal_error}"]
+        )
     )
     pending_reviews = []
     if inbox_count > 0:
@@ -835,7 +851,7 @@ def main() -> int:
     if blocked_items:
         pending_reviews.append("检查 Longclaw Runtime Dashboard 中的阻塞项")
     if knowledge_signal_error:
-        pending_reviews.append("知识侧信号读取失败，检查知识库权限或 Desktop 访问授权")
+        pending_reviews.append("授权 Longclaw Runtime 访问知识库 Desktop 目录，恢复 Dashboard 投影")
     if active_agent.get("manual_override"):
         pending_reviews.append("当前处于 manual override，确认是否继续保持人工指定路由")
     if weclaw_ingress.get("session_window_parse_failures"):
@@ -922,6 +938,9 @@ def main() -> int:
             "tick_status": tick.get("status", "unknown"),
             "headline": headline,
             "summary_signature": summary_signature,
+            "current_failure_count": brief.get("details", {}).get("current_failure_count", 0),
+            "manual_review_count": brief.get("details", {}).get("manual_review_count", 0),
+            "open_failure_count": brief.get("details", {}).get("open_failure_count", 0),
             "report_paths": {
                 "brief_json": str(harness_root / "generated" / "system" / "brief-latest.json"),
                 "tick_json": str(harness_root / "generated" / "system" / "tick-latest.json"),
@@ -983,9 +1002,17 @@ def main() -> int:
     except Exception as exc:
         knowledge_error = str(exc)
         queue["pending_sync"]["knowledge_projection"] = True
-        queue["blocked_items"] = unique(queue["blocked_items"] + [f"knowledge_projection_failed: {exc}"])
+        if is_permission_boundary_error(knowledge_error):
+            queue["pending_reviews"] = unique(
+                queue["pending_reviews"] + ["授权 Longclaw Runtime 写入知识库 Dashboard"]
+            )
+        else:
+            queue["blocked_items"] = unique(queue["blocked_items"] + [f"knowledge_projection_failed: {exc}"])
         queue["knowledge_projection"]["projection_error"] = knowledge_error
         queue["knowledge_projection"]["status"] = "pending"
+        queue["most_worth_watching"] = build_most_worth_watching(
+            queue["blocked_items"], queue["pending_reviews"], task_queue, headline
+        )
         for stage in queue["local_loop"]["trace"]:
             if stage.get("stage") == "knowledge_projection":
                 stage["status"] = "pending"
