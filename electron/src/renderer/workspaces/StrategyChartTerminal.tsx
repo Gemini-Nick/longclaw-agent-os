@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   dispose,
   init,
+  registerIndicator,
   registerOverlay,
   type Chart,
   type DeepPartial,
@@ -52,6 +53,8 @@ type WorkbenchShell = {
   session?: WorkbenchSession
   indices?: Record<string, unknown>[]
   buy_candidates?: Record<string, unknown>[]
+  watchlist?: Record<string, unknown>[]
+  watchlist_range_columns?: Record<string, unknown>[]
   cluster_summary?: Record<string, unknown>
   default_target?: {
     kind?: string
@@ -87,6 +90,9 @@ type StrategyKeyLevel = {
   value?: number
   position?: string
   distance_pct?: number | null
+  direction?: string
+  role?: string
+  timeframe?: string
 }
 
 type WorkbenchSymbolData = {
@@ -108,6 +114,30 @@ type ChartTarget = {
   freq: string
 }
 
+type FrequencyOption = {
+  value: string
+  label: string
+}
+
+type WatchlistRangeColumn = {
+  key: string
+  label: string
+  aliases?: string[]
+}
+
+type WatchlistRow = {
+  id: string
+  kind: string
+  label: string
+  name: string
+  code: string
+  typeLabel: string
+  latest: string
+  dayChange: string
+  rangeValues: string[]
+  raw: Record<string, unknown>
+}
+
 type ApiError = Error & {
   status?: number
   payload?: Record<string, unknown>
@@ -119,12 +149,37 @@ type SignalOverlayData = {
   color: string
 }
 
-const FREQ_OPTIONS = ['daily', '30min', '15min', 'weekly'] as const
+const FREQ_OPTIONS: FrequencyOption[] = [
+  { value: '5min', label: '5m' },
+  { value: '15min', label: '15m' },
+  { value: '30min', label: '30m' },
+  { value: 'daily', label: '日' },
+  { value: 'weekly', label: '周' },
+]
+const WATCHLIST_RANGE_COLUMNS: WatchlistRangeColumn[] = [
+  { key: '5d', label: '5日', aliases: ['5d', '5日', 'week', '1w', '1week', 'weekly'] },
+  { key: '20d', label: '20日', aliases: ['20d', '20日', 'month', '1m', '1month', 'monthly'] },
+  { key: '60d', label: '60日', aliases: ['60d', '60日', 'quarter', '3m', '3month', 'quarterly'] },
+]
 const SIGNAL_OVERLAY_NAME = 'longclawSignalMarker'
 const SIGNAL_OVERLAY_GROUP = 'longclaw-signals'
 const LEVEL_OVERLAY_GROUP = 'longclaw-levels'
+const CANDLE_PANE_ID = 'candle_pane'
+const MACD_PANE_ID = 'macd_pane'
+const MACD_ZERO_INDICATOR_NAME = 'LONGCLAW_MACD_ZERO'
+const MACD_PARAMS = [12, 26, 9]
+const MA_COLORS = [
+  tradingDeskTheme.chart.orange,
+  tradingDeskTheme.chart.line,
+  tradingDeskTheme.chart.violet,
+  tradingDeskTheme.market.down,
+  tradingDeskTheme.chart.gold,
+  tradingDeskTheme.colors.textStrong,
+]
+const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
 
 let signalOverlayRegistered = false
+let macdZeroIndicatorRegistered = false
 const terminalTheme = tradingDeskTheme.colors
 
 const terminalRootStyle: React.CSSProperties = {
@@ -316,6 +371,94 @@ const targetButtonStyle: React.CSSProperties = {
   background: terminalTheme.panelSoft,
   color: terminalTheme.text,
   fontFamily: fontStacks.ui,
+}
+
+const watchlistTableStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  minWidth: 0,
+  overflowX: 'auto',
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.panelInset,
+}
+
+const watchlistGridRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(84px, 1.35fr) 54px 50px repeat(3, 45px)',
+  minWidth: 0,
+}
+
+const watchlistButtonRowStyle: React.CSSProperties = {
+  ...watchlistGridRowStyle,
+  width: '100%',
+  border: 'none',
+  borderRadius: 0,
+  background: 'transparent',
+  padding: 0,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+}
+
+const watchlistButtonActiveRowStyle: React.CSSProperties = {
+  ...watchlistButtonRowStyle,
+  background: terminalTheme.accentSoft,
+}
+
+const watchlistHeaderCellStyle: React.CSSProperties = {
+  padding: '5px 4px',
+  borderBottom: `1px solid ${terminalTheme.borderStrong}`,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  fontWeight: 800,
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+}
+
+const watchlistNameHeaderCellStyle: React.CSSProperties = {
+  ...watchlistHeaderCellStyle,
+  textAlign: 'left',
+  paddingLeft: 6,
+}
+
+const watchlistCellStyle: React.CSSProperties = {
+  minWidth: 0,
+  padding: '5px 4px',
+  borderBottom: `1px solid ${terminalTheme.borderMuted}`,
+  color: terminalTheme.text,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  lineHeight: 1.2,
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+
+const watchlistNameCellStyle: React.CSSProperties = {
+  ...watchlistCellStyle,
+  textAlign: 'left',
+  fontFamily: fontStacks.ui,
+  paddingLeft: 6,
+}
+
+const watchlistNameStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 750,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const watchlistSubStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 10,
+  marginTop: 2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const chartStageStyle: React.CSSProperties = {
@@ -901,9 +1044,18 @@ function formatNumber(value: unknown, digits = 2): string {
 }
 
 function formatPercent(value: unknown): string {
-  const number = numberValue(value)
+  const number =
+    typeof value === 'string'
+      ? numberValue(value.replace('%', '').replace('+', '').trim())
+      : numberValue(value)
   if (number === undefined) return 'N/A'
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
+}
+
+function percentTone(value: string): React.CSSProperties {
+  if (value.startsWith('+')) return { color: tradingDeskTheme.market.up }
+  if (value.startsWith('-')) return { color: tradingDeskTheme.market.down }
+  return { color: terminalTheme.muted }
 }
 
 function formatConfidence(value: unknown): string {
@@ -911,6 +1063,33 @@ function formatConfidence(value: unknown): string {
   if (number === undefined) return compactText(value, 'N/A')
   const percent = number <= 1 ? number * 100 : number
   return `${percent.toFixed(0)}%`
+}
+
+function strategyKpiLabel(row: Record<string, unknown>): string {
+  const key = compactText(row.kpi_id) || compactText(row.label)
+  const labels: Record<string, string> = {
+    signals_total: '信号总数',
+    signals_evaluated: '已验证信号',
+    signals_pending: '待验证信号',
+    pool_size: '观察池',
+    candidate_count: '买入候选',
+    warning_count: '风险预警',
+    win_rate: '历史胜率',
+    avg_return_t5: 'T+5均值',
+  }
+  return labels[key] || compactText(row.label) || key || 'KPI'
+}
+
+function sourceConfidenceLabel(row: Record<string, unknown>): string {
+  const key = compactText(row.source_id) || compactText(row.label)
+  const labels: Record<string, string> = {
+    board: '行业板块',
+    concept: '概念板块',
+    market_pool: '观察池',
+    quote: '行情快照',
+    signal: '信号池',
+  }
+  return labels[key] || compactText(row.label) || key || 'Source'
 }
 
 function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN'): string {
@@ -927,8 +1106,12 @@ function rowsFromCluster(value: unknown): Record<string, unknown>[] {
   const industryTop = recordValue(record.industry).top ?? record.industry_top
   const conceptTop = recordValue(record.concept).top ?? record.concept_top
   return [
-    ...(Array.isArray(industryTop) ? industryTop : []),
-    ...(Array.isArray(conceptTop) ? conceptTop : []),
+    ...(Array.isArray(industryTop)
+      ? industryTop.map(item => ({ ...recordValue(item), kind: 'industry', cluster_kind: 'industry' }))
+      : []),
+    ...(Array.isArray(conceptTop)
+      ? conceptTop.map(item => ({ ...recordValue(item), kind: 'concept', cluster_kind: 'concept' }))
+      : []),
   ].map(item => recordValue(item))
 }
 
@@ -970,6 +1153,192 @@ function kindForTarget(row: Record<string, unknown>, fallback = 'auto'): string 
   return stringValue(row.kind) ?? (stringValue(row.symbol) ? 'stock' : fallback)
 }
 
+function normalizeReturnKey(value: string): string {
+  return value.toLowerCase().replace(/[\s_\-./]/g, '')
+}
+
+function readRangeReturn(row: Record<string, unknown>, column: WatchlistRangeColumn): unknown {
+  const candidates = [row.range_returns, row.period_returns, row.interval_returns]
+  for (const candidate of candidates) {
+    const record = recordValue(candidate)
+    if (Object.keys(record).length > 0) {
+      const normalizedEntries = new Map(
+        Object.entries(record).map(([key, value]) => [normalizeReturnKey(key), value]),
+      )
+      for (const alias of [column.key, ...(column.aliases ?? [])]) {
+        const value = normalizedEntries.get(normalizeReturnKey(alias))
+        if (value !== undefined) return value
+      }
+    }
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        const record = recordValue(item)
+        const key = compactText(record.key) || compactText(record.period) || compactText(record.interval) || compactText(record.label)
+        if (!key) continue
+        const matched = [column.key, ...(column.aliases ?? [])].some(alias => normalizeReturnKey(alias) === normalizeReturnKey(key))
+        if (matched) return record.return_pct ?? record.change_pct ?? record.gain_pct ?? record.value
+      }
+    }
+  }
+  return undefined
+}
+
+function latestValueForWatchlist(row: Record<string, unknown>): string {
+  const value =
+    row.latest_price ??
+    row.last_price ??
+    row.price ??
+    row.close ??
+    row.latest ??
+    row.current_price ??
+    row.value
+  return numberValue(value) !== undefined ? formatNumber(value) : compactText(value, 'N/A')
+}
+
+function dayChangeForWatchlist(row: Record<string, unknown>): string {
+  return formatPercent(
+    row.day_change_pct ??
+      row.change_pct ??
+      row.gain_pct ??
+      row.return_pct ??
+      row.daily_return ??
+      row.pct_chg,
+  )
+}
+
+function codeForWatchlist(row: Record<string, unknown>): string {
+  return (
+    compactText(row.symbol) ||
+    compactText(row.code) ||
+    compactText(row.ts_code) ||
+    compactText(row.ticker) ||
+    compactText(row.label)
+  )
+}
+
+function nameForWatchlist(row: Record<string, unknown>): string {
+  return (
+    compactText(row.name) ||
+    compactText(row.stock_name) ||
+    compactText(row.display_name) ||
+    compactText(row.label) ||
+    codeForWatchlist(row) ||
+    'N/A'
+  )
+}
+
+function labelForWatchlist(row: Record<string, unknown>): string {
+  return compactText(row.label) || compactText(row.symbol) || compactText(row.code) || nameForWatchlist(row)
+}
+
+function watchlistTypeLabel(kind: string): string {
+  if (kind === 'index') return '指数'
+  if (kind === 'industry') return '行业'
+  if (kind === 'concept') return '概念'
+  return '股票'
+}
+
+function watchlistDedupeKey(row: Record<string, unknown>, kind: string): string {
+  const identity = codeForWatchlist(row) || labelForWatchlist(row) || nameForWatchlist(row)
+  return `${kind}:${identity.toLowerCase()}`
+}
+
+function toWatchlistRow(
+  row: Record<string, unknown>,
+  fallbackKind: string,
+  index: number,
+  rangeColumns: WatchlistRangeColumn[],
+): WatchlistRow | null {
+  const kind = kindForTarget(row, fallbackKind)
+  const label = labelForWatchlist(row)
+  const name = nameForWatchlist(row)
+  if (!label && !name) return null
+  const code = codeForWatchlist(row)
+  const dayChange = dayChangeForWatchlist(row)
+  const rangeValues = rangeColumns.map((column, columnIndex) => {
+    const explicit = readRangeReturn(row, column)
+    if (explicit !== undefined) return formatPercent(explicit)
+    if (columnIndex === 0) return dayChange
+    return 'N/A'
+  })
+  return {
+    id: `${watchlistDedupeKey(row, kind)}:${index}`,
+    kind,
+    label,
+    name,
+    code,
+    typeLabel: watchlistTypeLabel(kind),
+    latest: latestValueForWatchlist(row),
+    dayChange,
+    rangeValues,
+    raw: row,
+  }
+}
+
+function buildWatchlistRows({
+  watchlist,
+  indices,
+  buyRows,
+  sellRows,
+  decisionRows,
+  clusterRows,
+  rangeColumns,
+}: {
+  watchlist: Record<string, unknown>[]
+  indices: Record<string, unknown>[]
+  buyRows: Record<string, unknown>[]
+  sellRows: Record<string, unknown>[]
+  decisionRows: Record<string, unknown>[]
+  clusterRows: Record<string, unknown>[]
+  rangeColumns: WatchlistRangeColumn[]
+}): WatchlistRow[] {
+  const sources: Array<{ rows: Record<string, unknown>[]; kind: string }> = [
+    { rows: watchlist.map(row => ({ ...row, kind: kindForTarget(row, 'auto') })), kind: 'auto' },
+    { rows: indices.map(row => ({ ...row, kind: 'index' })), kind: 'index' },
+    { rows: buyRows.map(row => ({ ...row, kind: kindForTarget(row, 'stock') })), kind: 'stock' },
+    { rows: sellRows.map(row => ({ ...row, kind: kindForTarget(row, 'stock') })), kind: 'stock' },
+    { rows: decisionRows.map(row => ({ ...row, kind: kindForTarget(row, 'stock') })), kind: 'stock' },
+    { rows: clusterRows, kind: 'industry' },
+  ]
+  const seen = new Set<string>()
+  const output: WatchlistRow[] = []
+  sources.forEach(source => {
+    source.rows.forEach((row, index) => {
+      const kind = kindForTarget(row, source.kind)
+      const key = watchlistDedupeKey(row, kind)
+      if (seen.has(key)) return
+      seen.add(key)
+      const item = toWatchlistRow(row, kind, output.length + index, rangeColumns)
+      if (item) output.push(item)
+    })
+  })
+  return output
+}
+
+function watchlistRangeColumnsFromShell(shell: WorkbenchShell | null): WatchlistRangeColumn[] {
+  const rawColumns = Array.isArray(shell?.watchlist_range_columns) ? shell.watchlist_range_columns : []
+  const columns = rawColumns
+    .map(column => {
+      const record = recordValue(column)
+      const key = compactText(record.key)
+      if (!key) return null
+      return {
+        key,
+        label: compactText(record.label, key),
+        aliases: Array.isArray(record.aliases)
+          ? record.aliases.map(alias => compactText(alias)).filter(Boolean)
+          : [],
+      } satisfies WatchlistRangeColumn
+    })
+    .filter((column): column is WatchlistRangeColumn => Boolean(column))
+  return columns.length > 0 ? columns.slice(0, 4) : WATCHLIST_RANGE_COLUMNS
+}
+
+function watchlistRowIsActive(row: WatchlistRow, target: ChartTarget): boolean {
+  if (row.kind !== target.kind) return false
+  return row.label === target.label || row.code === target.label || row.name === target.label
+}
+
 export function StrategyChartTerminal({
   locale,
   dashboard,
@@ -983,6 +1352,7 @@ export function StrategyChartTerminal({
   const resizeFrameRef = useRef<number | null>(null)
   const activeRequestRef = useRef(0)
   const dashboardRef = useRef(dashboard)
+  const lastChartUpdateSilentRef = useRef(false)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
   const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
   const [symbolData, setSymbolData] = useState<WorkbenchSymbolData | null>(null)
@@ -1018,8 +1388,22 @@ export function StrategyChartTerminal({
     : dashboard.buy_candidates as Array<Record<string, unknown>>
   const sellRows = dashboard.sell_warnings as Array<Record<string, unknown>>
   const indexTargets = shell?.indices ?? []
-  const quickTargets = indexTargets.slice(0, 6)
-  const clusterRows = rowsFromCluster(shell?.cluster_summary).slice(0, 6)
+  const clusterRows = rowsFromCluster(shell?.cluster_summary)
+  const shellWatchlist = Array.isArray(shell?.watchlist) ? shell.watchlist : []
+  const watchlistRangeColumns = useMemo(() => watchlistRangeColumnsFromShell(shell), [shell])
+  const watchlistRows = useMemo(
+    () =>
+      buildWatchlistRows({
+        watchlist: shellWatchlist,
+        indices: indexTargets,
+        buyRows,
+        sellRows,
+        decisionRows,
+        clusterRows,
+        rangeColumns: watchlistRangeColumns,
+      }),
+    [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shellWatchlist, watchlistRangeColumns],
+  )
   const latestSignal = compactText(symbolData?.summary?.latest_signal, dashboard.chart_context?.latest_signal ?? '')
   const summaryTitle =
     compactText(symbolData?.summary?.title) ||
@@ -1086,6 +1470,7 @@ export function StrategyChartTerminal({
                 options.silent ? 'background-refresh' : 'load-symbol',
               )
         if (requestId !== activeRequestRef.current) return
+        lastChartUpdateSilentRef.current = Boolean(options.silent)
         setSymbolData(nextSymbolData)
         setBooting(false)
         setBootAttempt(0)
@@ -1263,7 +1648,9 @@ export function StrategyChartTerminal({
     chart.applyNewData(klineData)
     createSignalOverlays(chart, klineData, signals)
     createLevelOverlays(chart, klineData, keyLevels)
-    chart.scrollToRealTime()
+    if (!lastChartUpdateSilentRef.current) {
+      chart.scrollToRealTime()
+    }
     chart.resize()
   }, [klineData, keyLevels, signals])
 
@@ -1452,17 +1839,17 @@ export function StrategyChartTerminal({
         </form>
         <div style={chartMetaRowStyle}>
           {FREQ_OPTIONS.map(freq => {
-            const active = currentFreq === freq
-            const disabled = !targetFreqs.includes(freq)
+            const active = currentFreq === freq.value
+            const disabled = !targetFreqs.includes(freq.value)
             return (
               <button
-                key={freq}
+                key={freq.value}
                 type="button"
                 style={terminalButtonStyle(active, disabled)}
                 disabled={disabled}
-                onClick={() => selectTarget({ ...target, freq }, 'strategy.freq.click')}
+                onClick={() => selectTarget({ ...target, freq: freq.value }, 'strategy.freq.click')}
               >
-                {freq}
+                {freq.label}
               </button>
             )
           })}
@@ -1504,31 +1891,18 @@ export function StrategyChartTerminal({
             title={locale === 'zh-CN' ? '主观察列表' : 'Watchlist'}
             meta={marketLabel(shell?.session, locale)}
           >
-            <div style={compactListStyle}>
-              {quickTargets.length === 0 ? (
-                <div style={emptyStateDarkStyle}>
-                  {locale === 'zh-CN' ? '等待 Signals shell。' : 'Waiting for Signals shell.'}
-                </div>
-              ) : (
-                quickTargets.map(row => {
-                  const label = labelForTarget(row)
-                  if (!label) return null
-                  const active = label === target.label
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      style={active ? quickChipActiveStyle : quickChipStyle}
-                      onClick={() =>
-                        selectTarget({ label, kind: 'index', freq: target.freq }, 'strategy.watchlist.click')
-                      }
-                    >
-                      {label}
-                    </button>
-                  )
-                })
-              )}
-            </div>
+            <WatchlistTable
+              rows={watchlistRows}
+              target={target}
+              rangeColumns={watchlistRangeColumns}
+              emptyText={locale === 'zh-CN' ? '等待 Signals shell。' : 'Waiting for Signals shell.'}
+              onSelect={row =>
+                selectTarget(
+                  { label: row.label, kind: row.kind, freq: target.freq },
+                  'strategy.watchlist.click',
+                )
+              }
+            />
           </Panel>
 
           <Panel
@@ -1551,7 +1925,7 @@ export function StrategyChartTerminal({
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? 'Decision queue' : 'Decision queue'}
+            title={locale === 'zh-CN' ? '交易员待办' : 'Trader queue'}
             meta={String(decisionRows.length)}
           >
             {decisionRows.length === 0 ? (
@@ -1581,7 +1955,7 @@ export function StrategyChartTerminal({
                       <div style={monoTextStyle}>{compactText(row.priority)}</div>
                     </div>
                     <div style={mutedTextStyle}>
-                      {[compactText(row.action), compactText(row.summary)]
+                      {[compactText(row.action_label) || compactText(row.action), compactText(row.summary), compactText(row.recommended_action)]
                         .filter(Boolean)
                         .join(' · ')}
                     </div>
@@ -1615,11 +1989,11 @@ export function StrategyChartTerminal({
             meta={clusterRows.length ? 'gateway' : ''}
           >
             <TargetRows
-              rows={clusterRows}
+              rows={clusterRows.slice(0, 8)}
               emptyText={locale === 'zh-CN' ? '暂无聚类方向。' : 'No cluster directions.'}
               onSelect={row => {
                 const label = labelForTarget(row)
-                if (label) selectTarget({ label, kind: 'industry', freq: 'daily' }, 'strategy.cluster.click')
+                if (label) selectTarget({ label, kind: kindForTarget(row, 'industry'), freq: 'daily' }, 'strategy.cluster.click')
               }}
             />
           </Panel>
@@ -1738,7 +2112,12 @@ export function StrategyChartTerminal({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                       <div style={rowTitleStyle}>{level.name || 'Level'}</div>
                       <div style={mutedTextStyle}>
-                        {[level.position, level.distance_pct !== undefined ? formatPercent(level.distance_pct) : '']
+                        {[
+                          level.position,
+                          level.direction ? `${level.direction}` : '',
+                          level.role,
+                          level.distance_pct !== undefined ? formatPercent(level.distance_pct) : '',
+                        ]
                           .filter(Boolean)
                           .join(' · ')}
                       </div>
@@ -1751,7 +2130,7 @@ export function StrategyChartTerminal({
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? 'Strategy KPI' : 'Strategy KPIs'}
+            title={locale === 'zh-CN' ? '策略验收' : 'Strategy checks'}
             meta={String(strategyKpis.length)}
           >
             {strategyKpis.length === 0 ? (
@@ -1764,7 +2143,7 @@ export function StrategyChartTerminal({
                   <div key={`${compactText(row.kpi_id, 'kpi')}-${index}`} style={dataRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                       <div style={rowTitleStyle}>
-                        {compactText(row.label) || compactText(row.kpi_id) || 'KPI'}
+                        {strategyKpiLabel(row)}
                       </div>
                       <div style={mutedTextStyle}>
                         {[compactText(row.status), compactText(row.trend)]
@@ -1783,7 +2162,7 @@ export function StrategyChartTerminal({
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? 'Source confidence' : 'Source confidence'}
+            title={locale === 'zh-CN' ? '数据可信度' : 'Data confidence'}
             meta={String(sourceConfidence.length)}
           >
             {sourceConfidence.length === 0 ? (
@@ -1796,7 +2175,7 @@ export function StrategyChartTerminal({
                   <div key={`${compactText(row.source_id, 'source')}-${index}`} style={dataRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                       <div style={rowTitleStyle}>
-                        {compactText(row.label) || compactText(row.source_id) || 'Source'}
+                        {sourceConfidenceLabel(row)}
                       </div>
                       <div style={mutedTextStyle}>
                         {[compactText(row.status), compactText(row.summary)]
@@ -1833,6 +2212,65 @@ function Panel({
         {meta ? <div style={mutedTextStyle}>{meta}</div> : null}
       </div>
       {children}
+    </div>
+  )
+}
+
+function WatchlistTable({
+  rows,
+  target,
+  rangeColumns,
+  emptyText,
+  onSelect,
+}: {
+  rows: WatchlistRow[]
+  target: ChartTarget
+  rangeColumns: WatchlistRangeColumn[]
+  emptyText: string
+  onSelect: (row: WatchlistRow) => void
+}) {
+  if (rows.length === 0) {
+    return <div style={emptyStateDarkStyle}>{emptyText}</div>
+  }
+  const gridTemplateColumns = `minmax(92px, 1.35fr) 54px 50px repeat(${rangeColumns.length}, 54px)`
+  const headerRowStyle = { ...watchlistGridRowStyle, gridTemplateColumns }
+  const buttonRowStyle = { ...watchlistButtonRowStyle, gridTemplateColumns }
+  const activeButtonRowStyle = { ...watchlistButtonActiveRowStyle, gridTemplateColumns }
+  return (
+    <div style={watchlistTableStyle}>
+      <div style={headerRowStyle}>
+        <div style={watchlistNameHeaderCellStyle}>标的</div>
+        <div style={watchlistHeaderCellStyle}>最新</div>
+        <div style={watchlistHeaderCellStyle}>日</div>
+        {rangeColumns.map(column => (
+          <div key={column.key} style={watchlistHeaderCellStyle}>{column.label}</div>
+        ))}
+      </div>
+      {rows.map(row => {
+        const active = watchlistRowIsActive(row, target)
+        return (
+          <button
+            key={row.id}
+            type="button"
+            style={active ? activeButtonRowStyle : buttonRowStyle}
+            onClick={() => onSelect(row)}
+          >
+            <div style={watchlistNameCellStyle}>
+              <div style={watchlistNameStyle}>{row.name}</div>
+              <div style={watchlistSubStyle}>
+                {[row.typeLabel, row.code].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+            <div style={watchlistCellStyle}>{row.latest}</div>
+            <div style={{ ...watchlistCellStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+            {row.rangeValues.map((value, index) => (
+              <div key={`${row.id}-range-${index}`} style={{ ...watchlistCellStyle, ...percentTone(value) }}>
+                {value}
+              </div>
+            ))}
+          </button>
+        )
+      })}
     </div>
   )
 }
