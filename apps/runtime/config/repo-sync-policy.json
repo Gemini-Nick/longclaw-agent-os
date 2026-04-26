@@ -35,6 +35,9 @@
       "allow_local_commits": true,
       "allow_dependency_updates": false
     },
+    "claude-local-cleanup": {
+      "mode": "mirror_origin"
+    },
     "compound-engineering-plugin": {
       "mode": "mirror_origin"
     },
@@ -48,6 +51,9 @@
     "longclaw-agent-os": {
       "mode": "owned_push_main",
       "allow_local_commits": true
+    },
+    "resume-template-sources/simple-resume": {
+      "mode": "mirror_origin"
     },
     "superpowers": {
       "mode": "mirror_origin"

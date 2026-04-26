@@ -105,23 +105,87 @@ def summarize_tasks(task_state: dict) -> dict:
     }
 
 
+def humanize_runtime_text(value, fallback: str = "unknown") -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    replacements = {
+        "本轮无新增自动处理故障": "这轮没有新增需要自动处理的问题",
+        "knowledge-base: 人工审阅 environment_missing": "人工审阅知识库缺少必要环境的问题",
+        "Longclaw Runtime Dashboard": "状态看板",
+        "Longclaw Runtime": "本地助手",
+        "Runtime Dashboard": "状态看板",
+        "Longclaw runtime": "本地助手",
+        "Runtime": "本地助手",
+        "knowledge-base:": "知识库：",
+        "knowledge_signal_read_failed:": "知识库读取失败：",
+        "knowledge_projection_failed:": "知识库看板更新失败：",
+        "weclaw_bridge_unreachable:": "微信通道连不上：",
+        "environment_missing": "缺少必要环境",
+        "Operation not permitted": "没有权限",
+        "Permission denied": "没有权限",
+        "知识库 Desktop 目录": "桌面知识库目录",
+        "harness": "自动检查",
+        "blocked_items": "卡住事项",
+        "weclaw bridge": "微信通道",
+        "weclaw session window": "微信会话记录",
+        "manual override": "人工指定路由",
+    }
+    for raw, readable in replacements.items():
+        text = text.replace(raw, readable)
+    text = text.replace("： ", "：").replace("授权 本地助手 访问", "授权本地助手访问")
+    return text
+
+
+def format_agent_name(value) -> str:
+    text = str(value or "unknown").strip()
+    aliases = {
+        "codex": "Codex",
+        "claude": "Claude",
+    }
+    return aliases.get(text.lower(), text or "unknown")
+
+
+def format_task_queue_line(pending_count: int, running_count: int) -> str:
+    if pending_count == 0 and running_count == 0:
+        return "任务队列：空闲（待处理 0，进行中 0）"
+    return f"任务队列：待处理 {pending_count}，进行中 {running_count}"
+
+
+def build_user_action_line(
+    blocked_count: int,
+    manual_review_count: int,
+    pending_review_count: int,
+    queue_has_work: bool,
+    watch_item: str,
+) -> str:
+    if blocked_count or manual_review_count or pending_review_count:
+        parts = []
+        if blocked_count:
+            parts.append(f"{blocked_count} 项卡住，重点看：{watch_item}")
+        if manual_review_count:
+            parts.append(f"{manual_review_count} 项人工审阅待确认")
+        if pending_review_count:
+            parts.append(f"{pending_review_count} 项待你确认")
+        return f"需要你处理：是。{'；'.join(parts)}。"
+    if queue_has_work:
+        return "需要你处理：否。我会继续处理队列里的任务。"
+    return "需要你处理：否。当前没有卡住事项，也没有新的人工审阅。"
+
+
 def build_summary_text(queue: dict, task_summary: dict) -> tuple[str, str]:
     routing = queue.get("routing", {})
     harness = queue.get("harness", {})
-    delivery_policy = queue.get("delivery_policy", {})
-    conversation_delivery_mode = delivery_policy.get(
-        "conversation_delivery_mode",
-        delivery_policy.get("wechat_delivery_mode", "unknown"),
-    )
-    summary_delivery_mode = delivery_policy.get("summary_delivery_mode", conversation_delivery_mode)
     most_worth_watching = queue.get("most_worth_watching") or harness.get("headline") or "unknown"
     pending_reviews = queue.get("pending_reviews", [])
     blocked_items = queue.get("blocked_items", [])
     next_steps = queue.get("next_steps", [])
     manual_review_count = int(harness.get("manual_review_count") or 0)
-    review_total = manual_review_count + len(pending_reviews)
+    pending_review_count = len(pending_reviews)
     pending_count = task_summary["counts"]["pending"]
     running_count = task_summary["counts"]["running"]
+    headline = humanize_runtime_text(harness.get("headline"), "这轮自动检查已完成")
+    watch_item = humanize_runtime_text(most_worth_watching, headline)
     cycle_signature = hashlib.sha256(
         json.dumps(
             {
@@ -137,17 +201,23 @@ def build_summary_text(queue: dict, task_summary: dict) -> tuple[str, str]:
     ).hexdigest()
 
     lines = [
-        "Longclaw Runtime 摘要",
-        f"时间: {queue.get('generated_at', 'unknown')}",
-        f"整体: {harness.get('headline', 'unknown')}",
-        f"主备: {routing.get('effective_agent', 'unknown')} (primary={routing.get('preferred_primary', 'unknown')}, backup={routing.get('preferred_backup', 'unknown')})",
-        f"送达模式: summary={summary_delivery_mode}, conversation={conversation_delivery_mode}, reliable_local",
-        f"最值得盯: {most_worth_watching}",
-        f"阻塞/人工审阅: {len(blocked_items)}/{review_total}",
-        f"微信任务队列: pending={pending_count}, running={running_count}",
+        f"我刚刚完成了这轮自动检查：{headline}",
+        build_user_action_line(
+            blocked_count=len(blocked_items),
+            manual_review_count=manual_review_count,
+            pending_review_count=pending_review_count,
+            queue_has_work=bool(pending_count or running_count),
+            watch_item=watch_item,
+        ),
+        f"时间：{queue.get('generated_at', 'unknown')}",
+        f"主力 agent：{format_agent_name(routing.get('effective_agent'))}",
+        format_task_queue_line(pending_count, running_count),
+        f"人工审阅数：{manual_review_count} 项；待你确认：{pending_review_count} 项",
     ]
+    if watch_item != headline:
+        lines.append(f"我会继续盯：{watch_item}")
     if next_steps:
-        lines.append(f"下一步: {next_steps[0]}")
+        lines.append(f"下一步：{humanize_runtime_text(next_steps[0])}")
     return "\n".join(lines), cycle_signature
 
 

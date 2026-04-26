@@ -22,6 +22,8 @@ AUTO_COMMIT_MESSAGE="${LONGCLAW_AUTO_COMMIT_MESSAGE:-chore(watchdog): auto-commi
 AUTO_COMMIT="${LONGCLAW_AUTO_COMMIT:-0}"
 DRY_RUN="${LONGCLAW_DRY_RUN:-0}"
 AUTO_PUSH="${LONGCLAW_AUTO_PUSH:-0}"
+GIT_TIMEOUT_SECONDS="${LONGCLAW_GIT_TIMEOUT_SECONDS:-60}"
+GIT_FETCH_FILTER="${LONGCLAW_GIT_FETCH_FILTER:-blob:none}"
 RUNTIME_STATE_DIR="${LONGCLAW_RUNTIME_STATE_DIR:-$HOME/.longclaw/runtime-v2/state}"
 HARNESS_BIN="${LONGCLAW_HARNESS_BIN:-}"
 ROUTING_CONTROLLER_BIN="${LONGCLAW_ROUTING_CONTROLLER_BIN:-}"
@@ -42,6 +44,58 @@ ts() {
 
 log() {
   printf '[%s] %s\n' "$(ts)" "$*" >>"$LOG_FILE"
+}
+
+run_git_timed() {
+  local repo="$1"
+  shift
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$GIT_TIMEOUT_SECONDS" "$repo" "$@" >>"$LOG_FILE" 2>&1 <<'PY'
+import os
+import subprocess
+import sys
+
+timeout = float(sys.argv[1])
+repo = sys.argv[2]
+git_args = sys.argv[3:]
+env = os.environ.copy()
+env["GIT_TERMINAL_PROMPT"] = "0"
+cmd = [
+    "git",
+    "-c",
+    "http.lowSpeedLimit=1",
+    "-c",
+    "http.lowSpeedTime=20",
+    "-C",
+    repo,
+    *git_args,
+]
+try:
+    result = subprocess.run(
+        cmd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout,
+    )
+except subprocess.TimeoutExpired:
+    print(f"git command timed out after {timeout:g}s: {' '.join(cmd)}")
+    sys.exit(124)
+
+if result.stdout:
+    print(result.stdout, end="")
+sys.exit(result.returncode)
+PY
+    return $?
+  fi
+
+  GIT_TERMINAL_PROMPT=0 git \
+    -c http.lowSpeedLimit=1 \
+    -c http.lowSpeedTime=20 \
+    -C "$repo" \
+    "$@" >>"$LOG_FILE" 2>&1
 }
 
 cleanup() {
@@ -874,6 +928,7 @@ main() {
   local result_text commit_made discovery_file line path category sources source_display
   local tool_only_count unresolved_tool_only_count broad_tool_only_count container_tool_only_count runtime_tool_only_count
   local unresolved_mapping_alert_threshold obsidian_raw obsidian_line source reason detail routing_status harness_status roadmap_sync_status
+  local -a fetch_args
 
   trap cleanup EXIT
 
@@ -942,7 +997,12 @@ main() {
             log "workspace=$path cloud_sync skipped=dry_run remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
           else
             log "workspace=$path cloud_sync action=fetch remote=$canonical_remote branch=$branch policy_mode=$policy_mode"
-            if git -C "$path" fetch --prune "$canonical_remote" "$branch" >>"$LOG_FILE" 2>&1; then
+            fetch_args=(fetch --prune --no-tags)
+            if [[ -n "$GIT_FETCH_FILTER" ]]; then
+              fetch_args+=(--filter="$GIT_FETCH_FILTER")
+            fi
+            fetch_args+=("$canonical_remote" "$branch")
+            if run_git_timed "$path" "${fetch_args[@]}"; then
               cloud_syncs=$((cloud_syncs + 1))
               relation="$(remote_relation "$path" "$remote_ref")"
               log "workspace=$path cloud_sync relation=$relation remote_ref=$remote_ref"
@@ -954,7 +1014,7 @@ main() {
                     sync_blocked=1
                     sync_issues=$((sync_issues + 1))
                     log "workspace=$path cloud_sync blocked=remote_ahead_with_local_changes remote_ref=$remote_ref"
-                  elif git -C "$path" merge --ff-only "$remote_ref" >>"$LOG_FILE" 2>&1; then
+                  elif run_git_timed "$path" merge --ff-only "$remote_ref"; then
                     log "workspace=$path cloud_sync_result=fast_forwarded remote_ref=$remote_ref"
                   else
                     sync_blocked=1
@@ -969,9 +1029,14 @@ main() {
                   ;;
               esac
             else
+              fetch_status=$?
               sync_blocked=1
               sync_issues=$((sync_issues + 1))
-              log "workspace=$path cloud_sync_failed action=fetch remote=$canonical_remote branch=$branch"
+              if [[ "$fetch_status" -eq 124 ]]; then
+                log "workspace=$path cloud_sync_failed action=fetch reason=timeout timeout=${GIT_TIMEOUT_SECONDS}s remote=$canonical_remote branch=$branch"
+              else
+                log "workspace=$path cloud_sync_failed action=fetch exit_status=$fetch_status remote=$canonical_remote branch=$branch"
+              fi
             fi
           fi
         else
@@ -1028,12 +1093,17 @@ main() {
             elif [[ "$AUTO_PUSH" != "1" ]]; then
               log "workspace=$path cloud_push skipped=disabled"
             else
-              if git -C "$path" push "$canonical_remote" "HEAD:$branch" >>"$LOG_FILE" 2>&1; then
+              if run_git_timed "$path" push "$canonical_remote" "HEAD:$branch"; then
                 cloud_pushes=$((cloud_pushes + 1))
                 log "workspace=$path cloud_push_result=pushed"
               else
+                push_status=$?
                 sync_issues=$((sync_issues + 1))
-                log "workspace=$path cloud_push_result=failed"
+                if [[ "$push_status" -eq 124 ]]; then
+                  log "workspace=$path cloud_push_result=failed reason=timeout timeout=${GIT_TIMEOUT_SECONDS}s"
+                else
+                  log "workspace=$path cloud_push_result=failed exit_status=$push_status"
+                fi
               fi
             fi
           else

@@ -5,11 +5,22 @@
   "restrict_to_explicit_workspaces": true,
   "local_loop_name": "wechat-weclaw-mac-dual-agent-knowledge",
   "explicit_workspaces": [
-    "~/github代码仓库/longclaw-agent-os",
-    "~/github代码仓库/weclaw",
-    "~/github代码仓库/Signals",
     "~/github代码仓库/Chanless",
-    "~/github代码仓库/hermes-agent"
+    "~/github代码仓库/Signals",
+    "~/github代码仓库/aippt/PPTAgent",
+    "~/github代码仓库/aippt/odin-slides",
+    "~/github代码仓库/aippt/ppt-master",
+    "~/github代码仓库/aippt/presenton",
+    "~/github代码仓库/clash-verge-repair",
+    "~/github代码仓库/claude-local-cleanup",
+    "~/github代码仓库/compound-engineering-plugin",
+    "~/github代码仓库/czsc",
+    "~/github代码仓库/gstack",
+    "~/github代码仓库/hermes-agent",
+    "~/github代码仓库/longclaw-agent-os",
+    "~/github代码仓库/resume-template-sources/simple-resume",
+    "~/github代码仓库/superpowers",
+    "~/github代码仓库/weclaw"
   ],
   "tool_mapping_ignored_names": [
     "-Users-zhangqilong--weclaw-chat",
