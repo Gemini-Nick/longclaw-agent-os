@@ -14,7 +14,7 @@ import {
 } from 'klinecharts'
 
 import type { SignalsDashboard } from '../../../../src/services/longclawControlPlane/models.js'
-import { fontStacks, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
+import { fontStacks, interaction, motion, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '../i18n.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
@@ -47,7 +47,10 @@ type WorkbenchSession = {
   a_live?: boolean
   hk_live?: boolean
   us_live?: boolean
+  active_markets?: string[]
+  market_timezone?: string
   data_as_of?: string
+  next_refresh_at?: string
   error?: string
 }
 
@@ -65,8 +68,8 @@ type WorkbenchShell = {
   cluster_summary?: Record<string, unknown>
   sync_lanes?: Record<string, unknown>
   decision_queue?: Record<string, unknown>[]
-  strategy_kpis?: Record<string, unknown>[]
-  source_confidence?: Record<string, unknown>[]
+  strategy_kpis?: Record<string, unknown>[] | Record<string, unknown>
+  source_confidence?: Record<string, unknown>[] | Record<string, unknown>
   default_target?: {
     kind?: string
     label?: string
@@ -84,6 +87,8 @@ type WorkbenchTarget = {
   available_freqs?: string[]
   carrier_kind?: string
   carrier_symbol?: string
+  market?: string
+  market_timezone?: string
 }
 
 type StrategySignal = {
@@ -96,6 +101,8 @@ type StrategySignal = {
   confidence?: number
   freq?: string
   details?: string
+  source?: string
+  pool_status?: string
 }
 
 type StrategyKeyLevel = {
@@ -117,6 +124,7 @@ type WorkbenchSymbolData = {
   review?: Record<string, unknown>
   trade?: Record<string, unknown>
   analysis_target?: string
+  candidate_groups?: Record<string, unknown>
   candidate_stocks?: Record<string, unknown>[]
   stock_analysis?: Record<string, unknown>
 }
@@ -168,6 +176,7 @@ type WatchlistRow = {
 }
 
 type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks'
+type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 
 type ApiError = Error & {
   status?: number
@@ -176,7 +185,7 @@ type ApiError = Error & {
 
 type SignalOverlayData = {
   label: string
-  side: 'buy' | 'sell'
+  side: 'buy' | 'sell' | 'neutral'
   color: string
 }
 
@@ -236,6 +245,11 @@ const CANDLE_PANE_ID = 'candle_pane'
 const MACD_PANE_ID = 'macd_pane'
 const MACD_ZERO_INDICATOR_NAME = 'LONGCLAW_MACD_ZERO'
 const MACD_PARAMS = [12, 26, 9]
+const MAX_CHART_SIGNAL_OVERLAYS = 10
+const MAX_CHART_DIVERGENCE_OVERLAYS = 3
+const MAX_CHART_LEVEL_OVERLAYS = 4
+const MAX_EVIDENCE_SIGNAL_ROWS = 6
+const CHART_SIGNAL_LOOKBACK_BARS = 140
 const MA_COLORS = [
   tradingDeskTheme.chart.orange,
   tradingDeskTheme.chart.line,
@@ -250,6 +264,35 @@ let signalOverlayRegistered = false
 let divergenceOverlayRegistered = false
 let macdZeroIndicatorRegistered = false
 const terminalTheme = tradingDeskTheme.colors
+
+function terminalLayoutMode(width: number): TerminalLayoutMode {
+  if (width >= 1550) return 'cinema'
+  if (width >= 1250) return 'desk'
+  if (width >= 1050) return 'balanced'
+  return 'focus'
+}
+
+function terminalCompactMode(mode: TerminalLayoutMode): boolean {
+  return mode === 'balanced' || mode === 'focus'
+}
+
+function terminalStackedTopBar(mode: TerminalLayoutMode): boolean {
+  return mode === 'focus'
+}
+
+function chartBarSpaceForMode(mode: TerminalLayoutMode): number {
+  if (mode === 'cinema') return 8
+  if (mode === 'desk') return 7
+  if (mode === 'balanced') return 6
+  return 5
+}
+
+function chartRightOffsetForMode(mode: TerminalLayoutMode): number {
+  if (mode === 'cinema') return 42
+  if (mode === 'desk') return 36
+  if (mode === 'balanced') return 28
+  return 20
+}
 
 function solidLineStyle(color: string, size = 1) {
   return { color, size, style: 'solid' as const, dashedValue: [0, 0] }
@@ -266,21 +309,43 @@ const terminalRootStyle: React.CSSProperties = {
   fontFamily: fontStacks.ui,
 }
 
-const terminalTopBarStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(220px, 300px) minmax(0, 1fr) auto',
-  alignItems: 'center',
-  gap: 6,
-  padding: '3px 7px',
-  borderBottom: `1px solid ${terminalTheme.grid}`,
-  background: terminalTheme.panel,
+function terminalTopBarStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const stacked = terminalStackedTopBar(mode)
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: stacked ? '4px 6px' : 6,
+    padding: stacked ? '4px 7px' : '3px 7px',
+    borderBottom: `1px solid ${terminalTheme.grid}`,
+    background: terminalTheme.panel,
+    boxShadow: `inset 0 -1px ${tradingDeskTheme.alpha.textHairline}`,
+  }
 }
 
-const searchFormStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(160px, 1fr) auto',
-  gap: 6,
-  minWidth: 0,
+function searchFormStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const stacked = terminalStackedTopBar(mode)
+  return {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(160px, 1fr) auto',
+    gap: 6,
+    flex: stacked ? '1 0 100%' : '1 1 330px',
+    minWidth: 0,
+    maxWidth: mode === 'cinema' ? 540 : stacked ? 'none' : 460,
+  }
+}
+
+function topBarButtonGroupStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const stacked = terminalStackedTopBar(mode)
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 5,
+    flex: stacked ? '1 1 220px' : '0 1 auto',
+    minWidth: 0,
+    justifyContent: 'flex-start',
+  }
 }
 
 const searchInputStyle: React.CSSProperties = {
@@ -296,15 +361,33 @@ const searchInputStyle: React.CSSProperties = {
   outline: 'none',
 }
 
-const terminalGridStyle: React.CSSProperties = {
-  flex: 1,
-  display: 'grid',
-  gridTemplateColumns: 'minmax(420px, 460px) minmax(0, 1fr) minmax(218px, 276px)',
-  gridTemplateRows: 'minmax(0, 1fr)',
-  gap: 1,
-  alignItems: 'stretch',
-  minHeight: 0,
-  overflow: 'hidden',
+function terminalGridLayoutStyle(leftCollapsed: boolean, rightCollapsed: boolean, mode: TerminalLayoutMode): React.CSSProperties {
+  const leftExpanded: Record<TerminalLayoutMode, string> = {
+    cinema: 'minmax(380px, 430px)',
+    desk: 'minmax(330px, 370px)',
+    balanced: 'minmax(292px, 324px)',
+    focus: 'minmax(252px, 286px)',
+  }
+  const rightExpanded: Record<TerminalLayoutMode, string> = {
+    cinema: 'minmax(286px, 340px)',
+    desk: 'minmax(236px, 274px)',
+    balanced: 'minmax(208px, 238px)',
+    focus: 'minmax(190px, 212px)',
+  }
+  const collapsed = mode === 'focus' ? '36px' : '40px'
+  const leftColumn = leftCollapsed ? collapsed : leftExpanded[mode]
+  const rightColumn = rightCollapsed ? collapsed : rightExpanded[mode]
+  return {
+    flex: 1,
+    display: 'grid',
+    gridTemplateColumns: `${leftColumn} minmax(0, 1fr) ${rightColumn}`,
+    gridTemplateRows: 'minmax(0, 1fr)',
+    gap: 1,
+    alignItems: 'stretch',
+    minHeight: 0,
+    overflow: 'hidden',
+    transition: `grid-template-columns ${motion.short}`,
+  }
 }
 
 const fallbackGridStyle: React.CSSProperties = {
@@ -325,6 +408,43 @@ const terminalSideStyle: React.CSSProperties = {
   minHeight: 0,
   overflow: 'auto',
   background: terminalTheme.grid,
+  scrollbarGutter: 'stable',
+}
+
+const collapsedSideStyle: React.CSSProperties = {
+  display: 'flex',
+  minWidth: 0,
+  minHeight: 0,
+  alignItems: 'stretch',
+  justifyContent: 'center',
+  background: terminalTheme.panel,
+}
+
+const verticalCollapseButtonStyle: React.CSSProperties = {
+  width: '100%',
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 0,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 12,
+  fontWeight: 800,
+  writingMode: 'vertical-rl',
+  letterSpacing: 0,
+}
+
+const panelActionButtonStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+  padding: '2px 6px',
+  transition: interaction.transition,
 }
 
 const terminalPanelStyle: React.CSSProperties = {
@@ -340,6 +460,7 @@ const terminalPanelStyle: React.CSSProperties = {
   background: terminalTheme.panel,
   color: terminalTheme.text,
   overflow: 'hidden',
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
 }
 
 const panelHeaderStyle: React.CSSProperties = {
@@ -353,12 +474,33 @@ const panelTitleStyle: React.CSSProperties = {
   color: terminalTheme.textStrong,
   fontSize: 11,
   fontWeight: 700,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const mutedTextStyle: React.CSSProperties = {
   color: terminalTheme.muted,
   fontSize: 12,
   lineHeight: 1.35,
+}
+
+const mutedLineStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const mutedTwoLineStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
 }
 
 const monoTextStyle: React.CSSProperties = {
@@ -394,6 +536,7 @@ const dataRowStyle: React.CSSProperties = {
   background: terminalTheme.panelSoft,
   padding: '4px 6px',
   minWidth: 0,
+  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.textHairline}`,
 }
 
 const emptyStateDarkStyle: React.CSSProperties = {
@@ -434,6 +577,18 @@ const compactListStyle: React.CSSProperties = {
   gap: 5,
 }
 
+const candidateGroupHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 6,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 0,
+  textTransform: 'uppercase',
+}
+
 const targetButtonStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.border}`,
   borderRadius: 5,
@@ -444,6 +599,7 @@ const targetButtonStyle: React.CSSProperties = {
   background: terminalTheme.panelSoft,
   color: terminalTheme.text,
   fontFamily: fontStacks.ui,
+  transition: interaction.transition,
 }
 
 const watchlistTableStyle: React.CSSProperties = {
@@ -454,6 +610,7 @@ const watchlistTableStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.border}`,
   borderRadius: 4,
   background: terminalTheme.panelInset,
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
 }
 
 const watchlistGridRowStyle: React.CSSProperties = {
@@ -537,12 +694,14 @@ const watchlistSubStyle: React.CSSProperties = {
 const indicatorLegendStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
-  gap: '4px 9px',
+  gap: '3px 6px',
   alignItems: 'center',
   color: terminalTheme.muted,
   fontFamily: fontStacks.mono,
-  fontSize: 10,
+  fontSize: 9,
   lineHeight: 1.2,
+  maxHeight: 28,
+  overflow: 'hidden',
 }
 
 const indicatorLegendItemStyle: React.CSSProperties = {
@@ -556,6 +715,16 @@ const watchlistTabsStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
   gap: 4,
+  minWidth: 252,
+  flex: '1 1 252px',
+}
+
+const watchlistControlRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  flexWrap: 'wrap',
+  gap: 6,
+  minWidth: 0,
 }
 
 const watchlistTabButtonStyle: React.CSSProperties = {
@@ -566,9 +735,11 @@ const watchlistTabButtonStyle: React.CSSProperties = {
   height: 28,
   cursor: 'pointer',
   fontFamily: fontStacks.ui,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 800,
   whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 }
 
 const watchlistTabButtonActiveStyle: React.CSSProperties = {
@@ -576,6 +747,33 @@ const watchlistTabButtonActiveStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.accent}`,
   background: terminalTheme.accentSoft,
   color: terminalTheme.accentText,
+}
+
+const watchlistRangeSelectLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  flex: '1 1 176px',
+  minWidth: 0,
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 800,
+}
+
+const watchlistRangeSelectStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 120,
+  maxWidth: 170,
+  height: 28,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+  outline: 'none',
 }
 
 const signalBadgeRowStyle: React.CSSProperties = {
@@ -631,20 +829,39 @@ const chartStageStyle: React.CSSProperties = {
   borderRadius: 0,
   background: terminalTheme.root,
   overflow: 'hidden',
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
 }
 
 const chartHeaderStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 10,
+  alignItems: 'flex-start',
+  gap: 8,
+  flexWrap: 'wrap',
+  minWidth: 0,
 }
 
-const chartTitleStyle: React.CSSProperties = {
-  color: terminalTheme.textStrong,
-  fontSize: 17,
-  lineHeight: 1.1,
-  fontWeight: 800,
+function chartTitleStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  return {
+    color: terminalTheme.textStrong,
+    fontSize: mode === 'focus' ? 14 : mode === 'cinema' ? 16 : 15,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
+}
+
+const chartSubtitleStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontSize: 11,
 }
 
 const chartMetaRowStyle: React.CSSProperties = {
@@ -654,26 +871,51 @@ const chartMetaRowStyle: React.CSSProperties = {
   gap: 6,
 }
 
-const chartHeaderRightStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  justifyContent: 'flex-end',
-  minWidth: 0,
+function chartHeaderRightStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const compact = terminalCompactMode(mode)
+  return {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 6,
+    justifyContent: compact ? 'space-between' : 'flex-end',
+    flexWrap: 'wrap',
+    flex: compact ? '1 1 100%' : '0 1 300px',
+    minWidth: 0,
+    maxWidth: compact ? '100%' : 'min(100%, 300px)',
+  }
 }
 
-const headerMetricsStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(62px, 78px))',
-  gap: 4,
+function headerMetricsStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: mode === 'focus'
+      ? 'repeat(3, minmax(42px, 1fr))'
+      : mode === 'balanced'
+        ? 'repeat(3, minmax(46px, 60px))'
+        : 'repeat(3, minmax(48px, 64px))',
+    gap: 4,
+    minWidth: mode === 'focus' ? 0 : undefined,
+    flex: mode === 'focus' ? '1 1 180px' : '0 0 auto',
+  }
 }
 
 const headerMetricStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.border}`,
   borderRadius: 4,
   background: terminalTheme.panelInset,
-  padding: '4px 6px',
+  padding: '3px 5px',
   minWidth: 0,
+}
+
+const headerMetricValueStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontWeight: 800,
+  fontSize: 11,
+  lineHeight: 1.12,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'normal',
+  wordBreak: 'break-word',
 }
 
 const chartConclusionStyle: React.CSSProperties = {
@@ -691,6 +933,7 @@ const chartCanvasShellStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.chartBorder}`,
   borderRadius: 3,
   background: terminalTheme.chartPanel,
+  boxShadow: tradingDeskTheme.shadows.glow,
 }
 
 const chartCanvasStyle: React.CSSProperties = {
@@ -719,6 +962,7 @@ const signalRowStyle: React.CSSProperties = {
   background: terminalTheme.panelSoft,
   padding: '5px 7px',
   alignItems: 'center',
+  minWidth: 0,
 }
 
 const quickChipStyle: React.CSSProperties = {
@@ -747,6 +991,7 @@ const quickChipActiveStyle: React.CSSProperties = {
 function terminalButtonStyle(active = false, disabled = false): React.CSSProperties {
   return {
     height: 28,
+    minWidth: 42,
     border: `1px solid ${active ? terminalTheme.accent : terminalTheme.borderStrong}`,
     borderRadius: 5,
     background: active ? terminalTheme.accentSoft : terminalTheme.control,
@@ -758,6 +1003,7 @@ function terminalButtonStyle(active = false, disabled = false): React.CSSPropert
     fontSize: 13,
     fontWeight: 700,
     whiteSpace: 'nowrap',
+    flex: '0 0 auto',
   }
 }
 
@@ -833,7 +1079,7 @@ function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN
       session.hk_live ? 'H' : '',
       session.us_live ? 'US' : '',
     ].filter(Boolean)
-    return `${liveMarkets.join('+')} live`
+    return locale === 'zh-CN' ? `${liveMarkets.join('+')} 实时` : `${liveMarkets.join('+')} live`
   }
   return session.ready
     ? (locale === 'zh-CN' ? '已就绪' : 'Ready')
@@ -880,7 +1126,7 @@ function chartStyles(): DeepPartial<Styles> {
       tooltip: {
         text: {
           color: terminalTheme.text,
-          size: 12,
+          size: 10,
           family: 'IBM Plex Mono, Menlo, monospace',
         },
       },
@@ -909,18 +1155,18 @@ function chartStyles(): DeepPartial<Styles> {
       tooltip: {
         text: {
           color: terminalTheme.text,
-          size: 11,
+          size: 9,
           family: 'IBM Plex Mono, Menlo, monospace',
         },
       },
     },
     xAxis: {
       axisLine: { color: tradingDeskTheme.alpha.textBorderStrong },
-      tickText: { color: tradingDeskTheme.market.flat, size: 11 },
+      tickText: { color: tradingDeskTheme.market.flat, size: 10 },
     },
     yAxis: {
       axisLine: { color: tradingDeskTheme.alpha.textBorderStrong },
-      tickText: { color: tradingDeskTheme.market.flat, size: 11 },
+      tickText: { color: tradingDeskTheme.market.flat, size: 10 },
     },
     crosshair: {
       horizontal: {
@@ -1058,11 +1304,11 @@ function ensureSignalOverlay() {
       if (!point) return []
       const data = recordValue(overlay.extendData) as SignalOverlayData
       const label = data.label || 'SIG'
-      const side = data.side === 'sell' ? 'sell' : 'buy'
-      const color = data.color || (side === 'buy' ? tradingDeskTheme.chart.orange : tradingDeskTheme.chart.purple)
-      const width = Math.max(34, Math.min(78, label.length * 9 + 14))
-      const height = 20
-      const gap = 10
+      const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
+      const color = data.color || signalOverlayColor(side)
+      const width = Math.max(28, Math.min(58, label.length * 9 + 12))
+      const height = 17
+      const gap = 7
       const rectX = point.x - width / 2
       const rectY = side === 'buy' ? point.y + gap : point.y - gap - height
       const stemEndY = side === 'buy' ? rectY : rectY + height
@@ -1098,8 +1344,8 @@ function ensureSignalOverlay() {
           attrs: { x: rectX, y: rectY, width, height },
           styles: {
             color,
-            borderColor: tradingDeskTheme.alpha.textBorderStrong,
-            borderRadius: 5,
+            borderColor: side === 'neutral' ? terminalTheme.borderStrong : tradingDeskTheme.alpha.textBorderStrong,
+            borderRadius: 4,
           },
           ignoreEvent: true,
         },
@@ -1114,8 +1360,8 @@ function ensureSignalOverlay() {
           },
           styles: {
             color: terminalTheme.white,
-            size: 10,
-            weight: 700,
+            size: 9,
+            weight: 800,
             family: 'IBM Plex Mono, Menlo, monospace',
           },
           ignoreEvent: true,
@@ -1488,19 +1734,110 @@ function signalPrice(signal: StrategySignal, dataByTimestamp: Map<number, KLineD
 function shortSignalLabel(value?: string): string {
   const raw = String(value ?? '').trim()
   if (!raw) return 'SIG'
+  const normalized = raw.toLowerCase()
+  if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
+  if (normalized.includes('顶背离')) return '顶背'
+  if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) return '突破'
+  if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) return '观察'
+  if (isSellSignal(raw)) return '卖'
+  if (isBuySignal(raw)) return '买'
+  if (normalized.includes('gap') || normalized.includes('缺口')) return '缺口'
+  if (normalized.includes('macd')) return 'MACD'
   if (/^[\x00-\x7F]+$/.test(raw)) return raw.toUpperCase().slice(0, 4)
   return raw.slice(0, 3)
+}
+
+function signalOverlaySide(value?: string): SignalOverlayData['side'] {
+  const normalized = String(value ?? '').toLowerCase()
+  if (isSellSignal(value) || normalized.includes('顶背离')) return 'sell'
+  if (isBuySignal(value) || normalized.includes('底背离') || normalized.includes('背驰买')) return 'buy'
+  return 'neutral'
+}
+
+function signalOverlayColor(side: SignalOverlayData['side']): string {
+  if (side === 'sell') return tradingDeskTheme.market.down
+  if (side === 'buy') return tradingDeskTheme.chart.orange
+  return tradingDeskTheme.alpha.infoBorder
+}
+
+function signalOverlayPriority(signal: StrategySignal): number {
+  const normalized = String(signal.type ?? '').toLowerCase()
+  let priority = 35
+  if (isSellSignal(signal.type) || normalized.includes('顶背离')) priority = 90
+  else if (isBuySignal(signal.type) || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
+  else if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) priority = 70
+  else if (normalized.includes('macd') || normalized.includes('背驰')) priority = 60
+  else if (normalized.includes('gap') || normalized.includes('缺口')) priority = 45
+  else if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) priority = 20
+  return isCustomUserSignal(signal) ? priority + 18 : priority
+}
+
+function isCustomUserSignal(signal: StrategySignal): boolean {
+  const source = String(signal.source ?? '').toLowerCase()
+  return source.includes('signal_records') || source.includes('backtest') || source.includes('custom')
+}
+
+function signalSourceLabel(signal: StrategySignal): string {
+  if (isCustomUserSignal(signal)) return '自定义'
+  const source = String(signal.source ?? '').toLowerCase()
+  if (source.includes('signal_pool') || source.includes('signals')) return '信号池'
+  return ''
+}
+
+function displaySignalsForChart(data: KLineData[], signals: StrategySignal[]): StrategySignal[] {
+  if (data.length === 0 || signals.length === 0) return []
+  const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
+  const valid = signals
+    .map(signal => ({ signal, timestamp: signalTimestamp(signal), priority: signalOverlayPriority(signal) }))
+    .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } => item.timestamp !== undefined)
+  const recent = valid.filter(item => item.timestamp >= cutoff)
+  const latestCustom = valid.filter(item => isCustomUserSignal(item.signal)).slice(-MAX_CHART_SIGNAL_OVERLAYS)
+  const source = recent.length > 0 ? [...recent, ...latestCustom] : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
+  const bestByTimestamp = new Map<number, { signal: StrategySignal; timestamp: number; priority: number }>()
+  source.forEach(item => {
+    const existing = bestByTimestamp.get(item.timestamp)
+    if (!existing || item.priority > existing.priority) bestByTimestamp.set(item.timestamp, item)
+  })
+  return Array.from(bestByTimestamp.values())
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+    .slice(0, MAX_CHART_SIGNAL_OVERLAYS)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .map(item => item.signal)
+}
+
+function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] {
+  if (signals.length === 0) return []
+  const ranked = signals
+    .map(signal => ({ signal, timestamp: signalTimestamp(signal) ?? 0 }))
+    .sort((left, right) => {
+      const customDelta = Number(isCustomUserSignal(right.signal)) - Number(isCustomUserSignal(left.signal))
+      if (customDelta !== 0) return customDelta
+      return right.timestamp - left.timestamp
+    })
+  const output: StrategySignal[] = []
+  const seen = new Set<string>()
+  ranked.forEach(({ signal, timestamp }) => {
+    if (output.length >= MAX_EVIDENCE_SIGNAL_ROWS) return
+    const key = `${timestamp}:${signal.type ?? ''}:${signal.freq ?? ''}:${signal.source ?? ''}`
+    if (seen.has(key)) return
+    seen.add(key)
+    output.push(signal)
+  })
+  return output
 }
 
 function createSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[]) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
   const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
-  signals.slice(-30).forEach(signal => {
+  displaySignalsForChart(data, signals).forEach(signal => {
     const timestamp = signalTimestamp(signal)
     const price = signalPrice(signal, dataByTimestamp)
     if (!timestamp || price === undefined) return
     const label = shortSignalLabel(signal.type)
-    const side = isSellSignal(signal.type) && !isBuySignal(signal.type) ? 'sell' : 'buy'
+    const side = signalOverlaySide(signal.type)
     chart.createOverlay({
       name: SIGNAL_OVERLAY_NAME,
       groupId: SIGNAL_OVERLAY_GROUP,
@@ -1509,7 +1846,7 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
       extendData: {
         label,
         side,
-        color: side === 'buy' ? tradingDeskTheme.chart.orange : tradingDeskTheme.chart.purple,
+        color: signalOverlayColor(side),
       } satisfies SignalOverlayData,
     })
   })
@@ -1524,6 +1861,10 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
   keyLevels
     .map(level => ({ level, value: numberValue(level.value) }))
     .filter((item): item is { level: StrategyKeyLevel; value: number } => item.value !== undefined)
+    .filter(item => {
+      const name = compactText(item.level.name)
+      return !/^(5|10)(日|天|d|D)?线?$/.test(name)
+    })
     .sort((left, right) => {
       if (close === undefined) return 0
       return Math.abs(left.value - close) - Math.abs(right.value - close)
@@ -1532,9 +1873,9 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
       const tooClose = visibleLevels.some(existing => {
         const existingValue = numberValue(existing.value)
         if (existingValue === undefined) return false
-        return Math.abs(existingValue - item.value) / Math.max(Math.abs(item.value), 0.000001) < 0.003
+        return Math.abs(existingValue - item.value) / Math.max(Math.abs(item.value), 0.000001) < 0.006
       })
-      if (!tooClose && visibleLevels.length < 8) visibleLevels.push(item.level)
+      if (!tooClose && visibleLevels.length < MAX_CHART_LEVEL_OVERLAYS) visibleLevels.push(item.level)
     })
   visibleLevels.forEach(level => {
     const value = numberValue(level.value)
@@ -1546,11 +1887,11 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
       points: [{ timestamp, value }],
       extendData: [level.name, value.toFixed(2)].filter(Boolean).join(' '),
       styles: {
-        line: solidLineStyle(tradingDeskTheme.chart.line, 1),
+        line: { color: tradingDeskTheme.alpha.infoBorder, size: 1, style: 'dashed', dashedValue: [4, 5] },
         text: {
           color: terminalTheme.white,
-          backgroundColor: tradingDeskTheme.chart.line,
-          size: 10,
+          backgroundColor: tradingDeskTheme.alpha.infoBorder,
+          size: 9,
         },
       },
     })
@@ -1559,7 +1900,7 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
 
 function createDivergenceOverlays(chart: Chart, divergences: MacdDivergenceSignal[]) {
   chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
-  divergences.forEach(signal => {
+  divergences.slice(-MAX_CHART_DIVERGENCE_OVERLAYS).forEach(signal => {
     const bearish = signal.type === 'bearish'
     const color = bearish ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
     const label = bearish ? '顶背离' : '底背离'
@@ -1617,7 +1958,7 @@ function initialTargetFrom(
       shellTarget?.label ??
       chartContext?.symbol ??
       buyCandidate?.symbol ??
-      '沪深300',
+      '上证指数',
     kind: shellTarget?.kind ?? inferredKind,
     freq: shellTarget?.freq ?? chartContext?.freq ?? 'daily',
   }
@@ -1672,7 +2013,7 @@ function strategyKpiLabel(row: Record<string, unknown>): string {
 }
 
 function sourceConfidenceLabel(row: Record<string, unknown>): string {
-  const key = compactText(row.source_id) || compactText(row.label)
+  const key = compactText(row.source_id) || compactText(row.label) || compactText(row.name) || compactText(row.source)
   const labels: Record<string, string> = {
     board: '行业板块',
     concept: '概念板块',
@@ -1680,7 +2021,7 @@ function sourceConfidenceLabel(row: Record<string, unknown>): string {
     quote: '行情快照',
     signal: '信号池',
   }
-  return labels[key] || compactText(row.label) || key || 'Source'
+  return labels[key] || compactText(row.label) || compactText(row.name) || compactText(row.source) || key || 'Source'
 }
 
 function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN'): string {
@@ -1690,6 +2031,12 @@ function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN'): st
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  const element = target instanceof HTMLElement ? target : null
+  if (!element) return false
+  return element.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)
 }
 
 function rowsFromCluster(value: unknown): Record<string, unknown>[] {
@@ -1704,6 +2051,58 @@ function rowsFromCluster(value: unknown): Record<string, unknown>[] {
       ? conceptTop.map(item => ({ ...recordValue(item), kind: 'concept', cluster_kind: 'concept' }))
       : []),
   ].map(item => recordValue(item))
+}
+
+function normalizeMetricRows(value: unknown, labelKey: string, valueKey: string): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+  const record = recordValue(value)
+  if (Object.keys(record).length === 0) return []
+  for (const nestedKey of ['items', 'rows', 'sources']) {
+    const nested = record[nestedKey]
+    if (Array.isArray(nested) && nested.length > 0) {
+      return nested.map((item, index) => {
+        const row = recordValue(item)
+        return {
+          [labelKey]:
+            compactText(row[labelKey]) ||
+            compactText(row.source_id) ||
+            compactText(row.kpi_id) ||
+            compactText(row.name) ||
+            compactText(row.source) ||
+            `${nestedKey}_${index + 1}`,
+          [valueKey]: row[valueKey] ?? row.score ?? row.value,
+          ...row,
+        }
+      })
+    }
+  }
+  return Object.entries(record)
+    .filter(([key]) => !['items', 'rows', 'sources'].includes(key))
+    .map(([key, raw]) => {
+      const row = recordValue(raw)
+      return Object.keys(row).length > 0
+        ? { [labelKey]: key, ...row }
+        : { [labelKey]: key, [valueKey]: raw }
+    })
+}
+
+function syncLaneRows(value: unknown): Record<string, unknown>[] {
+  const record = recordValue(value)
+  return Object.entries(record).map(([lane, raw]) => ({
+    lane,
+    ...recordValue(raw),
+  }))
+}
+
+function chartMarketTimezone(symbolData: WorkbenchSymbolData | null, shell: WorkbenchShell | null): string {
+  const meta = recordValue(symbolData?.chart?.meta)
+  return (
+    compactText(symbolData?.target?.market_timezone) ||
+    compactText(meta.market_timezone) ||
+    compactText(shell?.session?.market_timezone) ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    'Asia/Shanghai'
+  )
 }
 
 function labelForTarget(row: Record<string, unknown>): string {
@@ -2047,6 +2446,31 @@ function watchlistRowIsActive(row: WatchlistRow, target: ChartTarget): boolean {
   return row.targetLabel === target.label || row.label === target.label || row.code === target.label || row.name === target.label
 }
 
+const candidateGroupOrder = ['leaders', 'weighted', 'elastic', 'source_leaders', 'constituents']
+
+function candidateGroupLabel(key: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    leaders: ['龙头梯队', 'Leaders'],
+    weighted: ['权重/链主', 'Weighted'],
+    elastic: ['弹性标的', 'Elastic'],
+    source_leaders: ['当日领涨', 'Top movers'],
+    constituents: ['成分候选', 'Constituents'],
+  }
+  const label = labels[key]
+  if (!label) return key
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function candidateGroupsFromSymbolData(symbolData: WorkbenchSymbolData | null): Record<string, Record<string, unknown>[]> {
+  const raw = recordValue(symbolData?.candidate_groups)
+  const groups: Record<string, Record<string, unknown>[]> = {}
+  candidateGroupOrder.forEach(key => {
+    const value = raw[key]
+    groups[key] = Array.isArray(value) ? value.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0) : []
+  })
+  return groups
+}
+
 export function StrategyChartTerminal({
   locale,
   dashboard,
@@ -2059,8 +2483,11 @@ export function StrategyChartTerminal({
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const resizeFrameRef = useRef<number | null>(null)
   const activeRequestRef = useRef(0)
+  const shellRefreshInFlightRef = useRef(false)
+  const silentSymbolRefreshInFlightRef = useRef(false)
   const dashboardRef = useRef(dashboard)
   const lastChartUpdateSilentRef = useRef(false)
+  const autoCollapsedForFocusRef = useRef(false)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
   const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
   const [symbolData, setSymbolData] = useState<WorkbenchSymbolData | null>(null)
@@ -2071,9 +2498,15 @@ export function StrategyChartTerminal({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
   const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('macro_indices')
+  const [selectedRangeKey, setSelectedRangeKey] = useState('')
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
 
   const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
+  const customSignalCount = useMemo(() => signals.filter(isCustomUserSignal).length, [signals])
+  const evidenceSignals = useMemo(() => displaySignalsForEvidence(signals), [signals])
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
   const liveRefresh = shouldUseLiveRefresh(shell?.session)
@@ -2091,22 +2524,48 @@ export function StrategyChartTerminal({
   const decisionRows = (Array.isArray(shell?.decision_queue) && shell.decision_queue.length > 0
     ? shell.decision_queue
     : dashboard.decision_queue) as Array<Record<string, unknown>>
-  const strategyKpis = (Array.isArray(shell?.strategy_kpis) && shell.strategy_kpis.length > 0
-    ? shell.strategy_kpis
-    : dashboard.strategy_kpis) as Array<Record<string, unknown>>
-  const sourceConfidence = (Array.isArray(shell?.source_confidence) && shell.source_confidence.length > 0
-    ? shell.source_confidence
-    : dashboard.source_confidence) as Array<Record<string, unknown>>
+  const shellStrategyKpis = normalizeMetricRows(shell?.strategy_kpis, 'kpi_id', 'value')
+  const dashboardStrategyKpis = normalizeMetricRows(dashboard.strategy_kpis, 'kpi_id', 'value')
+  const strategyKpis = shellStrategyKpis.length > 0 ? shellStrategyKpis : dashboardStrategyKpis
+  const shellSourceConfidence = normalizeMetricRows(shell?.source_confidence, 'source_id', 'confidence')
+  const dashboardSourceConfidence = normalizeMetricRows(dashboard.source_confidence, 'source_id', 'confidence')
+  const sourceConfidence = shellSourceConfidence.length > 0 ? shellSourceConfidence : dashboardSourceConfidence
+  const laneRows = useMemo(() => syncLaneRows(shell?.sync_lanes), [shell?.sync_lanes])
+  const dataIssueRows = useMemo(
+    () =>
+      [...laneRows, ...sourceConfidence].filter(row => {
+        const status = compactText(row.status).toLowerCase()
+        const freshness = compactText(row.freshness).toLowerCase()
+        const confidence = numberValue(row.confidence ?? row.score)
+        return (
+          ['stale', 'unavailable', 'degraded', 'error', 'failed', 'missing'].some(token =>
+            status.includes(token) || freshness.includes(token),
+          ) ||
+          compactText(row.reason) ||
+          (confidence !== undefined && confidence < 0.8)
+        )
+      }),
+    [laneRows, sourceConfidence],
+  )
   const shellBuyCandidates = Array.isArray(shell?.buy_candidates) ? shell.buy_candidates : []
   const buyRows = shellBuyCandidates.length > 0
     ? shellBuyCandidates
     : dashboard.buy_candidates as Array<Record<string, unknown>>
   const targetCandidateRows = Array.isArray(symbolData?.candidate_stocks) ? symbolData.candidate_stocks : []
+  const targetCandidateGroups = useMemo(() => candidateGroupsFromSymbolData(symbolData), [symbolData])
   const sellRows = dashboard.sell_warnings as Array<Record<string, unknown>>
   const indexTargets = shell?.indices ?? []
   const clusterRows = rowsFromCluster(shell?.cluster_summary)
   const shellWatchlist = Array.isArray(shell?.watchlist) ? shell.watchlist : []
   const watchlistRangeColumns = useMemo(() => watchlistRangeColumnsFromShell(shell), [shell])
+  const selectedRangeColumn = useMemo(() => {
+    const preferredKey = selectedRangeKey || watchlistRangeColumns[0]?.key || ''
+    return watchlistRangeColumns.find(column => column.key === preferredKey) ?? watchlistRangeColumns[0]
+  }, [selectedRangeKey, watchlistRangeColumns])
+  const visibleRangeColumns = useMemo(
+    () => (selectedRangeColumn ? [selectedRangeColumn] : []),
+    [selectedRangeColumn],
+  )
   const groupedWatchlistRows = useMemo(() => {
     const groups = shell?.watchlist_groups ?? {}
     const macroRows = Array.isArray(groups.macro_indices) && groups.macro_indices.length > 0
@@ -2125,15 +2584,15 @@ export function StrategyChartTerminal({
       sellRows,
       decisionRows,
       clusterRows,
-      rangeColumns: watchlistRangeColumns,
+      rangeColumns: visibleRangeColumns,
     })
     return {
-      macro_indices: buildRowsForGroup(macroRows, 'index', watchlistRangeColumns),
-      sector_boards: buildRowsForGroup(sectorRows, 'industry', watchlistRangeColumns),
-      focus_stocks: buildRowsForGroup(focusRows, 'stock', watchlistRangeColumns),
+      macro_indices: buildRowsForGroup(macroRows, 'index', visibleRangeColumns),
+      sector_boards: buildRowsForGroup(sectorRows, 'industry', visibleRangeColumns),
+      focus_stocks: buildRowsForGroup(focusRows, 'stock', visibleRangeColumns),
       legacy: legacyRows,
     }
-  }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, watchlistRangeColumns])
+  }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, visibleRangeColumns])
   const activeWatchlistRows = groupedWatchlistRows[activeWatchlistTab].length > 0
     ? groupedWatchlistRows[activeWatchlistTab]
     : groupedWatchlistRows.legacy
@@ -2147,6 +2606,8 @@ export function StrategyChartTerminal({
     compactText(symbolData?.target?.symbol) ||
     compactText(symbolData?.target?.kind, target.kind)
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const layoutMode = terminalLayoutMode(viewportWidth)
+  const chartTimezone = useMemo(() => chartMarketTimezone(symbolData, shell), [shell, symbolData])
   const activeMaPeriods = useMemo(() => maPeriodsForFreq(currentFreq), [currentFreq])
   const divergences = useMemo(() => macdDivergences(klineData, currentFreq), [currentFreq, klineData])
   const chartKeyLevels = useMemo(
@@ -2165,14 +2626,20 @@ export function StrategyChartTerminal({
   const loadShell = useCallback(
     async (signal?: AbortSignal) => {
       if (!baseUrl) return null
-      const nextShell = await fetchJson<WorkbenchShell>(
-        baseUrl,
-        '/api/workbench/shell',
-        signal,
-        'strategy.shell',
-      )
-      setShell(nextShell)
-      return nextShell
+      if (shellRefreshInFlightRef.current) return null
+      shellRefreshInFlightRef.current = true
+      try {
+        const nextShell = await fetchJson<WorkbenchShell>(
+          baseUrl,
+          '/api/workbench/shell',
+          signal,
+          'strategy.shell',
+        )
+        setShell(nextShell)
+        return nextShell
+      } finally {
+        shellRefreshInFlightRef.current = false
+      }
     },
     [baseUrl],
   )
@@ -2180,6 +2647,8 @@ export function StrategyChartTerminal({
   const loadSymbol = useCallback(
     async (nextTarget: ChartTarget, options: { signal?: AbortSignal; silent?: boolean } = {}) => {
       if (!baseUrl) return
+      if (options.silent && silentSymbolRefreshInFlightRef.current) return
+      if (options.silent) silentSymbolRefreshInFlightRef.current = true
       const requestId = activeRequestRef.current + 1
       activeRequestRef.current = requestId
       if (!options.silent) setLoading(true)
@@ -2241,6 +2710,7 @@ export function StrategyChartTerminal({
         setBooting(false)
         setError(apiError.message || (locale === 'zh-CN' ? 'Signals 图表数据加载失败。' : 'Failed to load Signals chart data.'))
       } finally {
+        if (options.silent) silentSymbolRefreshInFlightRef.current = false
         if (requestId === activeRequestRef.current) setLoading(false)
       }
     },
@@ -2252,8 +2722,33 @@ export function StrategyChartTerminal({
   }, [dashboard])
 
   useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    if (layoutMode === 'focus' && !autoCollapsedForFocusRef.current) {
+      autoCollapsedForFocusRef.current = true
+      setRightCollapsed(true)
+      return
+    }
+    if (layoutMode !== 'focus') {
+      autoCollapsedForFocusRef.current = false
+    }
+  }, [layoutMode])
+
+  useEffect(() => {
     setSearchDraft(target.label)
   }, [target.label])
+
+  useEffect(() => {
+    if (watchlistRangeColumns.length === 0) return
+    if (!selectedRangeKey || !watchlistRangeColumns.some(column => column.key === selectedRangeKey)) {
+      const ytd = watchlistRangeColumns.find(column => column.key === 'ytd')
+      setSelectedRangeKey((ytd ?? watchlistRangeColumns[0]).key)
+    }
+  }, [selectedRangeKey, watchlistRangeColumns])
 
   useEffect(() => {
     if (!baseUrl) return
@@ -2264,23 +2759,32 @@ export function StrategyChartTerminal({
     setBooting(false)
     setLoading(true)
     void (async () => {
-      try {
-        const nextShell = await loadShell(controller.signal)
-        const nextTarget = initialTargetFrom(nextShell, dashboardRef.current)
-        recordObservationEvent('strategy.init-target', {
-          target: nextTarget,
-          reason: 'initial-shell-load',
-        })
-        setTarget(nextTarget)
-        setSearchDraft(nextTarget.label)
-        await loadSymbol(nextTarget, { signal: controller.signal })
-      } catch (rawError) {
-        if (controller.signal.aborted) return
-        const apiError = rawError as ApiError
-        setError(apiError.message || (locale === 'zh-CN' ? 'Signals 终端初始化失败。' : 'Failed to initialize Signals terminal.'))
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
+      const fallbackTarget = initialTargetFrom(null, dashboardRef.current)
+      recordObservationEvent('strategy.init-target', {
+        target: fallbackTarget,
+        reason: 'fast-static-initial-target',
+      })
+      setTarget(fallbackTarget)
+      setSearchDraft(fallbackTarget.label)
+      const shellResult = loadShell(controller.signal)
+      const symbolResult = loadSymbol(fallbackTarget, { signal: controller.signal })
+      const [shellOutcome, symbolOutcome] = await Promise.allSettled([shellResult, symbolResult])
+      if (controller.signal.aborted) return
+      if (shellOutcome.status === 'fulfilled' && shellOutcome.value) {
+        const shellTarget = initialTargetFrom(shellOutcome.value, dashboardRef.current)
+        if (shellTarget.label !== fallbackTarget.label || shellTarget.kind !== fallbackTarget.kind) {
+          recordObservationEvent('strategy.init-target.resolved', {
+            target: shellTarget,
+            fallback_target: fallbackTarget,
+            reason: 'shell-loaded-after-fast-target',
+          })
+        }
       }
+      if (shellOutcome.status === 'rejected' && symbolOutcome.status === 'rejected') {
+        const apiError = shellOutcome.reason as ApiError
+        setError(apiError.message || (locale === 'zh-CN' ? 'Signals 终端初始化失败。' : 'Failed to initialize Signals terminal.'))
+      }
+      setLoading(false)
     })()
     return () => controller.abort()
   }, [baseUrl, loadShell, loadSymbol, locale])
@@ -2288,18 +2792,29 @@ export function StrategyChartTerminal({
   useEffect(() => {
     if (!baseUrl || !target.label) return
     const controllers = new Set<AbortController>()
-    const refreshMs = liveRefresh ? 5_000 : 30_000
-    const timer = window.setInterval(() => {
+    const shellRefreshMs = liveRefresh ? 60_000 : 120_000
+    const symbolRefreshMs = liveRefresh ? 15_000 : 60_000
+    const refreshShell = () => {
       const controller = new AbortController()
       controllers.add(controller)
       void loadShell(controller.signal).catch(() => undefined)
+        .finally(() => {
+          controllers.delete(controller)
+        })
+    }
+    const refreshSymbol = () => {
+      const controller = new AbortController()
+      controllers.add(controller)
       void loadSymbol(target, { signal: controller.signal, silent: true })
         .finally(() => {
           controllers.delete(controller)
         })
-    }, refreshMs)
+    }
+    const shellTimer = window.setInterval(refreshShell, shellRefreshMs)
+    const symbolTimer = window.setInterval(refreshSymbol, symbolRefreshMs)
     return () => {
-      window.clearInterval(timer)
+      window.clearInterval(shellTimer)
+      window.clearInterval(symbolTimer)
       controllers.forEach(controller => controller.abort())
       controllers.clear()
     }
@@ -2326,13 +2841,13 @@ export function StrategyChartTerminal({
     ensureMacdZeroIndicator()
     const chart = init(chartContainerRef.current, {
       locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone: 'Asia/Shanghai',
       styles: chartStyles(),
     })
     if (!chart) return
     chartRef.current = chart
-    chart.setBarSpace(8)
-    chart.setOffsetRightDistance(36)
+    chart.setBarSpace(chartBarSpaceForMode(layoutMode))
+    chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
     createChartIndicators(chart, target.freq)
     resizeObserverRef.current = new ResizeObserver(() => {
       if (resizeFrameRef.current !== null) {
@@ -2355,6 +2870,20 @@ export function StrategyChartTerminal({
       dispose(chart)
     }
   }, [baseUrl, locale])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    chart.setBarSpace(chartBarSpaceForMode(layoutMode))
+    chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
+    chart.resize()
+  }, [layoutMode])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    chart.setTimezone(chartTimezone)
+  }, [chartTimezone])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -2422,6 +2951,47 @@ export function StrategyChartTerminal({
     void loadShell().catch(() => undefined)
     void loadSymbol(target)
   }, [loadShell, loadSymbol, target])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || isEditableKeyboardTarget(event.target)) return
+      if (event.key === '[') {
+        event.preventDefault()
+        setLeftCollapsed(previous => !previous)
+        return
+      }
+      if (event.key === ']') {
+        event.preventDefault()
+        setRightCollapsed(previous => !previous)
+        return
+      }
+      if (event.key === 'Escape') {
+        setLeftCollapsed(false)
+        setRightCollapsed(false)
+        return
+      }
+      if (event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        const enteringFocus = !(leftCollapsed && rightCollapsed)
+        setLeftCollapsed(enteringFocus)
+        setRightCollapsed(enteringFocus)
+        return
+      }
+      if (event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        refreshNow()
+        return
+      }
+      const freqIndex = Number(event.key) - 1
+      const nextFreq = FREQ_OPTIONS[freqIndex]
+      if (nextFreq && targetFreqs.includes(nextFreq.value)) {
+        event.preventDefault()
+        selectTarget({ ...target, freq: nextFreq.value }, 'strategy.keyboard.freq')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [leftCollapsed, refreshNow, rightCollapsed, selectTarget, target, targetFreqs])
 
   if (!baseUrl) {
     return (
@@ -2559,9 +3129,9 @@ export function StrategyChartTerminal({
 
   return (
     <div style={terminalRootStyle}>
-      <div style={terminalTopBarStyle}>
-        <form style={searchFormStyle} onSubmit={submitSearch}>
-        <input
+      <div style={terminalTopBarStyle(layoutMode)}>
+        <form style={searchFormStyle(layoutMode)} onSubmit={submitSearch}>
+          <input
             aria-label={locale === 'zh-CN' ? '搜索标的' : 'Search symbol'}
             style={searchInputStyle}
             value={searchDraft}
@@ -2572,14 +3142,16 @@ export function StrategyChartTerminal({
             {locale === 'zh-CN' ? '切换' : 'Switch'}
           </button>
         </form>
-        <div style={chartMetaRowStyle}>
-          {FREQ_OPTIONS.map(freq => {
+        <div style={topBarButtonGroupStyle(layoutMode)}>
+          {FREQ_OPTIONS.map((freq, index) => {
             const active = currentFreq === freq.value
             const disabled = !targetFreqs.includes(freq.value)
             return (
               <button
                 key={freq.value}
                 type="button"
+                aria-label={`${locale === 'zh-CN' ? '切换周期' : 'Switch frequency'} ${freq.label}`}
+                title={`${freq.label} (${index + 1})`}
                 style={terminalButtonStyle(active, disabled)}
                 disabled={disabled}
                 onClick={() => selectTarget({ ...target, freq: freq.value }, 'strategy.freq.click')}
@@ -2591,7 +3163,9 @@ export function StrategyChartTerminal({
         </div>
         <button
           type="button"
-          style={terminalButtonStyle(false, loading)}
+          aria-label={locale === 'zh-CN' ? '刷新交易台' : 'Refresh trading desk'}
+          title={locale === 'zh-CN' ? '刷新交易台 (R)' : 'Refresh trading desk (R)'}
+          style={{ ...terminalButtonStyle(false, loading), marginLeft: 'auto' }}
           disabled={loading}
           onClick={refreshNow}
         >
@@ -2620,11 +3194,35 @@ export function StrategyChartTerminal({
         </div>
       ) : null}
 
-      <div style={terminalGridStyle}>
+      <div style={terminalGridLayoutStyle(leftCollapsed, rightCollapsed, layoutMode)}>
+        {leftCollapsed ? (
+          <div style={collapsedSideStyle}>
+            <button
+              type="button"
+              aria-label={locale === 'zh-CN' ? '展开观察台' : 'Expand watchlist'}
+              title={locale === 'zh-CN' ? '展开观察台 ([)' : 'Expand watchlist ([)'}
+              style={verticalCollapseButtonStyle}
+              onClick={() => setLeftCollapsed(false)}
+            >
+              {locale === 'zh-CN' ? '主观察' : 'Watchlist'}
+            </button>
+          </div>
+        ) : (
         <div style={terminalSideStyle}>
           <Panel
             title={locale === 'zh-CN' ? '交易员第二屏' : 'Trader second screen'}
             meta={marketLabel(shell?.session, locale)}
+            actions={(
+              <button
+                type="button"
+                aria-label={locale === 'zh-CN' ? '收起观察台' : 'Collapse watchlist'}
+                title={locale === 'zh-CN' ? '收起观察台 ([)' : 'Collapse watchlist ([)'}
+                style={panelActionButtonStyle}
+                onClick={() => setLeftCollapsed(true)}
+              >
+                {locale === 'zh-CN' ? '收起' : 'Collapse'}
+              </button>
+            )}
           >
             <WatchlistTabbedTable
               locale={locale}
@@ -2633,7 +3231,10 @@ export function StrategyChartTerminal({
               groups={groupedWatchlistRows}
               rows={activeWatchlistRows}
               target={target}
-              rangeColumns={watchlistRangeColumns}
+              rangeColumns={visibleRangeColumns}
+              allRangeColumns={watchlistRangeColumns}
+              selectedRangeKey={selectedRangeColumn?.key ?? ''}
+              onRangeChange={setSelectedRangeKey}
               emptyText={locale === 'zh-CN' ? '等待 Signals shell。' : 'Waiting for Signals shell.'}
               onSelect={row =>
                 selectTarget(
@@ -2648,6 +3249,7 @@ export function StrategyChartTerminal({
             />
           </Panel>
         </div>
+        )}
 
         <div style={chartStageStyle}>
           <div style={chartHeaderStyle}>
@@ -2655,9 +3257,9 @@ export function StrategyChartTerminal({
               <div style={eyebrowDarkStyle}>
                 {compactText(symbolData?.target?.kind, target.kind).toUpperCase()}
               </div>
-              <div style={chartTitleStyle}>{summaryTitle}</div>
-              <div style={mutedTextStyle}>
-                {[summarySubtitle, currentFreq, latestSignal || undefined].filter(Boolean).join(' · ')}
+              <div style={chartTitleStyle(layoutMode)}>{summaryTitle}</div>
+              <div style={chartSubtitleStyle}>
+                {[summarySubtitle, currentFreq, chartTimezone, latestSignal || undefined].filter(Boolean).join(' · ')}
               </div>
               <div style={indicatorLegendStyle}>
                 {activeMaPeriods.map((period, index) => (
@@ -2688,8 +3290,8 @@ export function StrategyChartTerminal({
                 </span>
               </div>
             </div>
-            <div style={chartHeaderRightStyle}>
-              <div style={headerMetricsStyle}>
+            <div style={chartHeaderRightStyle(layoutMode)}>
+              <div style={headerMetricsStyle(layoutMode)}>
                 {[
                   [locale === 'zh-CN' ? '最新价' : 'Last', formatNumber(symbolData?.summary?.latest_price ?? latestClose(klineData))],
                   [locale === 'zh-CN' ? '信号' : 'Signal', latestSignal || 'N/A'],
@@ -2697,9 +3299,7 @@ export function StrategyChartTerminal({
                 ].map(([label, value]) => (
                   <div key={label} style={headerMetricStyle}>
                     <div style={eyebrowDarkStyle}>{label}</div>
-                    <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {value}
-                    </div>
+                    <div style={headerMetricValueStyle}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -2743,18 +3343,47 @@ export function StrategyChartTerminal({
           </div>
         </div>
 
+        {rightCollapsed ? (
+          <div style={collapsedSideStyle}>
+            <button
+              type="button"
+              aria-label={locale === 'zh-CN' ? '展开交易任务' : 'Expand tasks'}
+              title={locale === 'zh-CN' ? '展开交易任务 (])' : 'Expand tasks (])'}
+              style={verticalCollapseButtonStyle}
+              onClick={() => setRightCollapsed(false)}
+            >
+              {locale === 'zh-CN' ? '交易任务' : 'Tasks'}
+            </button>
+          </div>
+        ) : (
         <div style={terminalSideStyle}>
           <Panel
-            title={locale === 'zh-CN' ? '交易员待办' : 'Trader queue'}
-            meta={String(decisionRows.length)}
+            title={locale === 'zh-CN' ? '交易任务' : 'Trader tasks'}
+            meta={String(decisionRows.length + sellRows.length)}
+            actions={(
+              <button
+                type="button"
+                aria-label={locale === 'zh-CN' ? '收起交易任务' : 'Collapse tasks'}
+                title={locale === 'zh-CN' ? '收起交易任务 (])' : 'Collapse tasks (])'}
+                style={panelActionButtonStyle}
+                onClick={() => setRightCollapsed(true)}
+              >
+                {locale === 'zh-CN' ? '收起' : 'Collapse'}
+              </button>
+            )}
           >
-            {decisionRows.length === 0 ? (
+            {decisionRows.length === 0 && sellRows.length === 0 ? (
               <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无待决策事项。' : 'No decisions waiting.'}
+                {locale === 'zh-CN' ? '暂无需要确认的观察/减仓/复盘任务。' : 'No watch, trim, or review tasks.'}
               </div>
             ) : (
               <div style={compactListStyle}>
-                {decisionRows.slice(0, 5).map((row, index) => (
+                <div style={mutedTextStyle}>
+                  {locale === 'zh-CN'
+                    ? '非指令，需图形确认。'
+                    : 'Tasks only; confirm on chart.'}
+                </div>
+                {decisionRows.slice(0, 4).map((row, index) => (
                   <button
                     key={`${compactText(row.decision_id, 'decision')}-${index}`}
                     type="button"
@@ -2762,20 +3391,43 @@ export function StrategyChartTerminal({
                     onClick={() =>
                       onOpenRecord(
                         locale === 'zh-CN'
-                          ? `决策 ${String(row.symbol ?? row.decision_id ?? 'queue')}`
-                          : `Decision ${String(row.symbol ?? row.decision_id ?? 'queue')}`,
+                          ? `任务 ${String(row.symbol ?? row.decision_id ?? 'queue')}`
+                          : `Task ${String(row.symbol ?? row.decision_id ?? 'queue')}`,
                         row,
                       )
                     }
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={rowTitleStyle}>
-                        {compactText(row.title) || compactText(row.symbol) || 'Decision'}
-                      </div>
-                      <div style={monoTextStyle}>{compactText(row.priority)}</div>
+                      <div style={rowTitleStyle}>{compactText(row.title) || compactText(row.symbol) || 'Task'}</div>
+                      <span style={statusBadgeStyle(compactText(row.action_status) === '退出复盘' ? 'warning' : 'open')}>
+                        {compactText(row.action_label) || compactText(row.action_status) || compactText(row.priority) || '观察'}
+                      </span>
                     </div>
-                    <div style={mutedTextStyle}>
-                      {[compactText(row.action_label) || compactText(row.action), compactText(row.summary), compactText(row.recommended_action)]
+                    <div style={mutedTwoLineStyle}>
+                      {[
+                        compactText(row.summary),
+                        compactText(row.recommended_action),
+                        compactText(row.invalidates_when),
+                      ].filter(Boolean).join(' · ')}
+                    </div>
+                  </button>
+                ))}
+                {sellRows.slice(0, 4).map((row, index) => (
+                  <button
+                    key={`${labelForTarget(row) || 'sell'}-${index}`}
+                    type="button"
+                    style={targetButtonStyle}
+                    onClick={() => {
+                      const label = labelForTarget(row)
+                      if (label) selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq }, 'strategy.sell-warning.click')
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={rowTitleStyle}>{compactText(row.name) || labelForTarget(row) || 'Sell warning'}</div>
+                      <span style={statusBadgeStyle('warning')}>{locale === 'zh-CN' ? '减仓/止盈' : 'Exit'}</span>
+                    </div>
+                    <div style={mutedTwoLineStyle}>
+                      {[compactText(row.reason), compactText(row.signal), compactText(row.summary)]
                         .filter(Boolean)
                         .join(' · ')}
                     </div>
@@ -2786,97 +3438,56 @@ export function StrategyChartTerminal({
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? '卖出预警' : 'Sell warnings'}
-            meta={String(sellRows.length)}
+            title={locale === 'zh-CN' ? '信号与关键位' : 'Signals and levels'}
+            meta={customSignalCount > 0 ? `${customSignalCount}自定义` : String(signals.length + chartKeyLevels.length + divergences.length)}
           >
-            <TargetRows
-              rows={sellRows}
-              emptyText={locale === 'zh-CN' ? '暂无卖出预警。' : 'No sell warnings.'}
-              onSelect={row => {
-                const label = labelForTarget(row)
-                if (label) {
-                  selectTarget(
-                    { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
-                    'strategy.sell-warning.click',
-                  )
-                }
-              }}
-            />
-          </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '买卖点' : 'Signals'}
-            meta={String(signals.length)}
-          >
-            {signals.length === 0 ? (
+            {signals.length === 0 && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 ? (
               <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '当前标的暂无信号。' : 'No signals for this target.'}
+                {locale === 'zh-CN' ? '当前标的暂无自定义信号、背离或关键均线位。' : 'No custom signals, divergences, or key levels.'}
               </div>
             ) : (
-              <div style={compactListStyle}>
-                {signals.slice(-9).reverse().map((signal, index) => (
+                <div style={compactListStyle}>
+                  <div style={mutedTextStyle}>
+                    {locale === 'zh-CN'
+                      ? '自定义信号、背离、关键位。'
+                      : 'Custom signals, divergence, key levels.'}
+                  </div>
+                {evidenceSignals.map((signal, index) => (
                   <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'signal'}`} style={signalRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={statusBadgeStyle(signalTone(signal.type))}>
-                          {signal.type || 'Signal'}
-                        </span>
+                        {signalSourceLabel(signal) ? (
+                          <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal)}</span>
+                        ) : null}
+                        <span style={statusBadgeStyle(signalTone(signal.type))}>{signal.type || 'Signal'}</span>
                         <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
                       </div>
-                      <div style={mutedTextStyle}>
-                        {[signal.freq, signal.date_str, signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                      <div style={mutedLineStyle}>
+                        {[signal.freq, signal.date_str, signal.pool_status, signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
                           .filter(Boolean)
                           .join(' · ')}
                       </div>
+                      {signal.details ? (
+                        <div style={mutedTwoLineStyle}>{signal.details}</div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-          </Panel>
-
-          {targetCandidateRows.length > 0 ? (
-            <Panel
-              title={locale === 'zh-CN' ? '代表股候选' : 'Representatives'}
-              meta={String(targetCandidateRows.length)}
-            >
-              <TargetRows
-                rows={targetCandidateRows}
-                emptyText={locale === 'zh-CN' ? '暂无代表股候选。' : 'No representatives.'}
-                onSelect={row => {
-                  const label = labelForTarget(row)
-                  if (label) {
-                    selectTarget(
-                      { label, kind: kindForTarget(row, 'stock'), freq: target.freq },
-                      'strategy.representative.click',
-                    )
-                  }
-                }}
-              />
-            </Panel>
-          ) : null}
-
-          <Panel
-            title={locale === 'zh-CN' ? '关键位' : 'Key levels'}
-            meta={String(chartKeyLevels.length)}
-          >
-            {chartKeyLevels.length === 0 ? (
-              <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无关键位。' : 'No key levels.'}
-              </div>
-            ) : (
-              <div style={compactListStyle}>
-                {chartKeyLevels.slice(0, 8).map(level => (
+                {divergences.slice(-3).reverse().map(divergence => (
+                  <div key={divergence.id} style={dataRowStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={rowTitleStyle}>{divergence.type === 'bearish' ? '顶背离' : '底背离'}</div>
+                      <div style={mutedLineStyle}>{divergence.metric.toUpperCase()} · {formatConfidence(divergence.confidence)}</div>
+                    </div>
+                    <div style={monoTextStyle}>{formatNumber(divergence.price)}</div>
+                  </div>
+                ))}
+                {chartKeyLevels.slice(0, 6).map(level => (
                   <div key={`${level.name ?? 'level'}-${level.value ?? ''}`} style={dataRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
                       <div style={rowTitleStyle}>{level.name || 'Level'}</div>
-                      <div style={mutedTextStyle}>
-                        {[
-                          level.position,
-                          level.direction ? `${level.direction}` : '',
-                          level.role,
-                          level.distance_pct !== undefined ? formatPercent(level.distance_pct) : '',
-                        ]
+                      <div style={mutedLineStyle}>
+                        {[level.position, level.direction, level.role, level.distance_pct !== undefined ? formatPercent(level.distance_pct) : '']
                           .filter(Boolean)
                           .join(' · ')}
                       </div>
@@ -2884,72 +3495,62 @@ export function StrategyChartTerminal({
                     <div style={monoTextStyle}>{formatNumber(level.value)}</div>
                   </div>
                 ))}
+                {targetCandidateRows.length > 0 ? (
+                  <TargetRows
+                    locale={locale}
+                    groups={targetCandidateGroups}
+                    rows={targetCandidateRows}
+                    emptyText=""
+                    onSelect={row => {
+                      const label = labelForTarget(row)
+                      if (label) selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq }, 'strategy.representative.click')
+                    }}
+                  />
+                ) : null}
               </div>
             )}
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? '策略证据' : 'Strategy evidence'}
-            meta={String(strategyKpis.length)}
+            title={locale === 'zh-CN' ? '数据状态' : 'Data status'}
+            meta={dataIssueRows.length > 0 ? String(dataIssueRows.length) : (locale === 'zh-CN' ? '正常' : 'OK')}
           >
-            {strategyKpis.length === 0 ? (
-              <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无策略证据。' : 'No strategy evidence.'}
+            <div style={compactListStyle}>
+              <div style={dataRowStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                  <div style={rowTitleStyle}>{locale === 'zh-CN' ? '图表刷新时钟' : 'Chart refresh clock'}</div>
+                  <div style={mutedLineStyle}>
+                    {[
+                      chartTimezone,
+                      compactText(shell?.session?.data_as_of) ? `as of ${compactText(shell?.session?.data_as_of)}` : '',
+                      compactText(shell?.session?.next_refresh_at) ? `next ${compactText(shell?.session?.next_refresh_at)}` : '',
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div style={compactListStyle}>
-                {strategyKpis.slice(0, 5).map((row, index) => (
-                  <div key={`${compactText(row.kpi_id, 'kpi')}-${index}`} style={dataRowStyle}>
+              {dataIssueRows.length === 0 ? (
+                <div style={emptyStateDarkStyle}>
+                  {locale === 'zh-CN' ? '数据正常。' : 'Data OK.'}
+                </div>
+              ) : (
+                dataIssueRows.slice(0, 5).map((row, index) => (
+                  <div key={`${compactText(row.lane) || compactText(row.source_id, 'source')}-${index}`} style={dataRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                      <div style={rowTitleStyle}>
-                        {strategyKpiLabel(row)}
-                      </div>
-                      <div style={mutedTextStyle}>
-                        {[compactText(row.status), compactText(row.trend)]
+                      <div style={rowTitleStyle}>{compactText(row.lane) || sourceConfidenceLabel(row)}</div>
+                      <div style={mutedTwoLineStyle}>
+                        {[compactText(row.status), compactText(row.freshness), compactText(row.reason), compactText(row.summary)]
                           .filter(Boolean)
                           .join(' · ')}
                       </div>
                     </div>
-                    <div style={monoTextStyle}>
-                      {compactText(row.value, 'N/A')}
-                      {compactText(row.unit) ? ` ${compactText(row.unit)}` : ''}
-                    </div>
+                    <div style={monoTextStyle}>{compactText(row.market) || compactText(row.active_markets) || compactText(row.source)}</div>
                   </div>
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
           </Panel>
-
-          <Panel
-            title={locale === 'zh-CN' ? '数据源状态' : 'Data source status'}
-            meta={String(sourceConfidence.length)}
-          >
-            {sourceConfidence.length === 0 ? (
-              <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无数据源状态。' : 'No data source status.'}
-              </div>
-            ) : (
-              <div style={compactListStyle}>
-                {sourceConfidence.slice(0, 5).map((row, index) => (
-                  <div key={`${compactText(row.source_id, 'source')}-${index}`} style={dataRowStyle}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                      <div style={rowTitleStyle}>
-                        {sourceConfidenceLabel(row)}
-                      </div>
-                      <div style={mutedTextStyle}>
-                        {[compactText(row.status), compactText(row.summary)]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </div>
-                    </div>
-                    <div style={monoTextStyle}>{formatConfidence(row.confidence)}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
-
         </div>
+        )}
       </div>
     </div>
   )
@@ -2958,17 +3559,22 @@ export function StrategyChartTerminal({
 function Panel({
   title,
   meta,
+  actions,
   children,
 }: {
   title: string
   meta?: string
+  actions?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <div style={terminalPanelStyle}>
       <div style={panelHeaderStyle}>
         <div style={panelTitleStyle}>{title}</div>
-        {meta ? <div style={mutedTextStyle}>{meta}</div> : null}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {meta ? <div style={mutedTextStyle}>{meta}</div> : null}
+          {actions}
+        </div>
       </div>
       {children}
     </div>
@@ -2983,6 +3589,9 @@ function WatchlistTabbedTable({
   rows,
   target,
   rangeColumns,
+  allRangeColumns,
+  selectedRangeKey,
+  onRangeChange,
   emptyText,
   onSelect,
 }: {
@@ -2998,6 +3607,9 @@ function WatchlistTabbedTable({
   rows: WatchlistRow[]
   target: ChartTarget
   rangeColumns: WatchlistRangeColumn[]
+  allRangeColumns: WatchlistRangeColumn[]
+  selectedRangeKey: string
+  onRangeChange: (key: string) => void
   emptyText: string
   onSelect: (row: WatchlistRow) => void
 }) {
@@ -3020,19 +3632,35 @@ function WatchlistTabbedTable({
   ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-      <div style={watchlistTabsStyle}>
-        {tabs.map(tab => (
-          <button
-            key={tab.key}
-            type="button"
-            style={tab.key === activeTab ? watchlistTabButtonActiveStyle : watchlistTabButtonStyle}
-            onClick={() => onTabChange(tab.key)}
+      <div style={watchlistControlRowStyle}>
+        <div style={watchlistTabsStyle}>
+          {tabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              style={tab.key === activeTab ? watchlistTabButtonActiveStyle : watchlistTabButtonStyle}
+              onClick={() => onTabChange(tab.key)}
+            >
+              {tab.label} {tab.count}
+            </button>
+          ))}
+        </div>
+        <label style={watchlistRangeSelectLabelStyle}>
+          <span>{locale === 'zh-CN' ? '区间' : 'Range'}</span>
+          <select
+            value={selectedRangeKey}
+            style={watchlistRangeSelectStyle}
+            onChange={event => onRangeChange(event.currentTarget.value)}
           >
-            {tab.label} {tab.count}
-          </button>
-        ))}
+            {allRangeColumns.map(column => (
+              <option key={column.key} value={column.key}>{column.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
       <WatchlistTable
+        locale={locale}
+        activeTab={activeTab}
         rows={rows}
         target={target}
         rangeColumns={rangeColumns}
@@ -3043,13 +3671,88 @@ function WatchlistTabbedTable({
   )
 }
 
+function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
+  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, 56px)` : ''
+  if (activeTab === 'sector_boards') {
+    return `minmax(138px, 1.35fr) 58px 78px 92px${rangeColumns}`
+  }
+  if (activeTab === 'focus_stocks') {
+    return `minmax(138px, 1.35fr) 58px 52px 88px${rangeColumns}`
+  }
+  return `minmax(138px, 1.35fr) 58px 52px 76px${rangeColumns}`
+}
+
+function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [string, string, string, string] {
+  if (activeTab === 'sector_boards') {
+    return [
+      locale === 'zh-CN' ? '板块' : 'Board',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '当日领涨' : 'Top mover',
+      locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic',
+    ]
+  }
+  if (activeTab === 'focus_stocks') {
+    return [
+      locale === 'zh-CN' ? '个股' : 'Stock',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '日' : 'Day',
+      locale === 'zh-CN' ? '买点' : 'Setup',
+    ]
+  }
+  return [
+    locale === 'zh-CN' ? '指数' : 'Index',
+    locale === 'zh-CN' ? '最新' : 'Last',
+    locale === 'zh-CN' ? '日' : 'Day',
+    locale === 'zh-CN' ? '信号' : 'Signal',
+  ]
+}
+
+function sectorLeaderForWatchlist(row: WatchlistRow): string {
+  const raw = row.raw
+  const reps = recordValue(raw.representatives)
+  const sourceLeader = recordValue(Array.isArray(reps.source_leader) ? reps.source_leader[0] : undefined)
+  return (
+    compactText(raw.leader) ||
+    compactText(raw.leader_name) ||
+    compactText(sourceLeader.name) ||
+    compactText(recordValue(raw.source_leader).name) ||
+    'N/A'
+  )
+}
+
+function sectorCarrierForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const raw = row.raw
+  const reps = recordValue(raw.representatives)
+  const core = recordValue(Array.isArray(reps.core) ? reps.core[0] : undefined)
+  const elastic = recordValue(Array.isArray(reps.elastic) ? reps.elastic[0] : undefined)
+  const coreLabel = locale === 'zh-CN' ? '链主' : 'Core'
+  const elasticLabel = locale === 'zh-CN' ? '弹性' : 'Elastic'
+  const carrier = recordValue(raw.carrier)
+  const target = recordValue(raw.target)
+  const coreName =
+    compactText(core.name) ||
+    compactText(carrier.name) ||
+    compactText(target.name) ||
+    compactText(raw.carrier_range_return_symbol) ||
+    compactText(raw.target_symbol)
+  const elasticName = compactText(elastic.name)
+  if (coreName && elasticName && elasticName !== coreName) return `${coreLabel} ${coreName} / ${elasticLabel} ${elasticName}`
+  if (coreName) return `${coreLabel} ${coreName}`
+  if (elasticName) return `${elasticLabel} ${elasticName}`
+  return compactText(row.signal) || (locale === 'zh-CN' ? '待映射' : 'Unmapped')
+}
+
 function WatchlistTable({
+  locale,
+  activeTab,
   rows,
   target,
   rangeColumns,
   emptyText,
   onSelect,
 }: {
+  locale: LongclawLocale
+  activeTab: WatchlistTabKey
   rows: WatchlistRow[]
   target: ChartTarget
   rangeColumns: WatchlistRangeColumn[]
@@ -3059,28 +3762,37 @@ function WatchlistTable({
   if (rows.length === 0) {
     return <div style={emptyStateDarkStyle}>{emptyText}</div>
   }
-  const gridTemplateColumns = `minmax(132px, 1.35fr) 58px 52px 76px repeat(${rangeColumns.length}, 56px)`
+  const headers = watchlistHeaders(activeTab, locale)
+  const gridTemplateColumns = watchlistGridTemplate(activeTab, rangeColumns.length)
   const headerRowStyle = { ...watchlistGridRowStyle, gridTemplateColumns }
   const buttonRowStyle = { ...watchlistButtonRowStyle, gridTemplateColumns }
   const activeButtonRowStyle = { ...watchlistButtonActiveRowStyle, gridTemplateColumns }
   return (
     <div style={watchlistTableStyle}>
       <div style={headerRowStyle}>
-        <div style={watchlistNameHeaderCellStyle}>标的</div>
-        <div style={watchlistHeaderCellStyle}>最新</div>
-        <div style={watchlistHeaderCellStyle}>日</div>
-        <div style={watchlistHeaderCellStyle}>信号</div>
+        <div style={watchlistNameHeaderCellStyle}>{headers[0]}</div>
+        <div style={watchlistHeaderCellStyle}>{headers[1]}</div>
+        <div style={watchlistHeaderCellStyle}>{headers[2]}</div>
+        <div style={watchlistHeaderCellStyle}>{headers[3]}</div>
         {rangeColumns.map(column => (
           <div key={column.key} style={watchlistHeaderCellStyle}>{column.label}</div>
         ))}
       </div>
       {rows.map(row => {
         const active = watchlistRowIsActive(row, target)
+        const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
+        const secondMetric = activeTab === 'sector_boards' ? sectorLeaderForWatchlist(row) : row.dayChange
         return (
           <button
             key={row.id}
             type="button"
             style={active ? activeButtonRowStyle : buttonRowStyle}
+            title={[
+              row.name,
+              activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
+              activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+              rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
+            ].filter(Boolean).join(' · ')}
             onClick={() => onSelect(row)}
           >
             <div style={watchlistNameCellStyle}>
@@ -3094,10 +3806,12 @@ function WatchlistTable({
                 </div>
               ) : null}
             </div>
-            <div style={watchlistCellStyle}>{row.latest}</div>
-            <div style={{ ...watchlistCellStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+            <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? percentTone(firstMetric) : {}) }}>{firstMetric}</div>
+            <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? {} : percentTone(secondMetric)) }}>{secondMetric}</div>
             <div style={watchlistCellStyle}>
-              {row.signalBadges.length > 0 ? (
+              {activeTab === 'sector_boards' ? (
+                sectorCarrierForWatchlist(row, locale)
+              ) : row.signalBadges.length > 0 ? (
                 <span style={signalBadgeRowStyle}>
                   {row.signalBadges.slice(0, 4).map(badge => (
                     <span
@@ -3125,10 +3839,14 @@ function WatchlistTable({
 }
 
 function TargetRows({
+  locale,
+  groups,
   rows,
   emptyText,
   onSelect,
 }: {
+  locale: LongclawLocale
+  groups?: Record<string, Record<string, unknown>[]>
   rows: Record<string, unknown>[]
   emptyText: string
   onSelect: (row: Record<string, unknown>) => void
@@ -3136,40 +3854,58 @@ function TargetRows({
   if (rows.length === 0) {
     return <div style={emptyStateDarkStyle}>{emptyText}</div>
   }
+  const sections = candidateGroupOrder
+    .map(key => ({
+      key,
+      label: candidateGroupLabel(key, locale),
+      rows: groups?.[key] ?? [],
+    }))
+    .filter(section => section.rows.length > 0)
+  const fallbackSections = sections.length > 0
+    ? sections
+    : [{ key: 'all', label: locale === 'zh-CN' ? '关注标的' : 'Watch', rows }]
   return (
     <div style={compactListStyle}>
-      {rows.slice(0, 8).map((row, index) => {
-        const label = labelForTarget(row)
-        return (
-          <button
-            key={`${label || 'target'}-${index}`}
-            type="button"
-            style={targetButtonStyle}
-            onClick={() => onSelect(row)}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <div style={rowTitleStyle}>
-                {compactText(row.name) || label || 'N/A'}
-              </div>
-              <div style={monoTextStyle}>
-                {compactText(row.fused_total) || compactText(row.total_score) || compactText(row.score)}
-              </div>
-            </div>
-            <div style={mutedTextStyle}>
-              {[
-                compactText(row.symbol) || compactText(row.code),
-                compactText(row.representative_type),
-                compactText(row.relation),
-                compactText(row.source),
-                compactText(row.direction),
-                compactText(row.reason),
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </div>
-          </button>
-        )
-      })}
+      {fallbackSections.map(section => (
+        <div key={section.key} style={compactListStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{section.label}</span>
+            <span style={monoTextStyle}>{section.rows.length}</span>
+          </div>
+          {section.rows.slice(0, 8).map((row, index) => {
+            const label = labelForTarget(row)
+            const score = compactText(row.attention_score) || compactText(row.fused_total) || compactText(row.total_score) || compactText(row.score)
+            return (
+              <button
+                key={`${section.key}-${label || 'target'}-${index}`}
+                type="button"
+                style={targetButtonStyle}
+                onClick={() => onSelect(row)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                  <div style={rowTitleStyle}>
+                    {compactText(row.name) || label || 'N/A'}
+                  </div>
+                  <span style={miniNeutralSignalBadgeStyle}>
+                    {compactText(row.leader_tier) || compactText(row.representative_type) || '候选'}
+                  </span>
+                </div>
+                <div style={mutedTwoLineStyle}>
+                  {[
+                    compactText(row.symbol) || compactText(row.code),
+                    compactText(row.chain_role) || compactText(row.relation),
+                    score ? `关注 ${score}` : '',
+                    compactText(row.why_watch),
+                    Array.isArray(row.risk_flags) ? row.risk_flags.map(item => compactText(item)).filter(Boolean).join('/') : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ))}
     </div>
   )
 }
@@ -3206,7 +3942,7 @@ function FallbackList({
                   humanizeTokenLocale(locale, compactText(row.connector_id)) ||
                   'N/A'}
               </div>
-              <div style={mutedTextStyle}>
+              <div style={mutedTwoLineStyle}>
                 {[
                   compactText(row.status)
                     ? humanizeTokenLocale(locale, compactText(row.status))
