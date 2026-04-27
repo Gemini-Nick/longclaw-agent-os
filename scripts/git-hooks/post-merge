@@ -1,0 +1,2 @@
+#!/bin/sh
+node scripts/electron-git-hook-package.mjs "$0" "$@" || true

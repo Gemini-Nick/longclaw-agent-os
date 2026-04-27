@@ -63,6 +63,10 @@ type WorkbenchShell = {
   }
   watchlist_range_columns?: Record<string, unknown>[]
   cluster_summary?: Record<string, unknown>
+  sync_lanes?: Record<string, unknown>
+  decision_queue?: Record<string, unknown>[]
+  strategy_kpis?: Record<string, unknown>[]
+  source_confidence?: Record<string, unknown>[]
   default_target?: {
     kind?: string
     label?: string
@@ -134,6 +138,11 @@ type WatchlistRangeColumn = {
   aliases?: string[]
 }
 
+type WatchlistSignalBadge = {
+  label: string
+  side: 'buy' | 'sell' | 'neutral'
+}
+
 type WatchlistRow = {
   id: string
   kind: string
@@ -145,7 +154,13 @@ type WatchlistRow = {
   dayChange: string
   rangeValues: string[]
   signal: string
+  signalBadges: WatchlistSignalBadge[]
   tags: string[]
+  lane: string
+  freshness: string
+  traderAction: string
+  invalidatesWhen: string
+  explanation: string
   targetKind: string
   targetLabel: string
   targetFreq: string
@@ -582,6 +597,20 @@ const miniSignalBadgeStyle: React.CSSProperties = {
   fontSize: 9,
   lineHeight: 1.2,
   fontWeight: 800,
+}
+
+const miniSellSignalBadgeStyle: React.CSSProperties = {
+  ...miniSignalBadgeStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.errorBorder}`,
+  background: tradingDeskTheme.alpha.errorSurface,
+  color: tradingDeskTheme.market.down,
+}
+
+const miniNeutralSignalBadgeStyle: React.CSSProperties = {
+  ...miniSignalBadgeStyle,
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  background: terminalTheme.surfaceSoft,
+  color: terminalTheme.textMuted,
 }
 
 const indicatorLegendSwatchStyle: React.CSSProperties = {
@@ -1720,7 +1749,7 @@ function normalizeReturnKey(value: string): string {
 }
 
 function readRangeReturn(row: Record<string, unknown>, column: WatchlistRangeColumn): unknown {
-  const candidates = [row.range_returns, row.period_returns, row.interval_returns]
+  const candidates = [row.range_returns, row.period_returns, row.interval_returns, row.carrier_range_returns]
   for (const candidate of candidates) {
     const record = recordValue(candidate)
     if (Object.keys(record).length > 0) {
@@ -1751,22 +1780,52 @@ function stringArrayValue(value: unknown): string[] {
     : []
 }
 
-function timeframeBadges(row: Record<string, unknown>): string[] {
-  const raw = row.buy_timeframes
-  if (!Array.isArray(raw)) return []
-  return raw
+function readTimeframeBadgeItems(value: unknown, side: WatchlistSignalBadge['side']): WatchlistSignalBadge[] {
+  if (!Array.isArray(value)) return []
+  return value
     .map(item => {
       const record = recordValue(item)
-      return compactText(record.badge) || compactText(record.freq)
+      const label = compactText(record.badge) || compactText(record.freq)
+      const itemSide = compactText(record.side) === 'sell' ? 'sell' : compactText(record.side) === 'buy' ? 'buy' : side
+      return label ? { label, side: itemSide } : null
     })
-    .filter(Boolean)
+    .filter((item): item is WatchlistSignalBadge => Boolean(item))
+}
+
+function timeframeSignalBadges(row: Record<string, unknown>): WatchlistSignalBadge[] {
+  const sellBadges = readTimeframeBadgeItems(row.sell_timeframes, 'sell')
+  const buyBadges = readTimeframeBadgeItems(row.buy_timeframes, 'buy')
+  const seen = new Set<string>()
+  return [...sellBadges, ...buyBadges].filter(item => {
+    const key = `${item.side}:${item.label}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function timeframeBadges(row: Record<string, unknown>): string[] {
+  return timeframeSignalBadges(row).map(item => item.label)
 }
 
 function signalForWatchlist(row: Record<string, unknown>, kind: string): string {
-  const badges = timeframeBadges(row)
-  if (badges.length > 0) return badges.join('/')
+  const badges = timeframeSignalBadges(row)
+  if (badges.length > 0) return badges.map(item => item.label).join('/')
+  const stackedSignals = [
+    compactText(row.daily_latest_signal),
+    compactText(row.f30_latest_signal),
+    compactText(row.f15_latest_signal),
+  ].filter(value => value && value !== '无')
+  if (stackedSignals.length > 0) return stackedSignals.slice(0, 2).join('/')
+  const evidenceSignal = compactText(recordValue(row.signal_evidence).signal_type)
+  if (evidenceSignal) return evidenceSignal
   if (kind === 'industry' || kind === 'concept') {
-    return compactText(row.leader) || compactText(recordValue(row.carrier).name) || compactText(row.source)
+    return (
+      compactText(row.latest_signal) ||
+      compactText(row.leader) ||
+      compactText(recordValue(row.carrier).name) ||
+      compactText(row.source)
+    )
   }
   return (
     compactText(row.latest_signal) ||
@@ -1781,6 +1840,7 @@ function tagsForWatchlist(row: Record<string, unknown>, kind: string): string[] 
   const carrier = recordValue(row.carrier)
   const tags = [
     ...stringArrayValue(row.theme_tags),
+    compactText(row.trader_action),
     compactText(mapping.chain_name),
     compactText(mapping.node_name),
     compactText(carrier.name),
@@ -1801,16 +1861,22 @@ function latestValueForWatchlist(row: Record<string, unknown>): string {
     row.latest ??
     row.current_price ??
     row.value
+  const carrierValue = row.carrier_latest_price
+  if (numberValue(value) === undefined && numberValue(carrierValue) !== undefined) {
+    return `承接 ${formatNumber(carrierValue)}`
+  }
   return numberValue(value) !== undefined ? formatNumber(value) : compactText(value, 'N/A')
 }
 
 function dayChangeForWatchlist(row: Record<string, unknown>): string {
   return formatPercent(
     row.day_change_pct ??
+      row.daily_change_pct ??
       row.change_pct ??
       row.gain_pct ??
       row.return_pct ??
       row.daily_return ??
+      row.intraday_change ??
       row.pct_chg,
   )
 }
@@ -1872,6 +1938,8 @@ function toWatchlistRow(
   })
   const targetKind = compactText(row.target_kind) || kind
   const targetLabel = compactText(row.target_label) || label
+  const signalBadges = timeframeSignalBadges(row)
+  const laneStatus = recordValue(row.lane_status)
   return {
     id: `${watchlistDedupeKey(row, kind)}:${index}`,
     kind,
@@ -1882,8 +1950,14 @@ function toWatchlistRow(
     latest: latestValueForWatchlist(row),
     dayChange,
     rangeValues,
-    signal: signalForWatchlist(row, kind),
+    signal: signalBadges.length > 0 ? signalBadges.map(item => item.label).join('/') : signalForWatchlist(row, kind),
+    signalBadges,
     tags: tagsForWatchlist(row, kind),
+    lane: compactText(row.lane),
+    freshness: compactText(row.freshness) || compactText(laneStatus.freshness) || compactText(laneStatus.status),
+    traderAction: compactText(row.trader_action) || compactText(row.action_status),
+    invalidatesWhen: compactText(row.invalidates_when),
+    explanation: compactText(row.explanation),
     targetKind,
     targetLabel,
     targetFreq: compactText(row.target_freq) || (kind === 'industry' || kind === 'concept' ? 'daily' : ''),
@@ -2014,9 +2088,15 @@ export function StrategyChartTerminal({
 
   const dailyBrief = dashboard.daily_brief
   const dailyBriefBullets = Array.isArray(dailyBrief.bullets) ? dailyBrief.bullets : []
-  const decisionRows = dashboard.decision_queue as Array<Record<string, unknown>>
-  const strategyKpis = dashboard.strategy_kpis as Array<Record<string, unknown>>
-  const sourceConfidence = dashboard.source_confidence as Array<Record<string, unknown>>
+  const decisionRows = (Array.isArray(shell?.decision_queue) && shell.decision_queue.length > 0
+    ? shell.decision_queue
+    : dashboard.decision_queue) as Array<Record<string, unknown>>
+  const strategyKpis = (Array.isArray(shell?.strategy_kpis) && shell.strategy_kpis.length > 0
+    ? shell.strategy_kpis
+    : dashboard.strategy_kpis) as Array<Record<string, unknown>>
+  const sourceConfidence = (Array.isArray(shell?.source_confidence) && shell.source_confidence.length > 0
+    ? shell.source_confidence
+    : dashboard.source_confidence) as Array<Record<string, unknown>>
   const shellBuyCandidates = Array.isArray(shell?.buy_candidates) ? shell.buy_candidates : []
   const buyRows = shellBuyCandidates.length > 0
     ? shellBuyCandidates
@@ -2418,7 +2498,7 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? '策略验收' : 'Strategy checks'}
+            title={locale === 'zh-CN' ? '策略证据' : 'Strategy evidence'}
             rows={strategyKpis.map(item => ({
               ...item,
               name: compactText(item.label) || compactText(item.kpi_id),
@@ -2439,7 +2519,7 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? '数据可信度' : 'Data confidence'}
+            title={locale === 'zh-CN' ? '数据源状态' : 'Data source status'}
             rows={sourceConfidence.map(item => ({
               ...item,
               connector_id: compactText(item.source_id) || compactText(item.label),
@@ -2543,7 +2623,7 @@ export function StrategyChartTerminal({
       <div style={terminalGridStyle}>
         <div style={terminalSideStyle}>
           <Panel
-            title={locale === 'zh-CN' ? '主观察列表' : 'Watchlist'}
+            title={locale === 'zh-CN' ? '交易员第二屏' : 'Trader second screen'}
             meta={marketLabel(shell?.session, locale)}
           >
             <WatchlistTabbedTable
@@ -2809,12 +2889,12 @@ export function StrategyChartTerminal({
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? '策略验收' : 'Strategy checks'}
+            title={locale === 'zh-CN' ? '策略证据' : 'Strategy evidence'}
             meta={String(strategyKpis.length)}
           >
             {strategyKpis.length === 0 ? (
               <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无策略 KPI。' : 'No strategy KPIs.'}
+                {locale === 'zh-CN' ? '暂无策略证据。' : 'No strategy evidence.'}
               </div>
             ) : (
               <div style={compactListStyle}>
@@ -2841,12 +2921,12 @@ export function StrategyChartTerminal({
           </Panel>
 
           <Panel
-            title={locale === 'zh-CN' ? '数据可信度' : 'Data confidence'}
+            title={locale === 'zh-CN' ? '数据源状态' : 'Data source status'}
             meta={String(sourceConfidence.length)}
           >
             {sourceConfidence.length === 0 ? (
               <div style={emptyStateDarkStyle}>
-                {locale === 'zh-CN' ? '暂无来源置信度。' : 'No source confidence.'}
+                {locale === 'zh-CN' ? '暂无数据源状态。' : 'No data source status.'}
               </div>
             ) : (
               <div style={compactListStyle}>
@@ -2929,7 +3009,7 @@ function WatchlistTabbedTable({
     },
     {
       key: 'sector_boards',
-      label: locale === 'zh-CN' ? '行业板块' : 'Sectors',
+      label: locale === 'zh-CN' ? '异动板块' : 'Hot boards',
       count: groups.sector_boards.length,
     },
     {
@@ -3008,14 +3088,24 @@ function WatchlistTable({
               <div style={watchlistSubStyle}>
                 {[row.typeLabel, row.code, ...row.tags].filter(Boolean).join(' · ')}
               </div>
+              {row.explanation || row.traderAction ? (
+                <div style={watchlistSubStyle}>
+                  {[row.traderAction, row.explanation].filter(Boolean).join(' · ')}
+                </div>
+              ) : null}
             </div>
             <div style={watchlistCellStyle}>{row.latest}</div>
             <div style={{ ...watchlistCellStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
             <div style={watchlistCellStyle}>
-              {row.signal.includes('/') ? (
+              {row.signalBadges.length > 0 ? (
                 <span style={signalBadgeRowStyle}>
-                  {row.signal.split('/').filter(Boolean).slice(0, 4).map(part => (
-                    <span key={`${row.id}-${part}`} style={miniSignalBadgeStyle}>{part}</span>
+                  {row.signalBadges.slice(0, 4).map(badge => (
+                    <span
+                      key={`${row.id}-${badge.side}-${badge.label}`}
+                      style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                    >
+                      {badge.label}
+                    </span>
                   ))}
                 </span>
               ) : (
