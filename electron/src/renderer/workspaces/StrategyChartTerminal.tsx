@@ -1274,6 +1274,16 @@ function countText(value: unknown): string {
   return parsed === undefined ? '0' : Math.round(parsed).toLocaleString()
 }
 
+function compactDuration(value: unknown, locale: LongclawLocale): string {
+  const seconds = numberValue(value)
+  if (seconds === undefined || seconds <= 0) return ''
+  const minutes = Math.ceil(seconds / 60)
+  if (minutes < 60) return locale === 'zh-CN' ? `ETA ${minutes}分` : `ETA ${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return locale === 'zh-CN' ? `ETA ${hours}时${rest}分` : `ETA ${hours}h ${rest}m`
+}
+
 function firstRecord(rows: Record<string, unknown>[], key: string, value: string): Record<string, unknown> {
   return rows.find(row => compactText(row[key]) === value) ?? {}
 }
@@ -3936,11 +3946,12 @@ function CacheMonitorStrip({
   const boardCursor = recordValue(boardTask.cursor)
   const postPct = percentValue(postSummary.progress_pct)
   const postStatus = compactText(postRun.status, compactText(postSummary.status, 'pending'))
+  const postEta = compactDuration(postSummary.eta_seconds, locale)
   const stockDailyLine = `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText(stockDailySummary.latest_symbol)}`
   const boardCursorLine = `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
   const postDetail = locale === 'zh-CN'
-    ? `${compactText(postRun.phase, '等待')} · 日线 ${stockDailyLine} · 板块 ${boardCursorLine}`
-    : `${compactText(postRun.phase, 'pending')} · daily ${stockDailyLine} · boards ${boardCursorLine}`
+    ? [compactText(postRun.phase, '等待'), postEta, `日线 ${stockDailyLine}`, `板块 ${boardCursorLine}`].filter(Boolean).join(' · ')
+    : [compactText(postRun.phase, 'pending'), postEta, `daily ${stockDailyLine}`, `boards ${boardCursorLine}`].filter(Boolean).join(' · ')
   const normalizedPostPhase = compactText(postRun.phase).toLowerCase()
   const postActiveStage = postPct >= 100
     ? 3
