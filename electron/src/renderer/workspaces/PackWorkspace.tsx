@@ -247,6 +247,7 @@ function normalizeSignalsDashboard(
       postmarket_backfill: { run: null, tasks: [], summary: {} },
       mongo_stock_cache: { freqs: [], summary: {} },
       terminal_outputs: [],
+      provider_health: [],
       blockers: [],
     },
   }

@@ -17,6 +17,7 @@ import type { SignalsDashboard } from '../../../../src/services/longclawControlP
 import { fontStacks, interaction, motion, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '../i18n.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
+import { tagsForWatchlist } from './StrategyChartTags.js'
 
 type StrategyDashboard = Pick<
   SignalsDashboard,
@@ -170,6 +171,7 @@ type WatchlistRow = {
   traderAction: string
   invalidatesWhen: string
   explanation: string
+  traceSummary: string
   targetKind: string
   targetLabel: string
   targetFreq: string
@@ -1371,6 +1373,7 @@ function normalizeCacheStatus(value: StrategyDashboard['cache_status'] | undefin
       summary: recordValue(mongoStockCache.summary),
     },
     terminal_outputs: Array.isArray(cacheStatus.terminal_outputs) ? cacheStatus.terminal_outputs : [],
+    provider_health: Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : [],
     blockers: Array.isArray(cacheStatus.blockers) ? cacheStatus.blockers : [],
   }
 }
@@ -1423,7 +1426,16 @@ function isBuySignal(value?: string): boolean {
     normalized.includes('buy') ||
     normalized.includes('long') ||
     normalized.includes('entry') ||
-    normalized.includes('买')
+    normalized.includes('买') ||
+    normalized.includes('breakout') ||
+    normalized.includes('gap') ||
+    normalized.includes('volsqueeze') ||
+    normalized.includes('candlerun') ||
+    normalized.includes('candleaccel') ||
+    normalized.includes('零上回踩') ||
+    normalized.includes('零下企稳') ||
+    normalized.includes('突破') ||
+    normalized.includes('缺口')
   )
 }
 
@@ -1441,6 +1453,28 @@ function signalTone(value?: string): string {
   if (isSellSignal(value)) return 'warning'
   if (isBuySignal(value)) return 'success'
   return 'open'
+}
+
+function isPersonalizedSignalType(value?: string): boolean {
+  const normalized = String(value ?? '').toLowerCase()
+  return (
+    normalized.includes('breakout') ||
+    normalized.includes('gap') ||
+    normalized.includes('volsqueeze') ||
+    normalized.includes('candlerun') ||
+    normalized.includes('candleaccel') ||
+    normalized.includes('macd') ||
+    normalized.includes('缺口') ||
+    normalized.includes('趋势') ||
+    normalized.includes('形态') ||
+    normalized.includes('一买') ||
+    normalized.includes('二买') ||
+    normalized.includes('三买') ||
+    normalized.includes('一卖') ||
+    normalized.includes('二卖') ||
+    normalized.includes('三卖') ||
+    normalized.includes('背驰')
+  )
 }
 
 function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN'): string {
@@ -1678,61 +1712,71 @@ function ensureSignalOverlay() {
       const label = data.label || 'SIG'
       const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
       const color = data.color || signalOverlayColor(side)
-      const width = Math.max(28, Math.min(58, label.length * 9 + 12))
-      const height = 17
-      const gap = 7
+      const width = Math.max(34, Math.min(72, label.length * 8 + 20))
+      const height = 18
+      const gap = 8
       const rectX = point.x - width / 2
       const rectY = side === 'buy' ? point.y + gap : point.y - gap - height
       const stemEndY = side === 'buy' ? rectY : rectY + height
-      const triangleBaseY = side === 'buy' ? rectY : rectY + height
-      const triangleTipY = side === 'buy' ? point.y + 3 : point.y - 3
+      const tipY = side === 'buy' ? point.y + 3 : point.y - 3
 
       return [
         {
           type: 'line',
           attrs: {
             coordinates: [
-              { x: point.x, y: triangleTipY },
+              { x: point.x, y: tipY },
               { x: point.x, y: stemEndY },
             ],
           },
-          styles: solidLineStyle(color, 1),
+          styles: { color, size: 1, style: 'dashed', dashedValue: [3, 3] },
           ignoreEvent: true,
         },
         {
           type: 'polygon',
           attrs: {
             coordinates: [
-              { x: point.x, y: triangleTipY },
-              { x: point.x - 4, y: triangleBaseY },
-              { x: point.x + 4, y: triangleBaseY },
+              { x: point.x, y: tipY },
+              { x: point.x - 4, y: point.y },
+              { x: point.x, y: side === 'buy' ? point.y - 4 : point.y + 4 },
+              { x: point.x + 4, y: point.y },
             ],
           },
-          styles: { color, borderColor: color },
+          styles: { color, borderColor: terminalTheme.root },
           ignoreEvent: true,
         },
         {
           type: 'rect',
           attrs: { x: rectX, y: rectY, width, height },
           styles: {
+            color: 'rgba(15, 23, 42, 0.88)',
+            borderColor: color,
+            borderRadius: 3,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX + 4, y: rectY + 4, width: 3, height: height - 8 },
+          styles: {
             color,
-            borderColor: side === 'neutral' ? terminalTheme.borderStrong : tradingDeskTheme.alpha.textBorderStrong,
-            borderRadius: 4,
+            borderColor: color,
+            borderRadius: 2,
           },
           ignoreEvent: true,
         },
         {
           type: 'text',
           attrs: {
-            x: point.x,
+            x: rectX + 12,
             y: rectY + height / 2,
             text: label.slice(0, 8),
-            align: 'center',
+            align: 'left',
             baseline: 'middle',
           },
           styles: {
-            color: terminalTheme.white,
-            size: 9,
+            color: terminalTheme.textStrong,
+            size: 10,
             weight: 800,
             family: 'IBM Plex Mono, Menlo, monospace',
           },
@@ -2110,6 +2154,10 @@ function shortSignalLabel(value?: string): string {
   if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
   if (normalized.includes('顶背离')) return '顶背'
   if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) return '突破'
+  if (normalized.includes('volsqueeze')) return '缩量'
+  if (normalized.includes('candlerun') || normalized.includes('candleaccel')) return '加速'
+  if (normalized.includes('零上回踩')) return '零上'
+  if (normalized.includes('零下企稳')) return '零下'
   if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) return '观察'
   if (isSellSignal(raw)) return '卖'
   if (isBuySignal(raw)) return '买'
@@ -2146,7 +2194,7 @@ function signalOverlayPriority(signal: StrategySignal): number {
 
 function isCustomUserSignal(signal: StrategySignal): boolean {
   const source = String(signal.source ?? '').toLowerCase()
-  return source.includes('signal_records') || source.includes('backtest') || source.includes('custom')
+  return source.includes('signal_records') || source.includes('backtest') || source.includes('custom') || isPersonalizedSignalType(signal.type)
 }
 
 function signalSourceLabel(signal: StrategySignal): string {
@@ -2555,12 +2603,6 @@ function readRangeReturn(row: Record<string, unknown>, column: WatchlistRangeCol
   return undefined
 }
 
-function stringArrayValue(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.map(item => compactText(item)).filter(Boolean)
-    : []
-}
-
 function readTimeframeBadgeItems(value: unknown, side: WatchlistSignalBadge['side']): WatchlistSignalBadge[] {
   if (!Array.isArray(value)) return []
   return value
@@ -2614,29 +2656,6 @@ function signalForWatchlist(row: Record<string, unknown>, kind: string): string 
     compactText(row.reason) ||
     compactText(row.direction)
   )
-}
-
-function tagsForWatchlist(row: Record<string, unknown>, kind: string): string[] {
-  const mapping = recordValue(row.mapping_chain)
-  const carrier = recordValue(row.carrier)
-  const chainContext = recordValue(row.chain_context)
-  const tags = [
-    ...stringArrayValue(row.theme_tags),
-    ...stringArrayValue(row.source_tags),
-    compactText(row.trader_action),
-    compactText(row.signal_origin),
-    compactText(row.signal_family),
-    compactText(mapping.chain_name),
-    compactText(mapping.node_name),
-    compactText(chainContext.chain_id),
-    compactText(chainContext.node_id),
-    compactText(carrier.name),
-    compactText(row.source),
-  ].filter(Boolean)
-  if (kind === 'stock') {
-    tags.unshift(...timeframeBadges(row))
-  }
-  return Array.from(new Set(tags)).slice(0, 4)
 }
 
 function latestValueForWatchlist(row: Record<string, unknown>): string {
@@ -2745,6 +2764,7 @@ function toWatchlistRow(
     traderAction: compactText(row.trader_action) || compactText(row.action_status),
     invalidatesWhen: compactText(row.invalidates_when),
     explanation: compactText(row.explanation),
+    traceSummary: compactText(row.trace_summary),
     targetKind,
     targetLabel,
     targetFreq: terminalListTargetFreq(row.target_freq),
@@ -4026,7 +4046,9 @@ function CacheMonitorStrip({
   const postRun = recordValue(cacheStatus.postmarket_backfill.run)
   const tasks = cacheStatus.postmarket_backfill.tasks.map(item => recordValue(item))
   const freqs = cacheStatus.mongo_stock_cache.freqs.map(item => recordValue(item))
+  const mongoSummary = recordValue(cacheStatus.mongo_stock_cache.summary)
   const blockers = cacheStatus.blockers.map(item => recordValue(item))
+  const providerHealth = (Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : []).map(item => recordValue(item))
 
   const liveOk = numberValue(liveSummary.ok_modules) ?? 0
   const liveTotal = numberValue(liveSummary.total_modules) ?? 0
@@ -4044,11 +4066,23 @@ function CacheMonitorStrip({
   const boardTask = firstRecord(tasks, 'module', 'board_cons')
   const boardSummary = recordValue(boardTask.result_summary)
   const boardCursor = recordValue(boardTask.cursor)
+  const stockShardTasks = tasks.filter(item => compactText(item.module) === 'stock_daily')
+  const boardShardTasks = tasks.filter(item => compactText(item.module) === 'board_cons')
+  const stockShardTotal = stockShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).total) ?? 0), 0)
+  const stockShardDone = stockShardTasks.filter(item => compactText(item.status) === 'ok').length
+  const stockShardProcessed = stockShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).processed) ?? 0), 0)
+  const boardShardTotal = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).total_groups) ?? 0), 0)
+  const boardShardDone = boardShardTasks.filter(item => compactText(item.status) === 'ok').length
+  const boardShardProcessed = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).processed) ?? 0), 0)
   const postPct = percentValue(postSummary.progress_pct)
   const postStatus = compactText(postRun.status, compactText(postSummary.status, 'pending'))
   const postEta = compactDuration(postSummary.eta_seconds, locale)
-  const stockDailyLine = `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText(stockDailySummary.latest_symbol)}`
-  const boardCursorLine = `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
+  const stockDailyLine = stockShardTasks.length
+    ? `${countText(stockShardDone)}/${countText(stockShardTasks.length)} shard · ${countText(stockShardProcessed)}/${countText(stockShardTotal)}`
+    : `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText(stockDailySummary.latest_symbol)}`
+  const boardCursorLine = boardShardTasks.length
+    ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard · ${countText(boardShardProcessed)}/${countText(boardShardTotal)}`
+    : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
   const postDetail = locale === 'zh-CN'
     ? `阶段 ${compactText(postRun.phase, '等待')} · ${postEta || 'ETA 计算中'}`
     : `phase ${compactText(postRun.phase, 'pending')} · ${postEta || 'ETA pending'}`
@@ -4064,21 +4098,31 @@ function CacheMonitorStrip({
     .filter(row => ['5分钟', '15分钟', '30分钟', '60分钟'].includes(compactText(row.freq)))
     .map(row => `${compactText(row.freq)} ${countText(row.today_symbols)}`)
     .join(' · ')
+  const minuteUniverseTotal = numberValue(mongoSummary.minute_universe_total) ?? 0
+  const minuteUniverseCached = numberValue(mongoSummary.minute_universe_cached) ?? 0
+  const minuteUniversePending = numberValue(mongoSummary.minute_universe_pending) ?? 0
+  const minuteUniverseError = numberValue(mongoSummary.minute_universe_error) ?? 0
   const mongoDetail = locale === 'zh-CN'
     ? `今日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
     : `today daily ${countText(dailyToday)}/${countText(dailySymbols)}`
   const mongoSubdetail = locale === 'zh-CN'
-    ? `分钟覆盖：${minuteFreqs || '0'}`
-    : `minute coverage: ${minuteFreqs || '0'}`
+    ? (minuteUniverseTotal
+      ? `分钟候选 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · 待 ${countText(minuteUniversePending)} · 失败 ${countText(minuteUniverseError)}`
+      : `分钟覆盖：${minuteFreqs || '0'}`)
+    : (minuteUniverseTotal
+      ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · pending ${countText(minuteUniversePending)} · failed ${countText(minuteUniverseError)}`
+      : `minute coverage: ${minuteFreqs || '0'}`)
 
-  const firstBlocker = blockers[0] ?? {}
-  const blockerPct = cacheStatus.available && blockers.length === 0 ? 100 : 0
-  const blockerDetail = blockers.length
-    ? `${compactText(firstBlocker.module, compactText(firstBlocker.scope, 'source'))} · ${compactText(firstBlocker.status, 'blocked')}`
+  const providerProblems = providerHealth.filter(item => ['cooldown', 'degraded', 'error', 'stale'].includes(compactText(item.status)))
+  const firstProviderProblem = providerProblems[0] ?? {}
+  const firstBlocker = blockers[0] ?? firstProviderProblem
+  const blockerPct = cacheStatus.available && blockers.length === 0 && providerProblems.length === 0 ? 100 : 0
+  const blockerDetail = blockers.length || providerProblems.length
+    ? `${compactText(firstBlocker.module, compactText(firstBlocker.provider, compactText(firstBlocker.scope, 'source')))} · ${compactText(firstBlocker.status, 'blocked')}`
     : (locale === 'zh-CN' ? '无阻塞源' : 'no blocking source')
-  const blockerSubdetail = blockers.length
-    ? compactText(firstBlocker.error_msg, locale === 'zh-CN' ? '查看日志定位数据源' : 'check logs for source detail')
-    : (locale === 'zh-CN' ? '网络源错误和降级会在这里出现' : 'source failures and fallbacks appear here')
+  const blockerSubdetail = blockers.length || providerProblems.length
+    ? compactText(firstBlocker.error_msg, compactText(firstBlocker.last_error_type, locale === 'zh-CN' ? '查看日志定位数据源' : 'check logs for source detail'))
+    : (locale === 'zh-CN' ? `${countText(providerHealth.length)} 个网络源健康记录` : `${countText(providerHealth.length)} provider health records`)
   const refreshSeconds = cacheRefreshSeconds(cacheStatus)
   const updatedAt = compactClock(cacheStatus.updated_at, locale)
 
@@ -4124,11 +4168,11 @@ function CacheMonitorStrip({
           subdetail={mongoSubdetail}
         />
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '阻塞源' : 'Blockers'}
-          value={String(blockers.length)}
+          title={locale === 'zh-CN' ? '网络源' : 'Sources'}
+          value={String(blockers.length + providerProblems.length)}
           progress={blockerPct}
-          status={blockers.length ? 'error' : 'ok'}
-          statusLabel={blockers.length ? 'BLOCKED' : 'OK'}
+          status={blockers.length || providerProblems.length ? 'error' : 'ok'}
+          statusLabel={blockers.length || providerProblems.length ? 'BLOCKED' : 'OK'}
           detail={blockerDetail}
           subdetail={blockerSubdetail}
         />
@@ -4485,6 +4529,7 @@ function WatchlistTable({
               row.name,
               activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
               activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+              row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${row.traceSummary}` : '',
               rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
             ].filter(Boolean).join(' · ')}
             onClick={() => onSelect(row)}

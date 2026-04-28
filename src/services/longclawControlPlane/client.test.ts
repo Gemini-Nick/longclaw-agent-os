@@ -478,6 +478,15 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
               risk_notes: ['避免追高'],
               changed_since_last: { new_candidates: ['SZ.002759'] },
             },
+            buy_candidates: [
+              {
+                symbol: 'SZ.002759',
+                reason: '三买',
+                technical_evidence: { signal_type: '三买', freq: '30分钟' },
+                knowledge_confirmation: { status: 'conflict' },
+                resonance_context: { grade: 'multi_period', tags: ['多周期共振'] },
+              },
+            ],
             decision_queue: [
               {
                 action_id: 'signals:candidate:SZ.002759:0',
@@ -548,6 +557,9 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.connector_health[0]?.connector_id).toBe('signals-pack')
     expect(dashboard.cache_status.available).toBe(true)
     expect(dashboard.cache_status.postmarket_backfill.summary.progress_pct).toBe(28.4)
+    expect(dashboard.buy_candidates[0]?.technical_evidence).toEqual({ signal_type: '三买', freq: '30分钟' })
+    expect(dashboard.buy_candidates[0]?.knowledge_confirmation).toEqual({ status: 'conflict' })
+    expect(dashboard.buy_candidates[0]?.resonance_context).toEqual({ grade: 'multi_period', tags: ['多周期共振'] })
     expect(requests).toEqual(['http://signals-web.local/api/pack/dashboard'])
   })
 

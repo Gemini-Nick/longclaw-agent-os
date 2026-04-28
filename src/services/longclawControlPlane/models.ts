@@ -812,7 +812,7 @@ const SignalsCandidateSchema = z.object({
   reason: z.string().default(''),
   status: z.string().default('open'),
   metadata: JsonRecordSchema.default({}),
-})
+}).passthrough()
 
 const SignalsChartContextSchema = z.object({
   symbol: z.string().default(''),
@@ -1076,6 +1076,7 @@ export const SignalsCacheStatusSchema = z.object({
     summary: JsonRecordSchema.default({}),
   }).default({ freqs: [], summary: {} }),
   terminal_outputs: z.array(SignalsCacheMetricSchema).default([]),
+  provider_health: z.array(SignalsCacheMetricSchema).default([]),
   blockers: z.array(SignalsCacheMetricSchema).default([]),
 }).passthrough().default({
   available: false,
@@ -1087,6 +1088,7 @@ export const SignalsCacheStatusSchema = z.object({
   postmarket_backfill: { run: null, tasks: [], summary: {} },
   mongo_stock_cache: { freqs: [], summary: {} },
   terminal_outputs: [],
+  provider_health: [],
   blockers: [],
 })
 
