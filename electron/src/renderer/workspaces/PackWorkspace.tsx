@@ -237,6 +237,18 @@ function normalizeSignalsDashboard(
     connector_health: normalizePackRows(candidate.connector_health),
     deep_links: normalizePackRows(candidate.deep_links),
     operator_actions: normalizePackRows(candidate.operator_actions),
+    cache_status: candidate.cache_status ?? {
+      available: false,
+      mode: 'unavailable',
+      updated_at: '',
+      trade_date: '',
+      error: '',
+      live_low_latency: { modules: [], summary: {} },
+      postmarket_backfill: { run: null, tasks: [], summary: {} },
+      mongo_stock_cache: { freqs: [], summary: {} },
+      terminal_outputs: [],
+      blockers: [],
+    },
   }
 }
 
