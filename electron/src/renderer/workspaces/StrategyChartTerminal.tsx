@@ -1288,6 +1288,36 @@ function firstRecord(rows: Record<string, unknown>[], key: string, value: string
   return rows.find(row => compactText(row[key]) === value) ?? {}
 }
 
+function normalizeCacheStatus(value: StrategyDashboard['cache_status'] | undefined): StrategyDashboard['cache_status'] {
+  const cacheStatus = recordValue(value)
+  const postmarketBackfill = recordValue(cacheStatus.postmarket_backfill)
+  const mongoStockCache = recordValue(cacheStatus.mongo_stock_cache)
+  return {
+    available: Boolean(cacheStatus.available),
+    mode: compactText(cacheStatus.mode, 'unavailable'),
+    updated_at: compactText(cacheStatus.updated_at),
+    trade_date: compactText(cacheStatus.trade_date),
+    error: compactText(cacheStatus.error),
+    live_low_latency: {
+      modules: Array.isArray(recordValue(cacheStatus.live_low_latency).modules)
+        ? recordValue(cacheStatus.live_low_latency).modules
+        : [],
+      summary: recordValue(recordValue(cacheStatus.live_low_latency).summary),
+    },
+    postmarket_backfill: {
+      run: postmarketBackfill.run ?? null,
+      tasks: Array.isArray(postmarketBackfill.tasks) ? postmarketBackfill.tasks : [],
+      summary: recordValue(postmarketBackfill.summary),
+    },
+    mongo_stock_cache: {
+      freqs: Array.isArray(mongoStockCache.freqs) ? mongoStockCache.freqs : [],
+      summary: recordValue(mongoStockCache.summary),
+    },
+    terminal_outputs: Array.isArray(cacheStatus.terminal_outputs) ? cacheStatus.terminal_outputs : [],
+    blockers: Array.isArray(cacheStatus.blockers) ? cacheStatus.blockers : [],
+  }
+}
+
 function cacheProgressColor(value: number, status?: unknown): string {
   const normalized = compactText(status).toLowerCase()
   if (normalized.includes('error') || normalized.includes('degraded') || normalized.includes('stale')) {
@@ -3923,6 +3953,7 @@ function CacheMonitorStrip({
   locale: LongclawLocale
   cacheStatus: StrategyDashboard['cache_status']
 }) {
+  cacheStatus = normalizeCacheStatus(cacheStatus)
   const liveSummary = recordValue(cacheStatus.live_low_latency.summary)
   const postSummary = recordValue(cacheStatus.postmarket_backfill.summary)
   const postRun = recordValue(cacheStatus.postmarket_backfill.run)
