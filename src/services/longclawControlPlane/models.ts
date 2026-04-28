@@ -1032,6 +1032,42 @@ const SignalsSourceConfidenceSchema = z.preprocess(value => {
   metadata: JsonRecordSchema.default({}),
 }).passthrough())
 
+const SignalsCacheMetricSchema = z.record(z.string(), z.unknown()).default({})
+
+export const SignalsCacheStatusSchema = z.object({
+  available: z.boolean().default(false),
+  mode: z.string().default('unavailable'),
+  updated_at: z.string().default(''),
+  trade_date: z.string().default(''),
+  error: z.string().default(''),
+  live_low_latency: z.object({
+    modules: z.array(SignalsCacheMetricSchema).default([]),
+    summary: JsonRecordSchema.default({}),
+  }).default({ modules: [], summary: {} }),
+  postmarket_backfill: z.object({
+    run: JsonRecordSchema.nullable().default(null),
+    tasks: z.array(SignalsCacheMetricSchema).default([]),
+    summary: JsonRecordSchema.default({}),
+  }).default({ run: null, tasks: [], summary: {} }),
+  mongo_stock_cache: z.object({
+    freqs: z.array(SignalsCacheMetricSchema).default([]),
+    summary: JsonRecordSchema.default({}),
+  }).default({ freqs: [], summary: {} }),
+  terminal_outputs: z.array(SignalsCacheMetricSchema).default([]),
+  blockers: z.array(SignalsCacheMetricSchema).default([]),
+}).passthrough().default({
+  available: false,
+  mode: 'unavailable',
+  updated_at: '',
+  trade_date: '',
+  error: '',
+  live_low_latency: { modules: [], summary: {} },
+  postmarket_backfill: { run: null, tasks: [], summary: {} },
+  mongo_stock_cache: { freqs: [], summary: {} },
+  terminal_outputs: [],
+  blockers: [],
+})
+
 export const SignalsDashboardSchema = z.object({
   pack_id: z.literal('signals'),
   title: z.string().default('Signals'),
@@ -1075,6 +1111,7 @@ export const SignalsDashboardSchema = z.object({
   connector_health: z.array(LongclawConnectorHealthSchema).default([]),
   deep_links: z.array(SignalsDeepLinkSchema).default([]),
   operator_actions: z.array(LongclawOperatorActionSchema).default([]),
+  cache_status: SignalsCacheStatusSchema,
 })
 
 export type LongclawDomainPackDescriptor = z.infer<typeof LongclawDomainPackDescriptorSchema>

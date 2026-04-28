@@ -1049,6 +1049,7 @@ export type SignalsStrategyVM = Pick<
   | 'decision_queue'
   | 'strategy_kpis'
   | 'source_confidence'
+  | 'cache_status'
 >
 
 export type SignalsBacktestVM = Pick<
@@ -1076,6 +1077,7 @@ function toSignalsStrategyVM(dashboard: SignalsDashboard): SignalsStrategyVM {
     decision_queue: dashboard.decision_queue,
     strategy_kpis: dashboard.strategy_kpis,
     source_confidence: dashboard.source_confidence,
+    cache_status: dashboard.cache_status,
   }
 }
 

@@ -535,6 +535,7 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.source_confidence[0]?.status).toBe('fresh')
     expect(dashboard.backtest_summary.pending).toBe(1)
     expect(dashboard.connector_health[0]?.connector_id).toBe('signals-pack')
+    expect(dashboard.cache_status.available).toBe(false)
     expect(requests).toEqual(['http://signals-web.local/api/pack/dashboard'])
   })
 

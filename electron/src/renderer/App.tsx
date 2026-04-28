@@ -63,6 +63,18 @@ type NavItemSpec = {
 }
 type SkillInfo = { name: string; path: string; description: string; project?: string }
 type AgentModeInfo = { mode: string; alive: boolean }
+
+function signalsDashboardPollingMs(page: Page, dashboard: LongclawPackDashboard | null): number {
+  if (page !== 'strategy') return page === 'execution' ? 10_000 : 15_000
+  if (!dashboard || dashboard.pack_id !== 'signals') return 10_000
+  const cache = dashboard.cache_status
+  const runStatus = String(cache.postmarket_backfill.run?.status ?? '').toLowerCase()
+  const postmarketActive = ['running', 'partial', 'stale'].includes(runStatus)
+  const freshness = Number(cache.live_low_latency.summary.freshness_seconds_max ?? Number.POSITIVE_INFINITY)
+  const liveActive = Number.isFinite(freshness) && freshness <= 60 * 60
+  return postmarketActive || liveActive ? 10_000 : 60_000
+}
+
 type WeclawSessionAttachment = {
   attachmentId: string
   title: string
@@ -2235,12 +2247,12 @@ export default function App() {
   }, [page, refresh])
 
   useEffect(() => {
-    const intervalMs = page === 'strategy' || page === 'execution' ? 10_000 : 15_000
+    const intervalMs = signalsDashboardPollingMs(page, dashboard)
     const timer = window.setInterval(() => {
       void refresh(page)
     }, intervalMs)
     return () => window.clearInterval(timer)
-  }, [page, refresh])
+  }, [dashboard, page, refresh])
 
   const openRun = useCallback(async (run: LongclawRun) => {
     setSelected({
