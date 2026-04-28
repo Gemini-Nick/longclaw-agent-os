@@ -14,7 +14,7 @@ import {
 } from 'klinecharts'
 
 import type { SignalsDashboard } from '../../../../src/services/longclawControlPlane/models.js'
-import { fontStacks, interaction, motion, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
+import { fontStacks, interaction, motion, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '../i18n.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
@@ -575,21 +575,53 @@ const errorDarkStyle: React.CSSProperties = {
 }
 
 const cacheMonitorStripStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-  gap: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 7,
+  padding: '7px 8px 8px',
   borderBottom: `1px solid ${terminalTheme.grid}`,
-  background: terminalTheme.grid,
-  minHeight: 48,
+  background: `linear-gradient(180deg, ${terminalTheme.panelInset}, ${terminalTheme.panel})`,
+}
+
+const cacheMonitorToolbarStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  minWidth: 0,
+}
+
+const cacheMonitorToolbarTitleStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  color: terminalTheme.textStrong,
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: 0,
+}
+
+const cacheMonitorToolbarMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontSize: 10,
+  whiteSpace: 'nowrap',
+}
+
+const cacheMonitorGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gap: 8,
 }
 
 const cacheMonitorCellStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 4,
+  gap: 6,
   minWidth: 0,
-  padding: '5px 8px',
-  background: terminalTheme.panel,
+  padding: '8px 9px',
+  border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+  borderRadius: tradingDeskTheme.radius.compact,
+  background: `linear-gradient(180deg, ${terminalTheme.panelRaised}, ${terminalTheme.panel})`,
   boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
 }
 
@@ -602,9 +634,10 @@ const cacheMonitorHeaderStyle: React.CSSProperties = {
 }
 
 const cacheMonitorTitleStyle: React.CSSProperties = {
-  color: terminalTheme.textStrong,
-  fontSize: 11,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
   fontWeight: 800,
+  letterSpacing: 0,
   minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -614,23 +647,26 @@ const cacheMonitorTitleStyle: React.CSSProperties = {
 const cacheMonitorValueStyle: React.CSSProperties = {
   color: terminalTheme.mono,
   fontFamily: fontStacks.mono,
-  fontSize: 11,
+  fontSize: 17,
   fontWeight: 800,
+  lineHeight: 1,
   whiteSpace: 'nowrap',
 }
 
 const cacheProgressTrackStyle: React.CSSProperties = {
-  height: 4,
+  height: 8,
   overflow: 'hidden',
-  borderRadius: 2,
+  borderRadius: tradingDeskTheme.radius.pill,
   background: terminalTheme.panelInset,
+  border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
 }
 
 function cacheProgressFillStyle(value: number, color: string): React.CSSProperties {
   return {
     height: '100%',
     width: `${Math.max(0, Math.min(100, value))}%`,
-    background: color,
+    minWidth: value > 0 ? 3 : 0,
+    background: `linear-gradient(90deg, ${color}, rgba(255,255,255,0.72))`,
     transition: `width ${motion.medium}`,
   }
 }
@@ -644,41 +680,50 @@ const cacheMonitorToplineStyle: React.CSSProperties = {
 
 function cacheStatusDotStyle(color: string): React.CSSProperties {
   return {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 999,
     flex: '0 0 auto',
     background: color,
-    boxShadow: `0 0 0 2px ${terminalTheme.panelInset}`,
+    boxShadow: `0 0 0 2px ${terminalTheme.panelInset}, 0 0 12px ${color}`,
   }
 }
 
 const cacheMonitorMetaStyle: React.CSSProperties = {
   ...mutedLineStyle,
-  fontSize: 10,
+  fontSize: 11,
+  lineHeight: 1.25,
+  minHeight: 28,
+}
+
+const cacheMonitorDetailStrongStyle: React.CSSProperties = {
+  color: terminalTheme.text,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  fontWeight: 700,
   lineHeight: 1.2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
-const cacheStageRowStyle: React.CSSProperties = {
-  display: 'grid',
-  gridAutoFlow: 'column',
-  gridAutoColumns: '1fr',
+const cacheStatusChipStyle = (color: string): React.CSSProperties => ({
+  display: 'inline-flex',
   alignItems: 'center',
-  gap: 4,
-  minWidth: 0,
-}
-
-function cacheStageStyle(active: boolean, complete: boolean, color: string): React.CSSProperties {
-  return {
-    height: 3,
-    minWidth: 0,
-    borderRadius: 2,
-    background: complete ? color : terminalTheme.panelInset,
-    boxShadow: active ? `0 0 0 1px ${color}` : undefined,
-    opacity: active || complete ? 1 : 0.55,
-    transition: `background ${motion.short}, box-shadow ${motion.short}, opacity ${motion.short}`,
-  }
-}
+  maxWidth: 112,
+  padding: '2px 6px',
+  borderRadius: tradingDeskTheme.radius.pill,
+  border: `1px solid ${color}`,
+  background: `${color}20`,
+  color,
+  fontFamily: fontStacks.mono,
+  fontSize: 10,
+  fontWeight: 800,
+  lineHeight: 1.15,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+})
 
 const compactListStyle: React.CSSProperties = {
   display: 'flex',
@@ -1284,6 +1329,18 @@ function compactDuration(value: unknown, locale: LongclawLocale): string {
   return locale === 'zh-CN' ? `ETA ${hours}时${rest}分` : `ETA ${hours}h ${rest}m`
 }
 
+function compactClock(value: unknown, locale: LongclawLocale): string {
+  const text = compactText(value)
+  if (!text) return ''
+  const dt = new Date(text)
+  if (Number.isNaN(dt.getTime())) return text.slice(11, 16)
+  return dt.toLocaleTimeString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: locale === 'zh-CN' ? 'Asia/Shanghai' : undefined,
+  })
+}
+
 function firstRecord(rows: Record<string, unknown>[], key: string, value: string): Record<string, unknown> {
   return rows.find(row => compactText(row[key]) === value) ?? {}
 }
@@ -1321,10 +1378,28 @@ function normalizeCacheStatus(value: StrategyDashboard['cache_status'] | undefin
 function cacheProgressColor(value: number, status?: unknown): string {
   const normalized = compactText(status).toLowerCase()
   if (normalized.includes('error') || normalized.includes('degraded') || normalized.includes('stale')) {
-    return terminalTheme.errorText
+    return palette.error
   }
-  if (normalized.includes('partial') || value < 80) return terminalTheme.accentText
-  return tradingDeskTheme.market.up
+  if (normalized.includes('running') || normalized.includes('partial')) return tradingDeskTheme.colors.auroraGold
+  if (value < 100) return tradingDeskTheme.colors.auroraBlue
+  return palette.success
+}
+
+function cacheRefreshSeconds(cacheStatus: StrategyDashboard['cache_status']): number {
+  if (!cacheStatus.available) return 10
+  const runStatus = compactText(recordValue(cacheStatus.postmarket_backfill.run).status).toLowerCase()
+  if (['running', 'partial', 'stale'].includes(runStatus)) return 10
+  const freshness = numberValue(recordValue(cacheStatus.live_low_latency.summary).freshness_seconds_max)
+  return freshness !== undefined && freshness <= 60 * 60 ? 10 : 60
+}
+
+function cacheStatusLabel(value: unknown, fallback: string): string {
+  const text = compactText(value, fallback)
+  if (text === 'ok') return 'OK'
+  if (text === 'running') return 'RUNNING'
+  if (text === 'partial') return 'PARTIAL'
+  if (text === 'pending') return 'PENDING'
+  return text.toUpperCase()
 }
 
 function trimTrailingSlash(value?: string): string {
@@ -3906,20 +3981,19 @@ function CacheMonitorCell({
   progress,
   status,
   detail,
-  stages,
-  activeStage,
+  subdetail,
+  statusLabel,
 }: {
   title: string
   value: string
   progress: number
   status?: unknown
-  detail: React.ReactNode
-  stages: string[]
-  activeStage: number
+  detail: string
+  subdetail: string
+  statusLabel: string
 }) {
   const color = cacheProgressColor(progress, status)
   const clampedProgress = Math.max(0, Math.min(100, progress))
-  const completedStage = Math.floor((clampedProgress / 100) * stages.length)
   return (
     <div style={cacheMonitorCellStyle}>
       <div style={cacheMonitorHeaderStyle}>
@@ -3927,21 +4001,14 @@ function CacheMonitorCell({
           <span style={cacheStatusDotStyle(color)} />
           <div style={cacheMonitorTitleStyle}>{title}</div>
         </div>
-        <div style={{ ...cacheMonitorValueStyle, color }}>{value}</div>
+        <span style={cacheStatusChipStyle(color)} title={statusLabel}>{statusLabel}</span>
       </div>
+      <div style={{ ...cacheMonitorValueStyle, color }}>{value}</div>
       <div style={cacheProgressTrackStyle}>
         <div style={cacheProgressFillStyle(clampedProgress, color)} />
       </div>
-      <div style={cacheStageRowStyle} aria-label={stages.join(' / ')}>
-        {stages.map((stage, index) => (
-          <span
-            key={stage}
-            title={stage}
-            style={cacheStageStyle(index === activeStage, index < completedStage, color)}
-          />
-        ))}
-      </div>
-      <div style={cacheMonitorMetaStyle}>{detail}</div>
+      <div style={cacheMonitorDetailStrongStyle} title={detail}>{detail}</div>
+      <div style={cacheMonitorMetaStyle} title={subdetail}>{subdetail}</div>
     </div>
   )
 }
@@ -3966,9 +4033,11 @@ function CacheMonitorStrip({
   const livePct = liveTotal ? (liveOk / liveTotal) * 100 : 0
   const liveValue = liveTotal ? `${Math.round(livePct)}%` : (cacheStatus.available ? '0%' : 'OFF')
   const liveDetail = locale === 'zh-CN'
-    ? `${countText(liveSummary.selected_symbols)} 标的 · ${countText(liveSummary.minute_not_ready)} 未就绪 · ${compactText(liveSummary.status, 'observe')}`
-    : `${countText(liveSummary.selected_symbols)} symbols · ${countText(liveSummary.minute_not_ready)} not ready · ${compactText(liveSummary.status, 'observe')}`
-  const liveActiveStage = livePct >= 100 ? 2 : (livePct > 0 ? 1 : 0)
+    ? `${countText(liveSummary.selected_symbols)} 只低延时股票 · ${countText(liveSummary.minute_not_ready)} 未就绪`
+    : `${countText(liveSummary.selected_symbols)} live symbols · ${countText(liveSummary.minute_not_ready)} not ready`
+  const liveSubdetail = locale === 'zh-CN'
+    ? `${countText(liveOk)}/${countText(liveTotal)} 模块可用 · ${countText(liveSummary.skipped_symbols)} 只轮换跳过`
+    : `${countText(liveOk)}/${countText(liveTotal)} modules ready · ${countText(liveSummary.skipped_symbols)} rotated out`
 
   const stockDailyTask = firstRecord(tasks, 'module', 'stock_daily')
   const stockDailySummary = recordValue(stockDailyTask.result_summary)
@@ -3981,12 +4050,11 @@ function CacheMonitorStrip({
   const stockDailyLine = `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText(stockDailySummary.latest_symbol)}`
   const boardCursorLine = `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
   const postDetail = locale === 'zh-CN'
-    ? [compactText(postRun.phase, '等待'), postEta, `日线 ${stockDailyLine}`, `板块 ${boardCursorLine}`].filter(Boolean).join(' · ')
-    : [compactText(postRun.phase, 'pending'), postEta, `daily ${stockDailyLine}`, `boards ${boardCursorLine}`].filter(Boolean).join(' · ')
-  const normalizedPostPhase = compactText(postRun.phase).toLowerCase()
-  const postActiveStage = postPct >= 100
-    ? 3
-    : (normalizedPostPhase.includes('derived') || normalizedPostPhase.includes('terminal') || compactText(boardTask.status) === 'running' ? 2 : (postPct > 0 ? 1 : 0))
+    ? `阶段 ${compactText(postRun.phase, '等待')} · ${postEta || 'ETA 计算中'}`
+    : `phase ${compactText(postRun.phase, 'pending')} · ${postEta || 'ETA pending'}`
+  const postSubdetail = locale === 'zh-CN'
+    ? `日线 ${stockDailyLine} · 板块 ${boardCursorLine}`
+    : `daily ${stockDailyLine} · boards ${boardCursorLine}`
 
   const dailyCache = firstRecord(freqs, 'freq', '日线')
   const dailySymbols = numberValue(dailyCache.symbols) ?? 0
@@ -3997,55 +4065,74 @@ function CacheMonitorStrip({
     .map(row => `${compactText(row.freq)} ${countText(row.today_symbols)}`)
     .join(' · ')
   const mongoDetail = locale === 'zh-CN'
-    ? `日线今日 ${countText(dailyToday)}/${countText(dailySymbols)} · ${minuteFreqs || '分钟线 0'}`
-    : `daily today ${countText(dailyToday)}/${countText(dailySymbols)} · ${minuteFreqs || 'minute 0'}`
-  const mongoActiveStage = mongoPct >= 100 ? 2 : (minuteFreqs ? 1 : 0)
+    ? `今日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
+    : `today daily ${countText(dailyToday)}/${countText(dailySymbols)}`
+  const mongoSubdetail = locale === 'zh-CN'
+    ? `分钟覆盖：${minuteFreqs || '0'}`
+    : `minute coverage: ${minuteFreqs || '0'}`
 
   const firstBlocker = blockers[0] ?? {}
   const blockerPct = cacheStatus.available && blockers.length === 0 ? 100 : 0
   const blockerDetail = blockers.length
     ? `${compactText(firstBlocker.module, compactText(firstBlocker.scope, 'source'))} · ${compactText(firstBlocker.status, 'blocked')}`
     : (locale === 'zh-CN' ? '无阻塞源' : 'no blocking source')
-  const blockerStages = locale === 'zh-CN' ? ['探测', '隔离', '恢复'] : ['probe', 'isolate', 'recover']
+  const blockerSubdetail = blockers.length
+    ? compactText(firstBlocker.error_msg, locale === 'zh-CN' ? '查看日志定位数据源' : 'check logs for source detail')
+    : (locale === 'zh-CN' ? '网络源错误和降级会在这里出现' : 'source failures and fallbacks appear here')
+  const refreshSeconds = cacheRefreshSeconds(cacheStatus)
+  const updatedAt = compactClock(cacheStatus.updated_at, locale)
 
   return (
     <div style={cacheMonitorStripStyle}>
-      <CacheMonitorCell
-        title={locale === 'zh-CN' ? '低延时缓存' : 'Live cache'}
-        value={liveValue}
-        progress={livePct}
-        status={cacheStatus.available ? 'ok' : 'degraded'}
-        detail={liveDetail}
-        stages={locale === 'zh-CN' ? ['选池', '分钟线', '可用'] : ['pool', 'minute', 'ready']}
-        activeStage={liveActiveStage}
-      />
-      <CacheMonitorCell
-        title={locale === 'zh-CN' ? '盘后全量' : 'Postmarket'}
-        value={`${Math.round(postPct)}%`}
-        progress={postPct}
-        status={postStatus}
-        detail={postDetail}
-        stages={locale === 'zh-CN' ? ['排队', '日线', '板块', '完成'] : ['queue', 'daily', 'boards', 'done']}
-        activeStage={postActiveStage}
-      />
-      <CacheMonitorCell
-        title={locale === 'zh-CN' ? 'Mongo覆盖' : 'Mongo coverage'}
-        value={`${Math.round(mongoPct)}%`}
-        progress={mongoPct}
-        status={cacheStatus.available ? 'ok' : 'degraded'}
-        detail={mongoDetail}
-        stages={locale === 'zh-CN' ? ['日线', '分钟', '今日'] : ['daily', 'minute', 'today']}
-        activeStage={mongoActiveStage}
-      />
-      <CacheMonitorCell
-        title={locale === 'zh-CN' ? '阻塞源' : 'Blockers'}
-        value={String(blockers.length)}
-        progress={blockerPct}
-        status={blockers.length ? 'error' : 'ok'}
-        detail={blockerDetail}
-        stages={blockerStages}
-        activeStage={blockers.length ? 1 : 2}
-      />
+      <div style={cacheMonitorToolbarStyle}>
+        <div style={cacheMonitorToolbarTitleStyle}>
+          <span style={cacheStatusDotStyle(cacheStatus.available ? palette.success : palette.warning)} />
+          {locale === 'zh-CN' ? 'Signals 缓存监控' : 'Signals cache monitor'}
+        </div>
+        <div style={cacheMonitorToolbarMetaStyle}>
+          {locale === 'zh-CN'
+            ? `交易日 ${cacheStatus.trade_date || '-'} · 北京时间 ${updatedAt || '-'} · 自动刷新 ${refreshSeconds}秒`
+            : `trade ${cacheStatus.trade_date || '-'} · updated ${updatedAt || '-'} · refresh ${refreshSeconds}s`}
+        </div>
+      </div>
+      <div style={cacheMonitorGridStyle}>
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? '低延时缓存' : 'Live cache'}
+          value={liveValue}
+          progress={livePct}
+          status={cacheStatus.available ? 'ok' : 'degraded'}
+          statusLabel={cacheStatus.available ? `${countText(liveOk)}/${countText(liveTotal)}` : 'OFF'}
+          detail={liveDetail}
+          subdetail={liveSubdetail}
+        />
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? '盘后全量' : 'Postmarket'}
+          value={`${Math.round(postPct)}%`}
+          progress={postPct}
+          status={postStatus}
+          statusLabel={cacheStatusLabel(postStatus, 'pending')}
+          detail={postDetail}
+          subdetail={postSubdetail}
+        />
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? 'Mongo 覆盖' : 'Mongo coverage'}
+          value={`${Math.round(mongoPct)}%`}
+          progress={mongoPct}
+          status={cacheStatus.available ? 'ok' : 'degraded'}
+          statusLabel={`${countText(dailyToday)}/${countText(dailySymbols)}`}
+          detail={mongoDetail}
+          subdetail={mongoSubdetail}
+        />
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? '阻塞源' : 'Blockers'}
+          value={String(blockers.length)}
+          progress={blockerPct}
+          status={blockers.length ? 'error' : 'ok'}
+          statusLabel={blockers.length ? 'BLOCKED' : 'OK'}
+          detail={blockerDetail}
+          subdetail={blockerSubdetail}
+        />
+      </div>
     </div>
   )
 }
