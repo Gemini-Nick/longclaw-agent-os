@@ -922,6 +922,28 @@ const SignalsDailyBriefSchema = z.preprocess(value => {
 const SignalsDecisionQueueItemSchema = z.preprocess(value => {
   if (typeof value === 'string') return { title: value }
   const record = recordValue(value)
+  const decisionKey =
+    stringValue(record.decision_id) ??
+    stringValue(record.action_id) ??
+    stringValue(record.id) ??
+    stringValue(record.queue_id) ??
+    stringValue(record.symbol) ??
+    'item'
+  const operatorActions = Array.isArray(record.operator_actions)
+    ? record.operator_actions.map((item, index) => {
+      if (typeof item === 'string') {
+        return {
+          action_id: `signals:decision:${decisionKey}:note:${index}`,
+          run_id: 'signals:dashboard',
+          kind: 'note',
+          label: item,
+          payload: { text: item },
+          metadata: { source: 'signals_decision_queue' },
+        }
+      }
+      return item
+    })
+    : []
   return {
     ...record,
     decision_id:
@@ -953,7 +975,7 @@ const SignalsDecisionQueueItemSchema = z.preprocess(value => {
       stringValue(record.reason) ??
       '',
     metadata: recordValue(record.metadata),
-    operator_actions: Array.isArray(record.operator_actions) ? record.operator_actions : [],
+    operator_actions: operatorActions,
   }
 }, z.object({
   decision_id: z.string().default(''),

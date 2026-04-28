@@ -485,6 +485,7 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
                 action: 'review_entry',
                 next_action: '打开图表复核',
                 status: 'open',
+                operator_actions: ['打开图表', '写入退出条件'],
               },
             ],
             strategy_kpis: {
@@ -507,6 +508,15 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
                 details: {},
               },
             ],
+            cache_status: {
+              available: true,
+              mode: 'mongo',
+              live_low_latency: { modules: [], summary: { ok_modules: 8, total_modules: 8 } },
+              postmarket_backfill: { run: null, tasks: [], summary: { progress_pct: 28.4 } },
+              mongo_stock_cache: { freqs: [], summary: { daily_symbols: 5510 } },
+              terminal_outputs: [],
+              blockers: [],
+            },
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
@@ -529,13 +539,15 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.daily_brief.bullets[0]).toBe('打开图表复核')
     expect(dashboard.daily_brief.risk_note).toBe('避免追高')
     expect(dashboard.decision_queue[0]?.decision_id).toBe('signals:candidate:SZ.002759:0')
+    expect(dashboard.decision_queue[0]?.operator_actions[0]?.label).toBe('打开图表')
     expect(dashboard.strategy_kpis.find(item => item.kpi_id === 'signals_total')?.value).toBe(12)
     expect(dashboard.strategy_kpis.find(item => item.kpi_id === 'groups')?.value).toBe(1)
     expect(dashboard.source_confidence[0]?.source_id).toBe('signal')
     expect(dashboard.source_confidence[0]?.status).toBe('fresh')
     expect(dashboard.backtest_summary.pending).toBe(1)
     expect(dashboard.connector_health[0]?.connector_id).toBe('signals-pack')
-    expect(dashboard.cache_status.available).toBe(false)
+    expect(dashboard.cache_status.available).toBe(true)
+    expect(dashboard.cache_status.postmarket_backfill.summary.progress_pct).toBe(28.4)
     expect(requests).toEqual(['http://signals-web.local/api/pack/dashboard'])
   })
 
