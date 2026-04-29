@@ -6,9 +6,11 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
-const sourceApp = path.resolve(repoRoot, process.argv[2] || 'release/mac-arm64/隆小侠 Agent OS.app')
+const defaultSourceApp = path.resolve(repoRoot, 'release/mac-arm64/隆小侠 Agent OS.app')
+const sourceApp = path.resolve(repoRoot, process.argv[2] || defaultSourceApp)
 const installRoot = process.env.ELECTRON_INSTALL_ROOT || '/Applications'
 const userInstallRoot = path.join(os.homedir(), 'Applications')
+const keepReleaseApp = ['1', 'true', 'yes', 'on'].includes(String(process.env.ELECTRON_KEEP_RELEASE_APP || '').toLowerCase())
 const productName = '隆小侠 Agent OS'
 const bundleId = 'com.zhangqilong.longclaw.agentos'
 const targetApp = path.join(installRoot, `${productName}.app`)
@@ -75,8 +77,16 @@ for (const appPath of candidates) {
 fs.mkdirSync(installRoot, { recursive: true })
 copyApp(sourceApp, targetApp)
 
+let prunedReleaseApp = ''
+if (!keepReleaseApp && sourceApp === defaultSourceApp && sourceApp !== targetApp && removePath(sourceApp)) {
+  prunedReleaseApp = sourceApp
+}
+
 console.log(`Installed latest Electron app: ${targetApp}`)
 console.log(`Removed old app bundle(s): ${removed.length}`)
 for (const appPath of removed) {
   console.log(`- ${appPath}`)
+}
+if (prunedReleaseApp) {
+  console.log(`Pruned release app bundle: ${prunedReleaseApp}`)
 }
