@@ -520,7 +520,16 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
             cache_status: {
               available: true,
               mode: 'mongo',
-              live_low_latency: { modules: [], summary: { ok_modules: 8, total_modules: 8 } },
+              live_low_latency: {
+                modules: [],
+                summary: {
+                  ok_modules: 7,
+                  total_modules: 8,
+                  strict_status: 'degraded',
+                  minute_not_ready: 3,
+                  minute_not_ready_samples: [{ domain: 'index', symbol: 'sh000680', freq: '5分钟' }],
+                },
+              },
               postmarket_backfill: { run: null, tasks: [], summary: { progress_pct: 28.4 } },
               mongo_stock_cache: { freqs: [], summary: { daily_symbols: 5510 } },
               terminal_outputs: [],
@@ -556,6 +565,8 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.backtest_summary.pending).toBe(1)
     expect(dashboard.connector_health[0]?.connector_id).toBe('signals-pack')
     expect(dashboard.cache_status.available).toBe(true)
+    expect(dashboard.cache_status.live_low_latency.summary.strict_status).toBe('degraded')
+    expect(dashboard.cache_status.live_low_latency.summary.minute_not_ready).toBe(3)
     expect(dashboard.cache_status.postmarket_backfill.summary.progress_pct).toBe(28.4)
     expect(dashboard.buy_candidates[0]?.technical_evidence).toEqual({ signal_type: '三买', freq: '30分钟' })
     expect(dashboard.buy_candidates[0]?.knowledge_confirmation).toEqual({ status: 'conflict' })
@@ -616,7 +627,12 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       if (url === 'http://signals-web.local/api/chart/sh000300?freq=daily') {
         return new Response(
           JSON.stringify({
-            meta: { symbol: 'sh000300', freq: 'daily' },
+            meta: {
+              symbol: 'sh000300',
+              freq: 'daily',
+              cache_status: 'not_ready',
+              not_ready_reason: 'index_minute_not_ready',
+            },
             report: {
               conclusion: 'watch for buy setup',
               key_levels: [{ name: 'support', value: 3200, position: '下方', distance_pct: 1.2 }],
@@ -669,6 +685,10 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.buy_candidates[0]?.symbol).toBe('SZ.002759')
     expect(dashboard.sell_warnings[0]?.symbol).toBe('SH.600519')
     expect(dashboard.chart_context?.symbol).toBe('sh000300')
+    expect(dashboard.chart_context?.metadata.chart_meta).toMatchObject({
+      cache_status: 'not_ready',
+      not_ready_reason: 'index_minute_not_ready',
+    })
     expect(dashboard.backtest_summary.total).toBe(12)
     expect(dashboard.backtest_jobs[0]?.symbol).toBe('SZ.002759')
     expect(dashboard.connector_health).toHaveLength(3)

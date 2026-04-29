@@ -386,16 +386,16 @@ const searchInputStyle: React.CSSProperties = {
 
 function terminalGridLayoutStyle(leftCollapsed: boolean, rightCollapsed: boolean, mode: TerminalLayoutMode): React.CSSProperties {
   const leftExpanded: Record<TerminalLayoutMode, string> = {
-    cinema: 'minmax(330px, 370px)',
-    desk: 'minmax(292px, 328px)',
-    balanced: 'minmax(252px, 288px)',
-    focus: 'minmax(232px, 264px)',
+    cinema: 'clamp(286px, 17vw, 332px)',
+    desk: 'clamp(258px, 18vw, 298px)',
+    balanced: 'clamp(224px, 22vw, 256px)',
+    focus: 'clamp(214px, 28vw, 242px)',
   }
   const rightExpanded: Record<TerminalLayoutMode, string> = {
-    cinema: 'minmax(248px, 292px)',
-    desk: 'minmax(218px, 254px)',
-    balanced: 'minmax(196px, 224px)',
-    focus: 'minmax(184px, 204px)',
+    cinema: 'clamp(224px, 14vw, 260px)',
+    desk: 'clamp(204px, 15vw, 232px)',
+    balanced: 'clamp(188px, 18vw, 210px)',
+    focus: 'clamp(178px, 22vw, 196px)',
   }
   const collapsed = mode === 'focus' ? '36px' : '40px'
   const leftColumn = leftCollapsed ? collapsed : leftExpanded[mode]
@@ -431,7 +431,7 @@ const terminalSideStyle: React.CSSProperties = {
   minHeight: 0,
   overflow: 'auto',
   background: terminalTheme.grid,
-  fontSize: 11,
+  fontSize: 10,
   scrollbarGutter: 'stable',
 }
 
@@ -474,11 +474,11 @@ const panelActionButtonStyle: React.CSSProperties = {
 const terminalPanelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 3,
+  gap: 2,
   minWidth: 0,
   minHeight: 0,
   flexShrink: 0,
-  padding: 5,
+  padding: 4,
   border: 'none',
   borderRadius: 0,
   background: terminalTheme.panel,
@@ -598,8 +598,8 @@ const errorDarkStyle: React.CSSProperties = {
 const cacheMonitorStripStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 4,
-  padding: '4px 6px 5px',
+  gap: 3,
+  padding: '3px 5px 4px',
   borderBottom: `1px solid ${terminalTheme.grid}`,
   background: `linear-gradient(180deg, ${terminalTheme.panelInset}, ${terminalTheme.panel})`,
 }
@@ -628,18 +628,22 @@ const cacheMonitorToolbarMetaStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
-const cacheMonitorGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(168px, 1fr))',
-  gap: 5,
+function cacheMonitorGridStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: mode === 'focus'
+      ? 'repeat(2, minmax(0, 1fr))'
+      : 'repeat(4, minmax(0, 1fr))',
+    gap: 4,
+  }
 }
 
 const cacheMonitorCellStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 3,
+  gap: 2,
   minWidth: 0,
-  padding: '5px 6px',
+  padding: '4px 5px',
   border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
   borderRadius: tradingDeskTheme.radius.compact,
   background: `linear-gradient(180deg, ${terminalTheme.panelRaised}, ${terminalTheme.panel})`,
@@ -668,7 +672,7 @@ const cacheMonitorTitleStyle: React.CSSProperties = {
 const cacheMonitorValueStyle: React.CSSProperties = {
   color: terminalTheme.mono,
   fontFamily: fontStacks.mono,
-  fontSize: 13,
+  fontSize: 12,
   fontWeight: 800,
   lineHeight: 1,
   whiteSpace: 'nowrap',
@@ -713,16 +717,16 @@ function cacheStatusDotStyle(color: string): React.CSSProperties {
 const cacheMonitorMetaStyle: React.CSSProperties = {
   ...mutedLineStyle,
   fontSize: 9,
-  lineHeight: 1.25,
+  lineHeight: 1.18,
   minHeight: 12,
 }
 
 const cacheMonitorDetailStrongStyle: React.CSSProperties = {
   color: terminalTheme.text,
   fontFamily: fontStacks.mono,
-  fontSize: 10,
+  fontSize: 9,
   fontWeight: 700,
-  lineHeight: 1.2,
+  lineHeight: 1.15,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
@@ -1261,9 +1265,25 @@ const signalRowStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.border}`,
   borderRadius: 5,
   background: terminalTheme.panelSoft,
-  padding: '5px 7px',
+  padding: '4px 6px',
   alignItems: 'center',
   minWidth: 0,
+}
+
+const signalBlockStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  minWidth: 0,
+  padding: '4px 0 2px',
+  borderTop: `1px solid ${terminalTheme.borderMuted}`,
+}
+
+const customSignalBadgeStyle: React.CSSProperties = {
+  ...miniNeutralSignalBadgeStyle,
+  border: `1px solid ${tradingDeskTheme.chart.line}`,
+  background: 'rgba(14, 116, 144, 0.18)',
+  color: tradingDeskTheme.chart.line,
 }
 
 const quickChipStyle: React.CSSProperties = {
@@ -1409,9 +1429,29 @@ function cacheProgressColor(value: number, status?: unknown): string {
   return palette.success
 }
 
+function liveCacheStrictStatus(cacheStatus: StrategyDashboard['cache_status']): 'ok' | 'partial' | 'degraded' {
+  if (!cacheStatus.available) return 'degraded'
+  const summary = recordValue(cacheStatus.live_low_latency.summary)
+  const explicit = compactText(summary.strict_status).toLowerCase()
+  const ok = numberValue(summary.ok_modules) ?? 0
+  const total = numberValue(summary.total_modules) ?? 0
+  const notReady = numberValue(summary.minute_not_ready) ?? 0
+  if (explicit === 'ok' && notReady === 0) return 'ok'
+  if (['partial', 'running', 'warm'].includes(explicit)) return 'partial'
+  if (['degraded', 'error', 'stale', 'missing'].includes(explicit)) return 'degraded'
+  if (total > 0 && ok === total && notReady === 0) return 'ok'
+  return total > 0 && ok > 0 ? 'partial' : 'degraded'
+}
+
+function cacheProblemModules(summary: Record<string, unknown>): string {
+  const rows = Array.isArray(summary.problem_modules) ? summary.problem_modules : []
+  return rows.map(item => compactText(item)).filter(Boolean).slice(0, 3).join('/')
+}
+
 function isActiveProviderProblem(item: Record<string, unknown>): boolean {
   const status = compactText(item.status).toLowerCase()
   if (!['cooldown', 'degraded', 'error', 'stale'].includes(status)) return false
+  if (['degraded', 'error', 'stale'].includes(status) && !compactText(item.updated_at)) return false
   if (status !== 'cooldown') return true
   const cooldownUntil = compactText(item.cooldown_until)
   const updatedAt = compactText(item.updated_at)
@@ -1434,6 +1474,51 @@ function cacheStatusLabel(value: unknown, fallback: string): string {
   if (text === 'partial') return 'PARTIAL'
   if (text === 'pending') return 'PENDING'
   return text.toUpperCase()
+}
+
+function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  if (reason === 'index_minute_unsupported') return zh ? '该市场未接入指数分钟缓存' : 'index minute cache is not connected for this market'
+  if (reason === 'index_minute_not_ready') return zh ? '指数分钟缓存未就绪' : 'index minute cache is not ready'
+  if (reason === 'stock_minute_not_ready') return zh ? '股票分钟缓存未就绪' : 'stock minute cache is not ready'
+  if (reason === 'board_heat_not_ready') return zh ? '板块分钟热度未就绪' : 'sector minute heat is not ready'
+  if (reason === 'daily_cache_missing') return zh ? '日线缓存缺失' : 'daily cache is missing'
+  if (reason === 'weekly_cache_missing') return zh ? '周线缓存缺失' : 'weekly cache is missing'
+  return reason || (zh ? '缓存未就绪' : 'cache is not ready')
+}
+
+function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
+  const chartMeta = recordValue(symbolData?.chart?.meta)
+  const target = recordValue(symbolData?.target)
+  const probe = recordValue(target.cache_probe)
+  const status = compactText(chartMeta.cache_status)
+  const reason = compactText(chartMeta.not_ready_reason, compactText(target.not_ready_reason))
+  if (status !== 'not_ready' && !reason) return ''
+  const requested = compactText(chartMeta.requested_freq, compactText(target.requested_freq))
+  const label = compactText(target.label, compactText(target.symbol))
+  const probeStatus = compactText(probe.status)
+  const rows = Array.isArray(probe.rows) ? probe.rows.map(item => recordValue(item)) : []
+  const requestedLabel = compactText(probe.requested_freq_label, requested)
+  const hitLine = rows.length
+    ? rows
+        .slice(0, 3)
+        .map(row => `${compactText(row.collection)}:${compactText(row.symbol)}:${compactText(row.freq)}=${countText(row.count)}`)
+        .join(' · ')
+    : ''
+  if (locale === 'zh-CN') {
+    return [
+      `${label || '当前标的'} ${requested || requestedLabel || ''} 没有可用 K 线`,
+      cacheReasonLabel(reason, locale),
+      probeStatus ? `probe=${probeStatus}` : '',
+      hitLine ? `已有缓存 ${hitLine}` : '',
+    ].filter(Boolean).join(' · ')
+  }
+  return [
+    `${label || 'Current target'} has no ${requested || requestedLabel || ''} candles`,
+    cacheReasonLabel(reason, locale),
+    probeStatus ? `probe=${probeStatus}` : '',
+    hitLine ? `cached ${hitLine}` : '',
+  ].filter(Boolean).join(' · ')
 }
 
 function trimTrailingSlash(value?: string): string {
@@ -1746,18 +1831,22 @@ function ensureSignalOverlay() {
       const color = data.color || signalOverlayColor(side)
       const freq = compactText(data.freq)
       const sourceLabel = compactText(data.sourceLabel)
-      const text = isCustom
-        ? [sourceLabel || '自定义', freq, label].filter(Boolean).join(' ')
-        : label
-      const width = Math.max(isCustom ? 78 : 34, Math.min(isCustom ? 122 : 72, text.length * 7 + 20))
-      const height = isCustom ? 22 : 18
-      const gap = isCustom ? 12 : 8
+      const customSource = sourceLabel || '自定义'
+      const text = isCustom ? label : label
+      const width = Math.max(isCustom ? 106 : 34, Math.min(isCustom ? 138 : 72, text.length * 7 + (isCustom ? 48 : 20)))
+      const height = isCustom ? 30 : 18
+      const gap = isCustom ? 16 : 8
       const rectX = point.x - width / 2
       const rectY = side === 'buy' ? point.y + gap : point.y - gap - height
       const stemEndY = side === 'buy' ? rectY : rectY + height
       const tipY = side === 'buy' ? point.y + 5 : point.y - 5
-      const fillColor = isCustom ? 'rgba(8, 47, 73, 0.96)' : 'rgba(15, 23, 42, 0.88)'
+      const fillColor = isCustom
+        ? (side === 'sell' ? 'rgba(76, 5, 25, 0.96)' : 'rgba(8, 47, 73, 0.96)')
+        : 'rgba(15, 23, 42, 0.88)'
       const borderSize = isCustom ? 1.4 : 1
+      const badgeWidth = Math.min(45, Math.max(32, customSource.length * 8 + 8))
+      const freqWidth = freq ? Math.min(34, Math.max(24, freq.length * 7 + 8)) : 0
+      const labelY = isCustom ? rectY + 21 : rectY + height / 2
 
       return [
         {
@@ -1780,10 +1869,10 @@ function ensureSignalOverlay() {
             ],
           },
           styles: {
-            color: isCustom ? `${color}88` : `${color}44`,
-            size: isCustom ? 0.8 : 0.5,
+            color: isCustom ? `${color}aa` : `${color}44`,
+            size: isCustom ? 1 : 0.5,
             style: 'dashed',
-            dashedValue: [2, 6],
+            dashedValue: isCustom ? [3, 5] : [2, 6],
           },
           ignoreEvent: true,
         },
@@ -1821,18 +1910,78 @@ function ensureSignalOverlay() {
           },
           ignoreEvent: true,
         },
+        ...(isCustom ? [
+          {
+            type: 'rect' as const,
+            attrs: { x: rectX + 6, y: rectY + 4, width: badgeWidth, height: 11 },
+            styles: {
+              color: `${color}20`,
+              borderColor: color,
+              borderSize: 1,
+              borderRadius: 3,
+            },
+            ignoreEvent: true,
+          },
+          {
+            type: 'text' as const,
+            attrs: {
+              x: rectX + 6 + badgeWidth / 2,
+              y: rectY + 9.5,
+              text: customSource.slice(0, 4),
+              align: 'center',
+              baseline: 'middle',
+            },
+            styles: {
+              color,
+              size: 8,
+              weight: 900,
+              family: fontStacks.ui,
+            },
+            ignoreEvent: true,
+          },
+          ...(freq ? [
+            {
+              type: 'rect' as const,
+              attrs: { x: rectX + width - freqWidth - 6, y: rectY + 4, width: freqWidth, height: 11 },
+              styles: {
+                color: 'rgba(255,255,255,0.08)',
+                borderColor: tradingDeskTheme.alpha.textBorder,
+                borderSize: 1,
+                borderRadius: 3,
+              },
+              ignoreEvent: true,
+            },
+            {
+              type: 'text' as const,
+              attrs: {
+                x: rectX + width - freqWidth / 2 - 6,
+                y: rectY + 9.5,
+                text: freq,
+                align: 'center',
+                baseline: 'middle',
+              },
+              styles: {
+                color: terminalTheme.textStrong,
+                size: 8,
+                weight: 900,
+                family: fontStacks.mono,
+              },
+              ignoreEvent: true,
+            },
+          ] : []),
+        ] : []),
         {
           type: 'text',
           attrs: {
-            x: rectX + 12,
-            y: rectY + height / 2,
+            x: isCustom ? point.x : rectX + 12,
+            y: labelY,
             text: text.slice(0, isCustom ? 16 : 8),
-            align: 'left',
+            align: isCustom ? 'center' : 'left',
             baseline: 'middle',
           },
           styles: {
             color: terminalTheme.textStrong,
-            size: isCustom ? 9 : 10,
+            size: isCustom ? 10 : 10,
             weight: 800,
             family: 'IBM Plex Mono, Menlo, monospace',
           },
@@ -3001,8 +3150,14 @@ export function StrategyChartTerminal({
     [symbolData?.custom_signal_count, visibleCustomSignals.length],
   )
   const directCustomSignalCount = numberValue(symbolData?.direct_custom_signal_count) ?? customSignalCount
-  const availableCustomSignalFreqs = useMemo(
-    () => (Array.isArray(symbolData?.available_custom_signal_freqs) ? symbolData.available_custom_signal_freqs : []).map(displayFreqLabel).filter(Boolean),
+  const availableCustomSignalFreqOptions = useMemo(
+    () => (Array.isArray(symbolData?.available_custom_signal_freqs) ? symbolData.available_custom_signal_freqs : [])
+      .map(freq => ({
+        raw: freq,
+        value: normalizeSignalFreq(freq) || freq,
+        label: displayFreqLabel(freq),
+      }))
+      .filter(item => Boolean(item.label)),
     [symbolData?.available_custom_signal_freqs],
   )
   const hiddenReasons = useMemo(
@@ -3013,8 +3168,10 @@ export function StrategyChartTerminal({
     () => (Array.isArray(symbolData?.related_custom_signals) ? symbolData.related_custom_signals : []),
     [symbolData?.related_custom_signals],
   )
+  const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, signals), [klineData, signals])
   const evidenceSignals = useMemo(() => displaySignalsForEvidence(signals), [signals])
-  const currentVisibleSignals = useMemo(() => evidenceSignals.filter(isCustomUserSignal), [evidenceSignals])
+  const currentVisibleSignals = useMemo(() => chartVisibleSignals.filter(isCustomUserSignal), [chartVisibleSignals])
+  const evidenceCustomSignals = useMemo(() => evidenceSignals.filter(isCustomUserSignal), [evidenceSignals])
   const otherEvidenceSignals = useMemo(() => evidenceSignals.filter(signal => !isCustomUserSignal(signal)), [evidenceSignals])
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
@@ -3115,6 +3272,10 @@ export function StrategyChartTerminal({
     compactText(symbolData?.target?.symbol) ||
     compactText(symbolData?.target?.kind, target.kind)
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const otherCustomSignalFreqOptions = useMemo(
+    () => availableCustomSignalFreqOptions.filter(item => item.value && item.value !== normalizeSignalFreq(currentFreq)),
+    [availableCustomSignalFreqOptions, currentFreq],
+  )
   const layoutMode = terminalLayoutMode(viewportWidth)
   const chartTimezone = useMemo(() => chartMarketTimezone(symbolData, shell), [shell, symbolData])
   const updatedTimeLabel =
@@ -3134,6 +3295,10 @@ export function StrategyChartTerminal({
           ? `${requestedFreq} 暂不可用，已使用 ${effectiveFreq}。`
           : `${requestedFreq} is unavailable; using ${effectiveFreq}.`)
       : null
+  const chartCacheNotice = useMemo(
+    () => chartCacheNotReadyMessage(symbolData, locale),
+    [locale, symbolData],
+  )
 
   const loadShell = useCallback(
     async (signal?: AbortSignal) => {
@@ -3513,7 +3678,7 @@ export function StrategyChartTerminal({
             ? '信号实时入口未配置，当前显示降级摘要。'
             : 'Signals live endpoint is not configured. Showing a degraded summary.'}
         </div>
-        <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} />
+        <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
         <div style={fallbackGridStyle}>
           <Panel
             title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
@@ -3686,13 +3851,16 @@ export function StrategyChartTerminal({
         </button>
       </div>
 
-      <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} />
+      <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
 
       {shell?.notices?.length ? (
         <div style={noticeDarkStyle}>{shell.notices.join(' ')}</div>
       ) : null}
       {freqFallbackNotice ? (
         <div style={warningDarkStyle}>{freqFallbackNotice}</div>
+      ) : null}
+      {chartCacheNotice ? (
+        <div style={warningDarkStyle}>{chartCacheNotice}</div>
       ) : null}
       {error ? (
         <div style={booting ? warningDarkStyle : errorDarkStyle}>{error}</div>
@@ -3852,7 +4020,7 @@ export function StrategyChartTerminal({
               <div style={chartOverlayMessageStyle}>
                 {loading || booting
                   ? (locale === 'zh-CN' ? '正在等待 Signals 输出 K 线和买卖点。' : 'Waiting for Signals to provide candles and signals.')
-                  : (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.')}
+                  : chartCacheNotice || (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.')}
               </div>
             ) : null}
           </div>
@@ -3962,15 +4130,16 @@ export function StrategyChartTerminal({
               </div>
             ) : (
                 <div style={compactListStyle}>
+                <div style={signalBlockStyle}>
                   <div style={candidateGroupHeaderStyle}>
                     <span>{locale === 'zh-CN' ? '当前图可见' : 'Visible on chart'}</span>
-                    <span>{directCustomSignalCount === 0 ? (locale === 'zh-CN' ? '指数/板块无直接自定义' : 'no direct custom') : `${currentVisibleSignals.length}/${customSignalCount}`}</span>
+                    <span>{directCustomSignalCount === 0 ? (locale === 'zh-CN' ? '无直接自定义' : 'no direct custom') : `${currentVisibleSignals.length}/${customSignalCount}`}</span>
                   </div>
                 {currentVisibleSignals.length > 0 ? currentVisibleSignals.map((signal, index) => (
                   <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? signal.signal_type ?? 'custom'}`} style={signalRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <span style={miniNeutralSignalBadgeStyle}>自定义</span>
+                        <span style={customSignalBadgeStyle}>自定义</span>
                         <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>{signal.type || signal.signal_type || 'Signal'}</span>
                         <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                         <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
@@ -3988,32 +4157,35 @@ export function StrategyChartTerminal({
                 )) : (
                   <div style={mutedTextStyle}>
                     {hiddenReasons.includes('index_has_no_direct_custom_signal') || hiddenReasons.includes('board_heat_chart_has_no_direct_custom_signal')
-                      ? (locale === 'zh-CN' ? '当前图不是个股回测标的，因此没有直接自定义信号。' : 'This chart has no direct custom signal.')
-                      : (locale === 'zh-CN' ? '当前周期没有可见自定义信号。' : 'No visible custom signal on this timeframe.')}
+                      ? (locale === 'zh-CN' ? '指数/板块没有直接回测信号，右侧展示关联个股入口。' : 'Index/board charts have no direct custom signal; related stock signals are listed below.')
+                      : evidenceCustomSignals.length > 0
+                        ? (locale === 'zh-CN' ? '当前图窗口未显示自定义信号，可切换到下方可用周期。' : 'Custom signals exist outside this visible chart window or timeframe.')
+                        : (locale === 'zh-CN' ? '当前周期没有可见自定义信号。' : 'No visible custom signal on this timeframe.')}
                   </div>
                 )}
-                {availableCustomSignalFreqs.length > 0 ? (
-                  <>
+                </div>
+                {otherCustomSignalFreqOptions.length > 0 ? (
+                  <div style={signalBlockStyle}>
                     <div style={candidateGroupHeaderStyle}>
                       <span>{locale === 'zh-CN' ? '其它周期可用' : 'Other timeframes'}</span>
-                      <span>{availableCustomSignalFreqs.join(' / ')}</span>
+                      <span>{otherCustomSignalFreqOptions.map(item => item.label).join(' / ')}</span>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                      {availableCustomSignalFreqs.map(freq => (
+                      {otherCustomSignalFreqOptions.map(item => (
                         <button
-                          key={freq}
+                          key={`${item.raw}-${item.value}`}
                           type="button"
                           style={panelActionButtonStyle}
-                          onClick={() => selectTarget({ ...target, freq: normalizeSignalFreq(freq) || freq }, 'strategy.custom-signal.freq-click')}
+                          onClick={() => selectTarget({ ...target, freq: item.value }, 'strategy.custom-signal.freq-click')}
                         >
-                          {freq}
+                          {item.label}
                         </button>
                       ))}
                     </div>
-                  </>
+                  </div>
                 ) : null}
                 {relatedCustomSignals.length > 0 ? (
-                  <>
+                  <div style={signalBlockStyle}>
                     <div style={candidateGroupHeaderStyle}>
                       <span>{locale === 'zh-CN' ? '关联标的信号' : 'Related signals'}</span>
                       <span>{relatedCustomSignals.length}</span>
@@ -4029,17 +4201,17 @@ export function StrategyChartTerminal({
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                           <div style={rowTitleStyle}>{compactText(signal.name, compactText(signal.symbol, 'Signal'))}</div>
-                          <span style={miniNeutralSignalBadgeStyle}>自定义 {displayFreqLabel(signal.freq)}</span>
+                          <span style={customSignalBadgeStyle}>自定义 {displayFreqLabel(signal.freq)}</span>
                         </div>
                         <div style={mutedTwoLineStyle}>
                           {[signal.type || signal.signal_type, signal.relation, signal.date_str, signal.details].filter(Boolean).join(' · ')}
                         </div>
                       </button>
                     ))}
-                  </>
+                  </div>
                 ) : null}
                 {otherEvidenceSignals.length > 0 ? (
-                  <>
+                  <div style={signalBlockStyle}>
                     <div style={candidateGroupHeaderStyle}>
                       <span>{locale === 'zh-CN' ? '系统信号' : 'System signals'}</span>
                       <span>{otherEvidenceSignals.length}</span>
@@ -4065,7 +4237,7 @@ export function StrategyChartTerminal({
                         </div>
                       </div>
                     ))}
-                  </>
+                  </div>
                 ) : null}
                 {divergences.slice(-3).reverse().map(divergence => (
                   <div key={divergence.id} style={dataRowStyle}>
@@ -4216,9 +4388,11 @@ function CacheMonitorCell({
 function CacheMonitorStrip({
   locale,
   cacheStatus,
+  mode,
 }: {
   locale: LongclawLocale
   cacheStatus: StrategyDashboard['cache_status']
+  mode: TerminalLayoutMode
 }) {
   cacheStatus = normalizeCacheStatus(cacheStatus)
   const liveSummary = recordValue(cacheStatus.live_low_latency.summary)
@@ -4233,13 +4407,31 @@ function CacheMonitorStrip({
   const liveOk = numberValue(liveSummary.ok_modules) ?? 0
   const liveTotal = numberValue(liveSummary.total_modules) ?? 0
   const livePct = liveTotal ? (liveOk / liveTotal) * 100 : 0
+  const liveStatus = liveCacheStrictStatus(cacheStatus)
+  const liveNotReady = numberValue(liveSummary.minute_not_ready) ?? 0
+  const liveProblemModules = cacheProblemModules(liveSummary)
+  const liveSamples = Array.isArray(liveSummary.minute_not_ready_samples)
+    ? liveSummary.minute_not_ready_samples.map(item => recordValue(item)).slice(0, 2)
+    : []
+  const liveSampleText = liveSamples
+    .map(item => `${compactText(item.symbol)} ${compactText(item.freq)}`)
+    .filter(Boolean)
+    .join(' · ')
   const liveValue = liveTotal ? `${Math.round(livePct)}%` : (cacheStatus.available ? '0%' : 'OFF')
   const liveDetail = locale === 'zh-CN'
-    ? `${countText(liveSummary.selected_symbols)} 只低延时股票 · ${countText(liveSummary.minute_not_ready)} 未就绪`
-    : `${countText(liveSummary.selected_symbols)} live symbols · ${countText(liveSummary.minute_not_ready)} not ready`
+    ? `${countText(liveSummary.selected_symbols)} 只低延时股票 · ${countText(liveNotReady)} 未就绪`
+    : `${countText(liveSummary.selected_symbols)} live symbols · ${countText(liveNotReady)} not ready`
   const liveSubdetail = locale === 'zh-CN'
-    ? `${countText(liveOk)}/${countText(liveTotal)} 模块可用 · ${countText(liveSummary.skipped_symbols)} 只轮换跳过`
-    : `${countText(liveOk)}/${countText(liveTotal)} modules ready · ${countText(liveSummary.skipped_symbols)} rotated out`
+    ? [
+        `${countText(liveOk)}/${countText(liveTotal)} 模块严格 OK`,
+        liveProblemModules ? `阻塞 ${liveProblemModules}` : '',
+        liveSampleText ? `缺 ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} 只轮换跳过`,
+      ].filter(Boolean).join(' · ')
+    : [
+        `${countText(liveOk)}/${countText(liveTotal)} modules strictly OK`,
+        liveProblemModules ? `blocked ${liveProblemModules}` : '',
+        liveSampleText ? `missing ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} rotated out`,
+      ].filter(Boolean).join(' · ')
 
   const stockDailyTask = firstRecord(tasks, 'module', 'stock_daily')
   const stockDailySummary = recordValue(stockDailyTask.result_summary)
@@ -4292,27 +4484,36 @@ function CacheMonitorStrip({
     : (minuteUniverseTotal
       ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · pending ${countText(minuteUniversePending)} · failed ${countText(minuteUniverseError)}`
       : `minute coverage: ${minuteFreqs || '0'}`)
+  const mongoStatus = !cacheStatus.available
+    ? 'degraded'
+    : minuteUniverseError > 0
+      ? 'degraded'
+      : minuteUniversePending > 0 || (dailySymbols > 0 && dailyToday < dailySymbols)
+        ? 'partial'
+        : 'ok'
 
   const providerProblems = providerHealth.filter(isActiveProviderProblem)
   const firstProviderProblem = providerProblems[0] ?? {}
   const sourceProblemCount = providerProblems.length
-  const blockerPct = cacheStatus.available && sourceProblemCount === 0 ? 100 : 0
+  const taskBlockerCount = blockers.length
+  const blockerPct = cacheStatus.available && sourceProblemCount === 0 && liveStatus === 'ok' ? 100 : 0
   const blockerDetail = sourceProblemCount
-    ? `${compactText(firstProviderProblem.provider, 'source')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`
+    ? `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`
     : (locale === 'zh-CN' ? '无阻塞源' : 'no blocking source')
   const blockerSubdetail = sourceProblemCount
     ? compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看 provider_health 定位数据源' : 'check provider_health for source detail'))
     : (locale === 'zh-CN'
-      ? `${countText(providerHealth.length)} 个网络源健康记录 · ${countText(blockers.length)} 个任务阻塞`
-      : `${countText(providerHealth.length)} provider health records · ${countText(blockers.length)} task blockers`)
+      ? `${countText(providerHealth.length)} 个 provider 记录 · ${countText(taskBlockerCount)} 个任务阻塞在补数区展示`
+      : `${countText(providerHealth.length)} provider records · ${countText(taskBlockerCount)} task blockers shown in data tasks`)
   const refreshSeconds = cacheRefreshSeconds(cacheStatus)
   const updatedAt = compactClock(cacheStatus.updated_at, locale)
+  const monitorStatus = cacheStatus.available && liveStatus === 'ok' && sourceProblemCount === 0 ? 'ok' : liveStatus
 
   return (
     <div style={cacheMonitorStripStyle}>
       <div style={cacheMonitorToolbarStyle}>
         <div style={cacheMonitorToolbarTitleStyle}>
-          <span style={cacheStatusDotStyle(cacheStatus.available ? palette.success : palette.warning)} />
+          <span style={cacheStatusDotStyle(monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error)} />
           {locale === 'zh-CN' ? 'Signals 缓存监控' : 'Signals cache monitor'}
         </div>
         <div style={cacheMonitorToolbarMetaStyle}>
@@ -4321,12 +4522,12 @@ function CacheMonitorStrip({
             : `trade ${cacheStatus.trade_date || '-'} · updated ${updatedAt || '-'} · refresh ${refreshSeconds}s`}
         </div>
       </div>
-      <div style={cacheMonitorGridStyle}>
+      <div style={cacheMonitorGridStyle(mode)}>
         <CacheMonitorCell
           title={locale === 'zh-CN' ? '低延时缓存' : 'Live cache'}
           value={liveValue}
           progress={livePct}
-          status={cacheStatus.available ? 'ok' : 'degraded'}
+          status={liveStatus}
           statusLabel={cacheStatus.available ? `${countText(liveOk)}/${countText(liveTotal)}` : 'OFF'}
           detail={liveDetail}
           subdetail={liveSubdetail}
@@ -4344,7 +4545,7 @@ function CacheMonitorStrip({
           title={locale === 'zh-CN' ? 'Mongo 覆盖' : 'Mongo coverage'}
           value={`${Math.round(mongoPct)}%`}
           progress={mongoPct}
-          status={cacheStatus.available ? 'ok' : 'degraded'}
+          status={mongoStatus}
           statusLabel={`${countText(dailyToday)}/${countText(dailySymbols)}`}
           detail={mongoDetail}
           subdetail={mongoSubdetail}

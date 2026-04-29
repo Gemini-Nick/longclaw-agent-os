@@ -1312,6 +1312,7 @@ export class LongclawControlPlaneClient {
                 : [],
               metadata: {
                 report: chartReport,
+                chart_meta: chartMeta,
               },
             }
           : null
