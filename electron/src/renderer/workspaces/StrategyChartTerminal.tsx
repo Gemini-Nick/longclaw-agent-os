@@ -179,6 +179,37 @@ type WatchlistSignalBadge = {
   side: 'buy' | 'sell' | 'neutral'
 }
 
+type DecisionStage = 'context' | 'risk_first' | 'strategy_candidate' | 'watch_preheat' | 'entry_ready'
+type DecisionGateKey = 'source' | 'hard_technical' | 'theme_alignment' | 'upper_context' | 'trigger_30m' | 'right_side' | 'risk_clear' | 'multi_timeframe' | 'period_conflict'
+type DecisionGateStatus = 'passed' | 'waiting' | 'blocked' | 'context'
+
+type DecisionPromotionStep = {
+  key: DecisionGateKey
+  status: DecisionGateStatus
+  detail: string
+}
+
+type WatchlistDecision = {
+  stage: DecisionStage
+  missingGates: DecisionGateKey[]
+  primaryBlocker: string
+  recommendedAction: string
+  sourceKeys: string[]
+  promotionPath: DecisionPromotionStep[]
+  invalidatesWhen: string
+}
+
+type TraderDecisionTask = {
+  id: string
+  stage: DecisionStage
+  title: string
+  action: string
+  summary: string
+  invalidatesWhen: string
+  row?: WatchlistRow
+  raw: Record<string, unknown>
+}
+
 type WatchlistRow = {
   id: string
   kind: string
@@ -203,6 +234,7 @@ type WatchlistRow = {
   targetKind: string
   targetLabel: string
   targetFreq: string
+  decision: WatchlistDecision
   raw: Record<string, unknown>
 }
 
@@ -210,8 +242,9 @@ type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'ris
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
 
-const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'focus_stocks', 'risk_stocks', 'watch_stocks', 'buy_candidates']
-const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['focus_stocks', 'risk_stocks', 'watch_stocks', 'buy_candidates']
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'risk_stocks', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['risk_stocks', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 
 type ApiError = Error & {
   status?: number
@@ -1212,6 +1245,229 @@ const watchlistRangeSelectStyle: React.CSSProperties = {
   outline: 'none',
 }
 
+const decisionOverviewStripStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(94px, 1.1fr) repeat(3, minmax(52px, 0.7fr))',
+  gap: 5,
+  alignItems: 'stretch',
+  minWidth: 0,
+}
+
+const decisionModeCellStyle: React.CSSProperties = {
+  border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+  borderRadius: 4,
+  background: terminalTheme.panel,
+  padding: '4px 5px',
+  minWidth: 0,
+}
+
+const decisionModeTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontWeight: 850,
+  fontSize: 12,
+  lineHeight: 1.15,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionModeMetaStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 9,
+  lineHeight: 1.2,
+  marginTop: 2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionMetricCellStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelSoft,
+  padding: '4px 5px',
+  minWidth: 0,
+}
+
+const decisionMetricValueStyle: React.CSSProperties = {
+  color: terminalTheme.mono,
+  fontFamily: fontStacks.mono,
+  fontSize: 13,
+  fontWeight: 850,
+  lineHeight: 1,
+}
+
+const decisionMetricLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 9,
+  fontWeight: 800,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionFunnelShellStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+function riskPriorityButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${active ? tradingDeskTheme.market.down : tradingDeskTheme.alpha.errorBorder}`,
+    borderRadius: 5,
+    background: active ? tradingDeskTheme.alpha.errorSurface : terminalTheme.panelSoft,
+    color: active ? terminalTheme.errorText : terminalTheme.text,
+    padding: '5px 6px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    textAlign: 'left',
+    minWidth: 0,
+    boxShadow: active ? `inset 3px 0 ${tradingDeskTheme.market.down}` : `inset 3px 0 ${tradingDeskTheme.alpha.errorBorder}`,
+  }
+}
+
+const funnelRailStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) 12px minmax(0, 1fr) 12px minmax(0, 1fr)',
+  gap: 4,
+  alignItems: 'stretch',
+  minWidth: 0,
+}
+
+function funnelStepButtonStyle(active: boolean, stage: DecisionStage): React.CSSProperties {
+  const color = stage === 'entry_ready'
+    ? tradingDeskTheme.market.up
+    : stage === 'watch_preheat'
+      ? tradingDeskTheme.colors.auroraGold
+      : terminalTheme.accent
+  return {
+    border: `1px solid ${active ? color : terminalTheme.border}`,
+    borderRadius: 5,
+    background: active ? `${color}1f` : terminalTheme.control,
+    color: active ? terminalTheme.textStrong : terminalTheme.controlText,
+    padding: '5px 6px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    textAlign: 'left',
+    minWidth: 0,
+    boxShadow: active ? `inset 0 -2px ${color}` : 'none',
+  }
+}
+
+const funnelConnectorStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+}
+
+const funnelButtonTopStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 4,
+  minWidth: 0,
+}
+
+const funnelButtonLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 850,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const funnelButtonCountStyle: React.CSSProperties = {
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  fontWeight: 850,
+}
+
+const funnelButtonMetaStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 9,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionPathStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 4,
+  minWidth: 0,
+}
+
+function decisionPathStepStyle(status: DecisionGateStatus): React.CSSProperties {
+  const color = status === 'passed'
+    ? tradingDeskTheme.market.up
+    : status === 'blocked'
+      ? tradingDeskTheme.market.down
+      : status === 'waiting'
+        ? tradingDeskTheme.colors.auroraGold
+        : terminalTheme.borderStrong
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: status === 'context' ? terminalTheme.panelSoft : `${color}18`,
+    padding: '4px 5px',
+    minWidth: 0,
+  }
+}
+
+function decisionGateDotStyle(status: DecisionGateStatus): React.CSSProperties {
+  const color = status === 'passed'
+    ? tradingDeskTheme.market.up
+    : status === 'blocked'
+      ? tradingDeskTheme.market.down
+      : status === 'waiting'
+        ? tradingDeskTheme.colors.auroraGold
+        : terminalTheme.muted
+  return {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    background: color,
+    flex: '0 0 auto',
+  }
+}
+
+const decisionExplainHeroStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+const decisionExplainRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '62px minmax(0, 1fr)',
+  gap: 6,
+  alignItems: 'start',
+  minWidth: 0,
+}
+
+const decisionExplainLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  fontWeight: 850,
+  lineHeight: 1.25,
+}
+
 const signalBadgeRowStyle: React.CSSProperties = {
   display: 'flex',
   gap: 3,
@@ -1483,6 +1739,335 @@ function compactText(value: unknown, fallback = ''): string {
   return stringValue(value) ?? (typeof value === 'number' ? String(value) : fallback)
 }
 
+function uniqueCompact(values: unknown[]): string[] {
+  const seen = new Set<string>()
+  const output: string[] = []
+  values.forEach(value => {
+    const text = compactText(value)
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    output.push(text)
+  })
+  return output
+}
+
+const DECISION_STAGES: DecisionStage[] = ['context', 'risk_first', 'strategy_candidate', 'watch_preheat', 'entry_ready']
+const DECISION_GATE_KEYS: DecisionGateKey[] = [
+  'source',
+  'hard_technical',
+  'theme_alignment',
+  'upper_context',
+  'trigger_30m',
+  'right_side',
+  'risk_clear',
+  'multi_timeframe',
+  'period_conflict',
+]
+const DECISION_GATE_STATUSES: DecisionGateStatus[] = ['passed', 'waiting', 'blocked', 'context']
+
+function isDecisionStage(value: string): value is DecisionStage {
+  return DECISION_STAGES.includes(value as DecisionStage)
+}
+
+function isDecisionGateKey(value: string): value is DecisionGateKey {
+  return DECISION_GATE_KEYS.includes(value as DecisionGateKey)
+}
+
+function isDecisionGateStatus(value: string): value is DecisionGateStatus {
+  return DECISION_GATE_STATUSES.includes(value as DecisionGateStatus)
+}
+
+function decisionStageLabel(stage: DecisionStage, locale: LongclawLocale): string {
+  const labels: Record<DecisionStage, [string, string]> = {
+    context: ['背景', 'Context'],
+    risk_first: ['风险优先', 'Risk first'],
+    strategy_candidate: ['策略候选', 'Candidate'],
+    watch_preheat: ['观察预热', 'Watch'],
+    entry_ready: ['可交易复核', 'Entry review'],
+  }
+  return locale === 'zh-CN' ? labels[stage][0] : labels[stage][1]
+}
+
+function decisionStageMeta(stage: DecisionStage, locale: LongclawLocale): string {
+  const meta: Record<DecisionStage, [string, string]> = {
+    context: ['看方向，不直接当买卖点。', 'Direction only, not an entry.'],
+    risk_first: ['先处理卖点、止盈止损和冲突。', 'Handle exits, trims, and conflicts first.'],
+    strategy_candidate: ['有策略来源，还没通过硬技术确认。', 'Has a thesis source; hard technical confirmation is still missing.'],
+    watch_preheat: ['接近买点，但还差一个或多个确认。', 'Near an entry, but one or more gates are still open.'],
+    entry_ready: ['多周期门槛已过，只能作为可试仓复核。', 'Gates passed; review for a possible starter position.'],
+  }
+  return locale === 'zh-CN' ? meta[stage][0] : meta[stage][1]
+}
+
+function decisionGateLabel(key: DecisionGateKey, locale: LongclawLocale): string {
+  const labels: Record<DecisionGateKey, [string, string]> = {
+    source: ['来源', 'Source'],
+    hard_technical: ['硬技术', 'Hard tech'],
+    theme_alignment: ['主线共振', 'Theme alignment'],
+    upper_context: ['日/周结构', 'Daily/weekly'],
+    trigger_30m: ['30m触发', '30m trigger'],
+    right_side: ['5m/15m右侧', '5m/15m confirm'],
+    risk_clear: ['风险清空', 'Risk clear'],
+    multi_timeframe: ['多周期共振', 'Multi-timeframe'],
+    period_conflict: ['周期冲突', 'Timeframe conflict'],
+  }
+  return locale === 'zh-CN' ? labels[key][0] : labels[key][1]
+}
+
+function decisionGateStatusLabel(status: DecisionGateStatus, locale: LongclawLocale): string {
+  const labels: Record<DecisionGateStatus, [string, string]> = {
+    passed: ['已过', 'Passed'],
+    waiting: ['等待', 'Waiting'],
+    blocked: ['阻断', 'Blocked'],
+    context: ['参考', 'Context'],
+  }
+  return locale === 'zh-CN' ? labels[status][0] : labels[status][1]
+}
+
+function decisionSourceLabel(source: string, locale: LongclawLocale): string {
+  const normalized = source.toLowerCase()
+  const labels: Array<[string, [string, string]]> = [
+    ['terminal_technical_signals', ['技术信号', 'Technical signals']],
+    ['technical_trigger', ['技术触发', 'Technical trigger']],
+    ['technical_signal', ['技术信号', 'Technical signal']],
+    ['strategy_snapshots', ['策略快照', 'Strategy snapshot']],
+    ['chain_heat_snapshots', ['产业链热度', 'Chain heat']],
+    ['knowledge', ['知识库观点', 'Knowledge view']],
+    ['market_pools', ['活跃池', 'Market pool']],
+    ['active_pool_watch', ['活跃池观察', 'Active pool']],
+    ['quote_snapshots', ['行情快照', 'Quotes']],
+    ['board', ['板块/概念', 'Board/concept']],
+    ['concept', ['板块/概念', 'Board/concept']],
+    ['signals', ['历史信号', 'Signals']],
+    ['fallback_watch', ['降级观察', 'Fallback watch']],
+    ['source_leader', ['领涨来源', 'Source leader']],
+    ['constituent_hot', ['成分股异动', 'Constituent heat']],
+  ]
+  const match = labels.find(([key]) => normalized.includes(key))
+  if (match) return locale === 'zh-CN' ? match[1][0] : match[1][1]
+  return source || (locale === 'zh-CN' ? '未知来源' : 'Unknown source')
+}
+
+function decisionStageTone(stage: DecisionStage): 'open' | 'running' | 'warning' | 'success' {
+  if (stage === 'risk_first') return 'warning'
+  if (stage === 'entry_ready') return 'success'
+  if (stage === 'watch_preheat') return 'running'
+  return 'open'
+}
+
+function decisionActionFallback(stage: DecisionStage, missingGates: DecisionGateKey[], locale: LongclawLocale): string {
+  if (stage === 'risk_first') return locale === 'zh-CN' ? '先处理风险' : 'Handle risk first'
+  if (stage === 'entry_ready') return locale === 'zh-CN' ? '可试仓复核' : 'Review starter entry'
+  if (stage === 'strategy_candidate') return locale === 'zh-CN' ? '等硬技术确认' : 'Wait for hard technical confirmation'
+  if (missingGates.includes('trigger_30m')) return locale === 'zh-CN' ? '等待30m确认' : 'Wait for 30m confirmation'
+  if (missingGates.includes('right_side')) return locale === 'zh-CN' ? '等待5m/15m确认' : 'Wait for 5m/15m confirmation'
+  if (missingGates.includes('upper_context')) return locale === 'zh-CN' ? '等待日/周确认' : 'Wait for daily/weekly confirmation'
+  if (stage === 'watch_preheat') return locale === 'zh-CN' ? '继续观察预热' : 'Keep on watch'
+  return locale === 'zh-CN' ? '观察背景' : 'Watch context'
+}
+
+function decisionActionLabel(decision: WatchlistDecision, locale: LongclawLocale): string {
+  return compactText(decision.recommendedAction) || decisionActionFallback(decision.stage, decision.missingGates, locale)
+}
+
+function rawDecisionStage(row: Record<string, unknown>, stageHint?: WatchlistTabKey): DecisionStage {
+  const explicitStage = compactText(row.decision_stage)
+  if (isDecisionStage(explicitStage)) return explicitStage
+  const statusText = [
+    compactText(row.pool_type),
+    compactText(row.queue_lane),
+    compactText(row.action_status),
+    compactText(row.entry_gate_status),
+    compactText(row.decision_effect),
+    compactText(row.trader_action),
+    compactText(row.latest_signal),
+    compactText(row.reason),
+  ].join(' ').toLowerCase()
+  const explicitRisk =
+    stageHint === 'risk_stocks' ||
+    statusText.includes('risk_exit_first') ||
+    statusText.includes('risk_review') ||
+    statusText.includes('blocked_by_risk') ||
+    statusText.includes('exit_priority')
+  const inferredRisk = !stageHint && (
+    statusText.includes('风险') ||
+    statusText.includes('止盈') ||
+    statusText.includes('止损') ||
+    statusText.includes('卖')
+  )
+  if (explicitRisk || inferredRisk) {
+    return 'risk_first'
+  }
+  if (stageHint === 'focus_stocks' || statusText.includes('entry_confirmed') || statusText.includes('entry_ready')) {
+    return 'entry_ready'
+  }
+  if (
+    stageHint === 'watch_stocks' ||
+    statusText.includes('watch_preheat') ||
+    statusText.includes('entry_waiting') ||
+    statusText.includes('watch_only_not_hard_buy')
+  ) {
+    return 'watch_preheat'
+  }
+  if (stageHint === 'buy_candidates') return 'strategy_candidate'
+  if (stageHint === 'macro_indices' || stageHint === 'sector_boards') return 'context'
+  return compactText(row.symbol) || compactText(row.code) ? 'strategy_candidate' : 'context'
+}
+
+function rawSourceKeys(row: Record<string, unknown>): string[] {
+  const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  return uniqueCompact([
+    ...(Array.isArray(row.source_collections) ? row.source_collections : []),
+    ...(Array.isArray(row.source_tags) ? row.source_tags : []),
+    ...(Array.isArray(row.focus_reasons) ? row.focus_reasons : []),
+    row.source_collection,
+    row.source,
+    row.heat_source,
+    row.signal_origin,
+    row.signal_family,
+    ...reasons.flatMap(reason => [
+      reason.source_collection,
+      reason.reason_type,
+      reason.signal_family,
+    ]),
+  ]).slice(0, 5)
+}
+
+function rawFreqTokens(row: Record<string, unknown>): string[] {
+  const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  const buyTimeframes = Array.isArray(row.buy_timeframes) ? row.buy_timeframes.map(item => recordValue(item)) : []
+  const sellTimeframes = Array.isArray(row.sell_timeframes) ? row.sell_timeframes.map(item => recordValue(item)) : []
+  const technical = recordValue(row.technical_evidence)
+  const topBuy = recordValue(row.top_buy_reason)
+  const resonance = recordValue(row.resonance_context)
+  const evidenceResonance = recordValue(technical.resonance_context)
+  return uniqueCompact([
+    row.freq,
+    row.target_freq,
+    topBuy.freq,
+    technical.freq,
+    ...(Array.isArray(resonance.aligned_freqs) ? resonance.aligned_freqs : []),
+    ...(Array.isArray(evidenceResonance.aligned_freqs) ? evidenceResonance.aligned_freqs : []),
+    ...buyTimeframes.flatMap(item => [item.freq, item.badge]),
+    ...sellTimeframes.flatMap(item => [item.freq, item.badge]),
+    ...reasons.flatMap(reason => [
+      reason.freq,
+      ...(Array.isArray(recordValue(reason.resonance_context).aligned_freqs) ? recordValue(reason.resonance_context).aligned_freqs : []),
+    ]),
+  ])
+}
+
+function freqTokenHas(tokens: string[], matcher: RegExp): boolean {
+  return tokens.some(token => matcher.test(token.toLowerCase()))
+}
+
+function rawHasTechnicalEvidence(row: Record<string, unknown>): boolean {
+  const technical = recordValue(row.technical_evidence)
+  if (Object.keys(technical).length > 0 && compactText(technical.status) !== 'missing') return true
+  const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  return reasons.some(reason => {
+    const type = compactText(reason.reason_type)
+    const source = compactText(reason.source_collection)
+    return ['technical_trigger', 'technical_signal'].includes(type) || source === 'terminal_technical_signals'
+  })
+}
+
+function rawMissingGates(row: Record<string, unknown>, stage: DecisionStage): DecisionGateKey[] {
+  const explicit = Array.isArray(row.missing_gates)
+    ? row.missing_gates.map(item => compactText(item)).filter(isDecisionGateKey)
+    : []
+  if (explicit.length > 0) return uniqueCompact(explicit) as DecisionGateKey[]
+  const status = [
+    compactText(row.entry_gate_status),
+    compactText(row.action_status),
+    compactText(row.queue_lane),
+    ...(Array.isArray(row.blocked_by) ? row.blocked_by.map(item => compactText(item)) : []),
+  ].join(' ').toLowerCase()
+  const gates: DecisionGateKey[] = []
+  if (stage === 'risk_first' || status.includes('risk_signal_present') || status.includes('blocked_by_risk')) gates.push('risk_clear')
+  if (status.includes('entry_waiting_30m') || status.includes('30m_missing')) gates.push('trigger_30m')
+  if (status.includes('entry_waiting_upper') || status.includes('daily_or_weekly_missing')) gates.push('upper_context')
+  if (status.includes('entry_waiting_right') || status.includes('5m_or_15m_missing')) gates.push('right_side')
+  if (status.includes('entry_waiting_resonance') || status.includes('partner_period_missing')) gates.push('multi_timeframe')
+  if (status.includes('period_conflict') || status.includes('blocked_by_period')) gates.push('period_conflict')
+  if (status.includes('watch_only_not_hard_buy') || status.includes('missing_buy_technical')) gates.push('hard_technical')
+  if (stage === 'strategy_candidate' && gates.length === 0) gates.push('hard_technical')
+  return uniqueCompact(gates) as DecisionGateKey[]
+}
+
+function rawPromotionPath(row: Record<string, unknown>, stage: DecisionStage, sourceKeys: string[], missingGates: DecisionGateKey[]): DecisionPromotionStep[] {
+  if (Array.isArray(row.promotion_path)) {
+    const explicit = row.promotion_path
+      .map(item => {
+        const record = recordValue(item)
+        const key = compactText(record.key)
+        const status = compactText(record.status)
+        if (!isDecisionGateKey(key) || !isDecisionGateStatus(status)) return null
+        return {
+          key,
+          status,
+          detail: compactText(record.detail),
+        }
+      })
+      .filter((item): item is DecisionPromotionStep => Boolean(item))
+    if (explicit.length > 0) return explicit
+  }
+  const freqs = rawFreqTokens(row)
+  const hasUpper = freqTokenHas(freqs, /^(daily|weekly|day|week|d|w|1d|1w|日线|周线)$/)
+  const has30m = freqTokenHas(freqs, /^(30m|30min|30分钟|f30)$/)
+  const hasRightSide = freqTokenHas(freqs, /^(5m|5min|5分钟|15m|15min|15分钟|f5|f15)$/)
+  const hasTechnical = rawHasTechnicalEvidence(row)
+  const waiting = (key: DecisionGateKey): DecisionGateStatus =>
+    missingGates.includes(key) ? (key === 'risk_clear' || key === 'period_conflict' ? 'blocked' : 'waiting') : 'passed'
+  return [
+    {
+      key: 'source',
+      status: sourceKeys.length > 0 ? 'passed' : 'waiting',
+      detail: sourceKeys.slice(0, 2).join('/'),
+    },
+    {
+      key: 'hard_technical',
+      status: stage === 'strategy_candidate' && !hasTechnical ? 'waiting' : waiting('hard_technical'),
+      detail: compactText(row.latest_signal) || compactText(row.reason),
+    },
+    {
+      key: 'upper_context',
+      status: missingGates.includes('upper_context') ? 'waiting' : (hasUpper || stage === 'entry_ready' ? 'passed' : stage === 'strategy_candidate' ? 'waiting' : 'context'),
+      detail: freqs.filter(freq => /daily|weekly|日线|周线|1d|1w|^d$|^w$/i.test(freq)).slice(0, 2).join('/'),
+    },
+    {
+      key: 'trigger_30m',
+      status: missingGates.includes('trigger_30m') ? 'waiting' : (has30m || stage === 'entry_ready' ? 'passed' : stage === 'strategy_candidate' ? 'waiting' : 'context'),
+      detail: freqs.filter(freq => /30m|30min|30分钟|f30/i.test(freq)).slice(0, 2).join('/'),
+    },
+    {
+      key: 'right_side',
+      status: missingGates.includes('right_side') ? 'waiting' : (hasRightSide || stage === 'entry_ready' ? 'passed' : stage === 'strategy_candidate' ? 'waiting' : 'context'),
+      detail: freqs.filter(freq => /5m|5min|5分钟|15m|15min|15分钟|f5|f15/i.test(freq)).slice(0, 3).join('/'),
+    },
+    {
+      key: missingGates.includes('period_conflict') ? 'period_conflict' : 'risk_clear',
+      status: missingGates.includes('period_conflict') ? 'blocked' : waiting('risk_clear'),
+      detail: compactText(row.top_risk_reason) || compactText(row.invalidates_when),
+    },
+  ]
+}
+
+function createWatchlistDecision(row: Record<string, unknown>, stageHint?: WatchlistTabKey): WatchlistDecision {
+  const stage = rawDecisionStage(row, stageHint)
+  const sourceKeys = rawSourceKeys(row)
+  const missingGates = rawMissingGates(row, stage)
+  return {
+    stage,
+    missingGates,
+    primaryBlocker: compactText(row.primary_blocker) || (missingGates[0] ?? ''),
+    recommendedAction: compactText(row.recommended_action) || compactText(row.next_action) || compactText(row.trader_action),
+    sourceKeys,
+    promotionPath: rawPromotionPath(row, stage, sourceKeys, missingGates),
+    invalidatesWhen: compactText(row.invalidates_when) || compactText(row.exit_condition),
+  }
+}
+
 function percentValue(value: unknown): number {
   const parsed = numberValue(value)
   if (parsed === undefined) return 0
@@ -1644,10 +2229,32 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
   const probe = recordValue(target.cache_probe)
   const status = compactText(chartMeta.cache_status)
   const reason = compactText(chartMeta.not_ready_reason, compactText(target.not_ready_reason))
-  if (status !== 'not_ready' && !reason) return ''
+  const loadStatus = compactText(chartMeta.load_status)
+  if (status !== 'not_ready' && !reason && !loadStatus) return ''
   const requested = compactText(chartMeta.requested_freq, compactText(target.requested_freq))
   const label = compactText(target.label, compactText(target.symbol))
+  const hasCandles = Array.isArray(symbolData?.chart?.ohlcv) && symbolData.chart.ohlcv.length > 0
   const probeStatus = compactText(probe.status)
+  const loadEta = numberValue(chartMeta.load_eta_seconds)
+  const loadError = compactText(chartMeta.load_error)
+  const loadLine = (() => {
+    if (!loadStatus) return ''
+    if (loadStatus === 'failed') {
+      return locale === 'zh-CN'
+        ? `加载失败${loadError ? `: ${loadError}` : ''}，按 R 重试`
+        : `load failed${loadError ? `: ${loadError}` : ''}; press R to retry`
+    }
+    if (['triggered', 'running', 'pending'].includes(loadStatus)) {
+      const etaText = loadEta !== undefined ? Math.max(1, Math.round(loadEta)) : 10
+      return locale === 'zh-CN'
+        ? `已触发加载，预计 ${etaText} 秒内完成，会自动刷新`
+        : `load started, ETA ${etaText}s; will refresh automatically`
+    }
+    if (loadStatus === 'ready') {
+      return locale === 'zh-CN' ? '加载已完成，正在刷新图表' : 'load finished; refreshing chart'
+    }
+    return locale === 'zh-CN' ? `加载状态 ${loadStatus}` : `load status ${loadStatus}`
+  })()
   const rows = Array.isArray(probe.rows) ? probe.rows.map(item => recordValue(item)) : []
   const requestedLabel = compactText(probe.requested_freq_label, requested)
   const hitLine = rows.length
@@ -1658,15 +2265,21 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
     : ''
   if (locale === 'zh-CN') {
     return [
-      `${label || '当前标的'} ${requested || requestedLabel || ''} 没有可用 K 线`,
+      hasCandles
+        ? `${label || '当前标的'} ${requested || requestedLabel || ''} 缓存陈旧`
+        : `${label || '当前标的'} ${requested || requestedLabel || ''} 没有可用 K 线`,
       cacheReasonLabel(reason, locale),
+      loadLine,
       probeStatus ? `probe=${probeStatus}` : '',
       hitLine ? `已有缓存 ${hitLine}` : '',
     ].filter(Boolean).join(' · ')
   }
   return [
-    `${label || 'Current target'} has no ${requested || requestedLabel || ''} candles`,
+    hasCandles
+      ? `${label || 'Current target'} ${requested || requestedLabel || ''} cache is stale`
+      : `${label || 'Current target'} has no ${requested || requestedLabel || ''} candles`,
     cacheReasonLabel(reason, locale),
+    loadLine,
     probeStatus ? `probe=${probeStatus}` : '',
     hitLine ? `cached ${hitLine}` : '',
   ].filter(Boolean).join(' · ')
@@ -2774,6 +3387,145 @@ function sourceConfidenceLabel(row: Record<string, unknown>): string {
   return labels[key] || compactText(row.label) || compactText(row.name) || compactText(row.source) || key || 'Source'
 }
 
+function decisionSourceSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
+  if (decision.sourceKeys.length === 0) return locale === 'zh-CN' ? '暂无明确来源' : 'No explicit source'
+  return decision.sourceKeys.slice(0, 4).map(source => decisionSourceLabel(source, locale)).join(' / ')
+}
+
+function decisionConfirmedSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
+  const passed = decision.promotionPath
+    .filter(step => step.status === 'passed' && step.key !== 'source' && step.key !== 'risk_clear')
+    .map(step => decisionGateLabel(step.key, locale))
+  if (passed.length > 0) return passed.join(' / ')
+  return decision.stage === 'strategy_candidate'
+    ? (locale === 'zh-CN' ? '只有策略来源，技术门槛未确认' : 'Only the thesis source is present; technical gates are not confirmed')
+    : (locale === 'zh-CN' ? '等待更多确认' : 'Waiting for more confirmation')
+}
+
+function decisionMissingSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
+  if (decision.stage === 'risk_first') return locale === 'zh-CN' ? '风险/卖点优先处理' : 'Risk or exit signal comes first'
+  if (decision.missingGates.length === 0) return locale === 'zh-CN' ? '无主要缺口' : 'No major gap'
+  return decision.missingGates.map(key => decisionGateLabel(key, locale)).join(' / ')
+}
+
+function sourceConfidenceAlias(source: string): string[] {
+  const normalized = source.toLowerCase()
+  if (normalized.includes('technical') || normalized === 'signals' || normalized.includes('signal')) return ['signal']
+  if (normalized.includes('strategy') || normalized.includes('market_pool') || normalized.includes('active_pool')) return ['market_pool']
+  if (normalized.includes('quote')) return ['quote']
+  if (normalized.includes('chain') || normalized.includes('board')) return ['board', 'concept']
+  if (normalized.includes('concept')) return ['concept']
+  return [normalized]
+}
+
+function decisionConfidenceSummary(decision: WatchlistDecision, sourceConfidence: Record<string, unknown>[], locale: LongclawLocale): string {
+  if (sourceConfidence.length === 0) return locale === 'zh-CN' ? '暂无来源置信度' : 'No source confidence'
+  const sourceAliases = new Set(decision.sourceKeys.flatMap(sourceConfidenceAlias))
+  const matched = sourceConfidence.filter(row => {
+    const key = compactText(row.source_id) || compactText(row.label) || compactText(row.name) || compactText(row.source)
+    return sourceAliases.has(key) || sourceAliases.has(key.toLowerCase())
+  })
+  const rows = matched.length > 0 ? matched : sourceConfidence.slice(0, 2)
+  const weakest = rows.reduce<Record<string, unknown> | null>((current, row) => {
+    if (!current) return row
+    const currentValue = numberValue(current.confidence ?? current.score) ?? 1
+    const rowValue = numberValue(row.confidence ?? row.score) ?? 1
+    return rowValue < currentValue ? row : current
+  }, null)
+  if (!weakest) return locale === 'zh-CN' ? '暂无来源置信度' : 'No source confidence'
+  const confidence = numberValue(weakest.confidence ?? weakest.score)
+  const label = sourceConfidenceLabel(weakest)
+  const status = compactText(weakest.status) || compactText(weakest.freshness)
+  const score = confidence === undefined ? '' : formatConfidence(confidence)
+  if (confidence !== undefined && confidence < 0.8) {
+    return locale === 'zh-CN'
+      ? `${label} 置信度偏低 ${score}${status ? ` · ${status}` : ''}`
+      : `${label} confidence is low ${score}${status ? ` · ${status}` : ''}`
+  }
+  return locale === 'zh-CN'
+    ? `${label} 可用 ${score}${status ? ` · ${status}` : ''}`
+    : `${label} available ${score}${status ? ` · ${status}` : ''}`
+}
+
+function traderTaskFromWatchlist(row: WatchlistRow, locale: LongclawLocale): TraderDecisionTask {
+  const action = decisionActionLabel(row.decision, locale)
+  return {
+    id: `${row.decision.stage}:${row.code || row.label || row.name}`,
+    stage: row.decision.stage,
+    title: `${decisionStageLabel(row.decision.stage, locale)} · ${row.name}`,
+    action,
+    summary: [row.reason, row.rankReason, row.traceSummary].filter(Boolean).join(' · '),
+    invalidatesWhen: row.decision.invalidatesWhen,
+    row,
+    raw: row.raw,
+  }
+}
+
+function traderTaskFromRaw(row: Record<string, unknown>, index: number, locale: LongclawLocale): TraderDecisionTask {
+  const stage = rawDecisionStage(row)
+  const title = compactText(row.title) || compactText(row.name) || compactText(row.symbol) || compactText(row.decision_id) || `Task ${index + 1}`
+  const action = compactText(row.action_label) || compactText(row.recommended_action) || compactText(row.action) || decisionActionFallback(stage, rawMissingGates(row, stage), locale)
+  return {
+    id: compactText(row.decision_id) || `${stage}:${compactText(row.symbol) || title}:${index}`,
+    stage,
+    title,
+    action,
+    summary: [compactText(row.summary), compactText(row.trigger_reason), compactText(row.reason), compactText(row.recommended_action)]
+      .filter(Boolean)
+      .join(' · '),
+    invalidatesWhen: compactText(row.invalidates_when),
+    raw: row,
+  }
+}
+
+function buildTraderDecisionQueue(
+  groups: {
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+  decisionRows: Record<string, unknown>[],
+  sellRows: Record<string, unknown>[],
+  locale: LongclawLocale,
+): TraderDecisionTask[] {
+  const output: TraderDecisionTask[] = []
+  const seen = new Set<string>()
+  const add = (task: TraderDecisionTask) => {
+    const symbol = compactText(task.raw.symbol) || compactText(task.raw.code) || task.row?.code || task.title
+    const key = `${task.stage}:${symbol}`.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    output.push(task)
+  }
+  groups.risk_stocks.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  sellRows.slice(0, 4).forEach((row, index) => add(traderTaskFromRaw({ ...row, queue_lane: 'risk_exit_first' }, index, locale)))
+  groups.focus_stocks.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  groups.watch_stocks.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  groups.buy_candidates.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  decisionRows.slice(0, 8).forEach((row, index) => add(traderTaskFromRaw(row, index, locale)))
+  return output.slice(0, 14)
+}
+
+function activeDecisionRowFromGroups(
+  groups: {
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+  target: ChartTarget,
+  cursorRow?: WatchlistRow,
+): WatchlistRow | null {
+  const rows = [
+    ...groups.risk_stocks,
+    ...groups.focus_stocks,
+    ...groups.watch_stocks,
+    ...groups.buy_candidates,
+  ]
+  return rows.find(row => watchlistRowIsActive(row, target)) ?? (cursorRow && cursorRow.kind === 'stock' ? cursorRow : null)
+}
+
 function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN', timeZone?: string): string {
   if (!value) return ''
   const options: Intl.DateTimeFormatOptions = {
@@ -3081,6 +3833,7 @@ function toWatchlistRow(
   fallbackKind: string,
   index: number,
   rangeColumns: WatchlistRangeColumn[],
+  stageHint?: WatchlistTabKey,
 ): WatchlistRow | null {
   const kind = kindForTarget(row, fallbackKind)
   const label = labelForWatchlist(row)
@@ -3122,6 +3875,7 @@ function toWatchlistRow(
     targetKind,
     targetLabel,
     targetFreq: terminalListTargetFreq(row.target_freq),
+    decision: createWatchlistDecision(row, stageHint),
     raw: row,
   }
 }
@@ -3130,6 +3884,7 @@ function buildRowsForGroup(
   rows: Record<string, unknown>[],
   fallbackKind: string,
   rangeColumns: WatchlistRangeColumn[],
+  stageHint?: WatchlistTabKey,
 ): WatchlistRow[] {
   const seen = new Set<string>()
   const output: WatchlistRow[] = []
@@ -3138,7 +3893,7 @@ function buildRowsForGroup(
     const key = watchlistDedupeKey(row, kind)
     if (seen.has(key)) return
     seen.add(key)
-    const item = toWatchlistRow(row, kind, index, rangeColumns)
+    const item = toWatchlistRow(row, kind, index, rangeColumns, stageHint)
     if (item) output.push(item)
   })
   return output
@@ -3494,12 +4249,12 @@ export function StrategyChartTerminal({
       rangeColumns: visibleRangeColumns,
     })
     return {
-      macro_indices: buildRowsForGroup(macroRows, 'index', visibleRangeColumns),
-      sector_boards: buildRowsForGroup(sectorRows, 'industry', visibleRangeColumns),
-      buy_candidates: buildRowsForGroup(candidateRows, 'stock', visibleRangeColumns),
-      focus_stocks: buildRowsForGroup(focusRows, 'stock', visibleRangeColumns),
-      risk_stocks: buildRowsForGroup(riskRows, 'stock', visibleRangeColumns),
-      watch_stocks: buildRowsForGroup(watchRows, 'stock', visibleRangeColumns),
+      macro_indices: buildRowsForGroup(macroRows, 'index', visibleRangeColumns, 'macro_indices'),
+      sector_boards: buildRowsForGroup(sectorRows, 'industry', visibleRangeColumns, 'sector_boards'),
+      buy_candidates: buildRowsForGroup(candidateRows, 'stock', visibleRangeColumns, 'buy_candidates'),
+      focus_stocks: buildRowsForGroup(focusRows, 'stock', visibleRangeColumns, 'focus_stocks'),
+      risk_stocks: buildRowsForGroup(riskRows, 'stock', visibleRangeColumns, 'risk_stocks'),
+      watch_stocks: buildRowsForGroup(watchRows, 'stock', visibleRangeColumns, 'watch_stocks'),
       legacy: legacyRows,
     }
   }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, visibleRangeColumns])
@@ -3507,13 +4262,21 @@ export function StrategyChartTerminal({
     ? groupedWatchlistRows[activeWatchlistTab]
     : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? groupedWatchlistRows.legacy : [])
   const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
+  const activeDecisionRow = useMemo(
+    () => activeDecisionRowFromGroups(groupedWatchlistRows, target, cursorRow),
+    [cursorRow, groupedWatchlistRows, target],
+  )
+  const traderDecisionQueue = useMemo(
+    () => buildTraderDecisionQueue(groupedWatchlistRows, decisionRows, sellRows, locale),
+    [decisionRows, groupedWatchlistRows, locale, sellRows],
+  )
   const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
   const activeWatchlistEmptyText = activeWatchlistTab === 'focus_stocks'
     ? (compactText(focusGroupMeta.empty_reason)
-      ? `${locale === 'zh-CN' ? '真实买点为空' : 'Entry pool empty'}: ${compactText(focusGroupMeta.empty_reason)}`
-      : (locale === 'zh-CN' ? '真实买点为空，观察/预热和策略候选已拆开。' : 'Entry pool is empty. Watch and strategy candidates are separate.'))
+      ? `${locale === 'zh-CN' ? '可交易复核为空' : 'Entry review empty'}: ${compactText(focusGroupMeta.empty_reason)}`
+      : (locale === 'zh-CN' ? '可交易复核为空，先看观察预热和策略候选。' : 'Entry review is empty. Check watch and strategy candidates.'))
     : activeWatchlistTab === 'risk_stocks'
-      ? (locale === 'zh-CN' ? '暂无风险/止盈止损。' : 'No risk controls.')
+      ? (locale === 'zh-CN' ? '暂无风险优先事项。' : 'No risk-first tasks.')
       : activeWatchlistTab === 'watch_stocks'
         ? (locale === 'zh-CN' ? '暂无观察/预热标的。' : 'No watch/preheat stocks.')
     : activeWatchlistTab === 'buy_candidates'
@@ -3563,6 +4326,8 @@ export function StrategyChartTerminal({
     () => chartCacheNotReadyMessage(symbolData, locale),
     [locale, symbolData],
   )
+  const chartLoadStatus = compactText(chartMeta.load_status)
+  const chartLoadRetrySeconds = numberValue(chartMeta.load_retry_after_seconds) ?? numberValue(chartMeta.load_eta_seconds)
 
   const loadShell = useCallback(
     async (signal?: AbortSignal) => {
@@ -3780,6 +4545,20 @@ export function StrategyChartTerminal({
       window.clearTimeout(timer)
     }
   }, [baseUrl, bootAttempt, booting, loadShell, loadSymbol, target])
+
+  useEffect(() => {
+    if (!baseUrl || !target.label) return
+    if (!['triggered', 'running', 'pending', 'ready'].includes(chartLoadStatus)) return
+    const retrySeconds = Math.max(3, Math.min(30, Math.round(chartLoadRetrySeconds ?? 10)))
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      void loadSymbol(target, { signal: controller.signal, silent: true })
+    }, retrySeconds * 1000)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [baseUrl, chartLoadRetrySeconds, chartLoadStatus, loadSymbol, target])
 
   useEffect(() => {
     if (!chartContainerRef.current) return
@@ -4412,9 +5191,16 @@ export function StrategyChartTerminal({
             onSelect={row => selectCandidateTarget(row, 'strategy.chain-context.stock-click')}
           />
 
+          <StrategyDecisionPanel
+            locale={locale}
+            row={activeDecisionRow}
+            target={target}
+            sourceConfidence={sourceConfidence}
+          />
+
           <Panel
             title={locale === 'zh-CN' ? '交易任务' : 'Trader tasks'}
-            meta={String(decisionRows.length + sellRows.length)}
+            meta={String(traderDecisionQueue.length)}
             actions={(
               <button
                 type="button"
@@ -4427,7 +5213,7 @@ export function StrategyChartTerminal({
               </button>
             )}
           >
-            {decisionRows.length === 0 && sellRows.length === 0 ? (
+            {traderDecisionQueue.length === 0 ? (
               <div style={emptyStateDarkStyle}>
                 {locale === 'zh-CN' ? '暂无需要确认的观察/减仓/复盘任务。' : 'No watch, trim, or review tasks.'}
               </div>
@@ -4435,56 +5221,52 @@ export function StrategyChartTerminal({
               <div style={compactListStyle}>
                 <div style={mutedTextStyle}>
                   {locale === 'zh-CN'
-                    ? '非指令，需图形确认。'
-                    : 'Tasks only; confirm on chart.'}
+                    ? '顺序：风险优先 -> 可交易复核 -> 观察预热 -> 策略候选。'
+                    : 'Order: risk first -> entry review -> watch -> candidate.'}
                 </div>
-                {decisionRows.slice(0, 4).map((row, index) => (
+                {traderDecisionQueue.slice(0, 10).map(task => (
                   <button
-                    key={`${compactText(row.decision_id, 'decision')}-${index}`}
+                    key={task.id}
                     type="button"
                     style={targetButtonStyle}
-                    onClick={() =>
+                    onClick={() => {
+                      if (task.row) {
+                        activateWatchlistRow(task.row, 'strategy.trader-task.watchlist-click')
+                        return
+                      }
+                      const chartTarget = recordValue(task.raw.chart_target)
+                      const label = compactText(chartTarget.label) || compactText(task.raw.symbol) || compactText(task.raw.code)
+                      if (label) {
+                        selectTarget(
+                          {
+                            label,
+                            kind: compactText(chartTarget.kind) || kindForTarget(task.raw, 'stock'),
+                            freq: terminalListTargetFreq(chartTarget.freq, target.freq),
+                          },
+                          'strategy.trader-task.raw-click',
+                        )
+                        return
+                      }
                       onOpenRecord(
                         locale === 'zh-CN'
-                          ? `任务 ${String(row.symbol ?? row.decision_id ?? 'queue')}`
-                          : `Task ${String(row.symbol ?? row.decision_id ?? 'queue')}`,
-                        row,
+                          ? `任务 ${String(task.raw.symbol ?? task.raw.decision_id ?? 'queue')}`
+                          : `Task ${String(task.raw.symbol ?? task.raw.decision_id ?? 'queue')}`,
+                        task.raw,
                       )
-                    }
+                    }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={rowTitleStyle}>{compactText(row.title) || compactText(row.symbol) || 'Task'}</div>
-                      <span style={statusBadgeStyle(compactText(row.action_status) === '退出复盘' ? 'warning' : 'open')}>
-                        {compactText(row.action_label) || compactText(row.action_status) || compactText(row.priority) || '观察'}
+                      <div style={rowTitleStyle}>{task.title}</div>
+                      <span style={statusBadgeStyle(decisionStageTone(task.stage))}>
+                        {task.action}
                       </span>
                     </div>
                     <div style={mutedTwoLineStyle}>
                       {[
-                        compactText(row.summary),
-                        compactText(row.recommended_action),
-                        compactText(row.invalidates_when),
+                        decisionStageMeta(task.stage, locale),
+                        task.summary,
+                        task.invalidatesWhen,
                       ].filter(Boolean).join(' · ')}
-                    </div>
-                  </button>
-                ))}
-                {sellRows.slice(0, 4).map((row, index) => (
-                  <button
-                    key={`${labelForTarget(row) || 'sell'}-${index}`}
-                    type="button"
-                    style={targetButtonStyle}
-                    onClick={() => {
-                      const label = labelForTarget(row)
-                      if (label) selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq }, 'strategy.sell-warning.click')
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={rowTitleStyle}>{compactText(row.name) || labelForTarget(row) || 'Sell warning'}</div>
-                      <span style={statusBadgeStyle('warning')}>{locale === 'zh-CN' ? '减仓/止盈' : 'Exit'}</span>
-                    </div>
-                    <div style={mutedTwoLineStyle}>
-                      {[compactText(row.reason), compactText(row.signal), compactText(row.summary)]
-                        .filter(Boolean)
-                        .join(' · ')}
                     </div>
                   </button>
                 ))}
@@ -4996,8 +5778,8 @@ function CacheMonitorStrip({
 
 function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const labels: Partial<Record<WatchlistTabKey, [string, string]>> = {
-    focus_stocks: ['真实买点', 'Entries'],
-    risk_stocks: ['风险/止盈', 'Risk/exit'],
+    focus_stocks: ['可交易复核', 'Entry review'],
+    risk_stocks: ['风险优先', 'Risk first'],
     watch_stocks: ['观察/预热', 'Watch/preheat'],
     buy_candidates: ['策略候选', 'Strategy candidates'],
   }
@@ -5010,9 +5792,9 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
     sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '日涨幅=板块当日涨跌幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Day=board change'],
-    focus_stocks: ['terminal_stock_pool.focus_stocks', '硬技术买点复核', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'hard technical entry review', 'Day=realtime quote change'],
-    risk_stocks: ['terminal_stock_pool.risk_stocks', '卖点/止盈止损优先处理', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'risk and exit queue', 'Day=realtime quote change'],
-    watch_stocks: ['terminal_stock_pool.watch_stocks', '等待5m/15m/30m右侧确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'wait for 5m/15m/30m confirmation', 'Day=realtime quote change'],
+    focus_stocks: ['terminal_stock_pool.focus_stocks', '已过漏斗门槛，复核后才可试仓', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'gates passed; review before starter entry', 'Day=realtime quote change'],
+    risk_stocks: ['terminal_stock_pool.risk_stocks', '卖点/止盈止损/冲突优先处理', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'exit, trim, and conflict queue first', 'Day=realtime quote change'],
+    watch_stocks: ['terminal_stock_pool.watch_stocks', '等待30m、5m/15m或上级周期确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'wait for 30m, 5m/15m, or higher timeframe confirmation', 'Day=realtime quote change'],
     buy_candidates: ['strategy_snapshots.candidates', '主题候选，需再做技术确认', '日涨幅=实时快照涨跌幅', 'strategy_snapshots.candidates', 'theme candidates needing technical confirmation', 'Day=realtime quote change'],
   }
   const item = meta[tab]
@@ -5070,10 +5852,43 @@ function WatchlistTabbedTable({
     { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
     { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
   ]
-  const activeStockTab = STOCK_WATCHLIST_TABS.includes(activeTab) ? activeTab : 'focus_stocks'
   const panelMeta = watchlistPanelMeta(activeTab, locale)
+  const riskCount = groups.risk_stocks.length
+  const candidateCount = groups.buy_candidates.length
+  const watchCount = groups.watch_stocks.length
+  const focusCount = groups.focus_stocks.length
+  const modeTitle = riskCount > 0
+    ? (locale === 'zh-CN' ? '先控风险' : 'Risk first')
+    : focusCount > 0
+      ? (locale === 'zh-CN' ? '复核机会' : 'Review entries')
+      : watchCount > 0
+        ? (locale === 'zh-CN' ? '等确认' : 'Wait confirm')
+        : (locale === 'zh-CN' ? '找候选' : 'Find candidates')
+  const modeMeta = riskCount > 0
+    ? (locale === 'zh-CN' ? '先处理卖点/冲突' : 'Handle exits/conflicts')
+    : focusCount > 0
+      ? (locale === 'zh-CN' ? '买点只做复核' : 'Entries require review')
+      : watchCount > 0
+        ? (locale === 'zh-CN' ? '缺口在列表里' : 'Gaps are listed')
+        : (locale === 'zh-CN' ? '从策略来源开始' : 'Start from thesis source')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+      <div style={decisionOverviewStripStyle}>
+        <div style={decisionModeCellStyle}>
+          <div style={decisionModeTitleStyle}>{modeTitle}</div>
+          <div style={decisionModeMetaStyle}>{modeMeta}</div>
+        </div>
+        {[
+          [locale === 'zh-CN' ? '风险' : 'Risk', riskCount, tradingDeskTheme.market.down],
+          [locale === 'zh-CN' ? '复核' : 'Review', focusCount, tradingDeskTheme.market.up],
+          [locale === 'zh-CN' ? '预热' : 'Watch', watchCount, tradingDeskTheme.colors.auroraGold],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} style={decisionMetricCellStyle}>
+            <div style={{ ...decisionMetricValueStyle, color: String(color) }}>{value}</div>
+            <div style={decisionMetricLabelStyle}>{label}</div>
+          </div>
+        ))}
+      </div>
       <div style={watchlistControlRowStyle}>
         <div style={watchlistPrimaryTabsStyle}>
           {primaryTabs.map(tab => (
@@ -5087,26 +5902,6 @@ function WatchlistTabbedTable({
             </button>
           ))}
         </div>
-        <label style={watchlistStockSelectLabelStyle(STOCK_WATCHLIST_TABS.includes(activeTab))}>
-          <span>{locale === 'zh-CN' ? '个股' : 'Stocks'}</span>
-          <select
-            value={activeStockTab}
-            style={watchlistStockSelectStyle}
-            title={locale === 'zh-CN' ? '切换个股池' : 'Switch stock pool'}
-            onChange={event => onTabChange(event.currentTarget.value as WatchlistTabKey)}
-          >
-            {STOCK_WATCHLIST_TABS.map(tabKey => (
-              <option key={tabKey} value={tabKey}>
-                {watchlistStockTabLabel(tabKey, locale)} {groups[tabKey].length}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div style={watchlistMetaStripStyle} title={panelMeta}>
-        {panelMeta}
-      </div>
-      <div style={watchlistControlRowStyle}>
         <label style={watchlistRangeSelectLabelStyle}>
           <span>{locale === 'zh-CN' ? '区间' : 'Range'}</span>
           <select
@@ -5119,6 +5914,46 @@ function WatchlistTabbedTable({
             ))}
           </select>
         </label>
+      </div>
+      <div style={decisionFunnelShellStyle}>
+        <button
+          type="button"
+          style={riskPriorityButtonStyle(activeTab === 'risk_stocks')}
+          onClick={() => onTabChange('risk_stocks')}
+        >
+          <div style={funnelButtonTopStyle}>
+            <span style={funnelButtonLabelStyle}>{watchlistStockTabLabel('risk_stocks', locale)}</span>
+            <span style={funnelButtonCountStyle}>{riskCount}</span>
+          </div>
+          <div style={funnelButtonMetaStyle}>
+            {locale === 'zh-CN' ? '卖点、止盈止损、知识/周期冲突先处理' : 'Exits, trims, knowledge/timeframe conflicts first'}
+          </div>
+        </button>
+        <div style={candidateGroupHeaderStyle}>
+          <span>{locale === 'zh-CN' ? '机会漏斗' : 'Opportunity funnel'}</span>
+          <span>{locale === 'zh-CN' ? '候选 -> 预热 -> 复核' : 'Candidate -> Watch -> Review'}</span>
+        </div>
+        <div style={funnelRailStyle}>
+          {OPPORTUNITY_FUNNEL_TABS.map((tabKey, index) => (
+            <React.Fragment key={tabKey}>
+              {index > 0 ? <div style={funnelConnectorStyle}>-&gt;</div> : null}
+              <button
+                type="button"
+                style={funnelStepButtonStyle(activeTab === tabKey, tabKey === 'focus_stocks' ? 'entry_ready' : tabKey === 'watch_stocks' ? 'watch_preheat' : 'strategy_candidate')}
+                onClick={() => onTabChange(tabKey)}
+              >
+                <div style={funnelButtonTopStyle}>
+                  <span style={funnelButtonLabelStyle}>{watchlistStockTabLabel(tabKey, locale)}</span>
+                  <span style={funnelButtonCountStyle}>{groups[tabKey].length}</span>
+                </div>
+                <div style={funnelButtonMetaStyle}>{decisionStageMeta(tabKey === 'focus_stocks' ? 'entry_ready' : tabKey === 'watch_stocks' ? 'watch_preheat' : 'strategy_candidate', locale)}</div>
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      <div style={watchlistMetaStripStyle} title={panelMeta}>
+        {panelMeta}
       </div>
       {pendingListUpdate && activeTab === 'sector_boards' ? (
         <button
@@ -5175,10 +6010,10 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
   }
   if (activeTab === 'focus_stocks') {
     return [
-      locale === 'zh-CN' ? '买点' : 'Entry',
+      locale === 'zh-CN' ? '复核' : 'Review',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '入池依据' : 'Reason',
+      locale === 'zh-CN' ? '路径' : 'Path',
     ]
   }
   if (activeTab === 'risk_stocks') {
@@ -5186,7 +6021,7 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
       locale === 'zh-CN' ? '风险' : 'Risk',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '处理' : 'Action',
+      locale === 'zh-CN' ? '优先级' : 'Priority',
     ]
   }
   if (activeTab === 'watch_stocks') {
@@ -5194,7 +6029,7 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
       locale === 'zh-CN' ? '观察' : 'Watch',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '状态' : 'State',
+      locale === 'zh-CN' ? '缺口' : 'Gap',
     ]
   }
   if (activeTab === 'buy_candidates') {
@@ -5441,6 +6276,14 @@ function WatchlistTable({
         const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
         const secondMetric = activeTab === 'sector_boards' ? sectorLeaderForWatchlist(row) : row.dayChange
         const rowSource = sourceLabelForWatchlist(row)
+        const stockDecision = activeTab === 'focus_stocks' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks' || activeTab === 'buy_candidates'
+        const actionLabel = decisionActionLabel(row.decision, locale)
+        const missingSummary = decisionMissingSummary(row.decision, locale)
+        const stageBadgeStyle = row.decision.stage === 'risk_first'
+          ? miniSellSignalBadgeStyle
+          : row.decision.stage === 'entry_ready'
+            ? miniSignalBadgeStyle
+            : miniNeutralSignalBadgeStyle
         return (
           <React.Fragment key={row.id}>
             <button
@@ -5465,11 +6308,13 @@ function WatchlistTable({
               <div style={watchlistNameCellStyle}>
                 <div style={watchlistNameStyle}>{row.name}</div>
                 <div style={watchlistSubStyle}>
-                  {[row.typeLabel, row.code, ...row.tags].filter(Boolean).join(' · ')}
+                  {[stockDecision ? decisionStageLabel(row.decision.stage, locale) : row.typeLabel, row.code, ...row.tags.slice(0, 2)].filter(Boolean).join(' · ')}
                 </div>
-                {row.explanation || row.traderAction || row.rankLabel || row.rankReason ? (
+                {stockDecision || row.explanation || row.traderAction || row.rankLabel || row.rankReason ? (
                   <div style={watchlistSubStyle}>
-                    {[row.rankLabel, row.traderAction, row.rankReason || row.explanation].filter(Boolean).join(' · ')}
+                    {stockDecision
+                      ? [actionLabel, missingSummary, row.rankReason || row.explanation].filter(Boolean).join(' · ')
+                      : [row.rankLabel, row.traderAction, row.rankReason || row.explanation].filter(Boolean).join(' · ')}
                   </div>
                 ) : null}
               </div>
@@ -5478,6 +6323,10 @@ function WatchlistTable({
               <div style={watchlistCellStyle}>
                 {activeTab === 'sector_boards' ? (
                   sectorCarrierForWatchlist(row, locale)
+                ) : stockDecision ? (
+                  <span style={signalBadgeRowStyle}>
+                    <span style={stageBadgeStyle}>{actionLabel}</span>
+                  </span>
                 ) : row.signalBadges.length > 0 ? (
                   <span style={signalBadgeRowStyle}>
                     {row.signalBadges.slice(0, 4).map(badge => (
@@ -5510,6 +6359,81 @@ function WatchlistTable({
         )
       })}
     </div>
+  )
+}
+
+function StrategyDecisionPanel({
+  locale,
+  row,
+  target,
+  sourceConfidence,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow | null
+  target: ChartTarget
+  sourceConfidence: Record<string, unknown>[]
+}) {
+  if (!row) {
+    return (
+      <Panel
+        title={locale === 'zh-CN' ? '策略解析' : 'Strategy parse'}
+        meta={locale === 'zh-CN' ? '未入漏斗' : 'outside funnel'}
+      >
+        <div style={emptyStateDarkStyle}>
+          {locale === 'zh-CN'
+            ? `${target.label} 当前不在个股交易漏斗里；这里只显示图表和背景证据。`
+            : `${target.label} is not in the stock decision funnel; only chart and context evidence are shown.`}
+        </div>
+      </Panel>
+    )
+  }
+  const decision = row.decision
+  const action = decisionActionLabel(decision, locale)
+  const invalidates = decision.invalidatesWhen || (locale === 'zh-CN' ? '触发条件失效或关键位被破坏' : 'Setup fails or key level breaks')
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '策略解析' : 'Strategy parse'}
+      meta={decisionStageLabel(decision.stage, locale)}
+      actions={<span style={statusBadgeStyle(decisionStageTone(decision.stage))}>{action}</span>}
+    >
+      <div style={compactListStyle}>
+        <div style={decisionExplainHeroStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={rowTitleStyle}>{row.name}</div>
+              <div style={mutedLineStyle}>{[row.code, decisionStageMeta(decision.stage, locale)].filter(Boolean).join(' · ')}</div>
+            </div>
+            <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+          </div>
+          <div style={decisionPathStyle}>
+            {decision.promotionPath.map(step => (
+              <div key={`${row.id}-${step.key}`} style={decisionPathStepStyle(step.status)} title={step.detail}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                  <span style={decisionGateDotStyle(step.status)} />
+                  <span style={{ ...rowTitleStyle, fontSize: 10 }}>{decisionGateLabel(step.key, locale)}</span>
+                </div>
+                <div style={watchlistSubStyle}>
+                  {[decisionGateStatusLabel(step.status, locale), step.detail].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {[
+          [locale === 'zh-CN' ? '为什么入池' : 'Why in pool', decisionSourceSummary(decision, locale)],
+          [locale === 'zh-CN' ? '已经确认' : 'Confirmed', decisionConfirmedSummary(decision, locale)],
+          [locale === 'zh-CN' ? '还差什么' : 'Missing', decisionMissingSummary(decision, locale)],
+          [locale === 'zh-CN' ? '现在动作' : 'Action', action],
+          [locale === 'zh-CN' ? '数据影响' : 'Data effect', decisionConfidenceSummary(decision, sourceConfidence, locale)],
+          [locale === 'zh-CN' ? '作废条件' : 'Invalidates', invalidates],
+        ].map(([label, value]) => (
+          <div key={String(label)} style={decisionExplainRowStyle}>
+            <div style={decisionExplainLabelStyle}>{label}</div>
+            <div style={mutedTwoLineStyle} title={String(value)}>{value}</div>
+          </div>
+        ))}
+      </div>
+    </Panel>
   )
 }
 
