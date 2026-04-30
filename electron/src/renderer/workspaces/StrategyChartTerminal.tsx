@@ -17,7 +17,7 @@ import type { SignalsDashboard } from '../../../../src/services/longclawControlP
 import { fontStacks, interaction, motion, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '../i18n.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
-import { tagsForWatchlist } from './StrategyChartTags.js'
+import { rankLabelForWatchlist, rankReasonForWatchlist, signalScopeLabel, tagsForWatchlist } from './StrategyChartTags.js'
 
 type StrategyDashboard = Pick<
   SignalsDashboard,
@@ -113,6 +113,8 @@ type StrategySignal = {
   source?: string
   pool_status?: string
   chart_aligned?: boolean
+  display_scope?: string
+  signal_side?: string
   symbol?: string
   name?: string
   relation?: string
@@ -140,12 +142,17 @@ type WorkbenchSymbolData = {
   analysis_target?: string
   candidate_groups?: Record<string, unknown>
   candidate_stocks?: Record<string, unknown>[]
+  data_truth?: Record<string, unknown>
+  viewpoint_context?: Record<string, unknown>
   stock_analysis?: Record<string, unknown>
   custom_signal_count?: number
   direct_custom_signal_count?: number
   visible_custom_signal_count?: number
   hidden_custom_signal_count?: number
   available_custom_signal_freqs?: string[]
+  custom_signal_counts_by_freq?: Record<string, number>
+  visible_custom_signal_counts_by_freq?: Record<string, number>
+  signal_counts_by_scope?: Record<string, number>
   hidden_reasons?: string[]
   related_custom_signals?: StrategySignal[]
 }
@@ -188,6 +195,8 @@ type WatchlistRow = {
   lane: string
   freshness: string
   traderAction: string
+  rankLabel: string
+  rankReason: string
   invalidatesWhen: string
   explanation: string
   traceSummary: string
@@ -199,6 +208,9 @@ type WatchlistRow = {
 
 type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
+type ChartModeKey = 'chain_heat' | 'board_heat' | 'stock_price'
+
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'focus_stocks', 'risk_stocks', 'watch_stocks', 'buy_candidates']
 
 type ApiError = Error & {
   status?: number
@@ -274,6 +286,7 @@ const MACD_PANE_ID = 'macd_pane'
 const MACD_ZERO_INDICATOR_NAME = 'LONGCLAW_MACD_ZERO'
 const MACD_PARAMS = [12, 26, 9]
 const MAX_CHART_SIGNAL_OVERLAYS = 10
+const MAX_CURRENT_SIGNAL_OVERLAYS = 40
 const MAX_CHART_DIVERGENCE_OVERLAYS = 3
 const MAX_CHART_LEVEL_OVERLAYS = 4
 const MAX_EVIDENCE_SIGNAL_ROWS = 6
@@ -785,6 +798,49 @@ const targetButtonStyle: React.CSSProperties = {
   fontFamily: fontStacks.ui,
   fontSize: 11,
   transition: interaction.transition,
+}
+
+const chainDrawerStyle: React.CSSProperties = {
+  borderTop: `1px solid ${terminalTheme.border}`,
+  borderBottom: `1px solid ${terminalTheme.borderMuted}`,
+  background: terminalTheme.panel,
+  padding: 5,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+}
+
+const chainDrawerGroupStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+}
+
+const chainDrawerButtonStyle: React.CSSProperties = {
+  ...targetButtonStyle,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(80px, 1.2fr) 54px 58px',
+  alignItems: 'center',
+  gap: 5,
+  padding: '3px 5px',
+}
+
+const chainContextHeroStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+}
+
+const chartModeSwitchStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
 }
 
 const watchlistTableStyle: React.CSSProperties = {
@@ -2048,25 +2104,27 @@ function movingAverageLevel(data: KLineData[], period: number): number | undefin
   return sum / period
 }
 
-function isDailyFreq(freq?: string): boolean {
-  const normalized = String(freq ?? '').toLowerCase()
-  return normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily'
-}
-
 function derivedMaKeyLevels(data: KLineData[], freq?: string): StrategyKeyLevel[] {
-  if (!isDailyFreq(freq)) return []
-  return [50, 200]
+  const normalized = normalizeSignalFreq(freq)
+  const periods = normalized === 'weekly'
+    ? [20, 50]
+    : normalized === '30min'
+      ? [20, 60]
+      : normalized === 'daily'
+        ? [50, 200]
+        : []
+  return periods
     .map(period => {
       const value = movingAverageLevel(data, period)
       if (value === undefined) return null
       const close = latestClose(data)
       return {
-        name: `${period}日线`,
+        name: `${displayFreqLabel(normalized)}MA${period}`,
         value,
-        role: period === 200 ? '长期趋势压力/支撑' : '阶段底部/成本线',
+        role: normalized === 'daily' && period === 200 ? '长期趋势压力/支撑' : '阶段底部/成本线',
         position: close !== undefined && close >= value ? '下方' : '上方',
         distance_pct: close !== undefined && value > 0 ? ((value - close) / close) * 100 : null,
-        timeframe: 'daily',
+        timeframe: normalized,
       } satisfies StrategyKeyLevel
     })
     .filter((item): item is StrategyKeyLevel => Boolean(item))
@@ -2347,8 +2405,20 @@ function isCustomUserSignal(signal: StrategySignal): boolean {
 function signalSourceLabel(signal: StrategySignal): string {
   if (isCustomUserSignal(signal)) return '自定义'
   const source = String(signal.source ?? '').toLowerCase()
+  if (source.includes('terminal_technical_signals')) return '硬技术'
   if (source.includes('signal_pool') || source.includes('signals')) return '信号池'
   return ''
+}
+
+function isPriorityChartSignal(signal: StrategySignal): boolean {
+  const scope = String(signal.display_scope ?? '')
+  const source = String(signal.source ?? '').toLowerCase()
+  return (
+    isCustomUserSignal(signal) ||
+    scope === 'current_timeframe' ||
+    scope === 'higher_timeframe_context' ||
+    source.includes('terminal_technical_signals')
+  )
 }
 
 function displaySignalsForChart(data: KLineData[], signals: StrategySignal[]): StrategySignal[] {
@@ -2358,19 +2428,24 @@ function displaySignalsForChart(data: KLineData[], signals: StrategySignal[]): S
     .map(signal => ({ signal, timestamp: signalTimestamp(signal), priority: signalOverlayPriority(signal) }))
     .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } => item.timestamp !== undefined)
   const recent = valid.filter(item => item.timestamp >= cutoff)
-  const latestCustom = valid.filter(item => isCustomUserSignal(item.signal)).slice(-MAX_CHART_SIGNAL_OVERLAYS)
-  const source = recent.length > 0 ? [...recent, ...latestCustom] : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
-  const bestByTimestamp = new Map<number, { signal: StrategySignal; timestamp: number; priority: number }>()
+  const pinned = recent.filter(item => isPriorityChartSignal(item.signal)).slice(-MAX_CURRENT_SIGNAL_OVERLAYS)
+  const system = recent
+    .filter(item => !isPriorityChartSignal(item.signal))
+    .sort((left, right) => right.priority - left.priority || right.timestamp - left.timestamp)
+    .slice(0, MAX_CHART_SIGNAL_OVERLAYS)
+  const latestFallback = valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
+  const source = recent.length > 0 ? [...pinned, ...system] : latestFallback
+  const bestBySignal = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
   source.forEach(item => {
-    const existing = bestByTimestamp.get(item.timestamp)
-    if (!existing || item.priority > existing.priority) bestByTimestamp.set(item.timestamp, item)
+    const key = `${item.timestamp}:${item.signal.type ?? item.signal.signal_type ?? ''}:${item.signal.freq ?? ''}:${item.signal.display_scope ?? ''}`
+    const existing = bestBySignal.get(key)
+    if (!existing || item.priority > existing.priority) bestBySignal.set(key, item)
   })
-  return Array.from(bestByTimestamp.values())
+  return Array.from(bestBySignal.values())
     .sort((left, right) => {
       if (right.priority !== left.priority) return right.priority - left.priority
       return right.timestamp - left.timestamp
     })
-    .slice(0, MAX_CHART_SIGNAL_OVERLAYS)
     .sort((left, right) => left.timestamp - right.timestamp)
     .map(item => item.signal)
 }
@@ -2406,6 +2481,7 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
     const label = shortSignalLabel(signal.type ?? signal.signal_type)
     const side = signalOverlaySide(signal.type ?? signal.signal_type)
     const custom = isCustomUserSignal(signal)
+    const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>)
     chart.createOverlay({
       name: SIGNAL_OVERLAY_NAME,
       groupId: SIGNAL_OVERLAY_GROUP,
@@ -2417,7 +2493,7 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
         color: custom ? (side === 'sell' ? '#fb7185' : '#38bdf8') : signalOverlayColor(side),
         isCustom: custom,
         freq: displayFreqLabel(signal.freq),
-        sourceLabel: signalSourceLabel(signal),
+        sourceLabel: [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · '),
         details: signal.details,
       } satisfies SignalOverlayData,
     })
@@ -2944,6 +3020,8 @@ function toWatchlistRow(
     lane: compactText(row.lane),
     freshness: compactText(row.freshness) || compactText(laneStatus.freshness) || compactText(laneStatus.status),
     traderAction: compactText(row.trader_action) || compactText(row.action_status),
+    rankLabel: rankLabelForWatchlist(row),
+    rankReason: rankReasonForWatchlist(row),
     invalidatesWhen: compactText(row.invalidates_when),
     explanation: compactText(row.explanation),
     traceSummary: compactText(row.trace_summary),
@@ -3061,6 +3139,85 @@ function candidateGroupsFromSymbolData(symbolData: WorkbenchSymbolData | null): 
   return groups
 }
 
+function candidateGroupsFromRow(row: WatchlistRow | Record<string, unknown> | null | undefined): Record<string, Record<string, unknown>[]> {
+  const raw = 'raw' in recordValue(row) ? recordValue(recordValue(row).raw) : recordValue(row)
+  const groups = recordValue(raw.candidate_groups)
+  const output: Record<string, Record<string, unknown>[]> = {}
+  candidateGroupOrder.forEach(key => {
+    const value = groups[key]
+    output[key] = Array.isArray(value) ? value.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0) : []
+  })
+  if (candidateGroupOrder.every(key => output[key].length === 0)) {
+    const preview = Array.isArray(raw.focus_stocks_preview) ? raw.focus_stocks_preview : []
+    output.constituents = preview.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+  }
+  return output
+}
+
+function chainRowKey(row: WatchlistRow): string {
+  return [
+    compactText(row.raw.chain_key) || compactText(row.raw.chain_id) || row.label,
+    compactText(row.raw.node_key) || compactText(row.raw.node_id) || row.name,
+  ].filter(Boolean).join(':')
+}
+
+function candidateStockLabel(row: Record<string, unknown>): string {
+  return (
+    compactText(row.symbol) ||
+    compactText(row.code) ||
+    compactText(row.raw_code) ||
+    compactText(row.label) ||
+    compactText(row.name)
+  )
+}
+
+function chartModeFromTarget(target: ChartTarget, symbolData: WorkbenchSymbolData | null): ChartModeKey {
+  const meta = recordValue(symbolData?.chart?.meta)
+  if (target.kind === 'stock' || compactText(symbolData?.target?.kind) === 'stock') return 'stock_price'
+  if (compactText(meta.chart_mode) === 'board_heat' || meta.is_price_kline === false) return 'board_heat'
+  return 'chain_heat'
+}
+
+function chartModeLabel(mode: ChartModeKey, locale: LongclawLocale): string {
+  const labels: Record<ChartModeKey, [string, string]> = {
+    chain_heat: ['产业链热度', 'Chain heat'],
+    board_heat: ['概念/行业热度', 'Board heat'],
+    stock_price: ['个股K线', 'Stock K-line'],
+  }
+  const label = labels[mode]
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function hiddenReasonLabel(reason: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    board_heat_chart_has_no_direct_custom_signal: ['板块热度图没有直接个股信号，下方展示关联标的入口。', 'Board heat has no direct stock signal; related stocks are listed below.'],
+    industry_chart_has_no_direct_custom_signal: ['行业图没有直接个股信号，下方展示关联标的入口。', 'Industry chart has no direct stock signal; related stocks are listed below.'],
+    concept_has_no_direct_custom_signal: ['概念未映射到直接信号，只展示候选和关联标的。', 'Concept has no direct signal; candidates are listed only.'],
+    index_has_no_direct_custom_signal: ['指数没有直接个股信号，需回到关联标的确认。', 'Index has no direct stock signal; confirm with related stocks.'],
+    no_custom_signal_records: ['没有自定义信号记录。', 'No custom signal records.'],
+    custom_signals_on_other_freq: ['信号在其它周期，当前周期不直接确认。', 'Signals exist on other timeframes.'],
+    custom_signals_not_in_loaded_chart_range: ['信号不在当前图窗范围内。', 'Signals are outside the visible chart range.'],
+  }
+  const label = labels[reason]
+  return label ? (locale === 'zh-CN' ? label[0] : label[1]) : humanizeTokenLocale(locale, reason)
+}
+
+function riskFlagLabel(flag: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    diverging: ['热度背离', 'Diverging'],
+    risk_off: ['链风险', 'Risk off'],
+    cooling: ['降温', 'Cooling'],
+    mapping_confidence_low: ['映射置信度低', 'Low mapping confidence'],
+    data_stale: ['数据滞后', 'Data stale'],
+    freq_fallback: ['周期降级', 'Frequency fallback'],
+    breadth_weak: ['广度偏弱', 'Weak breadth'],
+    K线未预热: ['K线未预热', 'K-line not preheated'],
+    仅成分股证据: ['仅成分股证据', 'Constituent only'],
+  }
+  const label = labels[flag]
+  return label ? (locale === 'zh-CN' ? label[0] : label[1]) : humanizeTokenLocale(locale, flag)
+}
+
 export function StrategyChartTerminal({
   locale,
   dashboard,
@@ -3074,8 +3231,11 @@ export function StrategyChartTerminal({
   const resizeFrameRef = useRef<number | null>(null)
   const activeRequestRef = useRef(0)
   const shellRefreshInFlightRef = useRef(false)
+  const shellLoadedRef = useRef(false)
+  const activeWatchlistTabRef = useRef<WatchlistTabKey>('sector_boards')
   const silentSymbolRefreshInFlightRef = useRef(false)
   const dashboardRef = useRef(dashboard)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
   const lastChartUpdateSilentRef = useRef(false)
   const autoCollapsedForFocusRef = useRef(false)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
@@ -3087,20 +3247,28 @@ export function StrategyChartTerminal({
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
-  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('macro_indices')
+  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('sector_boards')
   const [selectedRangeKey, setSelectedRangeKey] = useState('')
+  const [expandedChainKeys, setExpandedChainKeys] = useState<Set<string>>(() => new Set())
+  const [listCursorIndex, setListCursorIndex] = useState(0)
+  const [selectedChainContext, setSelectedChainContext] = useState<Record<string, unknown> | null>(null)
+  const [pendingListUpdate, setPendingListUpdate] = useState(false)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
 
+  useEffect(() => {
+    activeWatchlistTabRef.current = activeWatchlistTab
+  }, [activeWatchlistTab])
+
   const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
+  const currentFreq = symbolData?.target?.effective_freq ?? target.freq
   const visibleCustomSignals = useMemo(() => signals.filter(isCustomUserSignal), [signals])
   const customSignalCount = useMemo(
     () => numberValue(symbolData?.custom_signal_count) ?? visibleCustomSignals.length,
     [symbolData?.custom_signal_count, visibleCustomSignals.length],
   )
-  const directCustomSignalCount = numberValue(symbolData?.direct_custom_signal_count) ?? customSignalCount
   const availableCustomSignalFreqOptions = useMemo(
     () => (Array.isArray(symbolData?.available_custom_signal_freqs) ? symbolData.available_custom_signal_freqs : [])
       .map(freq => ({
@@ -3121,9 +3289,19 @@ export function StrategyChartTerminal({
   )
   const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, signals), [klineData, signals])
   const evidenceSignals = useMemo(() => displaySignalsForEvidence(signals), [signals])
-  const currentVisibleSignals = useMemo(() => chartVisibleSignals.filter(isCustomUserSignal), [chartVisibleSignals])
+  const currentVisibleSignals = useMemo(
+    () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期'),
+    [chartVisibleSignals, currentFreq],
+  )
+  const higherTimeframeSignals = useMemo(
+    () => evidenceSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '上级周期'),
+    [currentFreq, evidenceSignals],
+  )
   const evidenceCustomSignals = useMemo(() => evidenceSignals.filter(isCustomUserSignal), [evidenceSignals])
-  const otherEvidenceSignals = useMemo(() => evidenceSignals.filter(signal => !isCustomUserSignal(signal)), [evidenceSignals])
+  const otherEvidenceSignals = useMemo(
+    () => evidenceSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '其它周期' && !isCustomUserSignal(signal)),
+    [currentFreq, evidenceSignals],
+  )
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
   const liveRefresh = shouldUseLiveRefresh(shell?.session)
@@ -3219,6 +3397,7 @@ export function StrategyChartTerminal({
   const activeWatchlistRows = groupedWatchlistRows[activeWatchlistTab].length > 0
     ? groupedWatchlistRows[activeWatchlistTab]
     : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? groupedWatchlistRows.legacy : [])
+  const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
   const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
   const activeWatchlistEmptyText = activeWatchlistTab === 'focus_stocks'
     ? (compactText(focusGroupMeta.empty_reason)
@@ -3240,7 +3419,6 @@ export function StrategyChartTerminal({
     compactText(symbolData?.summary?.subtitle) ||
     compactText(symbolData?.target?.symbol) ||
     compactText(symbolData?.target?.kind, target.kind)
-  const currentFreq = symbolData?.target?.effective_freq ?? target.freq
   const otherCustomSignalFreqOptions = useMemo(
     () => availableCustomSignalFreqOptions.filter(item => item.value && item.value !== normalizeSignalFreq(currentFreq)),
     [availableCustomSignalFreqOptions, currentFreq],
@@ -3250,6 +3428,8 @@ export function StrategyChartTerminal({
   const chartLineage = useMemo(() => chartLineageLabel(symbolData, locale), [locale, symbolData])
   const chartFormula = useMemo(() => chartFormulaLabel(symbolData, locale), [locale, symbolData])
   const chartMeta = recordValue(symbolData?.chart?.meta)
+  const activeChartMode = chartModeFromTarget(target, symbolData)
+  const chainContext = selectedChainContext ?? recordValue(symbolData?.summary?.mapping_chain)
   const primaryValueLabel = chartMeta.is_price_kline === false
     ? (locale === 'zh-CN' ? '热度收盘' : 'Heat close')
     : (locale === 'zh-CN' ? '最新价' : 'Last')
@@ -3287,6 +3467,8 @@ export function StrategyChartTerminal({
           signal,
           'strategy.shell',
         )
+        if (shellLoadedRef.current && activeWatchlistTabRef.current === 'sector_boards') setPendingListUpdate(true)
+        shellLoadedRef.current = true
         setShell(nextShell)
         return nextShell
       } finally {
@@ -3401,6 +3583,10 @@ export function StrategyChartTerminal({
       setSelectedRangeKey((ytd ?? watchlistRangeColumns[0]).key)
     }
   }, [selectedRangeKey, watchlistRangeColumns])
+
+  useEffect(() => {
+    setListCursorIndex(previous => Math.min(Math.max(previous, 0), Math.max(0, activeWatchlistRows.length - 1)))
+  }, [activeWatchlistRows.length])
 
   useEffect(() => {
     if (!baseUrl) return
@@ -3583,6 +3769,46 @@ export function StrategyChartTerminal({
     [loadSymbol, target],
   )
 
+  const selectCandidateTarget = useCallback(
+    (row: Record<string, unknown>, source = 'strategy.chain-drawer.stock-click') => {
+      const label = candidateStockLabel(row)
+      if (!label) return
+      selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq }, source)
+    },
+    [selectTarget, target.freq],
+  )
+
+  const activateWatchlistRow = useCallback(
+    (row: WatchlistRow, source = 'strategy.watchlist.click') => {
+      const rowIndex = activeWatchlistRows.findIndex(item => item.id === row.id)
+      if (rowIndex >= 0) setListCursorIndex(rowIndex)
+      if (activeWatchlistTab === 'sector_boards') {
+        const key = chainRowKey(row)
+        setSelectedChainContext(row.raw)
+        setExpandedChainKeys(previous => {
+          const next = new Set(previous)
+          const isActive = watchlistRowIsActive(row, target)
+          if (isActive && next.has(key)) {
+            next.delete(key)
+          } else {
+            next.add(key)
+          }
+          return next
+        })
+        if (watchlistRowIsActive(row, target) && expandedChainKeys.has(key)) return
+      }
+      selectTarget(
+        {
+          label: row.targetLabel || row.label,
+          kind: row.targetKind || row.kind,
+          freq: terminalListTargetFreq(row.targetFreq, target.freq),
+        },
+        source,
+      )
+    },
+    [activeWatchlistRows, activeWatchlistTab, expandedChainKeys, selectTarget, target],
+  )
+
   const submitSearch = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault()
@@ -3634,6 +3860,48 @@ export function StrategyChartTerminal({
         refreshNow()
         return
       }
+      if (event.key === '/') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+      if (event.key.toLowerCase() === 'j') {
+        event.preventDefault()
+        setListCursorIndex(previous => Math.min(previous + 1, Math.max(0, activeWatchlistRows.length - 1)))
+        return
+      }
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setListCursorIndex(previous => Math.max(previous - 1, 0))
+        return
+      }
+      if (event.key === 'Enter' && cursorRow) {
+        event.preventDefault()
+        activateWatchlistRow(cursorRow, 'strategy.keyboard.row-enter')
+        return
+      }
+      if (event.key === ' ' && cursorRow && activeWatchlistTab === 'sector_boards') {
+        event.preventDefault()
+        const key = chainRowKey(cursorRow)
+        setSelectedChainContext(cursorRow.raw)
+        setExpandedChainKeys(previous => {
+          const next = new Set(previous)
+          if (next.has(key)) next.delete(key)
+          else next.add(key)
+          return next
+        })
+        return
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        const index = WATCHLIST_TAB_KEYS.indexOf(activeWatchlistTab)
+        const delta = event.shiftKey ? -1 : 1
+        const next = WATCHLIST_TAB_KEYS[(index + delta + WATCHLIST_TAB_KEYS.length) % WATCHLIST_TAB_KEYS.length]
+        setActiveWatchlistTab(next)
+        setListCursorIndex(0)
+        return
+      }
       const freqIndex = Number(event.key) - 1
       const nextFreq = FREQ_OPTIONS[freqIndex]
       if (nextFreq && targetFreqs.includes(nextFreq.value)) {
@@ -3643,7 +3911,7 @@ export function StrategyChartTerminal({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [leftCollapsed, refreshNow, rightCollapsed, selectTarget, target, targetFreqs])
+  }, [activeWatchlistRows.length, activeWatchlistTab, activateWatchlistRow, cursorRow, leftCollapsed, refreshNow, rightCollapsed, selectTarget, target, targetFreqs])
 
   if (!baseUrl) {
     return (
@@ -3785,6 +4053,7 @@ export function StrategyChartTerminal({
       <div style={terminalTopBarStyle(layoutMode)}>
         <form style={searchFormStyle(layoutMode)} onSubmit={submitSearch}>
           <input
+            ref={searchInputRef}
             aria-label={locale === 'zh-CN' ? '搜索标的' : 'Search symbol'}
             style={searchInputStyle}
             value={searchDraft}
@@ -3894,16 +4163,12 @@ export function StrategyChartTerminal({
               selectedRangeKey={selectedRangeColumn?.key ?? ''}
               onRangeChange={setSelectedRangeKey}
               emptyText={activeWatchlistEmptyText}
-              onSelect={row =>
-                selectTarget(
-                  {
-                    label: row.targetLabel || row.label,
-                    kind: row.targetKind || row.kind,
-                    freq: terminalListTargetFreq(row.targetFreq, target.freq),
-                  },
-                  'strategy.watchlist.click',
-                )
-              }
+              pendingListUpdate={pendingListUpdate}
+              onAcknowledgeListUpdate={() => setPendingListUpdate(false)}
+              cursorRowId={cursorRow?.id ?? ''}
+              expandedChainKeys={expandedChainKeys}
+              onSelect={row => activateWatchlistRow(row)}
+              onCandidateSelect={row => selectCandidateTarget(row)}
             />
           </Panel>
         </div>
@@ -3919,6 +4184,19 @@ export function StrategyChartTerminal({
               <div style={chartSubtitleStyle}>
                 {[summarySubtitle, currentFreq, chartTimezone, latestSignal || undefined].filter(Boolean).join(' · ')}
               </div>
+              <div style={chartModeSwitchStyle}>
+                {(['chain_heat', 'board_heat', 'stock_price'] as ChartModeKey[]).map(mode => (
+                  <span
+                    key={mode}
+                    style={mode === activeChartMode ? watchlistTabButtonActiveStyle : miniNeutralSignalBadgeStyle}
+                    title={mode === 'stock_price'
+                      ? (locale === 'zh-CN' ? '真实个股价格K线' : 'Real stock price K-line')
+                      : (locale === 'zh-CN' ? '热度/涨跌幅重采样，非价格K线' : 'Heat/change resampled OHLC, not price')}
+                  >
+                    {chartModeLabel(mode, locale)}
+                  </span>
+                ))}
+              </div>
               {chartLineage ? (
                 <div style={mutedTextStyle}>{chartLineage}</div>
               ) : null}
@@ -3929,18 +4207,18 @@ export function StrategyChartTerminal({
                 {activeMaPeriods.map((period, index) => (
                   <span key={`ma-${period}`} style={indicatorLegendItemStyle}>
                     <span style={{ ...indicatorLegendSwatchStyle, background: MA_COLORS[index % MA_COLORS.length] }} />
-                    {`MA${period}`}
+                    {chartMeta.is_price_kline === false ? `热度MA${period}` : `MA${period}`}
                   </span>
                 ))}
                 {MACD_LINE_COLORS.map((color, index) => (
                   <span key={`macd-${index}`} style={indicatorLegendItemStyle}>
                     <span style={{ ...indicatorLegendSwatchStyle, background: color }} />
-                    {index === 0 ? 'DIF' : 'DEA'}
+                    {chartMeta.is_price_kline === false ? (index === 0 ? '热动DIF' : '热动DEA') : (index === 0 ? 'DIF' : 'DEA')}
                   </span>
                 ))}
                 <span style={indicatorLegendItemStyle}>
                   <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.alpha.textBorderStrong }} />
-                  MACD 0
+                  {chartMeta.is_price_kline === false ? '热度动量0' : 'MACD 0'}
                 </span>
                 {isDailyFreq(currentFreq) ? (
                   <span style={indicatorLegendItemStyle}>
@@ -4000,8 +4278,12 @@ export function StrategyChartTerminal({
             {klineData.length === 0 ? (
               <div style={chartOverlayMessageStyle}>
                 {loading || booting
-                  ? (locale === 'zh-CN' ? '正在等待 Signals 输出 K 线和买卖点。' : 'Waiting for Signals to provide candles and signals.')
-                  : chartCacheNotice || (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.')}
+                  ? (chartMeta.is_price_kline === false
+                    ? (locale === 'zh-CN' ? '正在等待 Signals 输出热度K线。' : 'Waiting for Signals heat candles.')
+                    : (locale === 'zh-CN' ? '正在等待 Signals 输出 K 线和买卖点。' : 'Waiting for Signals to provide candles and signals.'))
+                  : chartCacheNotice || (chartMeta.is_price_kline === false
+                    ? (locale === 'zh-CN' ? '热度缓存未就绪，不能静默替换成代表股K线。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
+                    : (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.'))}
               </div>
             ) : null}
           </div>
@@ -4021,6 +4303,13 @@ export function StrategyChartTerminal({
           </div>
         ) : (
         <div style={terminalSideStyle}>
+          <ChainContextRail
+            locale={locale}
+            context={chainContext}
+            symbolData={symbolData}
+            onSelect={row => selectCandidateTarget(row, 'strategy.chain-context.stock-click')}
+          />
+
           <Panel
             title={locale === 'zh-CN' ? '交易任务' : 'Trader tasks'}
             meta={String(decisionRows.length + sellRows.length)}
@@ -4113,14 +4402,16 @@ export function StrategyChartTerminal({
                 <div style={compactListStyle}>
                 <div style={signalBlockStyle}>
                   <div style={candidateGroupHeaderStyle}>
-                    <span>{locale === 'zh-CN' ? '当前图可见' : 'Visible on chart'}</span>
-                    <span>{directCustomSignalCount === 0 ? (locale === 'zh-CN' ? '无直接自定义' : 'no direct custom') : `${currentVisibleSignals.length}/${customSignalCount}`}</span>
+                    <span>{locale === 'zh-CN' ? '本周期信号' : 'Current timeframe'}</span>
+                    <span>{currentVisibleSignals.length}</span>
                   </div>
                 {currentVisibleSignals.length > 0 ? currentVisibleSignals.map((signal, index) => (
                   <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? signal.signal_type ?? 'custom'}`} style={signalRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                        <span style={customSignalBadgeStyle}>自定义</span>
+                        {signalSourceLabel(signal) ? (
+                          <span style={isCustomUserSignal(signal) ? customSignalBadgeStyle : miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal)}</span>
+                        ) : null}
                         <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>{signal.type || signal.signal_type || 'Signal'}</span>
                         <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                         <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
@@ -4137,14 +4428,42 @@ export function StrategyChartTerminal({
                   </div>
                 )) : (
                   <div style={mutedTextStyle}>
-                    {hiddenReasons.includes('index_has_no_direct_custom_signal') || hiddenReasons.includes('board_heat_chart_has_no_direct_custom_signal')
-                      ? (locale === 'zh-CN' ? '指数/板块没有直接回测信号，右侧展示关联个股入口。' : 'Index/board charts have no direct custom signal; related stock signals are listed below.')
+                    {hiddenReasons.length > 0
+                      ? hiddenReasons.map(reason => hiddenReasonLabel(reason, locale)).join(' · ')
                       : evidenceCustomSignals.length > 0
                         ? (locale === 'zh-CN' ? '当前图窗口未显示自定义信号，可切换到下方可用周期。' : 'Custom signals exist outside this visible chart window or timeframe.')
                         : (locale === 'zh-CN' ? '当前周期没有可见自定义信号。' : 'No visible custom signal on this timeframe.')}
                   </div>
                 )}
                 </div>
+                {higherTimeframeSignals.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '上级周期上下文' : 'Higher timeframe context'}</span>
+                      <span>{higherTimeframeSignals.length}</span>
+                    </div>
+                    {higherTimeframeSignals.map((signal, index) => (
+                      <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'higher'}`} style={signalRowStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal) || '上级'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{signal.type || 'Signal'}</span>
+                            <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
+                            <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
+                          </div>
+                          <div style={mutedLineStyle}>
+                            {[signal.date_str, signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {signal.details ? (
+                            <div style={mutedTwoLineStyle}>{signal.details}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {otherCustomSignalFreqOptions.length > 0 ? (
                   <div style={signalBlockStyle}>
                     <div style={candidateGroupHeaderStyle}>
@@ -4557,7 +4876,12 @@ function WatchlistTabbedTable({
   selectedRangeKey,
   onRangeChange,
   emptyText,
+  pendingListUpdate,
+  onAcknowledgeListUpdate,
+  cursorRowId,
+  expandedChainKeys,
   onSelect,
+  onCandidateSelect,
 }: {
   locale: LongclawLocale
   activeTab: WatchlistTabKey
@@ -4578,7 +4902,12 @@ function WatchlistTabbedTable({
   selectedRangeKey: string
   onRangeChange: (key: string) => void
   emptyText: string
+  pendingListUpdate: boolean
+  onAcknowledgeListUpdate: () => void
+  cursorRowId: string
+  expandedChainKeys: Set<string>
   onSelect: (row: WatchlistRow) => void
+  onCandidateSelect: (row: Record<string, unknown>) => void
 }) {
   const tabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
     {
@@ -4640,6 +4969,15 @@ function WatchlistTabbedTable({
           </select>
         </label>
       </div>
+      {pendingListUpdate && activeTab === 'sector_boards' ? (
+        <button
+          type="button"
+          style={panelActionButtonStyle}
+          onClick={onAcknowledgeListUpdate}
+        >
+          {locale === 'zh-CN' ? '异动板块有更新，停止扫盘后点击确认' : 'Hot boards updated; confirm when ready'}
+        </button>
+      ) : null}
       {activeTab === 'sector_boards' ? (
         <ChainHeatVisualization
           locale={locale}
@@ -4655,7 +4993,10 @@ function WatchlistTabbedTable({
         target={target}
         rangeColumns={rangeColumns}
         emptyText={emptyText}
+        cursorRowId={cursorRowId}
+        expandedChainKeys={expandedChainKeys}
         onSelect={onSelect}
+        onCandidateSelect={onCandidateSelect}
       />
     </div>
   )
@@ -4893,7 +5234,10 @@ function WatchlistTable({
   target,
   rangeColumns,
   emptyText,
+  cursorRowId,
+  expandedChainKeys,
   onSelect,
+  onCandidateSelect,
 }: {
   locale: LongclawLocale
   activeTab: WatchlistTabKey
@@ -4901,7 +5245,10 @@ function WatchlistTable({
   target: ChartTarget
   rangeColumns: WatchlistRangeColumn[]
   emptyText: string
+  cursorRowId: string
+  expandedChainKeys: Set<string>
   onSelect: (row: WatchlistRow) => void
+  onCandidateSelect: (row: Record<string, unknown>) => void
 }) {
   if (rows.length === 0) {
     return <div style={emptyStateDarkStyle}>{emptyText}</div>
@@ -4924,62 +5271,291 @@ function WatchlistTable({
       </div>
       {rows.map(row => {
         const active = watchlistRowIsActive(row, target)
+        const cursor = row.id === cursorRowId
+        const expanded = activeTab === 'sector_boards' && expandedChainKeys.has(chainRowKey(row))
         const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
         const secondMetric = activeTab === 'sector_boards' ? sectorLeaderForWatchlist(row) : row.dayChange
         return (
-          <button
-            key={row.id}
-            type="button"
-            style={active ? activeButtonRowStyle : buttonRowStyle}
-            title={[
-              row.name,
-              activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
-              activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
-              row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${row.traceSummary}` : '',
-              rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
-            ].filter(Boolean).join(' · ')}
-            onClick={() => onSelect(row)}
-          >
-            <div style={watchlistNameCellStyle}>
-              <div style={watchlistNameStyle}>{row.name}</div>
-              <div style={watchlistSubStyle}>
-                {[row.typeLabel, row.code, ...row.tags].filter(Boolean).join(' · ')}
-              </div>
-              {row.explanation || row.traderAction ? (
+          <React.Fragment key={row.id}>
+            <button
+              type="button"
+              style={{
+                ...(active ? activeButtonRowStyle : buttonRowStyle),
+                ...(cursor ? { boxShadow: `inset 3px 0 ${terminalTheme.accent}` } : {}),
+              }}
+              title={[
+                row.name,
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+                row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${row.rankReason}` : '',
+                row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${row.traceSummary}` : '',
+                rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
+              ].filter(Boolean).join(' · ')}
+              onClick={() => onSelect(row)}
+            >
+              <div style={watchlistNameCellStyle}>
+                <div style={watchlistNameStyle}>{row.name}</div>
                 <div style={watchlistSubStyle}>
-                  {[row.traderAction, row.explanation].filter(Boolean).join(' · ')}
+                  {[row.typeLabel, row.code, ...row.tags].filter(Boolean).join(' · ')}
                 </div>
-              ) : null}
-            </div>
-            <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? percentTone(firstMetric) : {}) }}>{firstMetric}</div>
-            <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? {} : percentTone(secondMetric)) }}>{secondMetric}</div>
-            <div style={watchlistCellStyle}>
-              {activeTab === 'sector_boards' ? (
-                sectorCarrierForWatchlist(row, locale)
-              ) : row.signalBadges.length > 0 ? (
-                <span style={signalBadgeRowStyle}>
-                  {row.signalBadges.slice(0, 4).map(badge => (
-                    <span
-                      key={`${row.id}-${badge.side}-${badge.label}`}
-                      style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
-                    >
-                      {badge.label}
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                row.signal || 'N/A'
-              )}
-            </div>
-            {row.rangeValues.map((value, index) => (
-              <div key={`${row.id}-range-${index}`} style={{ ...watchlistCellStyle, ...percentTone(value) }}>
-                {value}
+                {row.explanation || row.traderAction || row.rankLabel || row.rankReason ? (
+                  <div style={watchlistSubStyle}>
+                    {[row.rankLabel, row.traderAction, row.rankReason || row.explanation].filter(Boolean).join(' · ')}
+                  </div>
+                ) : null}
               </div>
-            ))}
-          </button>
+              <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? percentTone(firstMetric) : {}) }}>{firstMetric}</div>
+              <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? {} : percentTone(secondMetric)) }}>{secondMetric}</div>
+              <div style={watchlistCellStyle}>
+                {activeTab === 'sector_boards' ? (
+                  sectorCarrierForWatchlist(row, locale)
+                ) : row.signalBadges.length > 0 ? (
+                  <span style={signalBadgeRowStyle}>
+                    {row.signalBadges.slice(0, 4).map(badge => (
+                      <span
+                        key={`${row.id}-${badge.side}-${badge.label}`}
+                        style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                      >
+                        {badge.label}
+                      </span>
+                    ))}
+                  </span>
+                ) : (
+                  row.signal || 'N/A'
+                )}
+              </div>
+              {row.rangeValues.map((value, index) => (
+                <div key={`${row.id}-range-${index}`} style={{ ...watchlistCellStyle, ...percentTone(value) }}>
+                  {value}
+                </div>
+              ))}
+            </button>
+            {expanded ? (
+              <ChainTargetDrawer
+                locale={locale}
+                row={row}
+                onSelect={onCandidateSelect}
+              />
+            ) : null}
+          </React.Fragment>
         )
       })}
     </div>
+  )
+}
+
+function ChainTargetDrawer({
+  locale,
+  row,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow
+  onSelect: (row: Record<string, unknown>) => void
+}) {
+  const groups = candidateGroupsFromRow(row)
+  const sections = candidateGroupOrder
+    .map(key => ({ key, label: candidateGroupLabel(key, locale), rows: groups[key] ?? [] }))
+    .filter(section => section.rows.length > 0)
+  const technical = recordValue(row.raw.technical_linkage)
+  const viewpoint = recordValue(row.raw.viewpoint_context)
+  const riskFlags = Array.isArray(row.raw.risk_flags) ? row.raw.risk_flags.map(item => compactText(item)).filter(Boolean) : []
+  if (sections.length === 0) {
+    return (
+      <div style={chainDrawerStyle}>
+        <div style={emptyStateDarkStyle}>
+          {locale === 'zh-CN' ? '暂无产业链标的，等待盘后图谱或成分股缓存补齐。' : 'No chain targets yet.'}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={chainDrawerStyle}>
+      <div style={candidateGroupHeaderStyle}>
+        <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
+        <span>
+          {[
+            compactText(technical.summary),
+            compactText(viewpoint.status),
+            riskFlags.length > 0 ? riskFlags.map(flag => riskFlagLabel(flag, locale)).join('/') : '',
+          ].filter(Boolean).join(' · ')}
+        </span>
+      </div>
+      {sections.map(section => (
+        <div key={`${row.id}-${section.key}`} style={chainDrawerGroupStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{section.label}</span>
+            <span style={monoTextStyle}>{section.rows.length}</span>
+          </div>
+          {section.rows.slice(0, 6).map((candidate, index) => {
+            const label = candidateStockLabel(candidate)
+            const risk = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.map(item => compactText(item)).filter(Boolean).slice(0, 2).join('/') : ''
+            return (
+              <button
+                key={`${row.id}-${section.key}-${label || index}`}
+                type="button"
+                style={chainDrawerButtonStyle}
+                title={[
+                  compactText(candidate.name),
+                  label,
+                  compactText(candidate.chain_role) || compactText(candidate.relation),
+                  compactText(candidate.why_watch),
+                  risk,
+                ].filter(Boolean).join(' · ')}
+                onClick={() => onSelect(candidate)}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={rowTitleStyle}>{compactText(candidate.name) || label || 'N/A'}</div>
+                  <div style={watchlistSubStyle}>
+                    {[label, compactText(candidate.leader_tier), compactText(candidate.chain_role) || compactText(candidate.relation)].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(formatPercent(candidate.day_change_pct)) }}>
+                  {formatPercent(candidate.day_change_pct)}
+                </div>
+                <div style={{ ...monoTextStyle, textAlign: 'right' }}>
+                  {compactText(candidate.latest_signal) || compactText(candidate.attention_score ? `关注 ${formatNumber(candidate.attention_score, 0)}` : '') || (risk ? riskFlagLabel(risk, locale) : '观察')}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChainContextRail({
+  locale,
+  context,
+  symbolData,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  context: Record<string, unknown>
+  symbolData: WorkbenchSymbolData | null
+  onSelect: (row: Record<string, unknown>) => void
+}) {
+  const source = Object.keys(context).length > 0 ? context : recordValue(symbolData?.summary?.mapping_chain)
+  const groups = candidateGroupsFromRow(source)
+  const candidates = candidateGroupOrder.flatMap(key => groups[key] ?? [])
+  const dataTruth = recordValue(source.data_truth ?? symbolData?.data_truth)
+  const viewpoint = recordValue(source.viewpoint_context ?? symbolData?.viewpoint_context)
+  const technical = recordValue(source.technical_linkage)
+  const mapping = recordValue(source.mapping_chain ?? symbolData?.summary?.mapping_chain)
+  const risks = [
+    ...(Array.isArray(source.risk_flags) ? source.risk_flags : []),
+    ...(dataTruth.freq_fallback ? ['freq_fallback'] : []),
+    compactText(dataTruth.stale_reason) ? 'data_stale' : '',
+  ].map(item => compactText(item)).filter(Boolean)
+  const hasContext = Object.keys(source).length > 0 || candidates.length > 0
+  if (!hasContext) return null
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '产业链上下文' : 'Chain context'}
+      meta={compactText(source.phase) || compactText(mapping.mapping_status) || compactText(viewpoint.status) || 'context'}
+    >
+      <div style={compactListStyle}>
+        <div style={chainContextHeroStyle}>
+          <div style={rowTitleStyle}>
+            {[compactText(source.chain_name), compactText(source.node_name), compactText(mapping.chain_name), compactText(mapping.node_name)]
+              .filter(Boolean)
+              .slice(0, 2)
+              .join(' -> ') || compactText(symbolData?.summary?.title) || 'Chain'}
+          </div>
+          <div style={mutedTwoLineStyle}>
+            {[
+              compactText(source.trading_signal || source.latest_signal),
+              compactText(source.trader_action),
+              compactText(source.invalidates_when),
+            ].filter(Boolean).join(' · ')}
+          </div>
+          <div style={chartMetaRowStyle}>
+            <span style={miniNeutralSignalBadgeStyle}>热度 {formatNumber(source.heat_score)}</span>
+            <span style={{ ...miniNeutralSignalBadgeStyle, ...percentTone(formatPercent(source.change_pct)) }}>{formatPercent(source.change_pct)}</span>
+            <span style={miniNeutralSignalBadgeStyle}>5m {formatNumber(source.momentum_5m)}</span>
+            <span style={miniNeutralSignalBadgeStyle}>15m {formatNumber(source.momentum_15m)}</span>
+            <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span>
+          </div>
+        </div>
+        <div style={signalBlockStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
+            <span>{candidates.length}</span>
+          </div>
+          {candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => (
+            <button
+              key={`${candidateStockLabel(candidate) || index}-${index}`}
+              type="button"
+              style={targetButtonStyle}
+              onClick={() => onSelect(candidate)}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <div style={rowTitleStyle}>{compactText(candidate.name) || candidateStockLabel(candidate) || 'N/A'}</div>
+                <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.leader_tier) || compactText(candidate.chain_role) || '观察'}</span>
+              </div>
+              <div style={mutedTwoLineStyle}>
+                {[candidateStockLabel(candidate), compactText(candidate.latest_signal), `涨幅 ${formatPercent(candidate.day_change_pct)}`, compactText(candidate.why_watch)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </button>
+          )) : (
+            <div style={emptyStateDarkStyle}>{locale === 'zh-CN' ? '暂无标的分组。' : 'No target groups.'}</div>
+          )}
+        </div>
+        <div style={signalBlockStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{locale === 'zh-CN' ? '技术联动' : 'Technical linkage'}</span>
+            <span>{compactText(technical.grade) || 'watch'}</span>
+          </div>
+          <div style={mutedTwoLineStyle}>
+            {compactText(technical.summary) || (locale === 'zh-CN' ? '等待标的硬技术信号确认。' : 'Waiting for technical confirmation.')}
+          </div>
+        </div>
+        <div style={signalBlockStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{locale === 'zh-CN' ? '胖哥/道长观点' : 'Knowledge views'}</span>
+            <span>{compactText(viewpoint.status) || 'context_only'}</span>
+          </div>
+          {Array.isArray(viewpoint.items) && viewpoint.items.length > 0 ? viewpoint.items.slice(0, 3).map((item: unknown, index: number) => {
+            const view = recordValue(item)
+            return (
+              <div key={`${compactText(view.author)}-${index}`} style={dataRowStyle}>
+                <span style={miniNeutralSignalBadgeStyle}>{compactText(view.author) || '观点'}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={mutedTwoLineStyle}>{compactText(view.summary) || compactText(view.candidate_policy) || 'context_only'}</div>
+                  <div style={mutedLineStyle}>{[compactText(view.as_of), compactText(view.source_title), compactText(view.source_path)].filter(Boolean).join(' · ')}</div>
+                </div>
+              </div>
+            )
+          }) : (
+            <div style={mutedTextStyle}>{locale === 'zh-CN' ? '暂无直接观点，只按规则层做背景确认。' : 'No direct view; rule layer only.'}</div>
+          )}
+        </div>
+        <div style={signalBlockStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{locale === 'zh-CN' ? '风险/数据真实性' : 'Risk and data truth'}</span>
+            <span>{risks.length}</span>
+          </div>
+          <div style={chartMetaRowStyle}>
+            {[...new Set(risks)].slice(0, 6).map(flag => (
+              <span key={flag} style={miniSellSignalBadgeStyle}>{riskFlagLabel(flag, locale)}</span>
+            ))}
+            {risks.length === 0 ? <span style={miniNeutralSignalBadgeStyle}>{locale === 'zh-CN' ? '无显式风险' : 'No explicit risk'}</span> : null}
+          </div>
+          <div style={mutedTwoLineStyle}>
+            {[
+              compactText(dataTruth.collection),
+              compactText(dataTruth.as_of),
+              compactText(dataTruth.latest_bar_time),
+              compactText(dataTruth.mapping_status),
+              compactText(dataTruth.stale_reason),
+            ].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+      </div>
+    </Panel>
   )
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { tagsForWatchlist } from './StrategyChartTags.js'
+import { rankLabelForWatchlist, rankReasonForWatchlist, signalScopeLabel, tagsForWatchlist } from './StrategyChartTags.js'
 
 describe('StrategyChart watchlist tags', () => {
   it('prioritizes knowledge conflict over generic source tags', () => {
@@ -38,5 +38,23 @@ describe('StrategyChart watchlist tags', () => {
     }, 'stock')
 
     expect(tags).toEqual(['custom_signal', '等待5m确认'])
+  })
+
+  it('formats backend ranking fields without client-side sorting', () => {
+    const row = {
+      rank: 2,
+      rank_score: 142.5,
+      rank_reason: '执行确认+36.0 · 5m/15m确认+24.0',
+    }
+
+    expect(rankLabelForWatchlist(row)).toBe('#2 142.5')
+    expect(rankReasonForWatchlist(row)).toBe('执行确认+36.0 · 5m/15m确认+24.0')
+  })
+
+  it('labels signal display scopes for chart evidence groups', () => {
+    expect(signalScopeLabel({ display_scope: 'higher_timeframe_context' })).toBe('上级周期')
+    expect(signalScopeLabel({ display_scope: 'other_timeframe' })).toBe('其它周期')
+    expect(signalScopeLabel({ display_scope: 'current_timeframe' })).toBe('本周期')
+    expect(signalScopeLabel({ freq: '30分钟' }, '30min')).toBe('本周期')
   })
 })

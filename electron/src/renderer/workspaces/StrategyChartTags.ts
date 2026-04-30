@@ -23,6 +23,16 @@ function stringArrayValue(value: unknown): string[] {
     : []
 }
 
+function normalizeSignalScopeFreq(value: unknown): string {
+  const raw = compactText(value).toLowerCase()
+  if (['5m', '5min', '5分钟'].includes(raw)) return '5min'
+  if (['15m', '15min', '15分钟'].includes(raw)) return '15min'
+  if (['30m', '30min', '30分钟'].includes(raw)) return '30min'
+  if (['daily', 'day', '1d', '日线'].includes(raw)) return 'daily'
+  if (['weekly', 'week', '1w', '周线'].includes(raw)) return 'weekly'
+  return raw
+}
+
 function readTimeframeBadgeItems(value: unknown, side: WatchlistSignalBadge['side']): WatchlistSignalBadge[] {
   if (!Array.isArray(value)) return []
   return value
@@ -108,4 +118,25 @@ export function tagsForWatchlist(row: Record<string, unknown>, kind: string): st
     compactText(row.source),
   ].filter(Boolean)
   return Array.from(new Set([...priorityTags, ...sourceTags])).slice(0, 4)
+}
+
+export function rankLabelForWatchlist(row: Record<string, unknown>): string {
+  const rank = compactText(row.rank)
+  const score = compactText(row.rank_score)
+  if (!rank) return ''
+  return score ? `#${rank} ${score}` : `#${rank}`
+}
+
+export function rankReasonForWatchlist(row: Record<string, unknown>): string {
+  return compactText(row.rank_reason)
+}
+
+export function signalScopeLabel(signal: Record<string, unknown>, currentFreq = ''): string {
+  const scope = compactText(signal.display_scope)
+  if (scope === 'higher_timeframe_context') return '上级周期'
+  if (scope === 'other_timeframe') return '其它周期'
+  const freq = normalizeSignalScopeFreq(signal.freq)
+  const current = normalizeSignalScopeFreq(currentFreq)
+  if (current && freq && freq !== current) return '其它周期'
+  return '本周期'
 }
