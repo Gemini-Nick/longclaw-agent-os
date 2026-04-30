@@ -208,9 +208,10 @@ type WatchlistRow = {
 
 type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
-type ChartModeKey = 'chain_heat' | 'board_heat' | 'stock_price'
+type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
 
 const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'focus_stocks', 'risk_stocks', 'watch_stocks', 'buy_candidates']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['focus_stocks', 'risk_stocks', 'watch_stocks', 'buy_candidates']
 
 type ApiError = Error & {
   status?: number
@@ -836,11 +837,35 @@ const chainContextHeroStyle: React.CSSProperties = {
   gap: 5,
 }
 
-const chartModeSwitchStyle: React.CSSProperties = {
+const chartModeSummaryStyle: React.CSSProperties = {
   display: 'flex',
+  alignItems: 'center',
   flexWrap: 'wrap',
-  gap: 4,
+  gap: 5,
   minWidth: 0,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  lineHeight: 1.2,
+}
+
+const chartModeCurrentStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: 3,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+  padding: '1px 4px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.2,
+  fontWeight: 800,
+  flex: '0 0 auto',
+}
+
+const chartModePurposeStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const watchlistTableStyle: React.CSSProperties = {
@@ -952,12 +977,58 @@ const indicatorLegendItemStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
-const watchlistTabsStyle: React.CSSProperties = {
+const watchlistPrimaryTabsStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
   gap: 4,
-  minWidth: 252,
-  flex: '1 1 252px',
+  minWidth: 122,
+  flex: '1 1 122px',
+}
+
+function watchlistStockSelectLabelStyle(active: boolean): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: '36px minmax(0, 1fr)',
+    alignItems: 'center',
+    gap: 5,
+    flex: '1 1 160px',
+    minWidth: 150,
+    height: 28,
+    padding: '0 6px',
+    border: `1px solid ${active ? terminalTheme.accent : terminalTheme.border}`,
+    borderRadius: 5,
+    background: active ? terminalTheme.accentSoft : terminalTheme.control,
+    color: active ? terminalTheme.accentText : terminalTheme.controlText,
+    fontFamily: fontStacks.ui,
+    fontSize: 11,
+    fontWeight: 800,
+  }
+}
+
+const watchlistStockSelectStyle: React.CSSProperties = {
+  minWidth: 0,
+  width: '100%',
+  border: 'none',
+  outline: 'none',
+  background: 'transparent',
+  color: 'inherit',
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+}
+
+const watchlistMetaStripStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelInset,
+  color: terminalTheme.mutedStrong,
+  padding: '4px 6px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.25,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const watchlistControlRowStyle: React.CSSProperties = {
@@ -1490,23 +1561,42 @@ function cacheProgressColor(value: number, status?: unknown): string {
   return palette.success
 }
 
+function cacheModuleOk(module: Record<string, unknown>): boolean {
+  const status = compactText(module.status || module.raw_status).toLowerCase()
+  return status === 'ok' || status === 'fresh'
+}
+
 function liveCacheStrictStatus(cacheStatus: StrategyDashboard['cache_status']): 'ok' | 'partial' | 'degraded' {
   if (!cacheStatus.available) return 'degraded'
   const summary = recordValue(cacheStatus.live_low_latency.summary)
+  const modules = cacheStatus.live_low_latency.modules.map(item => recordValue(item))
   const explicit = compactText(summary.strict_status).toLowerCase()
-  const ok = numberValue(summary.ok_modules) ?? 0
-  const total = numberValue(summary.total_modules) ?? 0
+  const moduleOk = modules.filter(cacheModuleOk).length
+  const okFromSummary = numberValue(summary.ok_modules)
+  const totalFromSummary = numberValue(summary.total_modules)
+  const ok = okFromSummary !== undefined && okFromSummary > 0 ? okFromSummary : moduleOk
+  const total = totalFromSummary !== undefined && totalFromSummary > 0 ? totalFromSummary : modules.length
   const notReady = numberValue(summary.minute_not_ready) ?? 0
   if (explicit === 'ok' && notReady === 0) return 'ok'
   if (['partial', 'running', 'warm'].includes(explicit)) return 'partial'
-  if (['degraded', 'error', 'stale', 'missing'].includes(explicit)) return 'degraded'
+  if (['degraded', 'error', 'stale', 'missing'].includes(explicit)) {
+    if (notReady > 0 || ok === 0) return 'degraded'
+    return 'partial'
+  }
   if (total > 0 && ok === total && notReady === 0) return 'ok'
   return total > 0 && ok > 0 ? 'partial' : 'degraded'
 }
 
-function cacheProblemModules(summary: Record<string, unknown>): string {
+function cacheProblemModules(summary: Record<string, unknown>, modules: Record<string, unknown>[] = []): string {
   const rows = Array.isArray(summary.problem_modules) ? summary.problem_modules : []
-  return rows.map(item => compactText(item)).filter(Boolean).slice(0, 3).join('/')
+  const names = rows.map(item => compactText(item)).filter(Boolean)
+  if (names.length > 0) return names.slice(0, 3).join('/')
+  return modules
+    .filter(item => !cacheModuleOk(item))
+    .map(item => compactText(item.module) || compactText(item.label))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('/')
 }
 
 function isActiveProviderProblem(item: Record<string, unknown>): boolean {
@@ -3177,8 +3267,11 @@ function candidateStockLabel(row: Record<string, unknown>): string {
 
 function chartModeFromTarget(target: ChartTarget, symbolData: WorkbenchSymbolData | null): ChartModeKey {
   const meta = recordValue(symbolData?.chart?.meta)
+  const explicitMode = compactText(meta.chart_mode)
+  if (explicitMode === 'chain_heat') return 'chain_heat'
+  if (explicitMode === 'board_heat' || meta.is_price_kline === false) return 'board_heat'
   if (target.kind === 'stock' || compactText(symbolData?.target?.kind) === 'stock') return 'stock_price'
-  if (compactText(meta.chart_mode) === 'board_heat' || meta.is_price_kline === false) return 'board_heat'
+  if (target.kind === 'index' || compactText(symbolData?.target?.kind) === 'index') return 'index_price'
   return 'chain_heat'
 }
 
@@ -3186,7 +3279,19 @@ function chartModeLabel(mode: ChartModeKey, locale: LongclawLocale): string {
   const labels: Record<ChartModeKey, [string, string]> = {
     chain_heat: ['产业链热度', 'Chain heat'],
     board_heat: ['概念/行业热度', 'Board heat'],
+    index_price: ['指数K线', 'Index K-line'],
     stock_price: ['个股K线', 'Stock K-line'],
+  }
+  const label = labels[mode]
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function chartModePurpose(mode: ChartModeKey, locale: LongclawLocale): string {
+  const labels: Record<ChartModeKey, [string, string]> = {
+    chain_heat: ['产业链/概念热度重采样 OHLC，不是单只股票价格。', 'Resampled chain/concept heat OHLC, not a single-stock price chart.'],
+    board_heat: ['行业/概念涨跌幅重采样 OHLC，用来观察板块节奏。', 'Resampled board/concept change OHLC for board rhythm.'],
+    index_price: ['真实指数 OHLCV，用来判断大盘方向和关键位。', 'Real index OHLCV for market direction and key levels.'],
+    stock_price: ['真实个股 OHLCV，用来复核买卖点和技术联动。', 'Real stock OHLCV for entry/exit and technical linkage checks.'],
   }
   const label = labels[mode]
   return locale === 'zh-CN' ? label[0] : label[1]
@@ -4188,18 +4293,11 @@ export function StrategyChartTerminal({
               <div style={chartSubtitleStyle}>
                 {[summarySubtitle, currentFreq, chartTimezone, latestSignal || undefined].filter(Boolean).join(' · ')}
               </div>
-              <div style={chartModeSwitchStyle}>
-                {(['chain_heat', 'board_heat', 'stock_price'] as ChartModeKey[]).map(mode => (
-                  <span
-                    key={mode}
-                    style={mode === activeChartMode ? watchlistTabButtonActiveStyle : miniNeutralSignalBadgeStyle}
-                    title={mode === 'stock_price'
-                      ? (locale === 'zh-CN' ? '真实个股价格K线' : 'Real stock price K-line')
-                      : (locale === 'zh-CN' ? '热度/涨跌幅重采样，非价格K线' : 'Heat/change resampled OHLC, not price')}
-                  >
-                    {chartModeLabel(mode, locale)}
-                  </span>
-                ))}
+              <div style={chartModeSummaryStyle}>
+                <span style={chartModeCurrentStyle}>{chartModeLabel(activeChartMode, locale)}</span>
+                <span style={chartModePurposeStyle} title={chartModePurpose(activeChartMode, locale)}>
+                  {chartModePurpose(activeChartMode, locale)}
+                </span>
               </div>
               {chartLineage ? (
                 <div style={mutedTextStyle}>{chartLineage}</div>
@@ -4708,12 +4806,24 @@ function CacheMonitorStrip({
   const blockers = cacheStatus.blockers.map(item => recordValue(item))
   const providerHealth = (Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : []).map(item => recordValue(item))
 
-  const liveOk = numberValue(liveSummary.ok_modules) ?? 0
-  const liveTotal = numberValue(liveSummary.total_modules) ?? 0
+  const liveModules = cacheStatus.live_low_latency.modules.map(item => recordValue(item))
+  const moduleOk = liveModules.filter(cacheModuleOk).length
+  const liveOkFromSummary = numberValue(liveSummary.ok_modules)
+  const liveTotalFromSummary = numberValue(liveSummary.total_modules)
+  const liveOk = liveOkFromSummary !== undefined && liveOkFromSummary > 0 ? liveOkFromSummary : moduleOk
+  const liveTotal = liveTotalFromSummary !== undefined && liveTotalFromSummary > 0 ? liveTotalFromSummary : liveModules.length
   const livePct = liveTotal ? (liveOk / liveTotal) * 100 : 0
   const liveStatus = liveCacheStrictStatus(cacheStatus)
   const liveNotReady = numberValue(liveSummary.minute_not_ready) ?? 0
-  const liveProblemModules = cacheProblemModules(liveSummary)
+  const liveProblemModules = cacheProblemModules(liveSummary, liveModules)
+  const quoteModule = liveModules.find(item => compactText(item.module) === 'quote_snapshots')
+  const quoteResult = recordValue(quoteModule?.result)
+  const quoteLive = numberValue(quoteResult.live)
+  const quoteCount = numberValue(quoteResult.count)
+  const quoteMissing = numberValue(quoteResult.missing_current) ?? numberValue(quoteResult.errors) ?? 0
+  const quoteLine = quoteCount !== undefined
+    ? `${locale === 'zh-CN' ? '报价' : 'quotes'} ${countText(quoteLive)}/${countText(quoteCount)}`
+    : ''
   const liveSamples = Array.isArray(liveSummary.minute_not_ready_samples)
     ? liveSummary.minute_not_ready_samples.map(item => recordValue(item)).slice(0, 2)
     : []
@@ -4721,19 +4831,35 @@ function CacheMonitorStrip({
     .map(item => `${compactText(item.symbol)} ${compactText(item.freq)}`)
     .filter(Boolean)
     .join(' · ')
-  const liveValue = liveTotal ? `${Math.round(livePct)}%` : (cacheStatus.available ? '0%' : 'OFF')
+  const liveValue = liveTotal ? `${countText(liveOk)}/${countText(liveTotal)}` : (cacheStatus.available ? '0/0' : 'OFF')
+  const liveStatusLabel = !cacheStatus.available
+    ? 'OFF'
+    : liveStatus === 'ok'
+      ? 'OK'
+      : liveNotReady > 0
+        ? (locale === 'zh-CN' ? `缺K ${countText(liveNotReady)}` : `${countText(liveNotReady)} bars missing`)
+        : quoteMissing > 0
+          ? (locale === 'zh-CN' ? `缺报价 ${countText(quoteMissing)}` : `${countText(quoteMissing)} quotes missing`)
+          : 'PARTIAL'
   const liveDetail = locale === 'zh-CN'
-    ? `${countText(liveSummary.selected_symbols)} 只低延时股票 · ${countText(liveNotReady)} 未就绪`
-    : `${countText(liveSummary.selected_symbols)} live symbols · ${countText(liveNotReady)} not ready`
+    ? `${countText(liveSummary.selected_symbols)} 只交易池 · ${liveNotReady > 0 ? `${countText(liveNotReady)} 只分钟未就绪` : '分钟已就绪'}`
+    : `${countText(liveSummary.selected_symbols)} pool symbols · ${liveNotReady > 0 ? `${countText(liveNotReady)} minute bars missing` : 'minute bars ready'}`
+  const liveProblemLabel = liveProblemModules && liveProblemModules !== 'quote_snapshots'
+    ? (liveNotReady > 0
+      ? (locale === 'zh-CN' ? `阻塞 ${liveProblemModules}` : `blocked ${liveProblemModules}`)
+      : (locale === 'zh-CN' ? `待刷新 ${liveProblemModules}` : `refresh pending ${liveProblemModules}`))
+    : ''
   const liveSubdetail = locale === 'zh-CN'
     ? [
-        `${countText(liveOk)}/${countText(liveTotal)} 模块严格 OK`,
-        liveProblemModules ? `阻塞 ${liveProblemModules}` : '',
+        `${countText(liveOk)}/${countText(liveTotal)} 模块可用`,
+        quoteLine,
+        liveProblemLabel,
         liveSampleText ? `缺 ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} 只轮换跳过`,
       ].filter(Boolean).join(' · ')
     : [
-        `${countText(liveOk)}/${countText(liveTotal)} modules strictly OK`,
-        liveProblemModules ? `blocked ${liveProblemModules}` : '',
+        `${countText(liveOk)}/${countText(liveTotal)} modules usable`,
+        quoteLine,
+        liveProblemLabel,
         liveSampleText ? `missing ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} rotated out`,
       ].filter(Boolean).join(' · ')
 
@@ -4828,11 +4954,11 @@ function CacheMonitorStrip({
       </div>
       <div style={cacheMonitorGridStyle(mode)}>
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '低延时缓存' : 'Live cache'}
+          title={locale === 'zh-CN' ? '盘中低延时' : 'Intraday live'}
           value={liveValue}
           progress={livePct}
           status={liveStatus}
-          statusLabel={cacheStatus.available ? `${countText(liveOk)}/${countText(liveTotal)}` : 'OFF'}
+          statusLabel={liveStatusLabel}
           detail={liveDetail}
           subdetail={liveSubdetail}
         />
@@ -4866,6 +4992,33 @@ function CacheMonitorStrip({
       </div>
     </div>
   )
+}
+
+function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): string {
+  const labels: Partial<Record<WatchlistTabKey, [string, string]>> = {
+    focus_stocks: ['真实买点', 'Entries'],
+    risk_stocks: ['风险/止盈', 'Risk/exit'],
+    watch_stocks: ['观察/预热', 'Watch/preheat'],
+    buy_candidates: ['策略候选', 'Strategy candidates'],
+  }
+  const label = labels[tab]
+  return label ? (locale === 'zh-CN' ? label[0] : label[1]) : tab
+}
+
+function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
+    macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
+    sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '日涨幅=板块当日涨跌幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Day=board change'],
+    focus_stocks: ['terminal_stock_pool.focus_stocks', '硬技术买点复核', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'hard technical entry review', 'Day=realtime quote change'],
+    risk_stocks: ['terminal_stock_pool.risk_stocks', '卖点/止盈止损优先处理', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'risk and exit queue', 'Day=realtime quote change'],
+    watch_stocks: ['terminal_stock_pool.watch_stocks', '等待5m/15m/30m右侧确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'wait for 5m/15m/30m confirmation', 'Day=realtime quote change'],
+    buy_candidates: ['strategy_snapshots.candidates', '主题候选，需再做技术确认', '日涨幅=实时快照涨跌幅', 'strategy_snapshots.candidates', 'theme candidates needing technical confirmation', 'Day=realtime quote change'],
+  }
+  const item = meta[tab]
+  return zh
+    ? `来源 ${item[0]} · 用途 ${item[1]} · ${item[2]} · 区间=历史收益`
+    : `Source ${item[3]} · Use ${item[4]} · ${item[5]} · Range=historical return`
 }
 
 function WatchlistTabbedTable({
@@ -4913,43 +5066,17 @@ function WatchlistTabbedTable({
   onSelect: (row: WatchlistRow) => void
   onCandidateSelect: (row: Record<string, unknown>) => void
 }) {
-  const tabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
-    {
-      key: 'macro_indices',
-      label: locale === 'zh-CN' ? '宏观指数' : 'Macro',
-      count: groups.macro_indices.length,
-    },
-    {
-      key: 'sector_boards',
-      label: locale === 'zh-CN' ? '异动板块' : 'Hot boards',
-      count: groups.sector_boards.length,
-    },
-    {
-      key: 'focus_stocks',
-      label: locale === 'zh-CN' ? '真实买点' : 'Entries',
-      count: groups.focus_stocks.length,
-    },
-    {
-      key: 'risk_stocks',
-      label: locale === 'zh-CN' ? '风险/止盈止损' : 'Risk',
-      count: groups.risk_stocks.length,
-    },
-    {
-      key: 'watch_stocks',
-      label: locale === 'zh-CN' ? '观察/预热' : 'Watch',
-      count: groups.watch_stocks.length,
-    },
-    {
-      key: 'buy_candidates',
-      label: locale === 'zh-CN' ? '策略候选' : 'Strategy',
-      count: groups.buy_candidates.length,
-    },
+  const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
+    { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
+    { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
   ]
+  const activeStockTab = STOCK_WATCHLIST_TABS.includes(activeTab) ? activeTab : 'focus_stocks'
+  const panelMeta = watchlistPanelMeta(activeTab, locale)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
       <div style={watchlistControlRowStyle}>
-        <div style={watchlistTabsStyle}>
-          {tabs.map(tab => (
+        <div style={watchlistPrimaryTabsStyle}>
+          {primaryTabs.map(tab => (
             <button
               key={tab.key}
               type="button"
@@ -4960,6 +5087,26 @@ function WatchlistTabbedTable({
             </button>
           ))}
         </div>
+        <label style={watchlistStockSelectLabelStyle(STOCK_WATCHLIST_TABS.includes(activeTab))}>
+          <span>{locale === 'zh-CN' ? '个股' : 'Stocks'}</span>
+          <select
+            value={activeStockTab}
+            style={watchlistStockSelectStyle}
+            title={locale === 'zh-CN' ? '切换个股池' : 'Switch stock pool'}
+            onChange={event => onTabChange(event.currentTarget.value as WatchlistTabKey)}
+          >
+            {STOCK_WATCHLIST_TABS.map(tabKey => (
+              <option key={tabKey} value={tabKey}>
+                {watchlistStockTabLabel(tabKey, locale)} {groups[tabKey].length}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div style={watchlistMetaStripStyle} title={panelMeta}>
+        {panelMeta}
+      </div>
+      <div style={watchlistControlRowStyle}>
         <label style={watchlistRangeSelectLabelStyle}>
           <span>{locale === 'zh-CN' ? '区间' : 'Range'}</span>
           <select
@@ -5012,9 +5159,9 @@ function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: num
     return `minmax(138px, 1.35fr) 58px 78px 92px${rangeColumns}`
   }
   if (activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks') {
-    return `minmax(138px, 1.35fr) 58px 52px 88px${rangeColumns}`
+    return `minmax(138px, 1.35fr) 58px 58px 88px${rangeColumns}`
   }
-  return `minmax(138px, 1.35fr) 58px 52px 76px${rangeColumns}`
+  return `minmax(138px, 1.35fr) 58px 58px 76px${rangeColumns}`
 }
 
 function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [string, string, string, string] {
@@ -5030,7 +5177,7 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '买点' : 'Entry',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日' : 'Day',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
       locale === 'zh-CN' ? '入池依据' : 'Reason',
     ]
   }
@@ -5038,7 +5185,7 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '风险' : 'Risk',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日' : 'Day',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
       locale === 'zh-CN' ? '处理' : 'Action',
     ]
   }
@@ -5046,7 +5193,7 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '观察' : 'Watch',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日' : 'Day',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
       locale === 'zh-CN' ? '状态' : 'State',
     ]
   }
@@ -5054,14 +5201,14 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '策略' : 'Strategy',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日' : 'Day',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
       locale === 'zh-CN' ? '候选' : 'Candidate',
     ]
   }
   return [
     locale === 'zh-CN' ? '指数' : 'Index',
     locale === 'zh-CN' ? '最新' : 'Last',
-    locale === 'zh-CN' ? '日' : 'Day',
+    locale === 'zh-CN' ? '日涨幅' : 'Day',
     locale === 'zh-CN' ? '信号' : 'Signal',
   ]
 }
@@ -5076,6 +5223,20 @@ function sectorLeaderForWatchlist(row: WatchlistRow): string {
     compactText(sourceLeader.name) ||
     compactText(recordValue(raw.source_leader).name) ||
     'N/A'
+  )
+}
+
+function sourceLabelForWatchlist(row: WatchlistRow): string {
+  const raw = row.raw
+  const collections = Array.isArray(raw.source_collections)
+    ? raw.source_collections.map(item => compactText(item)).filter(Boolean)
+    : []
+  return (
+    collections.slice(0, 2).join('+') ||
+    compactText(raw.source_collection) ||
+    compactText(raw.source) ||
+    compactText(raw.heat_source) ||
+    ''
   )
 }
 
@@ -5279,6 +5440,7 @@ function WatchlistTable({
         const expanded = activeTab === 'sector_boards' && expandedChainKeys.has(chainRowKey(row))
         const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
         const secondMetric = activeTab === 'sector_boards' ? sectorLeaderForWatchlist(row) : row.dayChange
+        const rowSource = sourceLabelForWatchlist(row)
         return (
           <React.Fragment key={row.id}>
             <button
@@ -5289,6 +5451,9 @@ function WatchlistTable({
               }}
               title={[
                 row.name,
+                rowSource ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${rowSource}` : '',
+                compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '报价源' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
+                compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间收益源' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
                 activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
                 activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
                 row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${row.rankReason}` : '',
