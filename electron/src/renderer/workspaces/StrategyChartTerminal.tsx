@@ -77,6 +77,9 @@ type WorkbenchShell = {
   decision_queue?: Record<string, unknown>[]
   strategy_kpis?: Record<string, unknown>[] | Record<string, unknown>
   source_confidence?: Record<string, unknown>[] | Record<string, unknown>
+  trade_map?: Record<string, unknown>
+  ai_alerts?: Record<string, unknown>[]
+  command_suggestions?: string[]
   default_target?: {
     kind?: string
     label?: string
@@ -249,10 +252,31 @@ type WatchlistRow = {
 type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
+type TradeRoleKey = 'all' | 'mainline_attack' | 'climax_risk' | 'holding_chain' | 'defensive_weight' | 'second_wave' | 'risk_review'
+type StockTradeRoleKey = Exclude<TradeRoleKey, 'all'>
+type TradeCommandKey = 'holding_chain' | 'exclude_climax' | 'explain_current' | 'semiconductor_divergence' | 'rhythm_mismatch'
+type TradeMapItem = {
+  role: StockTradeRoleKey
+  label: string
+  name: string
+  summary: string
+  phase?: string
+  asOf?: string
+}
 
 const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
-const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
+const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
+  { key: 'all', zh: '全部', en: 'All' },
+  { key: 'mainline_attack', zh: '主线进攻', en: 'Mainline' },
+  { key: 'climax_risk', zh: '高潮别追', en: 'No chase' },
+  { key: 'holding_chain', zh: '持仓链', en: 'Holding chain' },
+  { key: 'defensive_weight', zh: '防守权重', en: 'Defensive' },
+  { key: 'second_wave', zh: '二波观察', en: 'Second wave' },
+  { key: 'risk_review', zh: '风险复核', en: 'Risk review' },
+]
+const STOCK_TRADE_ROLE_KEYS: StockTradeRoleKey[] = ['mainline_attack', 'climax_risk', 'holding_chain', 'defensive_weight', 'second_wave', 'risk_review']
 
 type ApiError = Error & {
   status?: number
@@ -1072,6 +1096,158 @@ const watchlistMetaStripStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const tradeMapStripStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: '6px 8px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+const tradeMapHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  minWidth: 0,
+}
+
+const tradeMapTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 11,
+  fontWeight: 900,
+  lineHeight: 1.2,
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontSize: 9,
+  textAlign: 'right',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+function tradeMapChipStyle(role: StockTradeRoleKey): React.CSSProperties {
+  const color = tradeRoleColor(role)
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    maxWidth: 360,
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: `${color}18`,
+    color: terminalTheme.text,
+    padding: '3px 6px',
+    fontFamily: fontStacks.ui,
+    fontSize: 10,
+    fontWeight: 750,
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
+}
+
+const aiAlertStripStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+function aiAlertChipStyle(level: string): React.CSSProperties {
+  const color = level === 'warning' ? tradingDeskTheme.colors.auroraGold : terminalTheme.accent
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    maxWidth: 520,
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: `${color}14`,
+    color: level === 'warning' ? tradingDeskTheme.colors.auroraGold : terminalTheme.accentText,
+    padding: '2px 6px',
+    fontFamily: fontStacks.mono,
+    fontSize: 9,
+    fontWeight: 800,
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
+}
+
+const tradeRoleFilterStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 5,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+function tradeRoleButtonStyle(active: boolean, role: TradeRoleKey): React.CSSProperties {
+  const color = role === 'all' ? terminalTheme.borderStrong : tradeRoleColor(role)
+  return {
+    border: `1px solid ${active ? color : terminalTheme.border}`,
+    borderRadius: 4,
+    background: active ? `${color}1f` : terminalTheme.control,
+    color: active ? terminalTheme.textStrong : terminalTheme.controlText,
+    padding: '4px 6px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    fontSize: 10,
+    fontWeight: 850,
+    lineHeight: 1.15,
+    minHeight: 24,
+  }
+}
+
+const commandBarShellStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+const commandBarRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+const commandChipStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  padding: '4px 6px',
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  textAlign: 'left',
+}
+
 const watchlistControlRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'stretch',
@@ -1757,6 +1933,26 @@ function uniqueCompact(values: unknown[]): string[] {
     output.push(text)
   })
   return output
+}
+
+function isStockTradeRoleKey(value: string): value is StockTradeRoleKey {
+  return STOCK_TRADE_ROLE_KEYS.includes(value as StockTradeRoleKey)
+}
+
+function tradeRoleLabel(role: TradeRoleKey | string, locale: LongclawLocale): string {
+  const match = TRADE_ROLE_FILTERS.find(item => item.key === role)
+  if (!match) return role || (locale === 'zh-CN' ? '观察' : 'Watch')
+  return locale === 'zh-CN' ? match.zh : match.en
+}
+
+function tradeRoleColor(role: TradeRoleKey | string): string {
+  if (role === 'climax_risk') return tradingDeskTheme.colors.auroraGold
+  if (role === 'holding_chain') return tradingDeskTheme.market.up
+  if (role === 'defensive_weight') return '#7aa7ff'
+  if (role === 'second_wave') return terminalTheme.accent
+  if (role === 'risk_review') return tradingDeskTheme.market.down
+  if (role === 'mainline_attack') return terminalTheme.infoText
+  return terminalTheme.borderStrong
 }
 
 const DECISION_STAGES: DecisionStage[] = ['context', 'risk_first', 'strategy_candidate', 'watch_preheat', 'entry_ready']
@@ -3614,6 +3810,147 @@ function mainlineSummary(row: WatchlistRow, locale: LongclawLocale): string {
   return [name, phaseLabel, bonusText].filter(Boolean).join(' · ')
 }
 
+function rowChainTextValues(row: WatchlistRow): string[] {
+  const chain = recordValue(row.raw.chain_position)
+  const context = recordValue(row.raw.chain_context)
+  const evidence = recordValue(context.evidence)
+  const mapping = recordValue(row.raw.mapping_chain)
+  return uniqueCompact([
+    chain.chain,
+    chain.node,
+    chain.role,
+    chain.board_or_concept,
+    context.chain_name,
+    context.node_name,
+    context.board_or_concept,
+    evidence.chain_name,
+    evidence.node_name,
+    evidence.board_or_concept,
+    mapping.chain_name,
+    mapping.node_name,
+  ])
+}
+
+function chainBriefForWatchlist(row: WatchlistRow): string {
+  const values = rowChainTextValues(row)
+  if (values.length === 0) return ''
+  if (values.length === 1) return values[0]
+  return values.slice(0, 2).join(' · ')
+}
+
+function stockTradeRoleForRow(row: WatchlistRow): StockTradeRoleKey | '' {
+  const explicit = compactText(row.raw.trade_role) || compactText(row.raw.trade_identity)
+  if (isStockTradeRoleKey(explicit)) return explicit
+  const context = recordValue(row.raw.chain_context)
+  const chain = recordValue(row.raw.chain_position)
+  const evidence = recordValue(context.evidence)
+  const phase = compactText(row.raw.chain_phase) || compactText(context.phase) || compactText(chain.phase) || compactText(evidence.phase)
+  const text = [
+    ...rowChainTextValues(row),
+    row.name,
+    row.code,
+    row.rankReason,
+    row.explanation,
+    compactText(row.raw.reason),
+    compactText(row.raw.setup_explanation),
+    compactText(row.raw.missing_condition),
+    compactText(row.raw.trader_action),
+  ].join(' ')
+  if (row.decision.opportunitySide === 'risk' || row.decision.stage === 'risk_first') {
+    return phase === 'consensus_climax' || text.includes('高潮') ? 'climax_risk' : 'risk_review'
+  }
+  if (phase === 'consensus_climax' || text.includes('高潮')) return 'climax_risk'
+  if (['电池', '锂电', '隔膜', '正极', '负极', '电解液', '储能', '电新'].some(token => text.includes(token))) return 'holding_chain'
+  if (['煤炭', '油气', '银行', '保险', '运营商', '高股息', '红利', '电力'].some(token => text.includes(token))) return 'defensive_weight'
+  if (['光模块', '光通信', 'CPO', 'pcb', 'PCB'].some(token => text.includes(token))) return 'second_wave'
+  const bonus = numberValue(row.raw.theme_rank_bonus) ?? 0
+  if (phase === 'accelerating' || phase === 'warming' || bonus >= 12 || row.decision.stage === 'entry_ready') return 'mainline_attack'
+  if (row.decision.stage === 'strategy_candidate') return 'second_wave'
+  return ''
+}
+
+function tradeIdentityLabelForRow(row: WatchlistRow, locale: LongclawLocale): string {
+  const explicit = compactText(row.raw.trade_role_label) || compactText(row.raw.trade_identity_label)
+  if (explicit) return explicit
+  const role = stockTradeRoleForRow(row)
+  return role ? tradeRoleLabel(role, locale) : (row.decision.opportunityLabel || opportunitySideLabel(row.decision.opportunitySide, locale))
+}
+
+function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const explicit = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
+  if (explicit) return explicit
+  const role = stockTradeRoleForRow(row)
+  const chain = chainBriefForWatchlist(row)
+  const missing = compactText(row.raw.missing_condition)
+  const setup = compactText(row.raw.setup_explanation)
+  if (role === 'climax_risk') return `${chain || (locale === 'zh-CN' ? '主线' : 'Mainline')}: ${locale === 'zh-CN' ? '一致高潮，不追高，等分歧承接' : 'crowded; do not chase'}`
+  if (role === 'holding_chain') return `${chain || (locale === 'zh-CN' ? '持仓链' : 'Holding chain')}: ${locale === 'zh-CN' ? '修复观察，等30m承接确认' : 'repair watch; wait for 30m support'}`
+  if (role === 'defensive_weight') return `${chain || (locale === 'zh-CN' ? '防守权重' : 'Defensive')}: ${locale === 'zh-CN' ? '偏稳仓，不和进攻票混排' : 'defensive; keep separate from attack names'}`
+  if (role === 'second_wave') return `${chain || (locale === 'zh-CN' ? '上轮主线' : 'Prior theme')}: ${locale === 'zh-CN' ? '退潮后等二波，不抢反弹' : 'wait for second wave'}`
+  if (role === 'risk_review') return setup || missing || (locale === 'zh-CN' ? '风险未解除，先不当机会' : 'Risk unresolved')
+  return setup || missing || row.rankReason || row.explanation || watchlistRowSignalLine(row, locale)
+}
+
+function traderEvidenceSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const explicit = compactText(row.raw.evidence_summary)
+  if (explicit) return explicit
+  const chain = chainBriefForWatchlist(row)
+  const cycle = timeframeSignalSideSummary(row, locale)
+  const source = Array.isArray(row.raw.source_collections)
+    ? row.raw.source_collections.map(item => compactText(item)).filter(Boolean).slice(0, 2).join('/')
+    : compactText(row.raw.source_collection || row.raw.source)
+  return [
+    chain ? `${locale === 'zh-CN' ? '链' : 'Chain'} ${chain}` : '',
+    cycle ? `${locale === 'zh-CN' ? '技术' : 'Tech'} ${cycle}` : '',
+    source ? `${locale === 'zh-CN' ? '来源' : 'Source'} ${source}` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+function traderPositionSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const chain = chainBriefForWatchlist(row)
+  const stage = compactText(row.raw.stage_label) || decisionStageLabel(row.decision.stage, locale)
+  const theme = mainlineSummary(row, locale)
+  return [chain, stage, theme].filter(Boolean).join(' · ')
+}
+
+function traderCanActSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const role = stockTradeRoleForRow(row)
+  if (role === 'climax_risk') return locale === 'zh-CN' ? '不能追，等分歧后核心票重新承接。' : 'Do not chase; wait for post-divergence support.'
+  if (role === 'risk_review') return locale === 'zh-CN' ? '不能动，先等风险/冲突解除。' : 'No action until risk clears.'
+  if (row.decision.stage === 'entry_ready') return locale === 'zh-CN' ? '可以进入买点复核，但必须带止损和仓位约束。' : 'Reviewable entry with stop and sizing constraints.'
+  if (row.decision.stage === 'strategy_candidate') return locale === 'zh-CN' ? '不能动，只是线索。' : 'No action; clue only.'
+  return locale === 'zh-CN' ? '先盯盘，等30m承接和5m/15m下单确认。' : 'Watch first; wait for 30m and 5m/15m confirmation.'
+}
+
+function stockRowsForTradeRole(
+  rows: WatchlistRow[],
+  activeTab: WatchlistTabKey,
+  activeRole: TradeRoleKey,
+  suppressClimax: boolean,
+): WatchlistRow[] {
+  if (!STOCK_WATCHLIST_TABS.includes(activeTab)) return rows
+  return rows.filter(row => {
+    const role = stockTradeRoleForRow(row)
+    if (activeRole !== 'all') return role === activeRole
+    if (suppressClimax && role === 'climax_risk') return false
+    return true
+  })
+}
+
+function tradeRoleCountsForGroups(groups: {
+  buy_candidates: WatchlistRow[]
+  focus_stocks: WatchlistRow[]
+  risk_stocks: WatchlistRow[]
+  watch_stocks: WatchlistRow[]
+}): Record<StockTradeRoleKey, number> {
+  const counts = Object.fromEntries(STOCK_TRADE_ROLE_KEYS.map(key => [key, 0])) as Record<StockTradeRoleKey, number>
+  ;[...groups.buy_candidates, ...groups.watch_stocks, ...groups.focus_stocks, ...groups.risk_stocks].forEach(row => {
+    const role = stockTradeRoleForRow(row)
+    if (role) counts[role] += 1
+  })
+  return counts
+}
+
 function decisionConfirmationSummary(decision: WatchlistDecision, row: WatchlistRow, locale: LongclawLocale): string {
   if (decision.primaryBlocker) return decision.primaryBlocker
   if (decision.missingGates.length > 0) {
@@ -3627,6 +3964,8 @@ function decisionConfirmationSummary(decision: WatchlistDecision, row: Watchlist
 }
 
 function watchlistRowSignalLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const traderRead = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
+  if (traderRead) return traderRead
   const entryLogic = compactText(row.raw.entry_logic_summary)
   if (entryLogic) return entryLogic
   const setup = compactText(row.raw.setup_explanation)
@@ -4338,6 +4677,8 @@ export function StrategyChartTerminal({
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
   const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('sector_boards')
+  const [activeTradeRole, setActiveTradeRole] = useState<TradeRoleKey>('all')
+  const [suppressClimax, setSuppressClimax] = useState(false)
   const [selectedRangeKey, setSelectedRangeKey] = useState('')
   const [expandedChainKeys, setExpandedChainKeys] = useState<Set<string>>(() => new Set())
   const [listCursorIndex, setListCursorIndex] = useState(0)
@@ -4484,9 +4825,17 @@ export function StrategyChartTerminal({
       legacy: legacyRows,
     }
   }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, visibleRangeColumns])
-  const activeWatchlistRows = groupedWatchlistRows[activeWatchlistTab].length > 0
+  const activeWatchlistBaseRows = groupedWatchlistRows[activeWatchlistTab].length > 0
     ? groupedWatchlistRows[activeWatchlistTab]
     : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? groupedWatchlistRows.legacy : [])
+  const activeWatchlistRows = useMemo(
+    () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
+    [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
+  )
+  const tradeRoleCounts = useMemo(
+    () => tradeRoleCountsForGroups(groupedWatchlistRows),
+    [groupedWatchlistRows],
+  )
   const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
   const activeDecisionRow = useMemo(
     () => activeDecisionRowFromGroups(groupedWatchlistRows, target, cursorRow),
@@ -4505,6 +4854,11 @@ export function StrategyChartTerminal({
       ? (compactText(recordValue(recordValue(shell?.watchlist_groups_meta).buy_candidates).empty_reason)
         || (locale === 'zh-CN' ? '暂无线索。' : 'No clues.'))
       : (locale === 'zh-CN' ? '等待 Signals shell。' : 'Waiting for Signals shell.')
+  const visibleWatchlistEmptyText = activeWatchlistRows.length === 0 && activeWatchlistBaseRows.length > 0
+    ? (locale === 'zh-CN'
+        ? `当前交易角色「${tradeRoleLabel(activeTradeRole, locale)}」下没有标的。`
+        : `No names for ${tradeRoleLabel(activeTradeRole, locale)}.`)
+    : activeWatchlistEmptyText
   const latestSignal = compactText(symbolData?.summary?.latest_signal, dashboard.chart_context?.latest_signal ?? '')
   const summaryTitle =
     compactText(symbolData?.summary?.title) ||
@@ -4944,6 +5298,46 @@ export function StrategyChartTerminal({
     void loadSymbol(target)
   }, [loadShell, loadSymbol, target])
 
+  const handleTradeCommand = useCallback(
+    (command: TradeCommandKey) => {
+      if (command === 'holding_chain') {
+        setSuppressClimax(false)
+        setActiveTradeRole('holding_chain')
+        setActiveWatchlistTab('watch_stocks')
+        setListCursorIndex(0)
+        return
+      }
+      if (command === 'exclude_climax') {
+        setSuppressClimax(true)
+        if (activeTradeRole === 'climax_risk') setActiveTradeRole('all')
+        setListCursorIndex(0)
+        return
+      }
+      if (command === 'explain_current') {
+        if (activeDecisionRow) {
+          onOpenRecord(locale === 'zh-CN' ? `${activeDecisionRow.name} 入池解释` : `${activeDecisionRow.name} pool rationale`, {
+            ...activeDecisionRow.raw,
+            trader_read: traderReadLine(activeDecisionRow, locale),
+            evidence_summary: traderEvidenceSummary(activeDecisionRow, locale),
+          })
+        }
+        return
+      }
+      if (command === 'semiconductor_divergence') {
+        setSuppressClimax(false)
+        setActiveTradeRole('mainline_attack')
+        setActiveWatchlistTab('sector_boards')
+        setListCursorIndex(0)
+        return
+      }
+      setSuppressClimax(false)
+      setActiveTradeRole('risk_review')
+      setActiveWatchlistTab('risk_stocks')
+      setListCursorIndex(0)
+    },
+    [activeDecisionRow, activeTradeRole, locale, onOpenRecord],
+  )
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || isEditableKeyboardTarget(event.target)) return
@@ -5036,6 +5430,7 @@ export function StrategyChartTerminal({
             : 'Signals live endpoint is not configured. Showing a degraded summary.'}
         </div>
         <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
+        <TradeMapStrip locale={locale} shell={shell} groups={groupedWatchlistRows} />
         <div style={fallbackGridStyle}>
           <Panel
             title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
@@ -5210,6 +5605,7 @@ export function StrategyChartTerminal({
       </div>
 
       <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
+      <TradeMapStrip locale={locale} shell={shell} groups={groupedWatchlistRows} />
 
       {shell?.notices?.length ? (
         <div style={noticeDarkStyle}>{shell.notices.join(' ')}</div>
@@ -5269,6 +5665,13 @@ export function StrategyChartTerminal({
               locale={locale}
               activeTab={activeWatchlistTab}
               onTabChange={setActiveWatchlistTab}
+              activeTradeRole={activeTradeRole}
+              onTradeRoleChange={role => {
+                setActiveTradeRole(role)
+                setListCursorIndex(0)
+              }}
+              suppressClimax={suppressClimax}
+              roleCounts={tradeRoleCounts}
               groups={groupedWatchlistRows}
               rows={activeWatchlistRows}
               target={target}
@@ -5276,7 +5679,7 @@ export function StrategyChartTerminal({
               allRangeColumns={watchlistRangeColumns}
               selectedRangeKey={selectedRangeColumn?.key ?? ''}
               onRangeChange={setSelectedRangeKey}
-              emptyText={activeWatchlistEmptyText}
+              emptyText={visibleWatchlistEmptyText}
               pendingListUpdate={pendingListUpdate}
               onAcknowledgeListUpdate={() => setPendingListUpdate(false)}
               cursorRowId={cursorRow?.id ?? ''}
@@ -5421,10 +5824,20 @@ export function StrategyChartTerminal({
             locale={locale}
             row={activeDecisionRow}
             target={target}
+            symbolData={symbolData}
             sourceConfidence={sourceConfidence}
             keyLevels={chartKeyLevels}
             signals={currentVisibleSignals}
             divergences={divergences}
+          />
+
+          <EmbeddedCommandBar
+            locale={locale}
+            row={activeDecisionRow}
+            suggestions={Array.isArray(shell?.command_suggestions) ? shell.command_suggestions : []}
+            activeRole={activeTradeRole}
+            suppressClimax={suppressClimax}
+            onCommand={handleTradeCommand}
           />
 
           <Panel
@@ -5680,6 +6093,212 @@ function Panel({
         </div>
       </div>
       {children}
+    </div>
+  )
+}
+
+function tradeMapItemsFromShell(
+  shell: WorkbenchShell | null,
+  groups: {
+    sector_boards: WatchlistRow[]
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+): { items: TradeMapItem[]; headline: string; asOf: string; mode: string } {
+  const raw = recordValue(shell?.trade_map)
+  const rawItems = Array.isArray(raw.items) ? raw.items.map(item => recordValue(item)) : []
+  const items = rawItems
+    .map(item => {
+      const role = compactText(item.role)
+      if (!isStockTradeRoleKey(role)) return null
+      return {
+        role,
+        label: compactText(item.label) || tradeRoleLabel(role, 'zh-CN'),
+        name: compactText(item.name),
+        summary: compactText(item.summary),
+        phase: compactText(item.phase),
+        asOf: compactText(item.as_of),
+      } satisfies TradeMapItem
+    })
+    .filter((item): item is TradeMapItem => Boolean(item && item.name))
+  if (items.length > 0) {
+    return {
+      items,
+      headline: compactText(raw.headline),
+      asOf: compactText(raw.as_of) || compactText(shell?.session?.data_as_of),
+      mode: compactText(raw.day_change_mode),
+    }
+  }
+  const derived: TradeMapItem[] = []
+  const sectorRows = groups.sector_boards
+  const mainline = sectorRows.find(row => ['accelerating', 'warming'].includes(compactText(row.raw.phase)))
+  const climax = sectorRows.find(row => compactText(row.raw.phase) === 'consensus_climax')
+  const retreat = sectorRows.find(row => ['cooling', 'risk_off', 'diverging'].includes(compactText(row.raw.phase)))
+  if (mainline) {
+    derived.push({
+      role: 'mainline_attack',
+      label: '主线',
+      name: mainline.name,
+      summary: '加速中，等分歧承接',
+      phase: compactText(mainline.raw.phase),
+      asOf: compactText(mainline.raw.day_change_as_of),
+    })
+  }
+  if (climax) {
+    derived.push({
+      role: 'climax_risk',
+      label: '高潮',
+      name: climax.name,
+      summary: '一致高潮，不追',
+      phase: compactText(climax.raw.phase),
+      asOf: compactText(climax.raw.day_change_as_of),
+    })
+  }
+  if (retreat) {
+    derived.push({
+      role: 'second_wave',
+      label: '上轮',
+      name: retreat.name,
+      summary: '退潮/分化后等二波',
+      phase: compactText(retreat.raw.phase),
+      asOf: compactText(retreat.raw.day_change_as_of),
+    })
+  }
+  const stockRows = [...groups.focus_stocks, ...groups.watch_stocks, ...groups.buy_candidates, ...groups.risk_stocks]
+  ;(['holding_chain', 'defensive_weight', 'second_wave'] as StockTradeRoleKey[]).forEach(role => {
+    if (derived.some(item => item.role === role)) return
+    const row = stockRows.find(item => stockTradeRoleForRow(item) === role)
+    if (!row) return
+    derived.push({
+      role,
+      label: role === 'holding_chain' ? '持仓' : role === 'defensive_weight' ? '防守' : '二波',
+      name: row.name,
+      summary: traderReadLine(row, 'zh-CN'),
+      asOf: compactText(row.raw.day_change_as_of),
+    })
+  })
+  return {
+    items: derived.slice(0, 6),
+    headline: '',
+    asOf: compactText(shell?.session?.data_as_of),
+    mode: '',
+  }
+}
+
+function TradeMapStrip({
+  locale,
+  shell,
+  groups,
+}: {
+  locale: LongclawLocale
+  shell: WorkbenchShell | null
+  groups: {
+    sector_boards: WatchlistRow[]
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  }
+}) {
+  const tradeMap = tradeMapItemsFromShell(shell, groups)
+  const rawAlerts = Array.isArray(shell?.ai_alerts) ? shell.ai_alerts.map(item => recordValue(item)) : []
+  const alerts = rawAlerts.length > 0
+    ? rawAlerts
+    : tradeMap.items
+        .filter(item => item.role === 'climax_risk')
+        .map(item => ({ level: 'warning', text: `${item.name} ${locale === 'zh-CN' ? '已一致高潮，确认买点不再推追高。' : 'is crowded; do not chase.'}` }))
+  const mapLine = tradeMap.headline || tradeMap.items
+    .map(item => `${item.label}: ${item.name}${item.summary ? `，${item.summary}` : ''}`)
+    .join(' | ')
+  if (!mapLine && alerts.length === 0) return null
+  return (
+    <div style={tradeMapStripStyle}>
+      <div style={tradeMapHeaderStyle}>
+        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日交易地图' : 'Trade map'}</div>
+        <div style={tradeMapMetaStyle}>
+          {[
+            tradeMap.asOf ? `${locale === 'zh-CN' ? '有效交易日' : 'valid day'} ${tradeMap.asOf}` : '',
+            compactText(shell?.session?.data_as_of) ? `as_of ${compactText(shell?.session?.data_as_of)}` : '',
+            tradeMap.mode ? (tradeMap.mode === 'daily_close' ? (locale === 'zh-CN' ? '休市日复用收盘' : 'closed-day close') : tradeMap.mode) : '',
+          ].filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      <div style={tradeMapRailStyle}>
+        {tradeMap.items.map(item => (
+          <span key={`${item.role}-${item.name}`} style={tradeMapChipStyle(item.role)} title={`${item.name} · ${item.summary}`}>
+            {`${item.label}: ${item.name}${item.summary ? `，${item.summary}` : ''}`}
+          </span>
+        ))}
+      </div>
+      {alerts.length > 0 ? (
+        <div style={aiAlertStripStyle}>
+          {alerts.map((alert, index) => {
+            const record = recordValue(alert)
+            const text = compactText(record.text)
+            if (!text) return null
+            return (
+              <span key={`${text}-${index}`} style={aiAlertChipStyle(compactText(record.level))} title={text}>
+                {text}
+              </span>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function commandKeyForLabel(label: string): TradeCommandKey {
+  if (label.includes('持仓链')) return 'holding_chain'
+  if (label.includes('排除高潮')) return 'exclude_climax'
+  if (label.includes('为什么入池') || label.includes('解释')) return 'explain_current'
+  if (label.includes('半导体') || label.includes('核心票')) return 'semiconductor_divergence'
+  return 'rhythm_mismatch'
+}
+
+function EmbeddedCommandBar({
+  locale,
+  row,
+  suggestions,
+  activeRole,
+  suppressClimax,
+  onCommand,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow | null
+  suggestions: string[]
+  activeRole: TradeRoleKey
+  suppressClimax: boolean
+  onCommand: (command: TradeCommandKey) => void
+}) {
+  const defaults = locale === 'zh-CN'
+    ? ['只看持仓链', '排除高潮票', '解释这只票为什么入池', '列出半导体分歧后可看的核心票', '哪些票不符合我当前节奏']
+    : ['Show holding chain', 'Exclude crowded names', 'Explain why this is in the pool', 'Core chips after divergence', 'Names off my rhythm']
+  const labels = uniqueCompact([...(suggestions.length > 0 ? suggestions : defaults), ...defaults]).slice(0, 5)
+  return (
+    <div style={commandBarShellStyle}>
+      <div style={candidateGroupHeaderStyle}>
+        <span>{locale === 'zh-CN' ? 'Command Bar' : 'Command Bar'}</span>
+        <span>{[
+          activeRole !== 'all' ? tradeRoleLabel(activeRole, locale) : '',
+          suppressClimax ? (locale === 'zh-CN' ? '已排除高潮' : 'crowded excluded') : '',
+        ].filter(Boolean).join(' · ') || (row ? row.name : (locale === 'zh-CN' ? '交易指令' : 'trade commands'))}</span>
+      </div>
+      <div style={commandBarRailStyle}>
+        {labels.map(label => (
+          <button
+            key={label}
+            type="button"
+            style={commandChipStyle}
+            title={label}
+            onClick={() => onCommand(commandKeyForLabel(label))}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -5960,6 +6579,10 @@ function WatchlistTabbedTable({
   locale,
   activeTab,
   onTabChange,
+  activeTradeRole,
+  onTradeRoleChange,
+  suppressClimax,
+  roleCounts,
   groups,
   rows,
   target,
@@ -5978,6 +6601,10 @@ function WatchlistTabbedTable({
   locale: LongclawLocale
   activeTab: WatchlistTabKey
   onTabChange: (tab: WatchlistTabKey) => void
+  activeTradeRole: TradeRoleKey
+  onTradeRoleChange: (role: TradeRoleKey) => void
+  suppressClimax: boolean
+  roleCounts: Record<StockTradeRoleKey, number>
   groups: {
     macro_indices: WatchlistRow[]
     sector_boards: WatchlistRow[]
@@ -6062,6 +6689,25 @@ function WatchlistTabbedTable({
             ))}
           </select>
         </label>
+      </div>
+      <div style={tradeRoleFilterStyle} title={locale === 'zh-CN' ? '先选交易角色，再看线索池/盯盘池/确认买点。' : 'Choose trade role before execution state.'}>
+        {TRADE_ROLE_FILTERS.map(role => {
+          const count = role.key === 'all'
+            ? groups.buy_candidates.length + groups.watch_stocks.length + groups.focus_stocks.length + groups.risk_stocks.length
+            : roleCounts[role.key as StockTradeRoleKey]
+          const active = role.key === activeTradeRole
+          return (
+            <button
+              key={role.key}
+              type="button"
+              style={tradeRoleButtonStyle(active, role.key)}
+              onClick={() => onTradeRoleChange(role.key)}
+              title={role.key === 'all' && suppressClimax ? (locale === 'zh-CN' ? '全部，已排除高潮票' : 'All, crowded names excluded') : tradeRoleLabel(role.key, locale)}
+            >
+              {tradeRoleLabel(role.key, locale)} {count}
+            </button>
+          )
+        })}
       </div>
       <div style={decisionFunnelShellStyle}>
         <div style={candidateGroupHeaderStyle}>
@@ -6242,6 +6888,7 @@ function chainPhaseLabel(phase: string, locale: LongclawLocale): string {
   const labels: Record<string, [string, string]> = {
     accelerating: ['加速', 'Accel'],
     warming: ['升温', 'Warm'],
+    consensus_climax: ['高潮', 'Climax'],
     diverging: ['背离', 'Diverge'],
     cooling: ['降温', 'Cool'],
     risk_off: ['风险', 'Risk'],
@@ -6254,6 +6901,7 @@ function chainPhaseLabel(phase: string, locale: LongclawLocale): string {
 function chainPhaseTone(phase: string): React.CSSProperties {
   if (phase === 'accelerating') return { color: tradingDeskTheme.market.up, borderColor: tradingDeskTheme.market.up }
   if (phase === 'warming') return { color: terminalTheme.accentText, borderColor: terminalTheme.accent }
+  if (phase === 'consensus_climax') return { color: tradingDeskTheme.colors.auroraGold, borderColor: tradingDeskTheme.colors.auroraGold }
   if (phase === 'diverging') return { color: '#e0a83a', borderColor: '#8a6726' }
   if (phase === 'cooling') return { color: '#7aa7ff', borderColor: '#35548c' }
   if (phase === 'risk_off') return { color: tradingDeskTheme.market.down, borderColor: tradingDeskTheme.market.down }
@@ -6293,6 +6941,7 @@ function chainStageLabel(row: WatchlistRow): string {
 function chainVizBarColor(phase: string): string {
   if (phase === 'risk_off') return tradingDeskTheme.market.down
   if (phase === 'cooling') return '#3f7ee8'
+  if (phase === 'consensus_climax') return tradingDeskTheme.colors.auroraGold
   if (phase === 'diverging') return '#d0902f'
   if (phase === 'accelerating') return tradingDeskTheme.market.up
   return terminalTheme.accent
@@ -6419,11 +7068,11 @@ function WatchlistTable({
         const rowSource = sourceLabelForWatchlist(row)
         const stockDecision = activeTab === 'focus_stocks' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks' || activeTab === 'buy_candidates'
         const actionLabel = decisionActionLabel(row.decision, locale)
-        const interventionLabel = row.decision.opportunityLabel || opportunitySideLabel(row.decision.opportunitySide, locale)
-        const signalLine = stockDecision ? watchlistRowSignalLine(row, locale) : ''
-        const cycleLine = stockDecision ? timeframeSignalSideSummary(row, locale) : ''
-        const themeLine = stockDecision ? mainlineSummary(row, locale) : ''
-        const confirmLine = stockDecision ? decisionConfirmationSummary(row.decision, row, locale) : ''
+        const identityLabel = stockDecision ? tradeIdentityLabelForRow(row, locale) : ''
+        const chainBrief = stockDecision ? chainBriefForWatchlist(row) : ''
+        const stageLabel = stockDecision ? compactText(row.raw.stage_label) || decisionStageLabel(row.decision.stage, locale) : ''
+        const traderRead = stockDecision ? traderReadLine(row, locale) : ''
+        const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : ''
         const stageBadgeStyle = row.decision.opportunitySide === 'risk'
           ? miniSellSignalBadgeStyle
           : row.decision.opportunitySide === 'right'
@@ -6444,6 +7093,8 @@ function WatchlistTable({
                 compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间收益源' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
                 activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
                 activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+                stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
+                stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '证据' : 'Evidence'}: ${evidenceLine}` : '',
                 row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${row.rankReason}` : '',
                 row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${row.traceSummary}` : '',
                 rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
@@ -6453,12 +7104,12 @@ function WatchlistTable({
               <div style={watchlistNameCellStyle}>
                 <div style={watchlistNameStyle}>{row.name}</div>
 	                <div style={watchlistSubStyle}>
-	                  {[stockDecision ? interventionLabel : row.typeLabel, row.code, stockDecision ? signalLine : '', ...(!stockDecision ? row.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')}
+	                  {[stockDecision ? identityLabel : row.typeLabel, stockDecision ? (chainBrief || row.code) : row.code, stockDecision ? stageLabel : '', ...(!stockDecision ? row.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')}
 	                </div>
                 {stockDecision || row.explanation || row.traderAction || row.rankLabel || row.rankReason ? (
                   <div style={watchlistSubStyle}>
                     {stockDecision
-                      ? [cycleLine, themeLine, confirmLine].filter(Boolean).join(' · ')
+                      ? traderRead
                       : [row.rankLabel, row.traderAction, row.rankReason || row.explanation].filter(Boolean).join(' · ')}
                   </div>
                 ) : null}
@@ -6511,6 +7162,7 @@ function StrategyDecisionPanel({
   locale,
   row,
   target,
+  symbolData,
   sourceConfidence,
   keyLevels,
   signals,
@@ -6519,21 +7171,54 @@ function StrategyDecisionPanel({
   locale: LongclawLocale
   row: WatchlistRow | null
   target: ChartTarget
+  symbolData: WorkbenchSymbolData | null
   sourceConfidence: Record<string, unknown>[]
   keyLevels: StrategyKeyLevel[]
   signals: StrategySignal[]
   divergences: MacdDivergenceSignal[]
 }) {
   if (!row) {
+    const summary = recordValue(symbolData?.summary)
+    const chain = recordValue(summary.chain_position)
+    const chainText = uniqueCompact([chain.chain, chain.node, chain.role, chain.board_or_concept]).slice(0, 2).join(' · ')
+    const identity = compactText(summary.trade_role_label) || (chainText ? (locale === 'zh-CN' ? '二波观察' : 'Second wave') : (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch'))
+    const read = compactText(summary.trader_read) || (chainText
+      ? `${chainText}: ${locale === 'zh-CN' ? '当前不在机会池，先按图表位置观察，等重新进入盯盘或确认买点。' : 'outside the opportunity pool; wait for watch or entry state.'}`
+      : `${target.label} ${locale === 'zh-CN' ? '当前不在机会池，只显示图表和背景证据。' : 'is outside the opportunity pool; chart and context only.'}`)
+    const evidence = compactText(summary.evidence_summary) || [
+      chainText ? `${locale === 'zh-CN' ? '产业链' : 'Chain'} ${chainText}` : '',
+      compactText(summary.conclusion) ? `${locale === 'zh-CN' ? '图表' : 'Chart'} ${compactText(summary.conclusion)}` : '',
+    ].filter(Boolean).join(' · ')
+    const dayChange = formatPercent(summary.day_change_pct ?? summary.daily_change_pct ?? summary.gain_pct)
     return (
       <Panel
         title={locale === 'zh-CN' ? '单票交易解释' : 'Single-name trade read'}
         meta={locale === 'zh-CN' ? '不在机会池' : 'outside pool'}
       >
-        <div style={emptyStateDarkStyle}>
-          {locale === 'zh-CN'
-            ? `${target.label} 当前不在机会池里；这里只显示图表和背景证据。`
-            : `${target.label} is not in the opportunity pool; only chart and context evidence are shown.`}
+        <div style={compactListStyle}>
+          <div style={decisionExplainHeroStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={rowTitleStyle}>{compactText(summary.title) || target.label}</div>
+                <div style={mutedLineStyle}>{[compactText(summary.subtitle), identity, chainText].filter(Boolean).join(' · ')}</div>
+              </div>
+              <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(dayChange) }}>{dayChange}</div>
+            </div>
+            <div style={mutedTwoLineStyle}>{read}</div>
+          </div>
+          {[
+            [locale === 'zh-CN' ? '交易身份' : 'Trade identity', identity],
+            [locale === 'zh-CN' ? '现在位置' : 'Position now', chainText || compactText(summary.conclusion) || (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch')],
+            [locale === 'zh-CN' ? '能不能动' : 'Actionable?', locale === 'zh-CN' ? '不能直接执行；没进入线索池/盯盘池/确认买点前，只看图表证据。' : 'No direct action; wait for clue, watch, or entry state.'],
+            [locale === 'zh-CN' ? '还差什么' : 'Missing', locale === 'zh-CN' ? '还差入池来源、30m承接和5m/15m下单确认。' : 'Needs pool source, 30m support, and 5m/15m confirmation.'],
+            [locale === 'zh-CN' ? '失效条件' : 'Invalidates', locale === 'zh-CN' ? '回踩破位、右侧不修复或主线继续退潮。' : 'Breakdown, no right-side repair, or theme continues fading.'],
+            [locale === 'zh-CN' ? '证据来源' : 'Evidence', evidence || (locale === 'zh-CN' ? '图表缓存和个股分析' : 'Chart cache and stock analysis')],
+          ].map(([label, value]) => (
+            <div key={String(label)} style={decisionExplainRowStyle}>
+              <div style={decisionExplainLabelStyle}>{label}</div>
+              <div style={mutedTwoLineStyle} title={String(value)}>{value}</div>
+            </div>
+          ))}
         </div>
       </Panel>
     )
@@ -6553,6 +7238,11 @@ function StrategyDecisionPanel({
   const setupExplanation = compactText(row.raw.setup_explanation)
   const entryLogic = compactText(row.raw.entry_logic_summary)
   const noSignalText = locale === 'zh-CN' ? '暂无' : 'None'
+  const identityDetail = tradeIdentityLabelForRow(row, locale)
+  const positionDetail = traderPositionSummary(row, locale)
+  const canActDetail = traderCanActSummary(row, locale)
+  const evidenceDetail = traderEvidenceSummary(row, locale) || decisionSourceSummary(decision, locale)
+  const traderRead = traderReadLine(row, locale)
   const primaryLevels = keyLevels.slice(0, 3)
   const primarySignals = signals.slice(-2).reverse()
   const latestDivergence = divergences.slice(-1)[0]
@@ -6584,15 +7274,17 @@ function StrategyDecisionPanel({
               </div>
             ))}
           </div>
+          {traderRead ? (
+            <div style={mutedTwoLineStyle}>{traderRead}</div>
+          ) : null}
         </div>
         {[
-          [locale === 'zh-CN' ? '现在在哪' : 'Current stage', [opportunity, lineage].filter(Boolean).join(' · ')],
-          [locale === 'zh-CN' ? '属于哪类' : 'Setup type', setupExplanation || opportunity],
-          [locale === 'zh-CN' ? '周期位置' : 'Timeframes', cycleDetail || timeframeSummary],
-          [locale === 'zh-CN' ? '买点逻辑' : 'Entry logic', entryLogic || [rightSignals !== noSignalText ? `${locale === 'zh-CN' ? '确认' : 'Confirm'} ${rightSignals}` : '', leftSignals !== noSignalText ? `${locale === 'zh-CN' ? '低吸' : 'Dip'} ${leftSignals}` : ''].filter(Boolean).join(' · ') || row.signal],
-          [locale === 'zh-CN' ? '为什么看它' : 'Why watch it', [themeDetail, decisionSourceSummary(decision, locale)].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '交易身份' : 'Trade identity', [identityDetail, lineage].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '现在位置' : 'Position now', positionDetail || setupExplanation || opportunity],
+          [locale === 'zh-CN' ? '能不能动' : 'Actionable?', canActDetail || entryLogic || row.signal],
           [locale === 'zh-CN' ? '还差什么' : 'Missing', confirmationDetail],
           [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidates],
+          [locale === 'zh-CN' ? '证据来源' : 'Evidence', evidenceDetail || [cycleDetail, themeDetail, leftSignals !== noSignalText ? leftSignals : '', rightSignals !== noSignalText ? rightSignals : ''].filter(Boolean).join(' · ')],
         ].map(([label, value]) => (
           <div key={String(label)} style={decisionExplainRowStyle}>
             <div style={decisionExplainLabelStyle}>{label}</div>
@@ -6602,7 +7294,7 @@ function StrategyDecisionPanel({
         {primaryLevels.length > 0 || primarySignals.length > 0 || latestDivergence ? (
           <div style={signalBlockStyle}>
             <div style={candidateGroupHeaderStyle}>
-              <span>{locale === 'zh-CN' ? '关键价位和本周期信号' : 'Key levels and current signals'}</span>
+              <span>{locale === 'zh-CN' ? '证据来源：关键价位和技术信号' : 'Evidence: levels and signals'}</span>
               <span>{primaryLevels.length + primarySignals.length + (latestDivergence ? 1 : 0)}</span>
             </div>
             {primaryLevels.map(level => (
