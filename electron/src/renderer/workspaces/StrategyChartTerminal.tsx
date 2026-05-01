@@ -262,6 +262,8 @@ type TradeMapItem = {
   summary: string
   phase?: string
   asOf?: string
+  definition?: string
+  source?: string
 }
 
 const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
@@ -271,7 +273,7 @@ const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> =
   { key: 'all', zh: '全部', en: 'All' },
   { key: 'mainline_attack', zh: '主线进攻', en: 'Mainline' },
   { key: 'climax_risk', zh: '高潮别追', en: 'No chase' },
-  { key: 'holding_chain', zh: '持仓链', en: 'Holding chain' },
+  { key: 'holding_chain', zh: '电池链观察', en: 'Battery chain watch' },
   { key: 'defensive_weight', zh: '防守权重', en: 'Defensive' },
   { key: 'second_wave', zh: '二波观察', en: 'Second wave' },
   { key: 'risk_review', zh: '风险复核', en: 'Risk review' },
@@ -1132,6 +1134,15 @@ const tradeMapMetaStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const tradeMapDefinitionStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  color: terminalTheme.mutedStrong,
+  fontSize: 9,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
 const tradeMapRailStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -1139,15 +1150,15 @@ const tradeMapRailStyle: React.CSSProperties = {
   minWidth: 0,
 }
 
-function tradeMapChipStyle(role: StockTradeRoleKey): React.CSSProperties {
+function tradeMapChipStyle(role: StockTradeRoleKey, active = false): React.CSSProperties {
   const color = tradeRoleColor(role)
   return {
     display: 'inline-flex',
     alignItems: 'center',
     maxWidth: 360,
-    border: `1px solid ${color}`,
+    border: `1px solid ${active ? terminalTheme.textStrong : color}`,
     borderRadius: 4,
-    background: `${color}18`,
+    background: active ? `${color}2e` : `${color}18`,
     color: terminalTheme.text,
     padding: '3px 6px',
     fontFamily: fontStacks.ui,
@@ -1157,6 +1168,8 @@ function tradeMapChipStyle(role: StockTradeRoleKey): React.CSSProperties {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    appearance: 'none',
   }
 }
 
@@ -1185,6 +1198,8 @@ function aiAlertChipStyle(level: string): React.CSSProperties {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    appearance: 'none',
   }
 }
 
@@ -3884,7 +3899,7 @@ function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
   const missing = compactText(row.raw.missing_condition)
   const setup = compactText(row.raw.setup_explanation)
   if (role === 'climax_risk') return `${chain || (locale === 'zh-CN' ? '主线' : 'Mainline')}: ${locale === 'zh-CN' ? '一致高潮，不追高，等分歧承接' : 'crowded; do not chase'}`
-  if (role === 'holding_chain') return `${chain || (locale === 'zh-CN' ? '持仓链' : 'Holding chain')}: ${locale === 'zh-CN' ? '修复观察，等30m承接确认' : 'repair watch; wait for 30m support'}`
+  if (role === 'holding_chain') return `${chain || (locale === 'zh-CN' ? '电池链观察' : 'Battery chain watch')}: ${locale === 'zh-CN' ? '产业链观察，不代表真实持仓；等30m承接确认' : 'chain watch only, not a real position; wait for 30m support'}`
   if (role === 'defensive_weight') return `${chain || (locale === 'zh-CN' ? '防守权重' : 'Defensive')}: ${locale === 'zh-CN' ? '偏稳仓，不和进攻票混排' : 'defensive; keep separate from attack names'}`
   if (role === 'second_wave') return `${chain || (locale === 'zh-CN' ? '上轮主线' : 'Prior theme')}: ${locale === 'zh-CN' ? '退潮后等二波，不抢反弹' : 'wait for second wave'}`
   if (role === 'risk_review') return setup || missing || (locale === 'zh-CN' ? '风险未解除，先不当机会' : 'Risk unresolved')
@@ -3949,6 +3964,24 @@ function tradeRoleCountsForGroups(groups: {
     if (role) counts[role] += 1
   })
   return counts
+}
+
+function preferredWatchlistTabForTradeRole(
+  role: TradeRoleKey,
+  currentTab: WatchlistTabKey,
+  groups: {
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+): WatchlistTabKey {
+  if (role === 'all') return currentTab
+  const preferredTabs: WatchlistTabKey[] =
+    role === 'risk_review' || role === 'climax_risk'
+      ? ['risk_stocks', 'focus_stocks', 'watch_stocks', 'buy_candidates']
+      : ['focus_stocks', 'watch_stocks', 'buy_candidates', 'risk_stocks']
+  return preferredTabs.find(tab => groups[tab].some(row => stockTradeRoleForRow(row) === role)) ?? preferredTabs[0]
 }
 
 function decisionConfirmationSummary(decision: WatchlistDecision, row: WatchlistRow, locale: LongclawLocale): string {
@@ -4836,6 +4869,16 @@ export function StrategyChartTerminal({
     () => tradeRoleCountsForGroups(groupedWatchlistRows),
     [groupedWatchlistRows],
   )
+  const activateTradeRole = useCallback(
+    (role: TradeRoleKey) => {
+      setActiveTradeRole(role)
+      if (role !== 'all') {
+        setActiveWatchlistTab(preferredWatchlistTabForTradeRole(role, activeWatchlistTab, groupedWatchlistRows))
+      }
+      setListCursorIndex(0)
+    },
+    [activeWatchlistTab, groupedWatchlistRows],
+  )
   const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
   const activeDecisionRow = useMemo(
     () => activeDecisionRowFromGroups(groupedWatchlistRows, target, cursorRow),
@@ -5302,9 +5345,7 @@ export function StrategyChartTerminal({
     (command: TradeCommandKey) => {
       if (command === 'holding_chain') {
         setSuppressClimax(false)
-        setActiveTradeRole('holding_chain')
-        setActiveWatchlistTab('watch_stocks')
-        setListCursorIndex(0)
+        activateTradeRole('holding_chain')
         return
       }
       if (command === 'exclude_climax') {
@@ -5325,17 +5366,13 @@ export function StrategyChartTerminal({
       }
       if (command === 'semiconductor_divergence') {
         setSuppressClimax(false)
-        setActiveTradeRole('mainline_attack')
-        setActiveWatchlistTab('sector_boards')
-        setListCursorIndex(0)
+        activateTradeRole('mainline_attack')
         return
       }
       setSuppressClimax(false)
-      setActiveTradeRole('risk_review')
-      setActiveWatchlistTab('risk_stocks')
-      setListCursorIndex(0)
+      activateTradeRole('risk_review')
     },
-    [activeDecisionRow, activeTradeRole, locale, onOpenRecord],
+    [activateTradeRole, activeDecisionRow, activeTradeRole, locale, onOpenRecord],
   )
 
   useEffect(() => {
@@ -5430,7 +5467,14 @@ export function StrategyChartTerminal({
             : 'Signals live endpoint is not configured. Showing a degraded summary.'}
         </div>
         <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
-        <TradeMapStrip locale={locale} shell={shell} groups={groupedWatchlistRows} />
+        <TradeMapStrip
+          locale={locale}
+          shell={shell}
+          groups={groupedWatchlistRows}
+          activeRole={activeTradeRole}
+          onRoleSelect={activateTradeRole}
+          onCommand={handleTradeCommand}
+        />
         <div style={fallbackGridStyle}>
           <Panel
             title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
@@ -5605,7 +5649,14 @@ export function StrategyChartTerminal({
       </div>
 
       <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
-      <TradeMapStrip locale={locale} shell={shell} groups={groupedWatchlistRows} />
+      <TradeMapStrip
+        locale={locale}
+        shell={shell}
+        groups={groupedWatchlistRows}
+        activeRole={activeTradeRole}
+        onRoleSelect={activateTradeRole}
+        onCommand={handleTradeCommand}
+      />
 
       {shell?.notices?.length ? (
         <div style={noticeDarkStyle}>{shell.notices.join(' ')}</div>
@@ -5666,10 +5717,7 @@ export function StrategyChartTerminal({
               activeTab={activeWatchlistTab}
               onTabChange={setActiveWatchlistTab}
               activeTradeRole={activeTradeRole}
-              onTradeRoleChange={role => {
-                setActiveTradeRole(role)
-                setListCursorIndex(0)
-              }}
+              onTradeRoleChange={activateTradeRole}
               suppressClimax={suppressClimax}
               roleCounts={tradeRoleCounts}
               groups={groupedWatchlistRows}
@@ -6120,6 +6168,8 @@ function tradeMapItemsFromShell(
         summary: compactText(item.summary),
         phase: compactText(item.phase),
         asOf: compactText(item.as_of),
+        definition: compactText(item.definition),
+        source: compactText(item.source),
       } satisfies TradeMapItem
     })
     .filter((item): item is TradeMapItem => Boolean(item && item.name))
@@ -6144,6 +6194,8 @@ function tradeMapItemsFromShell(
       summary: '加速中，等分歧承接',
       phase: compactText(mainline.raw.phase),
       asOf: compactText(mainline.raw.day_change_as_of),
+      definition: 'chain_heat phase=accelerating/warming',
+      source: 'chain_heat_snapshots',
     })
   }
   if (climax) {
@@ -6154,6 +6206,8 @@ function tradeMapItemsFromShell(
       summary: '一致高潮，不追',
       phase: compactText(climax.raw.phase),
       asOf: compactText(climax.raw.day_change_as_of),
+      definition: 'chain_heat phase=consensus_climax',
+      source: 'chain_heat_snapshots',
     })
   }
   if (retreat) {
@@ -6164,6 +6218,8 @@ function tradeMapItemsFromShell(
       summary: '退潮/分化后等二波',
       phase: compactText(retreat.raw.phase),
       asOf: compactText(retreat.raw.day_change_as_of),
+      definition: 'chain_heat phase=cooling/risk_off/diverging',
+      source: 'chain_heat_snapshots',
     })
   }
   const stockRows = [...groups.focus_stocks, ...groups.watch_stocks, ...groups.buy_candidates, ...groups.risk_stocks]
@@ -6173,10 +6229,12 @@ function tradeMapItemsFromShell(
     if (!row) return
     derived.push({
       role,
-      label: role === 'holding_chain' ? '持仓' : role === 'defensive_weight' ? '防守' : '二波',
+      label: role === 'holding_chain' ? '电池链' : role === 'defensive_weight' ? '防守' : '二波',
       name: row.name,
       summary: traderReadLine(row, 'zh-CN'),
       asOf: compactText(row.raw.day_change_as_of),
+      definition: role === 'holding_chain' ? '静态产业链代表映射，不代表真实持仓' : '',
+      source: role === 'holding_chain' ? 'industry_chains.yaml + terminal_stock_pool' : 'terminal_stock_pool',
     })
   })
   return {
@@ -6191,6 +6249,9 @@ function TradeMapStrip({
   locale,
   shell,
   groups,
+  activeRole,
+  onRoleSelect,
+  onCommand,
 }: {
   locale: LongclawLocale
   shell: WorkbenchShell | null
@@ -6201,6 +6262,9 @@ function TradeMapStrip({
     risk_stocks: WatchlistRow[]
     watch_stocks: WatchlistRow[]
   }
+  activeRole: TradeRoleKey
+  onRoleSelect: (role: TradeRoleKey) => void
+  onCommand: (command: TradeCommandKey) => void
 }) {
   const tradeMap = tradeMapItemsFromShell(shell, groups)
   const rawAlerts = Array.isArray(shell?.ai_alerts) ? shell.ai_alerts.map(item => recordValue(item)) : []
@@ -6216,7 +6280,7 @@ function TradeMapStrip({
   return (
     <div style={tradeMapStripStyle}>
       <div style={tradeMapHeaderStyle}>
-        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日交易地图' : 'Trade map'}</div>
+        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日交易地图 · 点击筛选' : 'Trade map · click to filter'}</div>
         <div style={tradeMapMetaStyle}>
           {[
             tradeMap.asOf ? `${locale === 'zh-CN' ? '有效交易日' : 'valid day'} ${tradeMap.asOf}` : '',
@@ -6226,11 +6290,30 @@ function TradeMapStrip({
         </div>
       </div>
       <div style={tradeMapRailStyle}>
-        {tradeMap.items.map(item => (
-          <span key={`${item.role}-${item.name}`} style={tradeMapChipStyle(item.role)} title={`${item.name} · ${item.summary}`}>
+        {tradeMap.items.map(item => {
+          const title = [
+            `${item.name} · ${item.summary}`,
+            item.definition ? `${locale === 'zh-CN' ? '定义' : 'Definition'}: ${item.definition}` : '',
+            item.source ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${item.source}` : '',
+            locale === 'zh-CN' ? '点击后筛选左侧列表' : 'Click to filter the left list',
+          ].filter(Boolean).join('\n')
+          return (
+          <button
+            key={`${item.role}-${item.name}`}
+            type="button"
+            style={tradeMapChipStyle(item.role, activeRole === item.role)}
+            title={title}
+            onClick={() => onRoleSelect(item.role)}
+          >
             {`${item.label}: ${item.name}${item.summary ? `，${item.summary}` : ''}`}
-          </span>
-        ))}
+          </button>
+          )
+        })}
+      </div>
+      <div style={tradeMapDefinitionStyle}>
+        {locale === 'zh-CN'
+          ? '定义：主线/高潮来自 chain_heat 阶段；电池链是静态产业链代表映射，不代表真实持仓；点击标签会筛选左侧池子。'
+          : 'Definitions: mainline/crowded come from chain_heat phase; battery chain is static representative mapping, not a real position; click chips to filter.'}
       </div>
       {alerts.length > 0 ? (
         <div style={aiAlertStripStyle}>
@@ -6239,9 +6322,15 @@ function TradeMapStrip({
             const text = compactText(record.text)
             if (!text) return null
             return (
-              <span key={`${text}-${index}`} style={aiAlertChipStyle(compactText(record.level))} title={text}>
+              <button
+                key={`${text}-${index}`}
+                type="button"
+                style={aiAlertChipStyle(compactText(record.level))}
+                title={`${text}${compactText(record.command) ? `\n${compactText(record.command)}` : ''}`}
+                onClick={() => onCommand(commandKeyForLabel(compactText(record.command) || text))}
+              >
                 {text}
-              </span>
+              </button>
             )
           })}
         </div>
@@ -6251,7 +6340,7 @@ function TradeMapStrip({
 }
 
 function commandKeyForLabel(label: string): TradeCommandKey {
-  if (label.includes('持仓链')) return 'holding_chain'
+  if (label.includes('电池链') || label.includes('重点链') || label.includes('持仓链')) return 'holding_chain'
   if (label.includes('排除高潮')) return 'exclude_climax'
   if (label.includes('为什么入池') || label.includes('解释')) return 'explain_current'
   if (label.includes('半导体') || label.includes('核心票')) return 'semiconductor_divergence'
@@ -6274,8 +6363,8 @@ function EmbeddedCommandBar({
   onCommand: (command: TradeCommandKey) => void
 }) {
   const defaults = locale === 'zh-CN'
-    ? ['只看持仓链', '排除高潮票', '解释这只票为什么入池', '列出半导体分歧后可看的核心票', '哪些票不符合我当前节奏']
-    : ['Show holding chain', 'Exclude crowded names', 'Explain why this is in the pool', 'Core chips after divergence', 'Names off my rhythm']
+    ? ['只看电池链观察', '排除高潮票', '解释这只票为什么入池', '列出半导体分歧后可看的核心票', '哪些票不符合我当前节奏']
+    : ['Show battery-chain watch', 'Exclude crowded names', 'Explain why this is in the pool', 'Core chips after divergence', 'Names off my rhythm']
   const labels = uniqueCompact([...(suggestions.length > 0 ? suggestions : defaults), ...defaults]).slice(0, 5)
   return (
     <div style={commandBarShellStyle}>
