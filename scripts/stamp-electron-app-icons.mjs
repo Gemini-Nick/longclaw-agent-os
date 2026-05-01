@@ -9,6 +9,7 @@ const releaseDir = path.resolve(repoRoot, process.argv[2] || 'release/mac-arm64'
 const iconIcns = path.join(repoRoot, 'electron', 'build-resources', 'icon.icns')
 const iconPng = path.join(repoRoot, 'electron', 'build-resources', 'icon.png')
 const plistBuddy = '/usr/libexec/PlistBuddy'
+const codesign = '/usr/bin/codesign'
 
 function findAppBundles(root) {
   const output = []
@@ -52,6 +53,12 @@ function stampApp(appPath) {
   return true
 }
 
+function signApp(appPath) {
+  if (!fs.existsSync(codesign)) return false
+  execFileSync(codesign, ['--force', '--deep', '--sign', '-', appPath], { stdio: 'ignore' })
+  return true
+}
+
 if (!fs.existsSync(iconIcns) || !fs.existsSync(iconPng)) {
   throw new Error(`Missing generated icons under ${path.dirname(iconIcns)}`)
 }
@@ -65,4 +72,11 @@ const stamped = apps.filter(stampApp)
 console.log(`Stamped Electron icons for ${stamped.length} app bundle(s):`)
 for (const appPath of stamped) {
   console.log(`- ${path.relative(repoRoot, appPath)}`)
+}
+
+const signed = [...stamped]
+  .sort((a, b) => b.length - a.length)
+  .filter(signApp)
+if (signed.length > 0) {
+  console.log(`Ad-hoc signed Electron app bundle(s): ${signed.length}`)
 }
