@@ -180,6 +180,7 @@ type WatchlistSignalBadge = {
 }
 
 type DecisionStage = 'context' | 'risk_first' | 'strategy_candidate' | 'watch_preheat' | 'entry_ready'
+type TradeStage = 'clue_pool' | 'watch_pool' | 'dip_watch' | 'probe_candidate' | 'confirmed_entry' | 'skip_now'
 type DecisionGateKey = 'source' | 'hard_technical' | 'theme_alignment' | 'upper_context' | 'trigger_30m' | 'right_side' | 'risk_clear' | 'multi_timeframe' | 'period_conflict'
 type DecisionGateStatus = 'passed' | 'waiting' | 'blocked' | 'context'
 type DecisionInterventionSide = 'context' | 'left_setup' | 'right_confirmed' | 'hybrid' | 'risk_exit'
@@ -249,9 +250,9 @@ type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'ris
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
 
-const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'watch_stocks', 'focus_stocks']
-const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['watch_stocks', 'focus_stocks']
-const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['watch_stocks', 'focus_stocks']
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
+const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 
 type ApiError = Error & {
   status?: number
@@ -1759,6 +1760,7 @@ function uniqueCompact(values: unknown[]): string[] {
 }
 
 const DECISION_STAGES: DecisionStage[] = ['context', 'risk_first', 'strategy_candidate', 'watch_preheat', 'entry_ready']
+const TRADE_STAGES: TradeStage[] = ['clue_pool', 'watch_pool', 'dip_watch', 'probe_candidate', 'confirmed_entry', 'skip_now']
 const DECISION_GATE_KEYS: DecisionGateKey[] = [
   'source',
   'hard_technical',
@@ -1776,6 +1778,10 @@ function isDecisionStage(value: string): value is DecisionStage {
   return DECISION_STAGES.includes(value as DecisionStage)
 }
 
+function isTradeStage(value: string): value is TradeStage {
+  return TRADE_STAGES.includes(value as TradeStage)
+}
+
 function isDecisionGateKey(value: string): value is DecisionGateKey {
   return DECISION_GATE_KEYS.includes(value as DecisionGateKey)
 }
@@ -1787,10 +1793,10 @@ function isDecisionGateStatus(value: string): value is DecisionGateStatus {
 function decisionStageLabel(stage: DecisionStage, locale: LongclawLocale): string {
   const labels: Record<DecisionStage, [string, string]> = {
     context: ['背景', 'Context'],
-    risk_first: ['卖点/冲突', 'Sell/conflict'],
-    strategy_candidate: ['策略来源', 'Strategy source'],
-    watch_preheat: ['左侧机会', 'Left setup'],
-    entry_ready: ['右侧确认', 'Right confirm'],
+    risk_first: ['暂不参与', 'Skip now'],
+    strategy_candidate: ['线索池', 'Clue pool'],
+    watch_preheat: ['盯盘池', 'Watch pool'],
+    entry_ready: ['确认买点', 'Confirmed entry'],
   }
   return locale === 'zh-CN' ? labels[stage][0] : labels[stage][1]
 }
@@ -1798,10 +1804,10 @@ function decisionStageLabel(stage: DecisionStage, locale: LongclawLocale): strin
 function decisionStageMeta(stage: DecisionStage, locale: LongclawLocale): string {
   const meta: Record<DecisionStage, [string, string]> = {
     context: ['看方向，不直接当买卖点。', 'Direction only, not an entry.'],
-    risk_first: ['出现卖点或冲突，暂不当机会。', 'Sell/conflict signal, not an opportunity.'],
-    strategy_candidate: ['只有策略来源，还没形成技术信号。', 'Source only; no technical signal yet.'],
-    watch_preheat: ['左侧技术苗头，重点看还差哪个周期。', 'Left-side setup; check missing timeframe.'],
-    entry_ready: ['右侧确认出现，复核位置和失效条件。', 'Right-side confirmation; review level and invalidation.'],
+    risk_first: ['过期、破位、冲突或高潮，先别看。', 'Expired, broken, conflicted, or crowded.'],
+    strategy_candidate: ['有线索，还没形成买点。', 'There is a clue, but not an entry.'],
+    watch_preheat: ['值得盯盘，重点看买点还差哪一步。', 'Worth watching; check the missing entry step.'],
+    entry_ready: ['买点路径基本走通，复核位置和失效条件。', 'Entry path is mostly complete; review level and invalidation.'],
   }
   return locale === 'zh-CN' ? meta[stage][0] : meta[stage][1]
 }
@@ -1810,12 +1816,12 @@ function decisionGateLabel(key: DecisionGateKey, locale: LongclawLocale): string
   const labels: Record<DecisionGateKey, [string, string]> = {
     source: ['来源', 'Source'],
     hard_technical: ['硬技术', 'Hard tech'],
-    theme_alignment: ['主线共振', 'Theme alignment'],
-    upper_context: ['日/周结构', 'Daily/weekly'],
-    trigger_30m: ['30m触发', '30m trigger'],
-    right_side: ['5m/15m右侧', '5m/15m confirm'],
-    risk_clear: ['风险清空', 'Risk clear'],
-    multi_timeframe: ['多周期共振', 'Multi-timeframe'],
+    theme_alignment: ['主线强度', 'Mainline'],
+    upper_context: ['大周期', 'Big cycle'],
+    trigger_30m: ['交易周期', 'Trade cycle'],
+    right_side: ['下单周期', 'Order cycle'],
+    risk_clear: ['失效条件', 'Invalidation'],
+    multi_timeframe: ['周期共振', 'Timeframe resonance'],
     period_conflict: ['周期冲突', 'Timeframe conflict'],
   }
   return locale === 'zh-CN' ? labels[key][0] : labels[key][1]
@@ -1825,7 +1831,7 @@ function decisionGateStatusLabel(status: DecisionGateStatus, locale: LongclawLoc
   const labels: Record<DecisionGateStatus, [string, string]> = {
     passed: ['已过', 'Passed'],
     waiting: ['等待', 'Waiting'],
-    blocked: ['阻断', 'Blocked'],
+    blocked: ['不看', 'Skip'],
     context: ['参考', 'Context'],
   }
   return locale === 'zh-CN' ? labels[status][0] : labels[status][1]
@@ -1841,21 +1847,21 @@ function isDecisionOpportunitySide(value: string): value is DecisionOpportunityS
 
 function opportunitySideLabel(side: DecisionOpportunitySide, locale: LongclawLocale): string {
   const labels: Record<DecisionOpportunitySide, [string, string]> = {
-    left: ['左侧机会', 'Left setup'],
-    right: ['右侧确认', 'Right confirm'],
-    risk: ['卖点/冲突', 'Sell/conflict'],
-    context: ['策略背景', 'Context'],
+    left: ['低吸观察', 'Dip watch'],
+    right: ['确认买点', 'Confirmed entry'],
+    risk: ['暂不参与', 'Skip now'],
+    context: ['线索池', 'Clue pool'],
   }
   return locale === 'zh-CN' ? labels[side][0] : labels[side][1]
 }
 
 function interventionSideLabel(side: DecisionInterventionSide, locale: LongclawLocale): string {
   const labels: Record<DecisionInterventionSide, [string, string]> = {
-    context: ['策略背景', 'Context'],
-    left_setup: ['左侧机会', 'Left setup'],
-    right_confirmed: ['右侧确认', 'Right confirm'],
-    hybrid: ['右侧确认', 'Right confirm'],
-    risk_exit: ['卖点/冲突', 'Sell/conflict'],
+    context: ['线索池', 'Clue pool'],
+    left_setup: ['低吸观察', 'Dip watch'],
+    right_confirmed: ['确认买点', 'Confirmed entry'],
+    hybrid: ['确认买点', 'Confirmed entry'],
+    risk_exit: ['暂不参与', 'Skip now'],
   }
   return locale === 'zh-CN' ? labels[side][0] : labels[side][1]
 }
@@ -1908,14 +1914,14 @@ function decisionStageTone(stage: DecisionStage): 'open' | 'running' | 'warning'
 }
 
 function decisionActionFallback(stage: DecisionStage, missingGates: DecisionGateKey[], locale: LongclawLocale): string {
-  if (stage === 'risk_first') return locale === 'zh-CN' ? '暂不做机会' : 'Do not treat as opportunity'
-  if (stage === 'entry_ready') return locale === 'zh-CN' ? '右侧复核' : 'Review right-side entry'
-  if (stage === 'strategy_candidate') return locale === 'zh-CN' ? '等技术信号' : 'Wait for technical signal'
-  if (missingGates.includes('trigger_30m')) return locale === 'zh-CN' ? '左侧等30m' : 'Left setup, wait for 30m'
-  if (missingGates.includes('right_side')) return locale === 'zh-CN' ? '左侧等5m/15m' : 'Left setup, wait for 5m/15m'
-  if (missingGates.includes('upper_context')) return locale === 'zh-CN' ? '左侧等日/周' : 'Left setup, wait for daily/weekly'
-  if (stage === 'watch_preheat') return locale === 'zh-CN' ? '左侧观察' : 'Watch left-side setup'
-  return locale === 'zh-CN' ? '观察背景' : 'Watch context'
+  if (stage === 'risk_first') return locale === 'zh-CN' ? '暂不参与' : 'Skip now'
+  if (stage === 'entry_ready') return locale === 'zh-CN' ? '确认买点复核' : 'Review confirmed entry'
+  if (stage === 'strategy_candidate') return locale === 'zh-CN' ? '先放线索池' : 'Keep as clue'
+  if (missingGates.includes('trigger_30m')) return locale === 'zh-CN' ? '盯盘等30m' : 'Watch for 30m'
+  if (missingGates.includes('right_side')) return locale === 'zh-CN' ? '试仓候选，等5m/15m' : 'Probe candidate, wait for 5m/15m'
+  if (missingGates.includes('upper_context')) return locale === 'zh-CN' ? '盯盘等大周期' : 'Watch big cycle'
+  if (stage === 'watch_preheat') return locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entry'
+  return locale === 'zh-CN' ? '看背景' : 'Watch context'
 }
 
 function decisionActionLabel(decision: WatchlistDecision, locale: LongclawLocale): string {
@@ -1923,6 +1929,13 @@ function decisionActionLabel(decision: WatchlistDecision, locale: LongclawLocale
 }
 
 function rawDecisionStage(row: Record<string, unknown>, stageHint?: WatchlistTabKey): DecisionStage {
+  const tradeStage = compactText(row.trade_stage)
+  if (isTradeStage(tradeStage)) {
+    if (tradeStage === 'confirmed_entry') return 'entry_ready'
+    if (tradeStage === 'skip_now') return 'risk_first'
+    if (tradeStage === 'clue_pool') return 'strategy_candidate'
+    return 'watch_preheat'
+  }
   const explicitStage = compactText(row.decision_stage)
   if (isDecisionStage(explicitStage)) return explicitStage
   const statusText = [
@@ -2139,14 +2152,14 @@ function createWatchlistDecision(row: Record<string, unknown>, stageHint?: Watch
     interventionSide,
     interventionLabel: compactText(row.intervention_label) || compactText(semantics.intervention_label),
     opportunitySide,
-    opportunityLabel: compactText(row.opportunity_label),
+    opportunityLabel: compactText(row.trade_intent_label) || compactText(row.setup_side_label) || compactText(row.stage_label) || compactText(row.current_position) || compactText(row.opportunity_label),
     strategyLineage: uniqueCompact(lineage),
     missingGates,
-    primaryBlocker: compactText(row.primary_blocker) || (missingGates[0] ?? ''),
+    primaryBlocker: compactText(row.missing_condition) || compactText(row.primary_blocker) || (missingGates[0] ?? ''),
     recommendedAction: compactText(row.recommended_action) || compactText(row.next_action) || compactText(row.trader_action),
     sourceKeys,
     promotionPath: rawPromotionPath(row, stage, sourceKeys, missingGates),
-    invalidatesWhen: compactText(row.invalidates_when) || compactText(row.exit_condition),
+    invalidatesWhen: compactText(row.invalidation) || compactText(row.invalidates_when) || compactText(row.exit_condition),
   }
 }
 
@@ -3480,13 +3493,14 @@ function decisionConfirmedSummary(decision: WatchlistDecision, locale: LongclawL
     .map(step => decisionGateLabel(step.key, locale))
   if (passed.length > 0) return passed.join(' / ')
   return decision.stage === 'strategy_candidate'
-    ? (locale === 'zh-CN' ? '只有策略来源，技术门槛未确认' : 'Only the thesis source is present; technical gates are not confirmed')
-    : (locale === 'zh-CN' ? '等待更多确认' : 'Waiting for more confirmation')
+    ? (locale === 'zh-CN' ? '只是线索，还不是买点' : 'Clue only, not an entry')
+    : (locale === 'zh-CN' ? '等待买点确认' : 'Waiting for entry confirmation')
 }
 
 function decisionMissingSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
-  if (decision.stage === 'risk_first') return locale === 'zh-CN' ? '卖点/冲突提醒' : 'Sell/conflict reminder'
-  if (decision.missingGates.length === 0) return locale === 'zh-CN' ? '无主要缺口' : 'No major gap'
+  if (decision.primaryBlocker) return decision.primaryBlocker
+  if (decision.stage === 'risk_first') return locale === 'zh-CN' ? '现在先别看' : 'Skip this now'
+  if (decision.missingGates.length === 0) return locale === 'zh-CN' ? '买点路径已走通' : 'Entry path complete'
   return decision.missingGates.map(key => decisionGateLabel(key, locale)).join(' / ')
 }
 
@@ -3601,17 +3615,22 @@ function mainlineSummary(row: WatchlistRow, locale: LongclawLocale): string {
 }
 
 function decisionConfirmationSummary(decision: WatchlistDecision, row: WatchlistRow, locale: LongclawLocale): string {
+  if (decision.primaryBlocker) return decision.primaryBlocker
   if (decision.missingGates.length > 0) {
     return `${locale === 'zh-CN' ? '还差' : 'Missing'} ${decision.missingGates.map(key => decisionGateLabel(key, locale)).join(' / ')}`
   }
   const right = technicalSignalSummary(row, 'right', locale)
   if (right && right !== (locale === 'zh-CN' ? '暂无' : 'None')) {
-    return `${locale === 'zh-CN' ? '已确认' : 'Confirmed'} ${right}`
+    return `${locale === 'zh-CN' ? '买点已出' : 'Entry ready'} ${right}`
   }
-  return `${locale === 'zh-CN' ? '已确认' : 'Confirmed'} ${timeframeSignalSideSummary(row, locale)}`
+  return `${locale === 'zh-CN' ? '买点已出' : 'Entry ready'} ${timeframeSignalSideSummary(row, locale)}`
 }
 
 function watchlistRowSignalLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const entryLogic = compactText(row.raw.entry_logic_summary)
+  if (entryLogic) return entryLogic
+  const setup = compactText(row.raw.setup_explanation)
+  if (setup) return setup
   const side = row.decision.opportunitySide === 'right' ? 'right' : 'left'
   const summary = technicalSignalSummary(row, side, locale)
   if (summary && summary !== (locale === 'zh-CN' ? '暂无' : 'None')) return summary
@@ -4414,7 +4433,7 @@ export function StrategyChartTerminal({
     [laneRows, sourceConfidence],
   )
   const shellBuyCandidates = Array.isArray(shell?.buy_candidates) ? shell.buy_candidates : []
-  const buyRows = shellBuyCandidates.length > 0
+  const buyRows = shell
     ? shellBuyCandidates
     : dashboard.buy_candidates as Array<Record<string, unknown>>
   const targetCandidateRows = Array.isArray(symbolData?.candidate_stocks) ? symbolData.candidate_stocks : []
@@ -4476,14 +4495,15 @@ export function StrategyChartTerminal({
   const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
   const activeWatchlistEmptyText = activeWatchlistTab === 'focus_stocks'
     ? (compactText(focusGroupMeta.empty_reason)
-      ? `${locale === 'zh-CN' ? '右侧信号为空' : 'Right signal empty'}: ${compactText(focusGroupMeta.empty_reason)}`
-      : (locale === 'zh-CN' ? '右侧信号为空，先看左侧信号。' : 'No right-side signals. Check left-side setups.'))
+      ? `${locale === 'zh-CN' ? '确认买点为空' : 'Confirmed entry empty'}: ${compactText(focusGroupMeta.empty_reason)}`
+      : (locale === 'zh-CN' ? '确认买点为空，先看盯盘池。' : 'No confirmed entries. Check the watch pool.'))
     : activeWatchlistTab === 'risk_stocks'
-      ? (locale === 'zh-CN' ? '暂无卖点/冲突提醒。' : 'No sell/conflict reminders.')
-      : activeWatchlistTab === 'watch_stocks'
-        ? (locale === 'zh-CN' ? '暂无左侧信号。' : 'No left-side signals.')
+      ? (locale === 'zh-CN' ? '暂无暂不参与标的。' : 'No skip-now names.')
+    : activeWatchlistTab === 'watch_stocks'
+        ? (locale === 'zh-CN' ? '暂无盯盘标的。' : 'No watch-pool names.')
     : activeWatchlistTab === 'buy_candidates'
-      ? (locale === 'zh-CN' ? '暂无策略来源。' : 'No strategy source rows.')
+      ? (compactText(recordValue(recordValue(shell?.watchlist_groups_meta).buy_candidates).empty_reason)
+        || (locale === 'zh-CN' ? '暂无线索。' : 'No clues.'))
       : (locale === 'zh-CN' ? '等待 Signals shell。' : 'Waiting for Signals shell.')
   const latestSignal = compactText(symbolData?.summary?.latest_signal, dashboard.chart_context?.latest_signal ?? '')
   const summaryTitle =
@@ -5911,10 +5931,10 @@ function CacheMonitorStrip({
 
 function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const labels: Partial<Record<WatchlistTabKey, [string, string]>> = {
-    focus_stocks: ['右侧确认', 'Right confirm'],
-    risk_stocks: ['卖点/冲突', 'Sell/conflict'],
-    watch_stocks: ['左侧机会', 'Left setup'],
-    buy_candidates: ['策略来源', 'Strategy source'],
+    focus_stocks: ['确认买点', 'Confirmed entry'],
+    risk_stocks: ['暂不参与', 'Skip now'],
+    watch_stocks: ['盯盘池', 'Watch pool'],
+    buy_candidates: ['线索池', 'Clue pool'],
   }
   const label = labels[tab]
   return label ? (locale === 'zh-CN' ? label[0] : label[1]) : tab
@@ -5925,10 +5945,10 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
     sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '日涨幅=板块当日涨跌幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Day=board change'],
-    focus_stocks: ['terminal_stock_pool.focus_stocks', '右侧确认：30m触发叠加5m/15m执行确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'right confirmation: 30m trigger plus 5m/15m execution signal', 'Day=realtime quote change'],
-    risk_stocks: ['terminal_stock_pool.risk_stocks', '卖点或冲突，只做提醒不并入机会', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'sell or conflict reminder, not an opportunity', 'Day=realtime quote change'],
-    watch_stocks: ['terminal_stock_pool.watch_stocks', '左侧机会：背驰/一买/MACD低位/形态蓄势，等待确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'left setup: divergence/early buy/base pattern waiting for confirmation', 'Day=realtime quote change'],
-    buy_candidates: ['strategy_snapshots.candidates', '策略来源背景，不当作买点', '日涨幅=实时快照涨跌幅', 'strategy_snapshots.candidates', 'strategy source context, not an entry', 'Day=realtime quote change'],
+    focus_stocks: ['terminal_stock_pool.focus_stocks', '确认买点：大周期不冲突，30m买点和5m/15m下单周期都确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'confirmed entry: big cycle clear, 30m and 5m/15m confirmed', 'Day=realtime quote change'],
+    risk_stocks: ['terminal_stock_pool.risk_stocks', '暂不参与：过期、破位、冲突、高潮或卖点出现', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'skip now: expired, broken, conflicted, crowded, or sell signal', 'Day=realtime quote change'],
+    watch_stocks: ['terminal_stock_pool.watch_stocks', '盯盘池：线索到买点之间，区分低吸观察和试仓候选', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'watch pool: from clue to entry, split dip watch and probe candidate', 'Day=realtime quote change'],
+    buy_candidates: ['terminal_stock_pool.clue_stocks + strategy_snapshots.strategy_candidate', '线索池：只有来源但还没有硬技术买点', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.clue_stocks + strategy_snapshots.strategy_candidate', 'clue pool: sourced but no hard technical entry yet', 'Day=realtime quote change'],
   }
   const item = meta[tab]
   return zh
@@ -5990,15 +6010,15 @@ function WatchlistTabbedTable({
   const focusCount = groups.focus_stocks.length
   const sourceCount = groups.buy_candidates.length
   const modeTitle = focusCount > 0
-    ? (locale === 'zh-CN' ? '右侧有信号' : 'Right signals live')
+    ? (locale === 'zh-CN' ? '确认买点待复核' : 'Confirmed entries to review')
     : watchCount > 0
-      ? (locale === 'zh-CN' ? '左侧找机会' : 'Left setups')
-      : (locale === 'zh-CN' ? '等技术信号' : 'Wait for technical signal')
+      ? (locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entries')
+      : (locale === 'zh-CN' ? '先看线索池' : 'Start with clues')
   const modeMeta = focusCount > 0
-    ? (locale === 'zh-CN' ? '先看右侧，再回看左侧来源' : 'Check right-side first, then source setup')
+    ? (locale === 'zh-CN' ? '先复核位置、止损和失效条件' : 'Review level, stop, and invalidation first')
     : watchCount > 0
-      ? (locale === 'zh-CN' ? '看还差30m、5m/15m还是日周' : 'Check missing 30m, 5m/15m, or daily/weekly')
-      : (locale === 'zh-CN' ? '策略来源只做背景' : 'Strategy source is context only')
+      ? (locale === 'zh-CN' ? '看还差大周期、30m还是5m/15m' : 'Check missing big cycle, 30m, or 5m/15m')
+      : (locale === 'zh-CN' ? '线索不是买点' : 'A clue is not an entry')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
       <div style={decisionOverviewStripStyle}>
@@ -6007,9 +6027,9 @@ function WatchlistTabbedTable({
           <div style={decisionModeMetaStyle}>{modeMeta}</div>
         </div>
         {[
-          [locale === 'zh-CN' ? '左侧' : 'Left', watchCount, tradingDeskTheme.colors.auroraGold],
-          [locale === 'zh-CN' ? '右侧' : 'Right', focusCount, tradingDeskTheme.market.up],
-          [locale === 'zh-CN' ? '来源' : 'Source', sourceCount, terminalTheme.muted],
+          [locale === 'zh-CN' ? '盯盘' : 'Watch', watchCount, tradingDeskTheme.colors.auroraGold],
+          [locale === 'zh-CN' ? '买点' : 'Entry', focusCount, tradingDeskTheme.market.up],
+          [locale === 'zh-CN' ? '线索' : 'Clues', sourceCount, terminalTheme.muted],
         ].map(([label, value, color]) => (
           <div key={String(label)} style={decisionMetricCellStyle}>
             <div style={{ ...decisionMetricValueStyle, color: String(color) }}>{value}</div>
@@ -6045,8 +6065,8 @@ function WatchlistTabbedTable({
       </div>
       <div style={decisionFunnelShellStyle}>
         <div style={candidateGroupHeaderStyle}>
-          <span>{locale === 'zh-CN' ? '机会侧别' : 'Opportunity side'}</span>
-          <span>{sourceCount ? `${locale === 'zh-CN' ? '策略来源' : 'Source'} ${sourceCount}` : (locale === 'zh-CN' ? '技术信号主导' : 'Technical signal led')}</span>
+          <span>{locale === 'zh-CN' ? '机会递进' : 'Opportunity path'}</span>
+          <span>{sourceCount ? `${locale === 'zh-CN' ? '线索' : 'Clues'} ${sourceCount}` : (locale === 'zh-CN' ? '技术信号主导' : 'Technical signal led')}</span>
         </div>
         <div style={funnelRailStyle}>
           {OPPORTUNITY_FUNNEL_TABS.map((tabKey, index) => (
@@ -6062,9 +6082,11 @@ function WatchlistTabbedTable({
                   <span style={funnelButtonCountStyle}>{groups[tabKey].length}</span>
                 </div>
                 <div style={funnelButtonMetaStyle}>
-                  {tabKey === 'watch_stocks'
-                    ? (locale === 'zh-CN' ? '低位/背驰/一买/形态蓄势，等待多周期确认' : 'Base/divergence/early buy waiting for timeframe confirmation')
-                    : (locale === 'zh-CN' ? '30m触发叠加5m/15m确认，复核关键位' : '30m trigger plus 5m/15m confirmation; review levels')}
+                  {tabKey === 'buy_candidates'
+                    ? (locale === 'zh-CN' ? '有来源，还不是买点' : 'Sourced clue, not an entry')
+                    : tabKey === 'watch_stocks'
+                      ? (locale === 'zh-CN' ? '低吸观察/试仓候选，等30m或5m/15m' : 'Dip watch/probe; wait for 30m or 5m/15m')
+                      : (locale === 'zh-CN' ? '买点路径走通，复核位置和止损' : 'Entry path passed; review level and stop')}
                 </div>
               </button>
             </React.Fragment>
@@ -6129,10 +6151,10 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
   }
   if (activeTab === 'focus_stocks') {
     return [
-      locale === 'zh-CN' ? '右侧' : 'Right',
+      locale === 'zh-CN' ? '买点' : 'Entry',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '确认' : 'Confirm',
+      locale === 'zh-CN' ? '动作' : 'Action',
     ]
   }
   if (activeTab === 'risk_stocks') {
@@ -6140,20 +6162,20 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
       locale === 'zh-CN' ? '提醒' : 'Reminder',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '处理' : 'Handle',
+      locale === 'zh-CN' ? '动作' : 'Action',
     ]
   }
   if (activeTab === 'watch_stocks') {
     return [
-      locale === 'zh-CN' ? '左侧' : 'Left',
+      locale === 'zh-CN' ? '盯盘' : 'Watch',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '等待' : 'Wait',
+      locale === 'zh-CN' ? '还差' : 'Missing',
     ]
   }
   if (activeTab === 'buy_candidates') {
     return [
-      locale === 'zh-CN' ? '来源' : 'Source',
+      locale === 'zh-CN' ? '线索' : 'Clue',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
       locale === 'zh-CN' ? '背景' : 'Context',
@@ -6505,13 +6527,13 @@ function StrategyDecisionPanel({
   if (!row) {
     return (
       <Panel
-        title={locale === 'zh-CN' ? '策略解析' : 'Strategy parse'}
-        meta={locale === 'zh-CN' ? '未入漏斗' : 'outside funnel'}
+        title={locale === 'zh-CN' ? '单票交易解释' : 'Single-name trade read'}
+        meta={locale === 'zh-CN' ? '不在机会池' : 'outside pool'}
       >
         <div style={emptyStateDarkStyle}>
           {locale === 'zh-CN'
-            ? `${target.label} 当前不在个股交易漏斗里；这里只显示图表和背景证据。`
-            : `${target.label} is not in the stock decision funnel; only chart and context evidence are shown.`}
+            ? `${target.label} 当前不在机会池里；这里只显示图表和背景证据。`
+            : `${target.label} is not in the opportunity pool; only chart and context evidence are shown.`}
         </div>
       </Panel>
     )
@@ -6528,13 +6550,15 @@ function StrategyDecisionPanel({
   const cycleDetail = timeframeSignalSideSummary(row, locale)
   const themeDetail = mainlineSummary(row, locale)
   const confirmationDetail = decisionConfirmationSummary(decision, row, locale)
+  const setupExplanation = compactText(row.raw.setup_explanation)
+  const entryLogic = compactText(row.raw.entry_logic_summary)
   const noSignalText = locale === 'zh-CN' ? '暂无' : 'None'
   const primaryLevels = keyLevels.slice(0, 3)
   const primarySignals = signals.slice(-2).reverse()
   const latestDivergence = divergences.slice(-1)[0]
   return (
     <Panel
-      title={locale === 'zh-CN' ? '策略解析' : 'Strategy parse'}
+      title={locale === 'zh-CN' ? '单票交易解释' : 'Single-name trade read'}
       meta={opportunity}
       actions={<span style={statusBadgeStyle(decisionStageTone(decision.stage))}>{action}</span>}
     >
@@ -6562,12 +6586,13 @@ function StrategyDecisionPanel({
           </div>
         </div>
         {[
-          [locale === 'zh-CN' ? '机会侧别' : 'Opportunity', [opportunity, lineage].filter(Boolean).join(' · ')],
-          [locale === 'zh-CN' ? '多周期' : 'Timeframes', cycleDetail || timeframeSummary],
-          [locale === 'zh-CN' ? '技术触发' : 'Technical trigger', [leftSignals !== noSignalText ? `${locale === 'zh-CN' ? '左侧' : 'Left'} ${leftSignals}` : '', rightSignals !== noSignalText ? `${locale === 'zh-CN' ? '右侧' : 'Right'} ${rightSignals}` : ''].filter(Boolean).join(' · ') || row.signal],
-          [locale === 'zh-CN' ? '产业链/主线' : 'Theme/mainline', [themeDetail, decisionSourceSummary(decision, locale)].filter(Boolean).join(' · ')],
-          [locale === 'zh-CN' ? '还差确认' : 'Confirmation', confirmationDetail],
-          [locale === 'zh-CN' ? '作废条件' : 'Invalidates', invalidates],
+          [locale === 'zh-CN' ? '现在在哪' : 'Current stage', [opportunity, lineage].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '属于哪类' : 'Setup type', setupExplanation || opportunity],
+          [locale === 'zh-CN' ? '周期位置' : 'Timeframes', cycleDetail || timeframeSummary],
+          [locale === 'zh-CN' ? '买点逻辑' : 'Entry logic', entryLogic || [rightSignals !== noSignalText ? `${locale === 'zh-CN' ? '确认' : 'Confirm'} ${rightSignals}` : '', leftSignals !== noSignalText ? `${locale === 'zh-CN' ? '低吸' : 'Dip'} ${leftSignals}` : ''].filter(Boolean).join(' · ') || row.signal],
+          [locale === 'zh-CN' ? '为什么看它' : 'Why watch it', [themeDetail, decisionSourceSummary(decision, locale)].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '还差什么' : 'Missing', confirmationDetail],
+          [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidates],
         ].map(([label, value]) => (
           <div key={String(label)} style={decisionExplainRowStyle}>
             <div style={decisionExplainLabelStyle}>{label}</div>
