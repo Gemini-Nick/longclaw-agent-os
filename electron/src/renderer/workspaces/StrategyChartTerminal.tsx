@@ -2336,8 +2336,8 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
     if (!loadStatus) return ''
     if (loadStatus === 'failed') {
       return locale === 'zh-CN'
-        ? `加载失败${loadError ? `: ${loadError}` : ''}，按 R 重试`
-        : `load failed${loadError ? `: ${loadError}` : ''}; press R to retry`
+        ? `加载失败${loadError ? `: ${loadError}` : ''}，将自动重试`
+        : `load failed${loadError ? `: ${loadError}` : ''}; will retry automatically`
     }
     if (['triggered', 'running', 'pending'].includes(loadStatus)) {
       const etaText = loadEta !== undefined ? Math.max(1, Math.round(loadEta)) : 10
@@ -2363,7 +2363,7 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
       hasCandles
         ? `${label || '当前标的'} ${requested || requestedLabel || ''} 缓存陈旧`
         : `${label || '当前标的'} ${requested || requestedLabel || ''} 没有可用 K 线`,
-      cacheReasonLabel(reason, locale),
+      reason ? cacheReasonLabel(reason, locale) : '',
       loadLine,
       probeStatus ? `probe=${probeStatus}` : '',
       hitLine ? `已有缓存 ${hitLine}` : '',
@@ -2373,7 +2373,7 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
     hasCandles
       ? `${label || 'Current target'} ${requested || requestedLabel || ''} cache is stale`
       : `${label || 'Current target'} has no ${requested || requestedLabel || ''} candles`,
-    cacheReasonLabel(reason, locale),
+    reason ? cacheReasonLabel(reason, locale) : '',
     loadLine,
     probeStatus ? `probe=${probeStatus}` : '',
     hitLine ? `cached ${hitLine}` : '',
@@ -4771,7 +4771,7 @@ export function StrategyChartTerminal({
 
   useEffect(() => {
     if (!baseUrl || !target.label) return
-    if (!['triggered', 'running', 'pending', 'ready'].includes(chartLoadStatus)) return
+    if (!['triggered', 'running', 'pending', 'ready', 'failed'].includes(chartLoadStatus)) return
     const retrySeconds = Math.max(3, Math.min(30, Math.round(chartLoadRetrySeconds ?? 10)))
     const controller = new AbortController()
     const timer = window.setTimeout(() => {

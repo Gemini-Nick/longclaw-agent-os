@@ -1230,6 +1230,112 @@ function SessionDetail({
   )
 }
 
+type AgentStatus = {
+  name: string
+  type: string
+  model: string
+  command: string
+  is_default: boolean
+  is_running: boolean
+}
+
+const visibleAgents = new Set(['codex', 'deepseek'])
+
+function filterAgents(data: unknown): AgentStatus[] {
+  if (!Array.isArray(data)) return []
+  return data.filter((a: AgentStatus) => visibleAgents.has(a.name))
+}
+
+function AgentSwitcher() {
+  const [agents, setAgents] = useState<AgentStatus[]>([])
+  const [switching, setSwitching] = useState<string | null>(null)
+
+  const sync = () => {
+    fetch('http://127.0.0.1:18011/api/agents')
+      .then(r => r.json())
+      .then(data => setAgents(filterAgents(data)))
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    sync()
+    const timer = setInterval(sync, 5000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const handleSwitch = (name: string) => {
+    // Optimistic local update — no flicker, no flash of unfiltered agents
+    setAgents(prev => prev.map(a => ({
+      ...a,
+      is_default: a.name === name,
+      is_running: a.name === name ? true : a.is_running,
+    })))
+    setSwitching(name)
+    fetch('http://127.0.0.1:18011/api/switch-agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent: name }),
+    })
+      .then(() => sync())
+      .finally(() => setSwitching(null))
+  }
+
+  const sortedAgents = [...agents].sort((a, b) => {
+    if (a.is_default) return -1
+    if (b.is_default) return 1
+    return 0
+  })
+
+  return (
+    <section style={wechatSectionStyle}>
+      <div style={wechatSectionHeaderStyle}>
+        <div style={wechatSectionTitleBlockStyle}>
+          <h2 style={wechatSectionTitleStyle}>Agent</h2>
+        </div>
+      </div>
+      {agents.length === 0 ? (
+        <div style={wechatMutedTextStyle}>未连接</div>
+      ) : (
+        sortedAgents.map(agent => (
+          <button
+            key={agent.name}
+            type="button"
+            style={agent.is_default ? agentSwitcherDefaultRowStyle : agentSwitcherRowStyle(switching === agent.name)}
+            onClick={agent.is_default ? undefined : () => handleSwitch(agent.name)}
+            disabled={agent.is_default ? true : switching !== null}
+          >
+            <div style={agentSwitcherLeadStyle}>
+              <span style={agentSwitcherNameStyle}>{agentLabel(agent.name)}</span>
+              <span style={agentSwitcherModelStyle}>
+                {agent.model || agent.type}
+                {agent.is_running ? '' : ' · 未启动'}
+              </span>
+            </div>
+            {agent.is_default ? (
+              <span style={agentSwitcherDefaultBadgeStyle}>当前</span>
+            ) : (
+              <span style={agentSwitcherSwitchBadgeStyle}>
+                {switching === agent.name ? '切换中' : '切换'}
+              </span>
+            )}
+          </button>
+        ))
+      )}
+    </section>
+  )
+}
+
+function agentLabel(name: string): string {
+  const labels: Record<string, string> = {
+    codex: 'Codex',
+    claude: 'Claude Code',
+    deepseek: 'DeepSeek',
+    openclaw: 'OpenClaw',
+    'openclaw-acp': 'OpenClaw ACP',
+  }
+  return labels[name] ?? name
+}
+
 export function WeChatWorkspace({
   locale,
   viewportTier,
@@ -1344,6 +1450,7 @@ export function WeChatWorkspace({
           onRouteMessage={onRouteMessage}
           onOpenPluginIssue={onOpenPluginIssue}
         />
+        <AgentSwitcher />
         <div style={sourceCardStyle}>
           <div style={sourceCardLeadStyle}>
             <div style={wechatEyebrowStyle}>{locale === 'zh-CN' ? '入站' : 'Inbound'}</div>
@@ -1503,6 +1610,59 @@ const wechatRowStyle: CSSProperties = {
   background: wechatDark.panelSoft,
   color: wechatDark.text,
   minWidth: 0,
+}
+
+const agentSwitcherDefaultRowStyle: CSSProperties = {
+  ...wechatRowStyle,
+  border: `1px solid ${wechatDark.accent}`,
+  background: wechatDark.panel,
+  cursor: 'default',
+  opacity: 1,
+}
+
+const agentSwitcherRowStyle = (busy: boolean): CSSProperties => ({
+  ...wechatRowStyle,
+  cursor: busy ? 'wait' : 'pointer',
+  opacity: busy ? 0.6 : 1,
+  border: '1px solid transparent',
+  background: 'transparent',
+})
+
+const agentSwitcherLeadStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 0,
+  alignItems: 'flex-start',
+}
+
+const agentSwitcherNameStyle: CSSProperties = {
+  color: wechatDark.textStrong,
+  fontSize: 13,
+  fontWeight: 700,
+  lineHeight: 1.25,
+}
+
+const agentSwitcherModelStyle: CSSProperties = {
+  color: wechatDark.muted,
+  fontSize: 11,
+  lineHeight: 1.25,
+}
+
+const agentSwitcherDefaultBadgeStyle: CSSProperties = {
+  color: wechatDark.accent,
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+  whiteSpace: 'nowrap',
+}
+
+const agentSwitcherSwitchBadgeStyle: CSSProperties = {
+  color: wechatDark.mutedStrong,
+  fontSize: 10,
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
 }
 
 const wechatInteractiveRowStyle: CSSProperties = {
