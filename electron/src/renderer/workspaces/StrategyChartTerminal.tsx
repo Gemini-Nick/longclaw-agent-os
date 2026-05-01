@@ -252,9 +252,9 @@ type WatchlistRow = {
 type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
-type TradeRoleKey = 'all' | 'mainline_attack' | 'climax_risk' | 'holding_chain' | 'defensive_weight' | 'second_wave' | 'risk_review'
+type TradeRoleKey = 'all' | 'mainline_attack' | 'climax_risk' | 'chain_watch' | 'defensive_weight' | 'second_wave' | 'risk_review' | 'ordinary_watch'
 type StockTradeRoleKey = Exclude<TradeRoleKey, 'all'>
-type TradeCommandKey = 'holding_chain' | 'exclude_climax' | 'explain_current' | 'semiconductor_divergence' | 'rhythm_mismatch'
+type TradeCommandKey = 'chain_watch' | 'exclude_climax' | 'explain_current' | 'mainline_divergence' | 'rhythm_mismatch'
 type TradeMapItem = {
   role: StockTradeRoleKey
   label: string
@@ -271,14 +271,15 @@ const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
   { key: 'all', zh: '全部', en: 'All' },
-  { key: 'mainline_attack', zh: '主线进攻', en: 'Mainline' },
-  { key: 'climax_risk', zh: '高潮别追', en: 'No chase' },
-  { key: 'holding_chain', zh: '电池链观察', en: 'Battery chain watch' },
-  { key: 'defensive_weight', zh: '防守权重', en: 'Defensive' },
-  { key: 'second_wave', zh: '二波观察', en: 'Second wave' },
+  { key: 'mainline_attack', zh: '主线机会', en: 'Mainline' },
+  { key: 'climax_risk', zh: '过热禁追', en: 'No chase' },
+  { key: 'second_wave', zh: '回踩再起', en: 'Pullback' },
+  { key: 'defensive_weight', zh: '防守观察', en: 'Defensive' },
+  { key: 'chain_watch', zh: '产业链观察', en: 'Chain watch' },
   { key: 'risk_review', zh: '风险复核', en: 'Risk review' },
+  { key: 'ordinary_watch', zh: '线索观察', en: 'Clue watch' },
 ]
-const STOCK_TRADE_ROLE_KEYS: StockTradeRoleKey[] = ['mainline_attack', 'climax_risk', 'holding_chain', 'defensive_weight', 'second_wave', 'risk_review']
+const STOCK_TRADE_ROLE_KEYS: StockTradeRoleKey[] = ['mainline_attack', 'climax_risk', 'second_wave', 'defensive_weight', 'chain_watch', 'risk_review', 'ordinary_watch']
 
 type ApiError = Error & {
   status?: number
@@ -1962,7 +1963,7 @@ function tradeRoleLabel(role: TradeRoleKey | string, locale: LongclawLocale): st
 
 function tradeRoleColor(role: TradeRoleKey | string): string {
   if (role === 'climax_risk') return tradingDeskTheme.colors.auroraGold
-  if (role === 'holding_chain') return tradingDeskTheme.market.up
+  if (role === 'chain_watch' || role === 'holding_chain') return tradingDeskTheme.market.up
   if (role === 'defensive_weight') return '#7aa7ff'
   if (role === 'second_wave') return terminalTheme.accent
   if (role === 'risk_review') return tradingDeskTheme.market.down
@@ -3855,33 +3856,24 @@ function chainBriefForWatchlist(row: WatchlistRow): string {
 
 function stockTradeRoleForRow(row: WatchlistRow): StockTradeRoleKey | '' {
   const explicit = compactText(row.raw.trade_role) || compactText(row.raw.trade_identity)
+  if (explicit === 'holding_chain') return 'chain_watch'
   if (isStockTradeRoleKey(explicit)) return explicit
   const context = recordValue(row.raw.chain_context)
   const chain = recordValue(row.raw.chain_position)
   const evidence = recordValue(context.evidence)
   const phase = compactText(row.raw.chain_phase) || compactText(context.phase) || compactText(chain.phase) || compactText(evidence.phase)
-  const text = [
-    ...rowChainTextValues(row),
-    row.name,
-    row.code,
-    row.rankReason,
-    row.explanation,
-    compactText(row.raw.reason),
-    compactText(row.raw.setup_explanation),
-    compactText(row.raw.missing_condition),
-    compactText(row.raw.trader_action),
-  ].join(' ')
+  const exposureBucket = compactText(row.raw.exposure_bucket) || compactText(context.exposure_bucket) || compactText(chain.exposure_bucket) || compactText(evidence.exposure_bucket)
+  const hasChain = rowChainTextValues(row).length > 0
   if (row.decision.opportunitySide === 'risk' || row.decision.stage === 'risk_first') {
-    return phase === 'consensus_climax' || text.includes('高潮') ? 'climax_risk' : 'risk_review'
+    return phase === 'consensus_climax' ? 'climax_risk' : 'risk_review'
   }
-  if (phase === 'consensus_climax' || text.includes('高潮')) return 'climax_risk'
-  if (['电池', '锂电', '隔膜', '正极', '负极', '电解液', '储能', '电新'].some(token => text.includes(token))) return 'holding_chain'
-  if (['煤炭', '油气', '银行', '保险', '运营商', '高股息', '红利', '电力'].some(token => text.includes(token))) return 'defensive_weight'
-  if (['光模块', '光通信', 'CPO', 'pcb', 'PCB'].some(token => text.includes(token))) return 'second_wave'
+  if (phase === 'consensus_climax') return 'climax_risk'
+  if (['defensive', '防守', '稳仓', '高股息', '低波'].includes(exposureBucket)) return 'defensive_weight'
+  if (['cooling', 'diverging'].includes(phase) || ['dip_watch', 'probe_candidate'].includes(compactText(row.raw.trade_stage))) return 'second_wave'
   const bonus = numberValue(row.raw.theme_rank_bonus) ?? 0
   if (phase === 'accelerating' || phase === 'warming' || bonus >= 12 || row.decision.stage === 'entry_ready') return 'mainline_attack'
-  if (row.decision.stage === 'strategy_candidate') return 'second_wave'
-  return ''
+  if (hasChain) return 'chain_watch'
+  return 'ordinary_watch'
 }
 
 function tradeIdentityLabelForRow(row: WatchlistRow, locale: LongclawLocale): string {
@@ -3898,10 +3890,10 @@ function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
   const chain = chainBriefForWatchlist(row)
   const missing = compactText(row.raw.missing_condition)
   const setup = compactText(row.raw.setup_explanation)
-  if (role === 'climax_risk') return `${chain || (locale === 'zh-CN' ? '主线' : 'Mainline')}: ${locale === 'zh-CN' ? '一致高潮，不追高，等分歧承接' : 'crowded; do not chase'}`
-  if (role === 'holding_chain') return `${chain || (locale === 'zh-CN' ? '电池链观察' : 'Battery chain watch')}: ${locale === 'zh-CN' ? '产业链观察，不代表真实持仓；等30m承接确认' : 'chain watch only, not a real position; wait for 30m support'}`
-  if (role === 'defensive_weight') return `${chain || (locale === 'zh-CN' ? '防守权重' : 'Defensive')}: ${locale === 'zh-CN' ? '偏稳仓，不和进攻票混排' : 'defensive; keep separate from attack names'}`
-  if (role === 'second_wave') return `${chain || (locale === 'zh-CN' ? '上轮主线' : 'Prior theme')}: ${locale === 'zh-CN' ? '退潮后等二波，不抢反弹' : 'wait for second wave'}`
+  if (role === 'climax_risk') return `${chain || (locale === 'zh-CN' ? '主线' : 'Mainline')}: ${locale === 'zh-CN' ? '一致过热，不追高，等分歧承接' : 'crowded; do not chase'}`
+  if (role === 'chain_watch') return `${chain || (locale === 'zh-CN' ? '产业链观察' : 'Chain watch')}: ${locale === 'zh-CN' ? '只说明图谱归属，不代表真实持仓；等30m承接确认' : 'chain watch only, not a real position; wait for 30m support'}`
+  if (role === 'defensive_weight') return `${chain || (locale === 'zh-CN' ? '防守观察' : 'Defensive')}: ${locale === 'zh-CN' ? '偏稳仓，不和进攻票混排' : 'defensive; keep separate from attack names'}`
+  if (role === 'second_wave') return `${chain || (locale === 'zh-CN' ? '回踩再起' : 'Pullback')}: ${locale === 'zh-CN' ? '退潮/分化后等重新放量，不抢反弹' : 'wait for renewed volume'}`
   if (role === 'risk_review') return setup || missing || (locale === 'zh-CN' ? '风险未解除，先不当机会' : 'Risk unresolved')
   return setup || missing || row.rankReason || row.explanation || watchlistRowSignalLine(row, locale)
 }
@@ -5343,9 +5335,9 @@ export function StrategyChartTerminal({
 
   const handleTradeCommand = useCallback(
     (command: TradeCommandKey) => {
-      if (command === 'holding_chain') {
+      if (command === 'chain_watch') {
         setSuppressClimax(false)
-        activateTradeRole('holding_chain')
+        activateTradeRole('chain_watch')
         return
       }
       if (command === 'exclude_climax') {
@@ -5364,7 +5356,7 @@ export function StrategyChartTerminal({
         }
         return
       }
-      if (command === 'semiconductor_divergence') {
+      if (command === 'mainline_divergence') {
         setSuppressClimax(false)
         activateTradeRole('mainline_attack')
         return
@@ -6189,52 +6181,52 @@ function tradeMapItemsFromShell(
   if (mainline) {
     derived.push({
       role: 'mainline_attack',
-      label: '主线',
+      label: '主线机会',
       name: mainline.name,
-      summary: '加速中，等分歧承接',
+      summary: '升温/加速中，只看分歧承接',
       phase: compactText(mainline.raw.phase),
       asOf: compactText(mainline.raw.day_change_as_of),
-      definition: 'chain_heat phase=accelerating/warming',
+      definition: '板块/产业链处在升温或加速',
       source: 'chain_heat_snapshots',
     })
   }
   if (climax) {
     derived.push({
       role: 'climax_risk',
-      label: '高潮',
+      label: '过热',
       name: climax.name,
-      summary: '一致高潮，不追',
+      summary: '一致过热，不追',
       phase: compactText(climax.raw.phase),
       asOf: compactText(climax.raw.day_change_as_of),
-      definition: 'chain_heat phase=consensus_climax',
+      definition: '板块/产业链一致过热',
       source: 'chain_heat_snapshots',
     })
   }
   if (retreat) {
     derived.push({
       role: 'second_wave',
-      label: '上轮',
+      label: '回踩再起',
       name: retreat.name,
-      summary: '退潮/分化后等二波',
+      summary: '退潮/分化后等重新放量',
       phase: compactText(retreat.raw.phase),
       asOf: compactText(retreat.raw.day_change_as_of),
-      definition: 'chain_heat phase=cooling/risk_off/diverging',
+      definition: '退潮/分化后等待二次启动条件',
       source: 'chain_heat_snapshots',
     })
   }
   const stockRows = [...groups.focus_stocks, ...groups.watch_stocks, ...groups.buy_candidates, ...groups.risk_stocks]
-  ;(['holding_chain', 'defensive_weight', 'second_wave'] as StockTradeRoleKey[]).forEach(role => {
+  ;(['chain_watch', 'defensive_weight', 'second_wave', 'ordinary_watch'] as StockTradeRoleKey[]).forEach(role => {
     if (derived.some(item => item.role === role)) return
     const row = stockRows.find(item => stockTradeRoleForRow(item) === role)
     if (!row) return
     derived.push({
       role,
-      label: role === 'holding_chain' ? '电池链' : role === 'defensive_weight' ? '防守' : '二波',
+      label: role === 'chain_watch' ? '产业链观察' : role === 'defensive_weight' ? '防守' : role === 'second_wave' ? '回踩再起' : '线索观察',
       name: row.name,
       summary: traderReadLine(row, 'zh-CN'),
       asOf: compactText(row.raw.day_change_as_of),
-      definition: role === 'holding_chain' ? '静态产业链代表映射，不代表真实持仓' : '',
-      source: role === 'holding_chain' ? 'industry_chains.yaml + terminal_stock_pool' : 'terminal_stock_pool',
+      definition: role === 'chain_watch' ? '东财/同花顺板块图谱归属，不代表真实持仓' : '',
+      source: role === 'chain_watch' ? 'security_chain_memberships + terminal_stock_pool' : 'terminal_stock_pool',
     })
   })
   return {
@@ -6312,8 +6304,8 @@ function TradeMapStrip({
       </div>
       <div style={tradeMapDefinitionStyle}>
         {locale === 'zh-CN'
-          ? '定义：主线/高潮来自 chain_heat 阶段；电池链是静态产业链代表映射，不代表真实持仓；点击标签会筛选左侧池子。'
-          : 'Definitions: mainline/crowded come from chain_heat phase; battery chain is static representative mapping, not a real position; click chips to filter.'}
+          ? '定义：主线/过热来自板块阶段，产业链观察来自东财+同花顺图谱归属；点击标签会真实筛选左侧池子。'
+          : 'Definitions: roles come from chain phase and source-backed chain membership; click chips to filter the left list.'}
       </div>
       {alerts.length > 0 ? (
         <div style={aiAlertStripStyle}>
@@ -6340,10 +6332,10 @@ function TradeMapStrip({
 }
 
 function commandKeyForLabel(label: string): TradeCommandKey {
-  if (label.includes('电池链') || label.includes('重点链') || label.includes('持仓链')) return 'holding_chain'
-  if (label.includes('排除高潮')) return 'exclude_climax'
+  if (label.includes('产业链观察') || label.includes('重点链') || label.includes('图谱归属')) return 'chain_watch'
+  if (label.includes('排除高潮') || label.includes('排除过热')) return 'exclude_climax'
   if (label.includes('为什么入池') || label.includes('解释')) return 'explain_current'
-  if (label.includes('半导体') || label.includes('核心票')) return 'semiconductor_divergence'
+  if (label.includes('主线') || label.includes('核心票')) return 'mainline_divergence'
   return 'rhythm_mismatch'
 }
 
@@ -6363,8 +6355,8 @@ function EmbeddedCommandBar({
   onCommand: (command: TradeCommandKey) => void
 }) {
   const defaults = locale === 'zh-CN'
-    ? ['只看电池链观察', '排除高潮票', '解释这只票为什么入池', '列出半导体分歧后可看的核心票', '哪些票不符合我当前节奏']
-    : ['Show battery-chain watch', 'Exclude crowded names', 'Explain why this is in the pool', 'Core chips after divergence', 'Names off my rhythm']
+    ? ['只看产业链观察', '排除过热票', '解释这只票为什么入池', '列出主线分歧后可看的核心票', '哪些票不符合我当前节奏']
+    : ['Show chain watch', 'Exclude crowded names', 'Explain why this is in the pool', 'Core names after divergence', 'Names off my rhythm']
   const labels = uniqueCompact([...(suggestions.length > 0 ? suggestions : defaults), ...defaults]).slice(0, 5)
   return (
     <div style={commandBarShellStyle}>
@@ -6372,7 +6364,7 @@ function EmbeddedCommandBar({
         <span>{locale === 'zh-CN' ? 'Command Bar' : 'Command Bar'}</span>
         <span>{[
           activeRole !== 'all' ? tradeRoleLabel(activeRole, locale) : '',
-          suppressClimax ? (locale === 'zh-CN' ? '已排除高潮' : 'crowded excluded') : '',
+          suppressClimax ? (locale === 'zh-CN' ? '已排除过热' : 'crowded excluded') : '',
         ].filter(Boolean).join(' · ') || (row ? row.name : (locale === 'zh-CN' ? '交易指令' : 'trade commands'))}</span>
       </div>
       <div style={commandBarRailStyle}>
@@ -6791,7 +6783,7 @@ function WatchlistTabbedTable({
               type="button"
               style={tradeRoleButtonStyle(active, role.key)}
               onClick={() => onTradeRoleChange(role.key)}
-              title={role.key === 'all' && suppressClimax ? (locale === 'zh-CN' ? '全部，已排除高潮票' : 'All, crowded names excluded') : tradeRoleLabel(role.key, locale)}
+              title={role.key === 'all' && suppressClimax ? (locale === 'zh-CN' ? '全部，已排除过热票' : 'All, crowded names excluded') : tradeRoleLabel(role.key, locale)}
             >
               {tradeRoleLabel(role.key, locale)} {count}
             </button>
@@ -7270,7 +7262,7 @@ function StrategyDecisionPanel({
     const summary = recordValue(symbolData?.summary)
     const chain = recordValue(summary.chain_position)
     const chainText = uniqueCompact([chain.chain, chain.node, chain.role, chain.board_or_concept]).slice(0, 2).join(' · ')
-    const identity = compactText(summary.trade_role_label) || (chainText ? (locale === 'zh-CN' ? '二波观察' : 'Second wave') : (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch'))
+    const identity = compactText(summary.trade_role_label) || (chainText ? (locale === 'zh-CN' ? '产业链观察' : 'Chain watch') : (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch'))
     const read = compactText(summary.trader_read) || (chainText
       ? `${chainText}: ${locale === 'zh-CN' ? '当前不在机会池，先按图表位置观察，等重新进入盯盘或确认买点。' : 'outside the opportunity pool; wait for watch or entry state.'}`
       : `${target.label} ${locale === 'zh-CN' ? '当前不在机会池，只显示图表和背景证据。' : 'is outside the opportunity pool; chart and context only.'}`)
