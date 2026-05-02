@@ -41,6 +41,59 @@ type StrategyChartTerminalProps = {
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }
 
+type StrategyAiTaskStatus = 'idle' | 'running' | 'success' | 'failed'
+type StrategyAiVerdict = 'focus' | 'wait' | 'avoid' | 'remove'
+
+type StrategyAiRun = {
+  run_id?: string
+  task?: string
+  provider?: string
+  model?: string
+  prompt_version?: string
+  input_hash?: string
+  output_schema?: string
+  status?: string
+  latency_ms?: number
+  created_at?: string
+}
+
+type AiCandidateReview = {
+  symbol: string
+  name: string
+  verdict: StrategyAiVerdict
+  rank?: number
+  why_watch: string
+  wait_for: string[]
+  risk_flags: string[]
+  dont_do: string
+  invalidation: string
+  next_action?: string
+  run?: StrategyAiRun
+}
+
+type AiRankingResult = {
+  summary: string
+  selected: AiCandidateReview[]
+  run?: StrategyAiRun
+  error?: string
+}
+
+type StrategyAiResponse = {
+  ok: boolean
+  output?: Record<string, unknown> | null
+  run?: StrategyAiRun
+  error?: string
+}
+
+declare global {
+  interface Window {
+    strategyAI?: {
+      rankCandidates: (payload: Record<string, unknown>) => Promise<StrategyAiResponse>
+      reviewCandidate: (payload: Record<string, unknown>) => Promise<StrategyAiResponse>
+    }
+  }
+}
+
 type WorkbenchSession = {
   ready?: boolean
   running?: boolean
@@ -118,6 +171,12 @@ type StrategySignal = {
   chart_aligned?: boolean
   display_scope?: string
   signal_side?: string
+  signal_family?: string
+  render_pane?: string
+  volume_state?: string
+  volume_context?: string
+  volume_ratio?: number
+  volume_z?: number
   symbol?: string
   name?: string
   relation?: string
@@ -249,7 +308,7 @@ type WatchlistRow = {
   raw: Record<string, unknown>
 }
 
-type WatchlistTabKey = 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
+type WatchlistTabKey = 'ai_focus' | 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
 type TradeRoleKey = 'all' | 'mainline_attack' | 'climax_risk' | 'chain_watch' | 'defensive_weight' | 'second_wave' | 'risk_review' | 'ordinary_watch'
@@ -266,8 +325,8 @@ type TradeMapItem = {
   source?: string
 }
 
-const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
-const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['ai_focus', 'macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['ai_focus', 'buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
   { key: 'all', zh: '全部', en: 'All' },
@@ -347,16 +406,20 @@ const WATCHLIST_RANGE_COLUMNS: WatchlistRangeColumn[] = [
 ]
 const SIGNAL_OVERLAY_NAME = 'longclawSignalMarker'
 const SIGNAL_OVERLAY_GROUP = 'longclaw-signals'
+const VOLUME_SIGNAL_OVERLAY_NAME = 'longclawVolumeSignalMarker'
+const VOLUME_SIGNAL_OVERLAY_GROUP = 'longclaw-volume-signals'
 const DIVERGENCE_OVERLAY_NAME = 'longclawMacdDivergenceMarker'
 const DIVERGENCE_OVERLAY_GROUP = 'longclaw-macd-divergence'
 const LEVEL_OVERLAY_GROUP = 'longclaw-levels'
 const A_SHARE_VOLUME_INDICATOR_NAME = 'LONGCLAW_A_SHARE_VOLUME'
 const CANDLE_PANE_ID = 'candle_pane'
+const VOLUME_PANE_ID = 'volume_pane'
 const MACD_PANE_ID = 'macd_pane'
 const MACD_ZERO_INDICATOR_NAME = 'LONGCLAW_MACD_ZERO'
 const MACD_PARAMS = [12, 26, 9]
 const MAX_CHART_SIGNAL_OVERLAYS = 10
-const MAX_CURRENT_SIGNAL_OVERLAYS = 40
+const MAX_MAIN_CHART_SIGNAL_OVERLAYS = 12
+const MAX_VOLUME_SIGNAL_OVERLAYS = 8
 const MAX_CHART_DIVERGENCE_OVERLAYS = 3
 const MAX_CHART_LEVEL_OVERLAYS = 4
 const MAX_EVIDENCE_SIGNAL_ROWS = 6
@@ -372,6 +435,7 @@ const MA_COLORS = [
 const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
 
 let signalOverlayRegistered = false
+let volumeSignalOverlayRegistered = false
 let divergenceOverlayRegistered = false
 let volumeIndicatorRegistered = false
 let macdZeroIndicatorRegistered = false
@@ -1084,7 +1148,7 @@ const indicatorLegendItemStyle: React.CSSProperties = {
 
 const watchlistPrimaryTabsStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
   gap: 4,
   minWidth: 122,
   flex: '1 1 122px',
@@ -1321,6 +1385,58 @@ const commandChipStyle: React.CSSProperties = {
   fontWeight: 800,
   lineHeight: 1.2,
   textAlign: 'left',
+}
+
+const aiReviewBodyStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  minWidth: 0,
+}
+
+const aiReviewConclusionStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: 5,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+  padding: '6px 7px',
+  fontFamily: fontStacks.ui,
+  fontSize: 12,
+  fontWeight: 900,
+  lineHeight: 1.25,
+}
+
+const aiReviewSectionStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelSoft,
+  padding: '5px 6px',
+  minWidth: 0,
+}
+
+const aiReviewLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  textTransform: 'uppercase',
+}
+
+const aiReviewTextStyle: React.CSSProperties = {
+  color: terminalTheme.text,
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  lineHeight: 1.35,
+  marginTop: 3,
+}
+
+const aiRunMetaStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.35,
+  overflowWrap: 'anywhere',
 }
 
 const watchlistControlRowStyle: React.CSSProperties = {
@@ -2016,6 +2132,156 @@ function uniqueCompact(values: unknown[]): string[] {
     output.push(text)
   })
   return output
+}
+
+function compactHash(value: unknown): string {
+  const text = JSON.stringify(value)
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return uniqueCompact(value).slice(0, 6)
+  const text = compactText(value)
+  return text ? [text] : []
+}
+
+function normalizeAiVerdict(value: unknown): StrategyAiVerdict {
+  const text = compactText(value).toLowerCase()
+  if (['focus', '重点', '重点盯', '可行动', 'action'].some(token => text.includes(token))) return 'focus'
+  if (['avoid', '不追', 'skip', '别碰'].some(token => text.includes(token))) return 'avoid'
+  if (['remove', '移出', '失效'].some(token => text.includes(token))) return 'remove'
+  return 'wait'
+}
+
+function normalizeAiReview(raw: unknown, run?: StrategyAiRun): AiCandidateReview | null {
+  const record = recordValue(raw)
+  const symbol = compactText(record.symbol) || compactText(record.code) || compactText(record.target)
+  const name = compactText(record.name) || symbol
+  if (!symbol && !name) return null
+  return {
+    symbol,
+    name,
+    verdict: normalizeAiVerdict(record.verdict),
+    rank: numberValue(record.rank),
+    why_watch: compactText(record.why_watch) || compactText(record.summary) || compactText(record.reason),
+    wait_for: normalizeStringList(record.wait_for),
+    risk_flags: normalizeStringList(record.risk_flags),
+    dont_do: compactText(record.dont_do) || compactText(record.do_not) || compactText(record.warning),
+    invalidation: compactText(record.invalidation) || compactText(record.invalidates_when),
+    next_action: compactText(record.next_action),
+    run,
+  }
+}
+
+function normalizeAiRanking(raw: unknown, run?: StrategyAiRun, error?: string): AiRankingResult {
+  const record = recordValue(raw)
+  const selectedRaw = Array.isArray(record.selected)
+    ? record.selected
+    : Array.isArray(record.items)
+      ? record.items
+      : []
+  const selected = selectedRaw
+    .map((item, index) => normalizeAiReview({ ...recordValue(item), rank: numberValue(recordValue(item).rank) ?? index + 1 }, run))
+    .filter((item): item is AiCandidateReview => Boolean(item))
+    .slice(0, 10)
+  return {
+    summary: compactText(record.summary) || compactText(record.headline),
+    selected,
+    run,
+    error,
+  }
+}
+
+function rowAiKey(row: WatchlistRow): string {
+  return uniqueCompact([row.code, row.targetLabel, row.label, row.name]).join('|').toLowerCase()
+}
+
+function rowMatchesAiReview(row: WatchlistRow, review: AiCandidateReview): boolean {
+  const aliases = uniqueCompact([row.code, row.targetLabel, row.label, row.name]).map(item => item.toLowerCase())
+  const targets = uniqueCompact([review.symbol, review.name]).map(item => item.toLowerCase())
+  return targets.some(target => aliases.some(alias => alias === target || alias.includes(target) || target.includes(alias)))
+}
+
+function aiCandidateInput(row: WatchlistRow, index: number): Record<string, unknown> {
+  return {
+    index,
+    symbol: row.code || row.targetLabel || row.label,
+    name: row.name,
+    source_pool: row.lane,
+    latest: row.latest,
+    day_change: row.dayChange,
+    decision_stage: row.decision.stage,
+    opportunity_side: row.decision.opportunitySide,
+    recommended_action: row.decision.recommendedAction || row.traderAction,
+    missing_gates: row.decision.missingGates,
+    primary_blocker: row.decision.primaryBlocker,
+    promotion_path: row.decision.promotionPath,
+    invalidates_when: row.decision.invalidatesWhen || row.invalidatesWhen,
+    trader_read: traderReadLine(row, 'zh-CN'),
+    evidence_summary: traderEvidenceSummary(row, 'zh-CN'),
+    source_keys: row.decision.sourceKeys,
+  }
+}
+
+function fallbackAiFocusRows(rows: WatchlistRow[]): WatchlistRow[] {
+  const score = (row: WatchlistRow): number => {
+    let value = 0
+    if (row.decision.stage === 'entry_ready') value += 60
+    if (row.decision.stage === 'watch_preheat') value += 40
+    if (row.decision.stage === 'strategy_candidate') value += 20
+    if (row.decision.opportunitySide === 'right') value += 20
+    if (row.decision.opportunitySide === 'risk') value -= 30
+    value -= row.decision.missingGates.length * 4
+    const role = stockTradeRoleForRow(row)
+    if (role === 'climax_risk' || role === 'risk_review') value -= 25
+    return value
+  }
+  return [...rows]
+    .sort((left, right) => score(right) - score(left))
+    .slice(0, 10)
+}
+
+function decorateAiFocusRow(row: WatchlistRow, review: AiCandidateReview | null, rank: number): WatchlistRow {
+  const why = review?.why_watch || row.rankReason || traderReadLine(row, 'zh-CN')
+  const waitFor = review?.wait_for?.join(' / ') || decisionMissingSummary(row.decision, 'zh-CN')
+  return {
+    ...row,
+    id: `ai-focus-${rank}-${row.id}`,
+    rankLabel: `AI#${rank}`,
+    rankReason: why,
+    traderAction: review?.next_action || review?.dont_do || row.traderAction,
+    explanation: why,
+    raw: {
+      ...row.raw,
+      ai_review: review ?? null,
+      ai_rank: rank,
+      trader_read: why,
+      ai_wait_for: waitFor,
+    },
+  }
+}
+
+function aiFocusRowsFromRanking(rows: WatchlistRow[], ranking: AiRankingResult | null): WatchlistRow[] {
+  if (!ranking?.selected.length) return []
+  const used = new Set<string>()
+  const selected: WatchlistRow[] = []
+  ranking.selected.forEach((review, index) => {
+    const match = rows.find(row => !used.has(rowAiKey(row)) && rowMatchesAiReview(row, review))
+    if (!match) return
+    used.add(rowAiKey(match))
+    selected.push(decorateAiFocusRow(match, review, numberValue(review.rank) ?? index + 1))
+  })
+  return selected.slice(0, 10)
+}
+
+function aiReviewForRow(row: WatchlistRow | null, reviewsByKey: Record<string, AiCandidateReview>): AiCandidateReview | null {
+  if (!row) return null
+  return reviewsByKey[rowAiKey(row)] ?? null
 }
 
 function isStockTradeRoleKey(value: string): value is StockTradeRoleKey {
@@ -2992,7 +3258,7 @@ function createChartIndicators(chart: Chart, freq?: string) {
       styles: volumeIndicatorStyles(),
     },
     false,
-    { minHeight: 64, height: 82 },
+    { id: VOLUME_PANE_ID, minHeight: 64, height: 82 },
   )
   chart.createIndicator(
     {
@@ -3108,6 +3374,75 @@ function ensureSignalOverlay() {
     },
   })
   signalOverlayRegistered = true
+}
+
+function ensureVolumeSignalOverlay() {
+  if (volumeSignalOverlayRegistered) return
+  registerOverlay({
+    name: VOLUME_SIGNAL_OVERLAY_NAME,
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates, bounding }: OverlayCreateFiguresCallbackParams) => {
+      const point = coordinates[0]
+      if (!point) return []
+      const data = recordValue(overlay.extendData) as SignalOverlayData
+      const label = data.label || '量能'
+      const side = data.side === 'sell' ? 'sell' : data.side === 'buy' ? 'buy' : 'neutral'
+      const color = data.color || signalOverlayColor(side)
+      const width = Math.max(34, Math.min(58, label.length * 8 + 16))
+      const height = 16
+      const gap = 5
+      const rectX = Math.max(2, Math.min(point.x - width / 2, bounding.width - width - 2))
+      const rectY = Math.max(2, point.y - gap - height)
+      const fillColor = 'rgba(15, 23, 42, 0.9)'
+
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: point.x, y: point.y },
+              { x: point.x, y: rectY + height },
+            ],
+          },
+          styles: { color, size: 1, style: 'dashed', dashedValue: [2, 3] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color: fillColor,
+            borderColor: color,
+            borderSize: 1,
+            borderRadius: 3,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: rectX + width / 2,
+            y: rectY + height / 2,
+            text: label.slice(0, 6),
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: {
+            color: terminalTheme.textStrong,
+            size: 9,
+            weight: 800,
+            family: 'IBM Plex Mono, Menlo, monospace',
+          },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+  volumeSignalOverlayRegistered = true
 }
 
 function ensureDivergenceOverlay() {
@@ -3497,6 +3832,14 @@ function shortSignalLabel(value?: string): string {
   const normalized = raw.toLowerCase()
   if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
   if (normalized.includes('顶背离')) return '顶背'
+  if (normalized.includes('放量突破')) return '突'
+  if (normalized.includes('放量滞涨')) return '滞'
+  if (normalized.includes('放量长上影')) return '上影'
+  if (normalized.includes('放量跌破')) return '跌破'
+  if (normalized.includes('价涨量缩') || normalized.includes('缩量新高')) return '量缩'
+  if (normalized.includes('缩量回踩') || normalized.includes('极致缩量')) return '缩'
+  if (normalized.includes('波动收缩后放量扩张')) return '扩'
+  if (normalized.includes('巨量无方向')) return '巨量'
   if (normalized.includes('成交量异常放大') || normalized.includes('放量')) return '放量'
   if (normalized.includes('成交量极致缩量') || normalized.includes('缩量')) return '缩量'
   if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) return '突破'
@@ -3547,6 +3890,21 @@ function signalOverlayColor(side: SignalOverlayData['side']): string {
   return tradingDeskTheme.alpha.infoBorder
 }
 
+function isVolumeSignal(signal: StrategySignal): boolean {
+  const source = `${signal.source ?? ''} ${signal.pool_status ?? ''} ${signal.signal_family ?? ''} ${signal.render_pane ?? ''}`.toLowerCase()
+  const type = String(signal.type ?? signal.signal_type ?? '').toLowerCase()
+  return (
+    source.includes('terminal_volume_signals') ||
+    source.includes('volume_warning') ||
+    source.includes('volume') ||
+    source.includes('量能') ||
+    type.includes('成交量') ||
+    type.includes('放量') ||
+    type.includes('缩量') ||
+    type.includes('量价')
+  )
+}
+
 function signalOverlayPriority(signal: StrategySignal): number {
   const normalized = String(signal.type ?? '').toLowerCase()
   let priority = 35
@@ -3574,42 +3932,55 @@ function signalSourceLabel(signal: StrategySignal): string {
   return ''
 }
 
-function isPriorityChartSignal(signal: StrategySignal): boolean {
-  const scope = String(signal.display_scope ?? '')
-  const source = String(signal.source ?? '').toLowerCase()
-  return (
-    isCustomUserSignal(signal) ||
-    scope === 'current_timeframe' ||
-    scope === 'higher_timeframe_context' ||
-    source.includes('terminal_technical_signals')
-  )
-}
-
-function displaySignalsForChart(data: KLineData[], signals: StrategySignal[]): StrategySignal[] {
+function displaySignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
   if (data.length === 0 || signals.length === 0) return []
   const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
   const valid = signals
     .map(signal => ({ signal, timestamp: signalTimestamp(signal), priority: signalOverlayPriority(signal) }))
-    .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } => item.timestamp !== undefined)
+    .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } =>
+      item.timestamp !== undefined &&
+      !isVolumeSignal(item.signal) &&
+      signalScopeLabel(item.signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期',
+    )
   const recent = valid.filter(item => item.timestamp >= cutoff)
-  const pinned = recent.filter(item => isPriorityChartSignal(item.signal)).slice(-MAX_CURRENT_SIGNAL_OVERLAYS)
-  const system = recent
-    .filter(item => !isPriorityChartSignal(item.signal))
-    .sort((left, right) => right.priority - left.priority || right.timestamp - left.timestamp)
-    .slice(0, MAX_CHART_SIGNAL_OVERLAYS)
-  const latestFallback = valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
-  const source = recent.length > 0 ? [...pinned, ...system] : latestFallback
-  const bestBySignal = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
+  const source = recent.length > 0 ? recent : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
+  const bestByTimestamp = new Map<number, { signal: StrategySignal; timestamp: number; priority: number }>()
   source.forEach(item => {
-    const key = `${item.timestamp}:${item.signal.type ?? item.signal.signal_type ?? ''}:${item.signal.freq ?? ''}:${item.signal.display_scope ?? ''}`
-    const existing = bestBySignal.get(key)
-    if (!existing || item.priority > existing.priority) bestBySignal.set(key, item)
+    const existing = bestByTimestamp.get(item.timestamp)
+    if (!existing || item.priority > existing.priority) bestByTimestamp.set(item.timestamp, item)
   })
-  return Array.from(bestBySignal.values())
+  return Array.from(bestByTimestamp.values())
     .sort((left, right) => {
       if (right.priority !== left.priority) return right.priority - left.priority
       return right.timestamp - left.timestamp
     })
+    .slice(0, MAX_MAIN_CHART_SIGNAL_OVERLAYS)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .map(item => item.signal)
+}
+
+function displayVolumeSignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
+  if (data.length === 0 || signals.length === 0) return []
+  const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
+  const valid = signals
+    .map(signal => ({ signal, timestamp: signalTimestamp(signal), priority: signalOverlayPriority(signal) }))
+    .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } =>
+      item.timestamp !== undefined &&
+      item.timestamp >= cutoff &&
+      isVolumeSignal(item.signal) &&
+      signalScopeLabel(item.signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期',
+    )
+  const bestByTimestamp = new Map<number, { signal: StrategySignal; timestamp: number; priority: number }>()
+  valid.forEach(item => {
+    const existing = bestByTimestamp.get(item.timestamp)
+    if (!existing || item.priority > existing.priority) bestByTimestamp.set(item.timestamp, item)
+  })
+  return Array.from(bestByTimestamp.values())
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+    .slice(0, MAX_VOLUME_SIGNAL_OVERLAYS)
     .sort((left, right) => left.timestamp - right.timestamp)
     .map(item => item.signal)
 }
@@ -3635,10 +4006,10 @@ function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] 
   return output
 }
 
-function createSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[]) {
+function createSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
   const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
-  displaySignalsForChart(data, signals).forEach(signal => {
+  displaySignalsForChart(data, signals, currentFreq).forEach(signal => {
     const timestamp = signalTimestamp(signal)
     const price = signalPrice(signal, dataByTimestamp)
     if (!timestamp || price === undefined) return
@@ -3661,6 +4032,36 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
         details: signal.details,
       } satisfies SignalOverlayData,
     })
+  })
+}
+
+function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string) {
+  chart.removeOverlay({ groupId: VOLUME_SIGNAL_OVERLAY_GROUP })
+  const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
+  displayVolumeSignalsForChart(data, signals, currentFreq).forEach(signal => {
+    const timestamp = signalTimestamp(signal)
+    if (!timestamp) return
+    const volumeValue = numberValue(dataByTimestamp.get(timestamp)?.volume)
+    if (volumeValue === undefined) return
+    const label = shortSignalLabel(signal.type ?? signal.signal_type)
+    const side = signal.signal_side === 'sell' ? 'sell' : signal.signal_side === 'buy' ? 'buy' : signalOverlaySide(signal.type ?? signal.signal_type)
+    chart.createOverlay(
+      {
+        name: VOLUME_SIGNAL_OVERLAY_NAME,
+        groupId: VOLUME_SIGNAL_OVERLAY_GROUP,
+        lock: true,
+        points: [{ timestamp, value: volumeValue }],
+        extendData: {
+          label,
+          side,
+          color: signalOverlayColor(side),
+          freq: displayFreqLabel(signal.freq),
+          sourceLabel: signalSourceLabel(signal),
+          details: signal.details,
+        } satisfies SignalOverlayData,
+      },
+      VOLUME_PANE_ID,
+    )
   })
 }
 
@@ -3717,23 +4118,6 @@ function createDivergenceOverlays(chart: Chart, divergences: MacdDivergenceSigna
     const color = bearish ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
     const label = bearish ? '顶背离' : '底背离'
     const side = bearish ? 'top' : 'bottom'
-    chart.createOverlay(
-      {
-        name: DIVERGENCE_OVERLAY_NAME,
-        groupId: DIVERGENCE_OVERLAY_GROUP,
-        lock: true,
-        points: [
-          { timestamp: signal.previousTimestamp, value: signal.previousPrice },
-          { timestamp: signal.timestamp, value: signal.price },
-        ],
-        extendData: {
-          label,
-          side,
-          color,
-        } satisfies DivergenceOverlayData,
-      },
-      CANDLE_PANE_ID,
-    )
     chart.createOverlay(
       {
         name: DIVERGENCE_OVERLAY_NAME,
@@ -4866,7 +5250,7 @@ export function StrategyChartTerminal({
   const activeRequestRef = useRef(0)
   const shellRefreshInFlightRef = useRef(false)
   const shellLoadedRef = useRef(false)
-  const activeWatchlistTabRef = useRef<WatchlistTabKey>('sector_boards')
+  const activeWatchlistTabRef = useRef<WatchlistTabKey>('ai_focus')
   const silentSymbolRefreshInFlightRef = useRef(false)
   const manualSymbolAbortRef = useRef<AbortController | null>(null)
   const dashboardRef = useRef(dashboard)
@@ -4882,7 +5266,7 @@ export function StrategyChartTerminal({
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
-  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('sector_boards')
+  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('ai_focus')
   const [activeTradeRole, setActiveTradeRole] = useState<TradeRoleKey>('all')
   const [suppressClimax, setSuppressClimax] = useState(false)
   const [selectedRangeKey, setSelectedRangeKey] = useState('')
@@ -4892,6 +5276,12 @@ export function StrategyChartTerminal({
   const [pendingListUpdate, setPendingListUpdate] = useState(false)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [aiRanking, setAiRanking] = useState<AiRankingResult | null>(null)
+  const [aiReviewsByKey, setAiReviewsByKey] = useState<Record<string, AiCandidateReview>>({})
+  const [aiRankingStatus, setAiRankingStatus] = useState<StrategyAiTaskStatus>('idle')
+  const [aiReviewStatus, setAiReviewStatus] = useState<StrategyAiTaskStatus>('idle')
+  const [aiError, setAiError] = useState('')
+  const lastAiRankingHashRef = useRef('')
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1000 : window.innerHeight))
   const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(() => (
@@ -4928,7 +5318,7 @@ export function StrategyChartTerminal({
     () => (Array.isArray(symbolData?.related_custom_signals) ? symbolData.related_custom_signals : []),
     [symbolData?.related_custom_signals],
   )
-  const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, signals), [klineData, signals])
+  const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, signals, currentFreq), [currentFreq, klineData, signals])
   const evidenceSignals = useMemo(() => displaySignalsForEvidence(signals), [signals])
   const currentVisibleSignals = useMemo(
     () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期'),
@@ -5035,13 +5425,6 @@ export function StrategyChartTerminal({
       legacy: legacyRows,
     }
   }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, visibleRangeColumns])
-  const activeWatchlistBaseRows = groupedWatchlistRows[activeWatchlistTab].length > 0
-    ? groupedWatchlistRows[activeWatchlistTab]
-    : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? groupedWatchlistRows.legacy : [])
-  const activeWatchlistRows = useMemo(
-    () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
-    [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
-  )
   const allStockWatchlistRows = useMemo(
     () => [
       ...groupedWatchlistRows.buy_candidates,
@@ -5050,6 +5433,29 @@ export function StrategyChartTerminal({
       ...groupedWatchlistRows.risk_stocks,
     ],
     [groupedWatchlistRows],
+  )
+  const aiCandidateInputs = useMemo(
+    () => allStockWatchlistRows.slice(0, 32).map((row, index) => aiCandidateInput(row, index)),
+    [allStockWatchlistRows],
+  )
+  const aiCandidateHash = useMemo(() => compactHash(aiCandidateInputs), [aiCandidateInputs])
+  const aiFocusRows = useMemo(
+    () => aiFocusRowsFromRanking(allStockWatchlistRows, aiRanking),
+    [aiRanking, allStockWatchlistRows],
+  )
+  const displayWatchlistGroups = useMemo(
+    () => ({
+      ...groupedWatchlistRows,
+      ai_focus: aiFocusRows,
+    }),
+    [aiFocusRows, groupedWatchlistRows],
+  )
+  const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab].length > 0
+    ? displayWatchlistGroups[activeWatchlistTab]
+    : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? displayWatchlistGroups.legacy : [])
+  const activeWatchlistRows = useMemo(
+    () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
+    [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
   )
   const tradeRoleCounts = useMemo(
     () => tradeRoleCountsForGroups(groupedWatchlistRows),
@@ -5067,11 +5473,21 @@ export function StrategyChartTerminal({
   )
   const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
   const activeDecisionRow = useMemo(
-    () => activeDecisionRowFromGroups(groupedWatchlistRows, target, cursorRow),
-    [cursorRow, groupedWatchlistRows, target],
+    () => activeDecisionRowFromGroups(displayWatchlistGroups, target, cursorRow),
+    [cursorRow, displayWatchlistGroups, target],
+  )
+  const activeAiReview = useMemo(
+    () => aiReviewForRow(activeDecisionRow, aiReviewsByKey),
+    [activeDecisionRow, aiReviewsByKey],
   )
   const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
-  const activeWatchlistEmptyText = activeWatchlistTab === 'focus_stocks'
+  const activeWatchlistEmptyText = activeWatchlistTab === 'ai_focus'
+    ? (aiRankingStatus === 'running'
+        ? (locale === 'zh-CN' ? 'AI 正在筛选候选池。' : 'AI is ranking candidates.')
+        : aiRanking
+          ? (locale === 'zh-CN' ? 'AI 没有返回可匹配到候选池的标的。' : 'AI returned no matchable candidates.')
+          : (locale === 'zh-CN' ? '点击上方“运行AI精选”，用现有 agent 通道筛选候选池。' : 'Run AI picks from the top strip.'))
+    : activeWatchlistTab === 'focus_stocks'
     ? (compactText(focusGroupMeta.empty_reason)
       ? `${locale === 'zh-CN' ? '确认买点为空' : 'Confirmed entry empty'}: ${compactText(focusGroupMeta.empty_reason)}`
       : (locale === 'zh-CN' ? '确认买点为空，先看盯盘池。' : 'No confirmed entries. Check the watch pool.'))
@@ -5408,6 +5824,7 @@ export function StrategyChartTerminal({
   useEffect(() => {
     if (!chartContainerRef.current) return
     ensureSignalOverlay()
+    ensureVolumeSignalOverlay()
     ensureDivergenceOverlay()
     ensureVolumeIndicator()
     ensureMacdZeroIndicator()
@@ -5474,6 +5891,7 @@ export function StrategyChartTerminal({
     const chart = chartRef.current
     if (!chart) return
     chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: VOLUME_SIGNAL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
     if (chartDisplayData.length === 0) {
@@ -5481,14 +5899,15 @@ export function StrategyChartTerminal({
       return
     }
     chart.applyNewData(chartDisplayData)
-    createSignalOverlays(chart, chartDisplayData, signals)
+    createSignalOverlays(chart, chartDisplayData, signals, currentFreq)
+    createVolumeSignalOverlays(chart, chartDisplayData, signals, currentFreq)
     createLevelOverlays(chart, chartDisplayData, chartKeyLevels)
     createDivergenceOverlays(chart, divergences)
     if (!lastChartUpdateSilentRef.current) {
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [chartDisplayData, chartKeyLevels, divergences, signals])
+  }, [chartDisplayData, chartKeyLevels, currentFreq, divergences, signals])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
@@ -5620,6 +6039,149 @@ export function StrategyChartTerminal({
     void loadShell().catch(() => undefined)
     void loadSymbol(target)
   }, [loadShell, loadSymbol, target])
+
+  const runAiRanking = useCallback(async () => {
+    if (aiCandidateInputs.length === 0) {
+      setAiError(locale === 'zh-CN' ? '候选池为空，无法运行 AI 精选。' : 'No candidates to rank.')
+      return
+    }
+    if (!window.strategyAI?.rankCandidates) {
+      setAiError(locale === 'zh-CN' ? '当前 agent 通道不可用。' : 'Agent channel is unavailable.')
+      setAiRankingStatus('failed')
+      return
+    }
+    setAiRankingStatus('running')
+    setAiError('')
+    try {
+      const response = await window.strategyAI.rankCandidates({
+        task: 'rank_candidates',
+        candidate_pool: aiCandidateInputs,
+        current_target: {
+          label: target.label,
+          kind: target.kind,
+          freq: currentFreq,
+          summary_title: summaryTitle,
+          summary_subtitle: summarySubtitle,
+        },
+        market_session: shell?.session ?? null,
+        source_confidence: sourceConfidence.slice(0, 8),
+        cache_status: dashboard.cache_status,
+        guardrails: [
+          '只基于输入证据判断',
+          '不能自动下单',
+          '证据不足必须明说',
+        ],
+      })
+      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? 'AI 精选失败。' : 'AI ranking failed.'))
+      const ranking = normalizeAiRanking(response.output ?? {}, response.run)
+      setAiRanking(ranking)
+      setAiReviewsByKey(previous => {
+        const next = { ...previous }
+        ranking.selected.forEach(review => {
+          const match = allStockWatchlistRows.find(row => rowMatchesAiReview(row, review))
+          if (match) next[rowAiKey(match)] = review
+        })
+        return next
+      })
+      lastAiRankingHashRef.current = aiCandidateHash
+      setAiRankingStatus('success')
+      setActiveWatchlistTab('ai_focus')
+      setListCursorIndex(0)
+      recordObservationEvent('strategy.ai.rank.success', {
+        selected_count: ranking.selected.length,
+        candidate_count: aiCandidateInputs.length,
+        input_hash: aiCandidateHash,
+        run_id: response.run?.run_id,
+      })
+    } catch (rawError) {
+      const message = rawError instanceof Error ? rawError.message : String(rawError)
+      setAiError(message)
+      setAiRankingStatus('failed')
+      recordObservationEvent('strategy.ai.rank.failed', {
+        candidate_count: aiCandidateInputs.length,
+        input_hash: aiCandidateHash,
+        error: message,
+        level: 'error',
+      })
+    }
+  }, [
+    aiCandidateHash,
+    aiCandidateInputs,
+    allStockWatchlistRows,
+    currentFreq,
+    dashboard.cache_status,
+    locale,
+    shell?.session,
+    sourceConfidence,
+    summarySubtitle,
+    summaryTitle,
+    target,
+  ])
+
+  const runAiReview = useCallback(async (row: WatchlistRow | null) => {
+    if (!row) return
+    if (!window.strategyAI?.reviewCandidate) {
+      setAiError(locale === 'zh-CN' ? '当前 agent 通道不可用。' : 'Agent channel is unavailable.')
+      setAiReviewStatus('failed')
+      return
+    }
+    setAiReviewStatus('running')
+    setAiError('')
+    try {
+      const response = await window.strategyAI.reviewCandidate({
+        task: 'review_candidate',
+        candidate: aiCandidateInput(row, 0),
+        ai_ranking_summary: aiRanking?.summary ?? '',
+        current_target: {
+          label: target.label,
+          kind: target.kind,
+          freq: currentFreq,
+          summary_title: summaryTitle,
+          latest_signal: latestSignal,
+        },
+        chart_evidence: {
+          visible_signals: currentVisibleSignals.slice(0, 8),
+          key_levels: chartKeyLevels.slice(0, 8),
+          divergences: divergences.slice(0, 6),
+        },
+        source_confidence: sourceConfidence.slice(0, 8),
+        guardrails: [
+          '只给复核结论和等待条件',
+          '不能自动下单',
+          '没有证据就返回证据不足',
+        ],
+      })
+      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? 'AI 复核失败。' : 'AI review failed.'))
+      const review = normalizeAiReview(response.output ?? {}, response.run)
+      if (!review) throw new Error(locale === 'zh-CN' ? 'AI 复核没有返回有效标的。' : 'AI review returned no valid symbol.')
+      setAiReviewsByKey(previous => ({ ...previous, [rowAiKey(row)]: review }))
+      setAiReviewStatus('success')
+      recordObservationEvent('strategy.ai.review.success', {
+        symbol: row.code || row.targetLabel || row.name,
+        run_id: response.run?.run_id,
+      })
+    } catch (rawError) {
+      const message = rawError instanceof Error ? rawError.message : String(rawError)
+      setAiError(message)
+      setAiReviewStatus('failed')
+      recordObservationEvent('strategy.ai.review.failed', {
+        symbol: row.code || row.targetLabel || row.name,
+        error: message,
+        level: 'error',
+      })
+    }
+  }, [
+    aiRanking?.summary,
+    chartKeyLevels,
+    currentFreq,
+    currentVisibleSignals,
+    divergences,
+    latestSignal,
+    locale,
+    sourceConfidence,
+    summaryTitle,
+    target,
+  ])
 
   const handleTradeCommand = useCallback(
     (command: TradeCommandKey) => {
@@ -6688,6 +7250,223 @@ function commandKeyForLabel(label: string): TradeCommandKey {
   if (label.includes('为什么入池') || label.includes('解释')) return 'explain_current'
   if (label.includes('主线') || label.includes('核心票')) return 'mainline_divergence'
   return 'rhythm_mismatch'
+}
+
+function strategyAiStatusLabel(status: StrategyAiTaskStatus, locale: LongclawLocale): string {
+  if (status === 'running') return locale === 'zh-CN' ? 'AI运行中' : 'AI running'
+  if (status === 'success') return locale === 'zh-CN' ? 'AI已生成' : 'AI ready'
+  if (status === 'failed') return locale === 'zh-CN' ? 'AI失败' : 'AI failed'
+  return locale === 'zh-CN' ? '待运行' : 'Idle'
+}
+
+function strategyAiStatusTone(status: StrategyAiTaskStatus): string {
+  if (status === 'running') return 'running'
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'failed'
+  return 'info'
+}
+
+function strategyAiRunLine(run?: StrategyAiRun): string {
+  if (!run) return ''
+  return [
+    compactText(run.provider),
+    compactText(run.model),
+    compactText(run.input_hash) ? `hash ${compactText(run.input_hash)}` : '',
+    run.latency_ms !== undefined ? `${Math.round(run.latency_ms)}ms` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+function aiVerdictLabel(verdict: StrategyAiVerdict, locale: LongclawLocale): string {
+  const labels: Record<StrategyAiVerdict, [string, string]> = {
+    focus: ['重点盯', 'Focus'],
+    wait: ['等条件', 'Wait'],
+    avoid: ['不追', 'Avoid'],
+    remove: ['移出', 'Remove'],
+  }
+  const label = labels[verdict]
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function aiVerdictTone(verdict: StrategyAiVerdict): string {
+  if (verdict === 'focus') return 'success'
+  if (verdict === 'wait') return 'warning'
+  return 'failed'
+}
+
+function AiStrategyStatusStrip({
+  locale,
+  ranking,
+  status,
+  error,
+  candidateCount,
+  inputHash,
+  rows,
+  compact = false,
+  onRun,
+  onOpenAiFocus,
+  onToggleCompact,
+}: {
+  locale: LongclawLocale
+  ranking: AiRankingResult | null
+  status: StrategyAiTaskStatus
+  error: string
+  candidateCount: number
+  inputHash: string
+  rows: WatchlistRow[]
+  compact?: boolean
+  onRun: () => void
+  onOpenAiFocus: () => void
+  onToggleCompact?: () => void
+}) {
+  const selected = ranking?.selected ?? []
+  const disabled = status === 'running' || candidateCount === 0
+  const headline = ranking?.summary || (
+    candidateCount > 0
+      ? (locale === 'zh-CN' ? '把 Signals 候选池交给现有 agent 通道筛一遍。' : 'Send the Signals pool through the existing agent.')
+      : (locale === 'zh-CN' ? '候选池为空，等待 Signals 输出。' : 'No candidates yet.')
+  )
+  const toggleLabel = compact
+    ? (locale === 'zh-CN' ? '展开' : 'Expand')
+    : (locale === 'zh-CN' ? '收起' : 'Collapse')
+  const runLabel = status === 'running'
+    ? (locale === 'zh-CN' ? '筛选中' : 'Running')
+    : ranking
+      ? (locale === 'zh-CN' ? '重新精选' : 'Rerank')
+      : (locale === 'zh-CN' ? '运行AI精选' : 'Run AI picks')
+  return (
+    <div style={tradeMapStripStyle}>
+      <div style={tradeMapHeaderStyle}>
+        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日 AI 精选' : 'AI picks today'}</div>
+        <div style={tradeMapMetaStyle}>
+          {[
+            `${locale === 'zh-CN' ? '候选' : 'candidates'} ${candidateCount}`,
+            strategyAiStatusLabel(status, locale),
+            strategyAiRunLine(ranking?.run),
+            inputHash ? `input ${inputHash}` : '',
+          ].filter(Boolean).join(' · ')}
+        </div>
+        <button type="button" style={topStripToggleStyle} disabled={disabled} onClick={onRun}>
+          {runLabel}
+        </button>
+        {onToggleCompact ? (
+          <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+            {toggleLabel}
+          </button>
+        ) : null}
+      </div>
+      {compact ? (
+        <div style={tradeMapCompactRailStyle} title={headline}>
+          <span style={statusBadgeStyle(strategyAiStatusTone(status))}>{strategyAiStatusLabel(status, locale)}</span>
+          {rows.slice(0, 4).map(row => (
+            <button key={row.id} type="button" style={commandChipStyle} onClick={onOpenAiFocus}>
+              {row.rankLabel} {row.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div style={tradeMapDefinitionStyle}>{headline}</div>
+          <div style={tradeMapRailStyle}>
+            {selected.length > 0 ? selected.slice(0, 8).map(review => (
+              <button
+                key={`${review.symbol}-${review.rank ?? review.name}`}
+                type="button"
+                style={commandChipStyle}
+                title={[
+                  review.why_watch,
+                  review.wait_for.length ? `${locale === 'zh-CN' ? '等待' : 'Wait'} ${review.wait_for.join(' / ')}` : '',
+                  review.risk_flags.length ? `${locale === 'zh-CN' ? '风险' : 'Risk'} ${review.risk_flags.join(' / ')}` : '',
+                ].filter(Boolean).join('\n')}
+                onClick={onOpenAiFocus}
+              >
+                {review.rank ? `#${review.rank} ` : ''}{review.name || review.symbol} · {aiVerdictLabel(review.verdict, locale)}
+              </button>
+            )) : (
+              <span style={mutedTextStyle}>
+                {status === 'running'
+                  ? (locale === 'zh-CN' ? 'agent 正在读取候选池。' : 'Agent is reading the pool.')
+                  : (locale === 'zh-CN' ? '还没有 AI 精选结果。' : 'No AI picks yet.')}
+              </span>
+            )}
+          </div>
+          {error ? <div style={errorDarkStyle}>{error}</div> : null}
+        </>
+      )}
+    </div>
+  )
+}
+
+function AiTradeReviewPanel({
+  locale,
+  row,
+  review,
+  status,
+  error,
+  onReview,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow | null
+  review: AiCandidateReview | null
+  status: StrategyAiTaskStatus
+  error: string
+  onReview: (row: WatchlistRow | null) => void
+}) {
+  const disabled = !row || status === 'running'
+  const meta = review
+    ? strategyAiRunLine(review.run) || strategyAiStatusLabel(status, locale)
+    : row
+      ? (locale === 'zh-CN' ? '当前标的未复核' : 'Not reviewed')
+      : (locale === 'zh-CN' ? '先选一个标的' : 'Select a name')
+  const sections = review
+    ? [
+        [locale === 'zh-CN' ? '为什么盯' : 'Why watch', review.why_watch],
+        [locale === 'zh-CN' ? '等待条件' : 'Wait for', review.wait_for.join(' / ')],
+        [locale === 'zh-CN' ? '风险' : 'Risk', review.risk_flags.join(' / ')],
+        [locale === 'zh-CN' ? '不能做' : 'Do not', review.dont_do],
+        [locale === 'zh-CN' ? '失效条件' : 'Invalidation', review.invalidation],
+      ].filter((item): item is [string, string] => Boolean(item[1]))
+    : []
+  return (
+    <div style={commandBarShellStyle}>
+      <div style={candidateGroupHeaderStyle}>
+        <span>{locale === 'zh-CN' ? 'AI 交易复核台' : 'AI trade review'}</span>
+        <span>{meta}</span>
+      </div>
+      <div style={aiReviewBodyStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between', minWidth: 0 }}>
+          <span style={statusBadgeStyle(review ? aiVerdictTone(review.verdict) : strategyAiStatusTone(status))}>
+            {review ? aiVerdictLabel(review.verdict, locale) : strategyAiStatusLabel(status, locale)}
+          </span>
+          <button type="button" style={panelActionButtonStyle} disabled={disabled} onClick={() => onReview(row)}>
+            {status === 'running'
+              ? (locale === 'zh-CN' ? '复核中' : 'Reviewing')
+              : (locale === 'zh-CN' ? 'AI复核当前标的' : 'Review current')}
+          </button>
+        </div>
+        {review ? (
+          <>
+            <div style={aiReviewConclusionStyle}>
+              {review.next_action || review.why_watch || aiVerdictLabel(review.verdict, locale)}
+            </div>
+            {sections.map(([label, text]) => (
+              <div key={label} style={aiReviewSectionStyle}>
+                <div style={aiReviewLabelStyle}>{label}</div>
+                <div style={aiReviewTextStyle}>{text}</div>
+              </div>
+            ))}
+            {review.run ? <div style={aiRunMetaStyle}>{strategyAiRunLine(review.run)}</div> : null}
+          </>
+        ) : (
+          <div style={emptyStateDarkStyle}>
+            {row
+              ? (locale === 'zh-CN' ? `${row.name} 只有 Signals 规则解释，尚未经过 agent 复核。` : `${row.name} has Signals context but no agent review yet.`)
+              : (locale === 'zh-CN' ? '左侧选中 AI 精选或候选标的后再复核。' : 'Pick a candidate first.')}
+          </div>
+        )}
+        {error && status === 'failed' ? <div style={errorDarkStyle}>{error}</div> : null}
+      </div>
+    </div>
+  )
 }
 
 function EmbeddedCommandBar({
