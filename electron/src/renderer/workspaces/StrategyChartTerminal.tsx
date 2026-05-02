@@ -175,8 +175,14 @@ type StrategySignal = {
   render_pane?: string
   volume_state?: string
   volume_context?: string
+  volume_price_relation?: string
   volume_ratio?: number
+  amount_ratio?: number
   volume_z?: number
+  return_pct?: number
+  return_z?: number
+  range_ratio?: number
+  severity?: string
   symbol?: string
   name?: string
   relation?: string
@@ -351,6 +357,8 @@ type SignalOverlayData = {
   color: string
   isCustom?: boolean
   freq?: string
+  scope?: string
+  lane?: number
   sourceLabel?: string
   details?: string
 }
@@ -3283,11 +3291,15 @@ function ensureSignalOverlay() {
       const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
       const color = data.color || signalOverlayColor(side)
       const text = label
-      const width = Math.max(34, Math.min(62, text.length * 8 + 18))
+      const freqLabel = data.freq ? `${data.freq} ` : ''
+      const displayText = `${freqLabel}${text}`
+      const width = Math.max(42, Math.min(78, displayText.length * 7 + 18))
       const height = 18
       const gap = 8
+      const lane = Math.max(0, Math.min(5, Math.floor(numberValue(data.lane) ?? 0)))
+      const laneOffset = lane * (height + 5)
       const rectX = point.x - width / 2
-      const rectY = side === 'buy' ? point.y + gap : point.y - gap - height
+      const rectY = side === 'buy' ? point.y + gap + laneOffset : point.y - gap - height - laneOffset
       const stemEndY = side === 'buy' ? rectY : rectY + height
       const tipY = side === 'buy' ? point.y + 5 : point.y - 5
       const fillColor = 'rgba(15, 23, 42, 0.88)'
@@ -3345,7 +3357,7 @@ function ensureSignalOverlay() {
           attrs: {
             x: rectX + 12,
             y: labelY,
-            text: text.slice(0, 8),
+            text: displayText.slice(0, 10),
             align: 'left',
             baseline: 'middle',
           },
@@ -3806,17 +3818,39 @@ function signalTimestamp(signal: StrategySignal): number | undefined {
   return normalizeTimestamp(signal.dt ?? signal.time ?? signal.timestamp)
 }
 
-function signalPrice(signal: StrategySignal, dataByTimestamp: Map<number, KLineData>): number | undefined {
+function nearestChartBarForTimestamp(data: KLineData[], timestamp: number): KLineData | undefined {
+  if (data.length === 0) return undefined
+  const exact = data.find(item => item.timestamp === timestamp)
+  if (exact) return exact
+  const first = data[0]
+  const last = data[data.length - 1]
+  if (!first || !last || timestamp < first.timestamp || timestamp > last.timestamp + 86400) return undefined
+  return data.find(item => item.timestamp >= timestamp) ?? last
+}
+
+function signalOverlayPrice(signal: StrategySignal, bar: KLineData | undefined): number | undefined {
   const explicit = numberValue(signal.price)
   if (explicit !== undefined) return explicit
-  const timestamp = signalTimestamp(signal)
-  return timestamp ? dataByTimestamp.get(timestamp)?.close : undefined
+  if (!bar) return undefined
+  const side = signalOverlaySide(signal.type ?? signal.signal_type)
+  if (side === 'sell') return bar.high
+  if (side === 'buy') return bar.low
+  return bar.close
 }
 
 function shortSignalLabel(value?: string): string {
   const raw = String(value ?? '').trim()
   if (!raw) return 'SIG'
   const normalized = raw.toLowerCase()
+  if (normalized.includes('量价齐升')) return '量价升'
+  if (normalized.includes('量价共振下杀')) return '共振跌'
+  if (normalized.includes('价升量缩背离')) return '价量背'
+  if (normalized.includes('量价背离')) return '背离顶'
+  if (normalized.includes('价平量增')) return '价量歧'
+  if (normalized.includes('量价同步扩张')) return '量价扩'
+  if (normalized.includes('量价同步扩跌')) return '扩跌'
+  if (normalized.includes('量价收敛')) return '收敛'
+  if (normalized.includes('巨量分歧') || normalized.includes('极端量能分歧')) return '分歧'
   if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
   if (normalized.includes('顶背离')) return '顶背'
   if (normalized.includes('放量突破')) return '突'
@@ -3905,6 +3939,22 @@ function signalOverlayPriority(signal: StrategySignal): number {
   return isCustomUserSignal(signal) ? priority + 18 : priority
 }
 
+function signalScopePriority(signal: StrategySignal, currentFreq?: string): number {
+  const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+  if (scopeLabel === '本周期') return 14
+  if (scopeLabel === '上级周期') return 12
+  if (scopeLabel === '下级周期') return 10
+  return 6
+}
+
+function compactScopeLabel(signal: StrategySignal, currentFreq?: string): string {
+  const freq = displayFreqLabel(signal.freq)
+  const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+  if (scopeLabel === '上级周期') return freq ? `${freq}↧` : '上级'
+  if (scopeLabel === '下级周期') return freq ? `${freq}↥` : '下级'
+  return freq
+}
+
 function isCustomUserSignal(signal: StrategySignal): boolean {
   const source = `${signal.source ?? ''} ${signal.pool_status ?? ''} ${signal.details ?? ''}`.toLowerCase()
   return source.includes('signal_records') || source.includes('backtest') || source.includes('custom') || source.includes('自定义') || source.includes('回测') || isPersonalizedSignalType(signal.type)
@@ -3923,20 +3973,24 @@ function displaySignalsForChart(data: KLineData[], signals: StrategySignal[], cu
   if (data.length === 0 || signals.length === 0) return []
   const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
   const valid = signals
-    .map(signal => ({ signal, timestamp: signalTimestamp(signal), priority: signalOverlayPriority(signal) }))
+    .map(signal => ({
+      signal,
+      timestamp: signalTimestamp(signal),
+      priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
+    }))
     .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } =>
       item.timestamp !== undefined &&
-      !isVolumeSignal(item.signal) &&
-      signalScopeLabel(item.signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期',
+      !isVolumeSignal(item.signal),
     )
   const recent = valid.filter(item => item.timestamp >= cutoff)
   const source = recent.length > 0 ? recent : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
-  const bestByTimestamp = new Map<number, { signal: StrategySignal; timestamp: number; priority: number }>()
+  const bestBySignal = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
   source.forEach(item => {
-    const existing = bestByTimestamp.get(item.timestamp)
-    if (!existing || item.priority > existing.priority) bestByTimestamp.set(item.timestamp, item)
+    const key = `${item.timestamp}:${normalizeSignalFreq(item.signal.freq)}:${item.signal.type ?? item.signal.signal_type ?? ''}:${item.signal.source ?? ''}`
+    const existing = bestBySignal.get(key)
+    if (!existing || item.priority > existing.priority) bestBySignal.set(key, item)
   })
-  return Array.from(bestByTimestamp.values())
+  return Array.from(bestBySignal.values())
     .sort((left, right) => {
       if (right.priority !== left.priority) return right.priority - left.priority
       return right.timestamp - left.timestamp
@@ -3995,26 +4049,34 @@ function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] 
 
 function createSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
-  const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
+  const laneCounts = new Map<string, number>()
   displaySignalsForChart(data, signals, currentFreq).forEach(signal => {
     const timestamp = signalTimestamp(signal)
-    const price = signalPrice(signal, dataByTimestamp)
-    if (!timestamp || price === undefined) return
+    if (!timestamp) return
+    const bar = nearestChartBarForTimestamp(data, timestamp)
+    const alignedTimestamp = bar?.timestamp ?? timestamp
+    const price = signalOverlayPrice(signal, bar)
+    if (price === undefined) return
     const label = shortSignalLabel(signal.type ?? signal.signal_type)
     const side = signalOverlaySide(signal.type ?? signal.signal_type)
     const custom = isCustomUserSignal(signal)
-    const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>)
+    const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+    const laneKey = `${alignedTimestamp}:${side}`
+    const lane = laneCounts.get(laneKey) ?? 0
+    laneCounts.set(laneKey, lane + 1)
     chart.createOverlay({
       name: SIGNAL_OVERLAY_NAME,
       groupId: SIGNAL_OVERLAY_GROUP,
       lock: true,
-      points: [{ timestamp, value: price }],
+      points: [{ timestamp: alignedTimestamp, value: price }],
       extendData: {
         label,
         side,
         color: custom ? (side === 'sell' ? '#fb7185' : '#38bdf8') : signalOverlayColor(side),
         isCustom: custom,
-        freq: displayFreqLabel(signal.freq),
+        freq: compactScopeLabel(signal, currentFreq),
+        scope: scopeLabel,
+        lane,
         sourceLabel: [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · '),
         details: signal.details,
       } satisfies SignalOverlayData,
@@ -5312,8 +5374,12 @@ export function StrategyChartTerminal({
     [chartVisibleSignals, currentFreq],
   )
   const higherTimeframeSignals = useMemo(
-    () => evidenceSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '上级周期'),
-    [currentFreq, evidenceSignals],
+    () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '上级周期'),
+    [chartVisibleSignals, currentFreq],
+  )
+  const lowerTimeframeSignals = useMemo(
+    () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '下级周期'),
+    [chartVisibleSignals, currentFreq],
   )
   const evidenceCustomSignals = useMemo(() => evidenceSignals.filter(isCustomUserSignal), [evidenceSignals])
   const otherEvidenceSignals = useMemo(
@@ -6127,7 +6193,7 @@ export function StrategyChartTerminal({
           latest_signal: latestSignal,
         },
         chart_evidence: {
-          visible_signals: currentVisibleSignals.slice(0, 8),
+          visible_signals: chartVisibleSignals.slice(0, 12),
           key_levels: chartKeyLevels.slice(0, 8),
           divergences: divergences.slice(0, 6),
         },
@@ -6160,8 +6226,8 @@ export function StrategyChartTerminal({
   }, [
     aiRanking?.summary,
     chartKeyLevels,
+    chartVisibleSignals,
     currentFreq,
-    currentVisibleSignals,
     divergences,
     latestSignal,
     locale,
@@ -6734,7 +6800,7 @@ export function StrategyChartTerminal({
             symbolData={symbolData}
             sourceConfidence={sourceConfidence}
             keyLevels={chartKeyLevels}
-            signals={currentVisibleSignals}
+            signals={chartVisibleSignals}
             divergences={divergences}
           />
 
@@ -6810,6 +6876,34 @@ export function StrategyChartTerminal({
                           </div>
                           <div style={mutedLineStyle}>
                             {[signal.date_str, signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {signal.details ? (
+                            <div style={mutedTwoLineStyle}>{signal.details}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {lowerTimeframeSignals.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '下级周期确认' : 'Lower timeframe confirmation'}</span>
+                      <span>{lowerTimeframeSignals.length}</span>
+                    </div>
+                    {lowerTimeframeSignals.map((signal, index) => (
+                      <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'lower'}`} style={signalRowStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal) || '下级'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{signal.type || 'Signal'}</span>
+                            <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
+                            <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
+                          </div>
+                          <div style={mutedLineStyle}>
+                            {[signal.date_str, signal.chart_aligned ? '锚定当前K线' : '', signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
                               .filter(Boolean)
                               .join(' · ')}
                           </div>

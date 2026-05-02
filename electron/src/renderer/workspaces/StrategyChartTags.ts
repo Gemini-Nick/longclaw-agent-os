@@ -134,6 +134,7 @@ export function rankReasonForWatchlist(row: Record<string, unknown>): string {
 export function signalScopeLabel(signal: Record<string, unknown>, currentFreq = ''): string {
   const scope = compactText(signal.display_scope)
   if (scope === 'higher_timeframe_context') return '上级周期'
+  if (scope === 'lower_timeframe_context') return '下级周期'
   if (scope === 'other_timeframe') return '其它周期'
   const freq = normalizeSignalScopeFreq(signal.freq)
   const current = normalizeSignalScopeFreq(currentFreq)
