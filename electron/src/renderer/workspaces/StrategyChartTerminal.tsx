@@ -969,17 +969,29 @@ const watchlistButtonActiveRowStyle: React.CSSProperties = {
   background: terminalTheme.accentSoft,
 }
 
-const manualClueDeleteStyle: React.CSSProperties = {
-  border: `1px solid ${terminalTheme.borderMuted}`,
-  borderRadius: 4,
-  background: terminalTheme.panelInset,
-  color: terminalTheme.mutedStrong,
-  padding: '3px 6px',
-  cursor: 'pointer',
-  fontFamily: fontStacks.ui,
-  fontSize: 10,
-  fontWeight: 800,
-  textAlign: 'left',
+const watchlistNameTitleRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 0,
+}
+
+function manualClueInlineDeleteStyle(armed: boolean): React.CSSProperties {
+  return {
+    flex: '0 0 auto',
+    minWidth: armed ? 42 : 22,
+    height: 18,
+    border: `1px solid ${armed ? tradingDeskTheme.market.down : terminalTheme.borderMuted}`,
+    borderRadius: 4,
+    background: armed ? 'rgba(248, 81, 73, 0.13)' : terminalTheme.panelInset,
+    color: armed ? tradingDeskTheme.market.down : terminalTheme.mutedStrong,
+    padding: '0 5px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    fontSize: 10,
+    fontWeight: 900,
+    lineHeight: '16px',
+  }
 }
 
 const watchlistHeaderCellStyle: React.CSSProperties = {
@@ -5440,7 +5452,7 @@ export function StrategyChartTerminal({
       try {
         await fetchJson<Record<string, unknown>>(
           baseUrl,
-          `/api/workbench/manual-clues/${encodeURIComponent(symbol)}`,
+          `/api/workbench/manual-clues/${encodeURIComponent(symbol)}?confirm=true`,
           undefined,
           'strategy.manual-clue',
           'delete',
@@ -7364,6 +7376,31 @@ function WatchlistTable({
   onCandidateSelect: (row: Record<string, unknown>) => void
   onDeleteManualClue: (row: WatchlistRow) => void
 }) {
+  const [armedDeleteRowId, setArmedDeleteRowId] = useState('')
+  useEffect(() => {
+    if (!armedDeleteRowId) return
+    if (!rows.some(row => row.id === armedDeleteRowId)) {
+      setArmedDeleteRowId('')
+      return
+    }
+    const timer = window.setTimeout(() => setArmedDeleteRowId(''), 3200)
+    return () => window.clearTimeout(timer)
+  }, [armedDeleteRowId, rows])
+
+  const handleManualClueDeleteClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>, row: WatchlistRow) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (armedDeleteRowId === row.id) {
+        setArmedDeleteRowId('')
+        onDeleteManualClue(row)
+        return
+      }
+      setArmedDeleteRowId(row.id)
+    },
+    [armedDeleteRowId, onDeleteManualClue],
+  )
+
   if (rows.length === 0) {
     return <div style={emptyStateDarkStyle}>{emptyText}</div>
   }
@@ -7405,8 +7442,9 @@ function WatchlistTable({
         const manualClue = rowIsManualClue(row)
         return (
           <React.Fragment key={row.id}>
-            <button
-              type="button"
+            <div
+              role="button"
+              tabIndex={0}
               style={{
                 ...(active ? activeButtonRowStyle : buttonRowStyle),
                 ...(cursor ? { boxShadow: `inset 3px 0 ${terminalTheme.accent}` } : {}),
@@ -7425,12 +7463,37 @@ function WatchlistTable({
                 rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
               ].filter(Boolean).join(' · ')}
               onClick={() => onSelect(row)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelect(row)
+                }
+              }}
             >
               <div style={watchlistNameCellStyle}>
-                <div style={watchlistNameStyle}>{row.name}</div>
-	                <div style={watchlistSubStyle}>
-	                  {[stockDecision ? identityLabel : row.typeLabel, stockDecision ? (chainBrief || row.code) : row.code, stockDecision ? stageLabel : '', ...(!stockDecision ? row.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')}
-	                </div>
+                <div style={watchlistNameTitleRowStyle}>
+                  <div style={watchlistNameStyle}>{row.name}</div>
+                  {manualClue ? (
+                    <button
+                      type="button"
+                      aria-label={locale === 'zh-CN' ? `移除临时线索 ${row.name}` : `Remove temporary clue ${row.name}`}
+                      title={armedDeleteRowId === row.id
+                        ? (locale === 'zh-CN' ? '再次点击确认移除。只删除临时线索，不影响自动股票池。' : 'Click again to confirm removal. Automatic pool is untouched.')
+                        : (locale === 'zh-CN' ? '临时线索移除。需要二次确认。' : 'Remove temporary clue. Requires confirmation.')}
+                      style={manualClueInlineDeleteStyle(armedDeleteRowId === row.id)}
+                      onMouseDown={event => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                      }}
+                      onClick={event => handleManualClueDeleteClick(event, row)}
+                    >
+                      {armedDeleteRowId === row.id ? (locale === 'zh-CN' ? '确认' : 'Sure') : '×'}
+                    </button>
+                  ) : null}
+                </div>
+                <div style={watchlistSubStyle}>
+                  {[stockDecision ? identityLabel : row.typeLabel, stockDecision ? (chainBrief || row.code) : row.code, stockDecision ? stageLabel : '', ...(!stockDecision ? row.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')}
+                </div>
                 {stockDecision || row.explanation || row.traderAction || row.rankLabel || row.rankReason ? (
                   <div style={watchlistSubStyle}>
                     {stockDecision
@@ -7468,23 +7531,13 @@ function WatchlistTable({
                   {value}
                 </div>
               ))}
-            </button>
+            </div>
             {expanded ? (
               <ChainTargetDrawer
                 locale={locale}
                 row={row}
                 onSelect={onCandidateSelect}
               />
-            ) : null}
-            {manualClue ? (
-              <button
-                type="button"
-                style={manualClueDeleteStyle}
-                title={locale === 'zh-CN' ? '只删除这个用户临时线索，不影响自动股票池。' : 'Remove this user clue only; automatic pool is untouched.'}
-                onClick={() => onDeleteManualClue(row)}
-              >
-                {locale === 'zh-CN' ? `删除临时线索 · ${row.name}` : `Remove temp clue · ${row.name}`}
-              </button>
             ) : null}
           </React.Fragment>
         )
