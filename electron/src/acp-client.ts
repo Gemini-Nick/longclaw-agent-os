@@ -250,7 +250,12 @@ export class AcpClient {
   }
 
   alive(): boolean {
-    return this.proc !== null && !this.proc.killed
+    return (
+      this.proc !== null &&
+      !this.proc.killed &&
+      this.proc.exitCode === null &&
+      this.proc.signalCode === null
+    )
   }
 
   close(): void {
