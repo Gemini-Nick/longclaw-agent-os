@@ -1994,6 +1994,14 @@ function numberValue(value: unknown): number | undefined {
   return undefined
 }
 
+function firstNumberValue(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const parsed = numberValue(value)
+    if (parsed !== undefined) return parsed
+  }
+  return undefined
+}
+
 function compactText(value: unknown, fallback = ''): string {
   return stringValue(value) ?? (typeof value === 'number' ? String(value) : fallback)
 }
@@ -2920,7 +2928,7 @@ function ensureVolumeIndicator() {
     shouldFormatBigNumber: false,
     series: IndicatorSeries.Volume,
     figures: [{ key: 'volumeWanHands', title: 'VOL(万手): ', type: 'bar' }],
-    calc: dataList => dataList.map(item => ({ volumeWanHands: (Number(item.volume) || 0) / 1_000_000 })),
+    calc: dataList => dataList.map(item => ({ volumeWanHands: Number(item.volume) || 0 })),
   })
   volumeIndicatorRegistered = true
 }
@@ -3209,6 +3217,14 @@ function toKLineData(rawChart: Record<string, unknown> | undefined): KLineData[]
     .sort((left, right) => left.timestamp - right.timestamp)
 }
 
+function toWanHandChartData(data: KLineData[], enabled: boolean): KLineData[] {
+  if (!enabled) return data
+  return data.map(item => ({
+    ...item,
+    volume: (numberValue(item.volume) ?? 0) / 1_000_000,
+  }))
+}
+
 function signalsFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
   if (!symbolData) return []
   if (Array.isArray(symbolData.signals)) return symbolData.signals
@@ -3481,6 +3497,8 @@ function shortSignalLabel(value?: string): string {
   const normalized = raw.toLowerCase()
   if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
   if (normalized.includes('顶背离')) return '顶背'
+  if (normalized.includes('成交量异常放大') || normalized.includes('放量')) return '放量'
+  if (normalized.includes('成交量极致缩量') || normalized.includes('缩量')) return '缩量'
   if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) return '突破'
   if (normalized.includes('volsqueeze')) return '缩量'
   if (normalized.includes('candlerun') || normalized.includes('candleaccel')) return '加速'
@@ -3536,6 +3554,7 @@ function signalOverlayPriority(signal: StrategySignal): number {
   else if (isBuySignal(signal.type) || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
   else if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) priority = 70
   else if (normalized.includes('macd') || normalized.includes('背驰')) priority = 60
+  else if (normalized.includes('成交量') || normalized.includes('放量') || normalized.includes('缩量')) priority = 58
   else if (normalized.includes('gap') || normalized.includes('缺口')) priority = 45
   else if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) priority = 20
   return isCustomUserSignal(signal) ? priority + 18 : priority
@@ -3549,6 +3568,7 @@ function isCustomUserSignal(signal: StrategySignal): boolean {
 function signalSourceLabel(signal: StrategySignal): string {
   if (isCustomUserSignal(signal)) return '自定义'
   const source = String(signal.source ?? '').toLowerCase()
+  if (source.includes('volume')) return '量能'
   if (source.includes('terminal_technical_signals')) return '硬技术'
   if (source.includes('signal_pool') || source.includes('signals')) return '信号池'
   return ''
@@ -5088,18 +5108,39 @@ export function StrategyChartTerminal({
   const chartLineage = useMemo(() => chartLineageLabel(symbolData, locale), [locale, symbolData])
   const chartFormula = useMemo(() => chartFormulaLabel(symbolData, locale), [locale, symbolData])
   const chartMeta = recordValue(symbolData?.chart?.meta)
+  const displayVolumeInWanHands = chartMeta.is_price_kline !== false
+  const chartDisplayData = useMemo(
+    () => toWanHandChartData(klineData, displayVolumeInWanHands),
+    [displayVolumeInWanHands, klineData],
+  )
   const activeChartMode = chartModeFromTarget(target, symbolData)
   const chainContext = selectedChainContext ?? recordValue(symbolData?.summary?.mapping_chain)
   const primaryValueLabel = chartMeta.is_price_kline === false
     ? (locale === 'zh-CN' ? '热度收盘' : 'Heat close')
     : (locale === 'zh-CN' ? '最新价' : 'Last')
-  const latestVolumeLabel = formatAStockVolume(latestVolume(klineData))
-  const latestAmountLabel = formatTurnoverAmount(latestAmount(klineData))
+  const summaryVolume = firstNumberValue(
+    symbolData?.summary?.day_volume,
+    symbolData?.summary?.daily_volume,
+    symbolData?.summary?.latest_daily_volume,
+  )
+  const summaryAmount = firstNumberValue(
+    symbolData?.summary?.day_amount,
+    symbolData?.summary?.daily_amount,
+    symbolData?.summary?.latest_daily_amount,
+  )
+  const latestVolumeLabel = formatAStockVolume(summaryVolume ?? latestVolume(klineData))
+  const latestAmountLabel = formatTurnoverAmount(summaryAmount ?? latestAmount(klineData))
+  const volumeLabel = summaryVolume !== undefined
+    ? (locale === 'zh-CN' ? '当日成交量' : 'Daily volume')
+    : (locale === 'zh-CN' ? '成交量' : 'Volume')
+  const amountLabel = summaryAmount !== undefined
+    ? (locale === 'zh-CN' ? '当日成交额' : 'Daily amount')
+    : (locale === 'zh-CN' ? '成交额' : 'Amount')
   const latestTradingValueLine =
     latestVolumeLabel !== 'N/A' || latestAmountLabel !== 'N/A'
       ? [
-          latestVolumeLabel !== 'N/A' ? `${locale === 'zh-CN' ? '成交量' : 'Volume'} ${latestVolumeLabel}` : '',
-          latestAmountLabel !== 'N/A' ? `${locale === 'zh-CN' ? '成交额' : 'Amount'} ${latestAmountLabel}` : '',
+          latestVolumeLabel !== 'N/A' ? `${volumeLabel} ${latestVolumeLabel}` : '',
+          latestAmountLabel !== 'N/A' ? `${amountLabel} ${latestAmountLabel}` : '',
         ].filter(Boolean).join(' · ')
       : ''
   const updatedTimeLabel =
@@ -5435,19 +5476,19 @@ export function StrategyChartTerminal({
     chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
-    if (klineData.length === 0) {
+    if (chartDisplayData.length === 0) {
       chart.clearData()
       return
     }
-    chart.applyNewData(klineData)
-    createSignalOverlays(chart, klineData, signals)
-    createLevelOverlays(chart, klineData, chartKeyLevels)
+    chart.applyNewData(chartDisplayData)
+    createSignalOverlays(chart, chartDisplayData, signals)
+    createLevelOverlays(chart, chartDisplayData, chartKeyLevels)
     createDivergenceOverlays(chart, divergences)
     if (!lastChartUpdateSilentRef.current) {
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [chartKeyLevels, divergences, klineData, signals])
+  }, [chartDisplayData, chartKeyLevels, divergences, signals])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
