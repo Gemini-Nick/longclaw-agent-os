@@ -2228,24 +2228,6 @@ function aiCandidateInput(row: WatchlistRow, index: number): Record<string, unkn
   }
 }
 
-function fallbackAiFocusRows(rows: WatchlistRow[]): WatchlistRow[] {
-  const score = (row: WatchlistRow): number => {
-    let value = 0
-    if (row.decision.stage === 'entry_ready') value += 60
-    if (row.decision.stage === 'watch_preheat') value += 40
-    if (row.decision.stage === 'strategy_candidate') value += 20
-    if (row.decision.opportunitySide === 'right') value += 20
-    if (row.decision.opportunitySide === 'risk') value -= 30
-    value -= row.decision.missingGates.length * 4
-    const role = stockTradeRoleForRow(row)
-    if (role === 'climax_risk' || role === 'risk_review') value -= 25
-    return value
-  }
-  return [...rows]
-    .sort((left, right) => score(right) - score(left))
-    .slice(0, 10)
-}
-
 function decorateAiFocusRow(row: WatchlistRow, review: AiCandidateReview | null, rank: number): WatchlistRow {
   const why = review?.why_watch || row.rankReason || traderReadLine(row, 'zh-CN')
   const waitFor = review?.wait_for?.join(' / ') || decisionMissingSummary(row.decision, 'zh-CN')
@@ -4519,11 +4501,11 @@ function preferredWatchlistTabForTradeRole(
   },
 ): WatchlistTabKey {
   if (role === 'all') return currentTab
-  const preferredTabs: WatchlistTabKey[] =
+  const preferredTabs: Array<keyof typeof groups> =
     role === 'risk_review' || role === 'climax_risk'
       ? ['risk_stocks', 'focus_stocks', 'watch_stocks', 'buy_candidates']
       : ['focus_stocks', 'watch_stocks', 'buy_candidates', 'risk_stocks']
-  return preferredTabs.find(tab => groups[tab].some(row => stockTradeRoleForRow(row) === role)) ?? preferredTabs[0]
+  return preferredTabs.find(tab => groups[tab].some((row: WatchlistRow) => stockTradeRoleForRow(row) === role)) ?? preferredTabs[0]
 }
 
 function decisionConfirmationSummary(decision: WatchlistDecision, row: WatchlistRow, locale: LongclawLocale): string {
@@ -6315,13 +6297,16 @@ export function StrategyChartTerminal({
           compact={!showTopDiagnosticsDetail}
           onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
         />
-        <TradeMapStrip
+        <AiStrategyStatusStrip
           locale={locale}
-          shell={shell}
-          groups={groupedWatchlistRows}
-          activeRole={activeTradeRole}
-          onRoleSelect={activateTradeRole}
-          onCommand={handleTradeCommand}
+          ranking={aiRanking}
+          status={aiRankingStatus}
+          error={aiError}
+          candidateCount={aiCandidateInputs.length}
+          inputHash={aiCandidateHash}
+          rows={aiFocusRows}
+          onRun={runAiRanking}
+          onOpenAiFocus={() => setActiveWatchlistTab('ai_focus')}
           compact={!showTopDiagnosticsDetail}
           onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
         />
@@ -6505,13 +6490,16 @@ export function StrategyChartTerminal({
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
-      <TradeMapStrip
+      <AiStrategyStatusStrip
         locale={locale}
-        shell={shell}
-        groups={groupedWatchlistRows}
-        activeRole={activeTradeRole}
-        onRoleSelect={activateTradeRole}
-        onCommand={handleTradeCommand}
+        ranking={aiRanking}
+        status={aiRankingStatus}
+        error={aiError}
+        candidateCount={aiCandidateInputs.length}
+        inputHash={aiCandidateHash}
+        rows={aiFocusRows}
+        onRun={runAiRanking}
+        onOpenAiFocus={() => setActiveWatchlistTab('ai_focus')}
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
@@ -6578,7 +6566,7 @@ export function StrategyChartTerminal({
               onTradeRoleChange={activateTradeRole}
               suppressClimax={suppressClimax}
               roleCounts={tradeRoleCounts}
-              groups={groupedWatchlistRows}
+              groups={displayWatchlistGroups}
               rows={activeWatchlistRows}
               target={target}
               rangeColumns={visibleRangeColumns}
@@ -6745,13 +6733,13 @@ export function StrategyChartTerminal({
             divergences={divergences}
           />
 
-          <EmbeddedCommandBar
+          <AiTradeReviewPanel
             locale={locale}
             row={activeDecisionRow}
-            suggestions={Array.isArray(shell?.command_suggestions) ? shell.command_suggestions : []}
-            activeRole={activeTradeRole}
-            suppressClimax={suppressClimax}
-            onCommand={handleTradeCommand}
+            review={activeAiReview}
+            status={aiReviewStatus}
+            error={aiError}
+            onReview={runAiReview}
           />
 
           <Panel
@@ -7796,6 +7784,7 @@ function CacheMonitorStrip({
 
 function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const labels: Partial<Record<WatchlistTabKey, [string, string]>> = {
+    ai_focus: ['AI精选', 'AI picks'],
     focus_stocks: ['确认买点', 'Confirmed entry'],
     risk_stocks: ['暂不参与', 'Skip now'],
     watch_stocks: ['盯盘池', 'Watch pool'],
@@ -7808,6 +7797,7 @@ function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): s
 function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
+    ai_focus: ['agent + terminal_stock_pool', 'AI 第二交易员精选：从候选池降噪排序，右侧逐票复核', '日涨幅=实时快照涨跌幅', 'agent + terminal_stock_pool', 'AI second trader picks: rank and review candidates', 'Day=realtime quote change'],
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
     sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '日涨幅=板块当日涨跌幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Day=board change'],
     focus_stocks: ['terminal_stock_pool.focus_stocks', '确认买点：大周期不冲突，30m买点和5m/15m下单周期都确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'confirmed entry: big cycle clear, 30m and 5m/15m confirmed', 'Day=realtime quote change'],
@@ -7853,6 +7843,7 @@ function WatchlistTabbedTable({
   suppressClimax: boolean
   roleCounts: Record<StockTradeRoleKey, number>
   groups: {
+    ai_focus: WatchlistRow[]
     macro_indices: WatchlistRow[]
     sector_boards: WatchlistRow[]
     buy_candidates: WatchlistRow[]
@@ -7877,19 +7868,25 @@ function WatchlistTabbedTable({
   onDeleteManualClue: (row: WatchlistRow) => void
 }) {
   const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
+    { key: 'ai_focus', label: locale === 'zh-CN' ? 'AI精选' : 'AI picks', count: groups.ai_focus.length },
     { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
     { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
   ]
   const panelMeta = watchlistPanelMeta(activeTab, locale)
+  const aiFocusCount = groups.ai_focus.length
   const watchCount = groups.watch_stocks.length
   const focusCount = groups.focus_stocks.length
   const sourceCount = groups.buy_candidates.length
-  const modeTitle = focusCount > 0
+  const modeTitle = aiFocusCount > 0
+    ? (locale === 'zh-CN' ? 'AI精选待复核' : 'AI picks to review')
+    : focusCount > 0
     ? (locale === 'zh-CN' ? '确认买点待复核' : 'Confirmed entries to review')
     : watchCount > 0
       ? (locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entries')
       : (locale === 'zh-CN' ? '先看线索池' : 'Start with clues')
-  const modeMeta = focusCount > 0
+  const modeMeta = aiFocusCount > 0
+    ? (locale === 'zh-CN' ? '先看AI理由，再进右侧复核' : 'Read AI rationale, then review on the right')
+    : focusCount > 0
     ? (locale === 'zh-CN' ? '先复核位置、止损和失效条件' : 'Review level, stop, and invalidation first')
     : watchCount > 0
       ? (locale === 'zh-CN' ? '看还差大周期、30m还是5m/15m' : 'Check missing big cycle, 30m, or 5m/15m')
@@ -7902,9 +7899,9 @@ function WatchlistTabbedTable({
           <div style={decisionModeMetaStyle}>{modeMeta}</div>
         </div>
         {[
+          [locale === 'zh-CN' ? 'AI' : 'AI', aiFocusCount, terminalTheme.accentText],
           [locale === 'zh-CN' ? '盯盘' : 'Watch', watchCount, tradingDeskTheme.colors.auroraGold],
           [locale === 'zh-CN' ? '买点' : 'Entry', focusCount, tradingDeskTheme.market.up],
-          [locale === 'zh-CN' ? '线索' : 'Clues', sourceCount, terminalTheme.muted],
         ].map(([label, value, color]) => (
           <div key={String(label)} style={decisionMetricCellStyle}>
             <div style={{ ...decisionMetricValueStyle, color: String(color) }}>{value}</div>
@@ -8029,13 +8026,21 @@ function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: num
   if (activeTab === 'sector_boards') {
     return `minmax(138px, 1.35fr) 58px 78px 92px${rangeColumns}`
   }
-  if (activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks') {
+  if (activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks') {
     return `minmax(138px, 1.35fr) 58px 58px 88px${rangeColumns}`
   }
   return `minmax(138px, 1.35fr) 58px 58px 76px${rangeColumns}`
 }
 
 function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [string, string, string, string] {
+  if (activeTab === 'ai_focus') {
+    return [
+      locale === 'zh-CN' ? 'AI精选' : 'AI pick',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? 'AI理由' : 'AI reason',
+    ]
+  }
   if (activeTab === 'sector_boards') {
     return [
       locale === 'zh-CN' ? '板块' : 'Board',
@@ -8342,7 +8347,7 @@ function WatchlistTable({
         const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
         const secondMetric = activeTab === 'sector_boards' ? sectorLeaderForWatchlist(row) : row.dayChange
         const rowSource = sourceLabelForWatchlist(row)
-        const stockDecision = activeTab === 'focus_stocks' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks' || activeTab === 'buy_candidates'
+        const stockDecision = STOCK_WATCHLIST_TABS.includes(activeTab)
         const actionLabel = decisionActionLabel(row.decision, locale)
         const identityLabel = stockDecision ? tradeIdentityLabelForRow(row, locale) : ''
         const chainBrief = stockDecision ? chainBriefForWatchlist(row) : ''
@@ -8422,6 +8427,8 @@ function WatchlistTable({
               <div style={watchlistCellStyle}>
                 {activeTab === 'sector_boards' ? (
                   sectorCarrierForWatchlist(row, locale)
+                ) : activeTab === 'ai_focus' ? (
+                  <span style={mutedTwoLineStyle}>{row.rankReason || row.traderAction || actionLabel}</span>
                 ) : stockDecision ? (
                   <span style={signalBadgeRowStyle}>
                     <span style={stageBadgeStyle}>{actionLabel}</span>

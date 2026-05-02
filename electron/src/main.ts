@@ -4,6 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import http from 'http'
 import { execFileSync } from 'child_process'
+import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 import { createBackend, AgentBackend, AgentMode } from './agent-backend.js'
 import { inspectConfiguredAcpBridge } from './acp-client.js'
@@ -2700,6 +2701,136 @@ async function handleLaunchIntent(
   }
 }
 
+type StrategyAiTaskKind = 'rank_candidates' | 'review_candidate'
+
+function strategyAiInputHash(kind: StrategyAiTaskKind, payload: unknown): string {
+  return createHash('sha256')
+    .update(JSON.stringify({ kind, payload }))
+    .digest('hex')
+    .slice(0, 16)
+}
+
+function strategyAiRunId(kind: StrategyAiTaskKind): string {
+  const compactIso = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)
+  return `strategy-ai-${kind.replace('_', '-')}-${compactIso}`
+}
+
+function compactStrategyAiPayload(payload: unknown, maxLength = 16000): string {
+  const raw = JSON.stringify(payload, null, 2)
+  if (raw.length <= maxLength) return raw
+  return `${raw.slice(0, maxLength)}\n/* truncated */`
+}
+
+function extractJsonObjectFromText(text: string): Record<string, unknown> {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fenced?.[1]?.trim() || text.trim()
+  try {
+    const parsed = JSON.parse(candidate)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { value: parsed }
+  } catch {
+    const start = candidate.indexOf('{')
+    const end = candidate.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      const sliced = candidate.slice(start, end + 1)
+      const parsed = JSON.parse(sliced)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { value: parsed }
+    }
+    throw new Error('AI response did not contain a JSON object')
+  }
+}
+
+function strategyAiPrompt(kind: StrategyAiTaskKind, payload: unknown): string {
+  const schema = kind === 'rank_candidates'
+    ? `{
+  "summary": "one sentence",
+  "selected": [
+    {
+      "rank": 1,
+      "symbol": "string",
+      "name": "string",
+      "verdict": "focus|wait|avoid|remove",
+      "why_watch": "string",
+      "wait_for": ["string"],
+      "risk_flags": ["string"],
+      "dont_do": "string",
+      "invalidation": "string"
+    }
+  ]
+}`
+    : `{
+  "symbol": "string",
+  "name": "string",
+  "verdict": "focus|wait|avoid|remove",
+  "why_watch": "string",
+  "wait_for": ["string"],
+  "risk_flags": ["string"],
+  "dont_do": "string",
+  "invalidation": "string",
+  "next_action": "string"
+}`
+  const task = kind === 'rank_candidates'
+    ? '从 Signals 候选池中选出今天最值得盯的 5-10 个标的，并降噪排序。'
+    : '复核当前候选是否值得行动，给出交易员可执行的等待条件、风险和失效条件。'
+  return [
+    '你是一个 A 股交易员的第二交易员，只基于输入的 Signals 证据做判断。',
+    '不要编造行情、价格、财务数据或新闻。没有证据就写“证据不足”。',
+    '不要给自动下单指令。只输出 JSON，不要 Markdown，不要解释 JSON 外的文字。',
+    `任务：${task}`,
+    `输出 schema：${schema}`,
+    `输入证据：${compactStrategyAiPayload(payload)}`,
+  ].join('\n\n')
+}
+
+async function handleStrategyAiTask(kind: StrategyAiTaskKind, payload: unknown) {
+  const startedAt = Date.now()
+  const runId = strategyAiRunId(kind)
+  const inputHash = strategyAiInputHash(kind, payload)
+  const mode = getAgentMode()
+  const model = mode === 'sdk' ? (process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6') : mode
+  const runBase = {
+    run_id: runId,
+    task: kind,
+    provider: `agent-os-${mode}`,
+    model,
+    prompt_version: 'signals-trader-v1',
+    input_hash: inputHash,
+    output_schema: kind === 'rank_candidates' ? 'ai_candidate_ranking.v1' : 'ai_candidate_review.v1',
+    created_at: new Date(startedAt).toISOString(),
+  }
+  const textParts: string[] = []
+
+  try {
+    const b = await ensureBackend()
+    await b.query(strategyAiPrompt(kind, payload), rawEvent => {
+      const event = rawEvent as AgentStreamEvent
+      if (event.type === 'text' && event.text) textParts.push(event.text)
+      if (event.type === 'error') throw new Error(event.error)
+    })
+    const output = extractJsonObjectFromText(textParts.join('\n'))
+    return {
+      ok: true,
+      output,
+      run: {
+        ...runBase,
+        status: 'success',
+        latency_ms: Date.now() - startedAt,
+      },
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      ok: false,
+      error: message,
+      output: null,
+      run: {
+        ...runBase,
+        status: 'failed',
+        latency_ms: Date.now() - startedAt,
+      },
+    }
+  }
+}
+
 // --- IPC Handlers ---
 
 async function handleQuery(_event: Electron.IpcMainInvokeEvent, message: string) {
@@ -2729,6 +2860,10 @@ app.whenReady().then(() => {
   ipcMain.handle('agent:mode', () => {
     return { mode: getAgentMode(), alive: backend?.alive() ?? false }
   })
+  ipcMain.handle('strategy-ai:rank-candidates', (_event, payload: unknown) =>
+    handleStrategyAiTask('rank_candidates', payload))
+  ipcMain.handle('strategy-ai:review-candidate', (_event, payload: unknown) =>
+    handleStrategyAiTask('review_candidate', payload))
 
   // CWD management
   ipcMain.handle('cwd:get', () => currentCwd)

@@ -40,6 +40,13 @@ contextBridge.exposeInMainWorld('agentAPI', {
   },
 })
 
+contextBridge.exposeInMainWorld('strategyAI', {
+  rankCandidates: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('strategy-ai:rank-candidates', payload),
+  reviewCandidate: (payload: Record<string, unknown>) =>
+    ipcRenderer.invoke('strategy-ai:review-candidate', payload),
+})
+
 contextBridge.exposeInMainWorld('longclawControlPlane', {
   getOverview: () => ipcRenderer.invoke('control-plane:get-overview'),
   listRuns: () => ipcRenderer.invoke('control-plane:list-runs'),
