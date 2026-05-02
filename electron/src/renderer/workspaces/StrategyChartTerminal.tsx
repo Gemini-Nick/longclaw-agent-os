@@ -2122,6 +2122,11 @@ function compactText(value: unknown, fallback = ''): string {
   return stringValue(value) ?? (typeof value === 'number' ? String(value) : fallback)
 }
 
+function localizedPair(pair: [string, string] | undefined, locale: LongclawLocale, fallback = ''): string {
+  if (!pair) return fallback
+  return locale === 'zh-CN' ? pair[0] : pair[1]
+}
+
 function uniqueCompact(values: unknown[]): string[] {
   const seen = new Set<string>()
   const output: string[] = []
@@ -2325,7 +2330,7 @@ function decisionStageLabel(stage: DecisionStage, locale: LongclawLocale): strin
     watch_preheat: ['盯盘池', 'Watch pool'],
     entry_ready: ['确认买点', 'Confirmed entry'],
   }
-  return locale === 'zh-CN' ? labels[stage][0] : labels[stage][1]
+  return localizedPair(labels[stage], locale, compactText(stage, locale === 'zh-CN' ? '线索池' : 'Clue pool'))
 }
 
 function decisionStageMeta(stage: DecisionStage, locale: LongclawLocale): string {
@@ -2336,7 +2341,7 @@ function decisionStageMeta(stage: DecisionStage, locale: LongclawLocale): string
     watch_preheat: ['值得盯盘，重点看买点还差哪一步。', 'Worth watching; check the missing entry step.'],
     entry_ready: ['买点路径基本走通，复核位置和失效条件。', 'Entry path is mostly complete; review level and invalidation.'],
   }
-  return locale === 'zh-CN' ? meta[stage][0] : meta[stage][1]
+  return localizedPair(meta[stage], locale, locale === 'zh-CN' ? '等待更多确认。' : 'Waiting for more confirmation.')
 }
 
 function decisionGateLabel(key: DecisionGateKey, locale: LongclawLocale): string {
@@ -2351,7 +2356,7 @@ function decisionGateLabel(key: DecisionGateKey, locale: LongclawLocale): string
     multi_timeframe: ['周期共振', 'Timeframe resonance'],
     period_conflict: ['周期冲突', 'Timeframe conflict'],
   }
-  return locale === 'zh-CN' ? labels[key][0] : labels[key][1]
+  return localizedPair(labels[key], locale, compactText(key, locale === 'zh-CN' ? '未知条件' : 'Unknown gate'))
 }
 
 function decisionGateStatusLabel(status: DecisionGateStatus, locale: LongclawLocale): string {
@@ -2361,7 +2366,7 @@ function decisionGateStatusLabel(status: DecisionGateStatus, locale: LongclawLoc
     blocked: ['不看', 'Skip'],
     context: ['参考', 'Context'],
   }
-  return locale === 'zh-CN' ? labels[status][0] : labels[status][1]
+  return localizedPair(labels[status], locale, compactText(status, locale === 'zh-CN' ? '等待' : 'Waiting'))
 }
 
 function isDecisionInterventionSide(value: string): value is DecisionInterventionSide {
@@ -2379,7 +2384,7 @@ function opportunitySideLabel(side: DecisionOpportunitySide, locale: LongclawLoc
     risk: ['暂不参与', 'Skip now'],
     context: ['线索池', 'Clue pool'],
   }
-  return locale === 'zh-CN' ? labels[side][0] : labels[side][1]
+  return localizedPair(labels[side], locale, compactText(side, locale === 'zh-CN' ? '线索池' : 'Clue pool'))
 }
 
 function interventionSideLabel(side: DecisionInterventionSide, locale: LongclawLocale): string {
@@ -2390,7 +2395,7 @@ function interventionSideLabel(side: DecisionInterventionSide, locale: LongclawL
     hybrid: ['确认买点', 'Confirmed entry'],
     risk_exit: ['暂不参与', 'Skip now'],
   }
-  return locale === 'zh-CN' ? labels[side][0] : labels[side][1]
+  return localizedPair(labels[side], locale, compactText(side, locale === 'zh-CN' ? '线索池' : 'Clue pool'))
 }
 
 function strategyLineageLabel(lineage: string[], locale: LongclawLocale): string {
@@ -5174,7 +5179,7 @@ function chartModeLabel(mode: ChartModeKey, locale: LongclawLocale): string {
     stock_price: ['个股K线', 'Stock K-line'],
   }
   const label = labels[mode]
-  return locale === 'zh-CN' ? label[0] : label[1]
+  return localizedPair(label, locale, compactText(mode, locale === 'zh-CN' ? '图表' : 'Chart'))
 }
 
 function chartModePurpose(mode: ChartModeKey, locale: LongclawLocale): string {
@@ -5185,7 +5190,7 @@ function chartModePurpose(mode: ChartModeKey, locale: LongclawLocale): string {
     stock_price: ['真实个股 OHLCV，用来复核买卖点和技术联动。', 'Real stock OHLCV for entry/exit and technical linkage checks.'],
   }
   const label = labels[mode]
-  return locale === 'zh-CN' ? label[0] : label[1]
+  return localizedPair(label, locale, locale === 'zh-CN' ? '等待图表上下文。' : 'Waiting for chart context.')
 }
 
 function hiddenReasonLabel(reason: string, locale: LongclawLocale): string {
@@ -7272,7 +7277,7 @@ function aiVerdictLabel(verdict: StrategyAiVerdict, locale: LongclawLocale): str
     remove: ['移出', 'Remove'],
   }
   const label = labels[verdict]
-  return locale === 'zh-CN' ? label[0] : label[1]
+  return localizedPair(label, locale, compactText(verdict, locale === 'zh-CN' ? '等条件' : 'Wait'))
 }
 
 function aiVerdictTone(verdict: StrategyAiVerdict): string {
@@ -7806,6 +7811,11 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
     buy_candidates: ['terminal_manual_clues + terminal_stock_pool.clue_stocks', '线索池：用户探索或系统来源，还没有硬技术买点', '日涨幅=实时快照涨跌幅', 'terminal_manual_clues + terminal_stock_pool.clue_stocks', 'clue pool: user exploration or system sourced, no hard technical entry yet', 'Day=realtime quote change'],
   }
   const item = meta[tab]
+  if (!item) {
+    return zh
+      ? `来源 terminal_stock_pool · 用途 ${watchlistStockTabLabel(tab, locale)} · 日涨幅=实时快照涨跌幅 · 区间=历史收益`
+      : `Source terminal_stock_pool · Use ${watchlistStockTabLabel(tab, locale)} · Day=realtime quote change · Range=historical return`
+  }
   return zh
     ? `来源 ${item[0]} · 用途 ${item[1]} · ${item[2]} · 区间=历史收益`
     : `Source ${item[3]} · Use ${item[4]} · ${item[5]} · Range=historical return`
