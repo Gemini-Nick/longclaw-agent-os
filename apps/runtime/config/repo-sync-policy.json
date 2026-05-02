@@ -5,6 +5,9 @@
     "branch": "main",
     "allow_local_commits": false,
     "allow_dependency_updates": false,
+    "aggressive_sync": false,
+    "auto_stash_ff": true,
+    "verify_push": true,
     "upstream_remote": ""
   },
   "repos": {
@@ -14,7 +17,10 @@
     },
     "Signals": {
       "mode": "owned_push_main",
-      "allow_local_commits": true
+      "allow_local_commits": true,
+      "aggressive_sync": true,
+      "auto_stash_ff": true,
+      "verify_push": true
     },
     "aippt/PPTAgent": {
       "mode": "mirror_origin"
@@ -50,7 +56,10 @@
     },
     "longclaw-agent-os": {
       "mode": "owned_push_main",
-      "allow_local_commits": true
+      "allow_local_commits": true,
+      "aggressive_sync": true,
+      "auto_stash_ff": true,
+      "verify_push": true
     },
     "resume-template-sources/simple-resume": {
       "mode": "mirror_origin"

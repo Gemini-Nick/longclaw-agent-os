@@ -22,6 +22,10 @@ AUTO_COMMIT_MESSAGE="${LONGCLAW_AUTO_COMMIT_MESSAGE:-chore(watchdog): auto-commi
 AUTO_COMMIT="${LONGCLAW_AUTO_COMMIT:-0}"
 DRY_RUN="${LONGCLAW_DRY_RUN:-0}"
 AUTO_PUSH="${LONGCLAW_AUTO_PUSH:-0}"
+AGGRESSIVE_SYNC="${LONGCLAW_AGGRESSIVE_SYNC:-0}"
+AUTO_STASH_FF="${LONGCLAW_AUTO_STASH_FF:-1}"
+VERIFY_PUSH="${LONGCLAW_VERIFY_PUSH:-1}"
+MAX_AUTOSTAGE_BYTES="${LONGCLAW_MAX_AUTOSTAGE_BYTES:-5242880}"
 GIT_TIMEOUT_SECONDS="${LONGCLAW_GIT_TIMEOUT_SECONDS:-60}"
 GIT_FETCH_FILTER="${LONGCLAW_GIT_FETCH_FILTER:-blob:none}"
 RUNTIME_STATE_DIR="${LONGCLAW_RUNTIME_STATE_DIR:-$HOME/.longclaw/runtime-v2/state}"
@@ -473,6 +477,134 @@ remote_relation() {
   fi
 }
 
+remote_head_sha() {
+  local repo="$1"
+  local remote_name="$2"
+  local branch="$3"
+
+  git -C "$repo" ls-remote "$remote_name" "refs/heads/$branch" 2>>"$LOG_FILE" |
+    awk 'NR == 1 {print $1}'
+}
+
+check_autostage_guards() {
+  local repo="$1"
+  local max_bytes="$2"
+  local line rel_path file_path file_size issue_count
+  issue_count=0
+
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    rel_path="${line:3}"
+    case "$rel_path" in
+      *" -> "*)
+        rel_path="${rel_path##* -> }"
+        ;;
+    esac
+
+    case "$rel_path" in
+      .env|.env.*|*/.env|*/.env.*|*.pem|*.key|*.p12|*.pfx|*.kdbx|*id_rsa*|*id_ed25519*|*credentials.json|*service-account*.json|*.mobileprovision)
+        issue_count=$((issue_count + 1))
+        log "workspace=$repo auto_commit blocked=sensitive_path path=$rel_path"
+        continue
+        ;;
+    esac
+
+    file_path="$repo/$rel_path"
+    if [[ -f "$file_path" ]]; then
+      file_size="$(stat -f '%z' "$file_path" 2>/dev/null || stat -c '%s' "$file_path" 2>/dev/null || printf '0')"
+      if [[ "$file_size" =~ ^[0-9]+$ ]] && [[ "$max_bytes" =~ ^[0-9]+$ ]] && (( file_size > max_bytes )); then
+        issue_count=$((issue_count + 1))
+        log "workspace=$repo auto_commit blocked=large_file path=$rel_path bytes=$file_size max_bytes=$max_bytes"
+      fi
+    fi
+  done < <(git -C "$repo" status --porcelain=v1 --untracked-files=all 2>/dev/null || true)
+
+  [[ "$issue_count" -eq 0 ]]
+}
+
+try_stash_fast_forward() {
+  local repo="$1"
+  local remote_ref="$2"
+  local stash_label
+  stash_label="longclaw-auto-sync $(date '+%F %T')"
+
+  log "workspace=$repo cloud_sync action=stash_fast_forward remote_ref=$remote_ref"
+  if ! run_git_timed "$repo" stash push --include-untracked -m "$stash_label"; then
+    log "workspace=$repo cloud_sync_result=stash_failed remote_ref=$remote_ref"
+    return 1
+  fi
+
+  if ! run_git_timed "$repo" merge --ff-only "$remote_ref"; then
+    log "workspace=$repo cloud_sync_result=stash_ff_failed remote_ref=$remote_ref"
+    run_git_timed "$repo" stash pop >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if git -C "$repo" stash list 2>/dev/null | head -n 1 | grep -Fq "$stash_label"; then
+    if ! run_git_timed "$repo" stash pop; then
+      log "workspace=$repo cloud_sync_result=stash_pop_failed remote_ref=$remote_ref"
+      return 1
+    fi
+  fi
+
+  if repo_has_unmerged "$repo"; then
+    log "workspace=$repo cloud_sync_result=stash_pop_conflict remote_ref=$remote_ref"
+    return 1
+  fi
+
+  log "workspace=$repo cloud_sync_result=stash_fast_forwarded remote_ref=$remote_ref"
+  return 0
+}
+
+try_aggressive_rebase() {
+  local repo="$1"
+  local remote_ref="$2"
+
+  log "workspace=$repo cloud_sync action=aggressive_rebase remote_ref=$remote_ref"
+  if run_git_timed "$repo" rebase --autostash "$remote_ref"; then
+    if repo_has_unmerged "$repo"; then
+      log "workspace=$repo cloud_sync_result=rebase_conflict remote_ref=$remote_ref"
+      run_git_timed "$repo" rebase --abort >/dev/null 2>&1 || true
+      return 1
+    fi
+    log "workspace=$repo cloud_sync_result=rebased remote_ref=$remote_ref"
+    return 0
+  fi
+
+  log "workspace=$repo cloud_sync_result=rebase_failed remote_ref=$remote_ref"
+  run_git_timed "$repo" rebase --abort >/dev/null 2>&1 || true
+  return 1
+}
+
+push_and_verify() {
+  local repo="$1"
+  local remote_name="$2"
+  local branch="$3"
+  local verify_push="$4"
+  local local_head remote_head push_status
+
+  if run_git_timed "$repo" push "$remote_name" "HEAD:$branch"; then
+    if [[ "$verify_push" == "1" ]]; then
+      local_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || true)"
+      remote_head="$(remote_head_sha "$repo" "$remote_name" "$branch")"
+      if [[ -z "$remote_head" || "$local_head" != "$remote_head" ]]; then
+        log "workspace=$repo cloud_push_result=failed reason=verify_mismatch local=${local_head:-unknown} remote=${remote_head:-unknown} branch=$branch"
+        return 1
+      fi
+    fi
+    log "workspace=$repo cloud_push_result=pushed verified=$verify_push"
+    return 0
+  fi
+
+  push_status=$?
+  if [[ "$push_status" -eq 124 ]]; then
+    log "workspace=$repo cloud_push_result=failed reason=timeout timeout=${GIT_TIMEOUT_SECONDS}s"
+  else
+    log "workspace=$repo cloud_push_result=failed exit_status=$push_status"
+  fi
+  return "$push_status"
+}
+
 stage_allowed_changes() {
   local repo="$1"
   local rel_path skipped_count
@@ -516,6 +648,9 @@ config = {
         "branch": "main",
         "allow_local_commits": False,
         "allow_dependency_updates": False,
+        "aggressive_sync": False,
+        "auto_stash_ff": True,
+        "verify_push": True,
         "upstream_remote": "",
     },
     "repos": {},
@@ -549,6 +684,9 @@ print(
             "1" if selected.get("allow_local_commits") else "0",
             "1" if selected.get("allow_dependency_updates") else "0",
             str(selected.get("upstream_remote", "") or ""),
+            "1" if selected.get("aggressive_sync") else "0",
+            "1" if selected.get("auto_stash_ff", True) else "0",
+            "1" if selected.get("verify_push", True) else "0",
         ]
     )
 )
@@ -976,9 +1114,18 @@ main() {
         ;;
       WORKSPACE)
         source_display="${sources:-scan}"
-        local repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote sync_blocked remote_ref relation should_push
-        IFS='|' read -r repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote <<<"$(load_repo_policy "$path")"
-        log "workspace category=$category path=$path repo_key=$repo_key policy_mode=$policy_mode sources=$source_display"
+        local repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote aggressive_sync auto_stash_ff verify_push sync_blocked remote_ref relation should_push
+        IFS='|' read -r repo_key policy_mode canonical_remote branch allow_local_commits allow_dependency_updates upstream_remote aggressive_sync auto_stash_ff verify_push <<<"$(load_repo_policy "$path")"
+        if [[ "$AGGRESSIVE_SYNC" == "1" ]]; then
+          aggressive_sync=1
+        fi
+        if [[ "$AUTO_STASH_FF" == "0" ]]; then
+          auto_stash_ff=0
+        fi
+        if [[ "$VERIFY_PUSH" == "0" ]]; then
+          verify_push=0
+        fi
+        log "workspace category=$category path=$path repo_key=$repo_key policy_mode=$policy_mode aggressive_sync=${aggressive_sync:-0} sources=$source_display"
 
         if [[ "$category" != "git_repo" ]]; then
           log "workspace path=$path skipped=non_git_workspace"
@@ -1011,9 +1158,17 @@ main() {
                   ;;
                 local_behind)
                   if repo_has_worktree_changes "$path"; then
-                    sync_blocked=1
-                    sync_issues=$((sync_issues + 1))
-                    log "workspace=$path cloud_sync blocked=remote_ahead_with_local_changes remote_ref=$remote_ref"
+                    if [[ "${aggressive_sync:-0}" == "1" && "${auto_stash_ff:-1}" == "1" ]]; then
+                      if ! try_stash_fast_forward "$path" "$remote_ref"; then
+                        sync_blocked=1
+                        sync_issues=$((sync_issues + 1))
+                        log "workspace=$path cloud_sync blocked=stash_fast_forward_failed remote_ref=$remote_ref"
+                      fi
+                    else
+                      sync_blocked=1
+                      sync_issues=$((sync_issues + 1))
+                      log "workspace=$path cloud_sync blocked=remote_ahead_with_local_changes remote_ref=$remote_ref"
+                    fi
                   elif run_git_timed "$path" merge --ff-only "$remote_ref"; then
                     log "workspace=$path cloud_sync_result=fast_forwarded remote_ref=$remote_ref"
                   else
@@ -1022,7 +1177,20 @@ main() {
                     log "workspace=$path cloud_sync_result=fast_forward_failed remote_ref=$remote_ref"
                   fi
                   ;;
-                diverged|missing_ref)
+                diverged)
+                  if [[ "${aggressive_sync:-0}" == "1" ]]; then
+                    if ! try_aggressive_rebase "$path" "$remote_ref"; then
+                      sync_blocked=1
+                      sync_issues=$((sync_issues + 1))
+                      log "workspace=$path cloud_sync blocked=aggressive_rebase_failed remote_ref=$remote_ref"
+                    fi
+                  else
+                    sync_blocked=1
+                    sync_issues=$((sync_issues + 1))
+                    log "workspace=$path cloud_sync blocked=$relation remote_ref=$remote_ref"
+                  fi
+                  ;;
+                missing_ref)
                   sync_blocked=1
                   sync_issues=$((sync_issues + 1))
                   log "workspace=$path cloud_sync blocked=$relation remote_ref=$remote_ref"
@@ -1060,18 +1228,25 @@ main() {
         elif [[ "$allow_local_commits" != "1" ]]; then
           log "workspace=$path auto_commit skipped=policy_disallow_local_commits policy_mode=$policy_mode"
         elif repo_has_worktree_changes "$path"; then
-          log "workspace=$path auto_commit action=stage_allowed_changes"
-          stage_allowed_changes "$path"
-          if ! git -C "$path" diff --cached --quiet --ignore-submodules --; then
-            if git -C "$path" commit -m "$AUTO_COMMIT_MESSAGE" >>"$LOG_FILE" 2>&1; then
-              auto_commits=$((auto_commits + 1))
-              commit_made=1
-              log "workspace=$path auto_commit_result=committed"
-            else
-              log "workspace=$path auto_commit_result=failed"
-            fi
+          if ! check_autostage_guards "$path" "$MAX_AUTOSTAGE_BYTES"; then
+            sync_blocked=1
+            sync_issues=$((sync_issues + 1))
+            log "workspace=$path auto_commit blocked=autostage_guard"
           else
-            log "workspace=$path auto_commit skipped=no_staged_tracked_changes"
+            log "workspace=$path auto_commit action=stage_allowed_changes aggressive_sync=${aggressive_sync:-0}"
+            stage_allowed_changes "$path"
+            if ! git -C "$path" diff --cached --quiet --ignore-submodules --; then
+              if git -C "$path" commit -m "$AUTO_COMMIT_MESSAGE" >>"$LOG_FILE" 2>&1; then
+                auto_commits=$((auto_commits + 1))
+                commit_made=1
+                log "workspace=$path auto_commit_result=committed"
+              else
+                sync_issues=$((sync_issues + 1))
+                log "workspace=$path auto_commit_result=failed"
+              fi
+            else
+              log "workspace=$path auto_commit skipped=no_staged_tracked_changes"
+            fi
           fi
         else
           log "workspace=$path auto_commit skipped=clean"
@@ -1093,16 +1268,48 @@ main() {
             elif [[ "$AUTO_PUSH" != "1" ]]; then
               log "workspace=$path cloud_push skipped=disabled"
             else
-              if run_git_timed "$path" push "$canonical_remote" "HEAD:$branch"; then
+              if push_and_verify "$path" "$canonical_remote" "$branch" "${verify_push:-1}"; then
                 cloud_pushes=$((cloud_pushes + 1))
-                log "workspace=$path cloud_push_result=pushed"
               else
                 push_status=$?
-                sync_issues=$((sync_issues + 1))
-                if [[ "$push_status" -eq 124 ]]; then
-                  log "workspace=$path cloud_push_result=failed reason=timeout timeout=${GIT_TIMEOUT_SECONDS}s"
+                if [[ "${aggressive_sync:-0}" == "1" && "$push_status" != "124" ]]; then
+                  log "workspace=$path cloud_push retry=fetch_rebase_push remote=$canonical_remote branch=$branch"
+                  fetch_args=(fetch --prune --no-tags)
+                  if [[ -n "$GIT_FETCH_FILTER" ]]; then
+                    fetch_args+=(--filter="$GIT_FETCH_FILTER")
+                  fi
+                  fetch_args+=("$canonical_remote" "$branch")
+                  if run_git_timed "$path" "${fetch_args[@]}"; then
+                    relation="$(remote_relation "$path" "$remote_ref")"
+                    log "workspace=$path cloud_push retry_relation=$relation remote_ref=$remote_ref"
+                    case "$relation" in
+                      local_ahead)
+                        if push_and_verify "$path" "$canonical_remote" "$branch" "${verify_push:-1}"; then
+                          cloud_pushes=$((cloud_pushes + 1))
+                        else
+                          sync_issues=$((sync_issues + 1))
+                          log "workspace=$path cloud_push blocked=retry_push_failed"
+                        fi
+                        ;;
+                      diverged)
+                        if try_aggressive_rebase "$path" "$remote_ref" && push_and_verify "$path" "$canonical_remote" "$branch" "${verify_push:-1}"; then
+                          cloud_pushes=$((cloud_pushes + 1))
+                        else
+                          sync_issues=$((sync_issues + 1))
+                          log "workspace=$path cloud_push blocked=retry_rebase_push_failed"
+                        fi
+                        ;;
+                      *)
+                        sync_issues=$((sync_issues + 1))
+                        log "workspace=$path cloud_push blocked=retry_unexpected_relation relation=$relation"
+                        ;;
+                    esac
+                  else
+                    sync_issues=$((sync_issues + 1))
+                    log "workspace=$path cloud_push blocked=retry_fetch_failed"
+                  fi
                 else
-                  log "workspace=$path cloud_push_result=failed exit_status=$push_status"
+                  sync_issues=$((sync_issues + 1))
                 fi
               fi
             fi
