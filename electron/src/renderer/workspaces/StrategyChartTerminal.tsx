@@ -350,6 +350,7 @@ const SIGNAL_OVERLAY_GROUP = 'longclaw-signals'
 const DIVERGENCE_OVERLAY_NAME = 'longclawMacdDivergenceMarker'
 const DIVERGENCE_OVERLAY_GROUP = 'longclaw-macd-divergence'
 const LEVEL_OVERLAY_GROUP = 'longclaw-levels'
+const A_SHARE_VOLUME_INDICATOR_NAME = 'LONGCLAW_A_SHARE_VOLUME'
 const CANDLE_PANE_ID = 'candle_pane'
 const MACD_PANE_ID = 'macd_pane'
 const MACD_ZERO_INDICATOR_NAME = 'LONGCLAW_MACD_ZERO'
@@ -372,6 +373,7 @@ const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.or
 
 let signalOverlayRegistered = false
 let divergenceOverlayRegistered = false
+let volumeIndicatorRegistered = false
 let macdZeroIndicatorRegistered = false
 const terminalTheme = tradingDeskTheme.colors
 
@@ -1061,6 +1063,16 @@ const indicatorLegendStyle: React.CSSProperties = {
   lineHeight: 1.2,
   maxHeight: 28,
   overflow: 'hidden',
+}
+
+const chartTradingValueLineStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 10,
+  lineHeight: 1.2,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 }
 
 const indicatorLegendItemStyle: React.CSSProperties = {
@@ -2878,6 +2890,41 @@ function macdIndicatorStyles(): DeepPartial<IndicatorStyle> {
   }
 }
 
+function volumeIndicatorStyles(): DeepPartial<IndicatorStyle> {
+  return {
+    bars: [
+      {
+        upColor: tradingDeskTheme.market.up,
+        downColor: tradingDeskTheme.market.down,
+        noChangeColor: tradingDeskTheme.market.flat,
+      },
+    ],
+    tooltip: {
+      text: {
+        color: terminalTheme.text,
+        size: 9,
+        family: 'IBM Plex Mono, Menlo, monospace',
+      },
+    },
+  }
+}
+
+function ensureVolumeIndicator() {
+  if (volumeIndicatorRegistered) return
+  registerIndicator<{ volumeWanHands: number }>({
+    name: A_SHARE_VOLUME_INDICATOR_NAME,
+    shortName: 'VOL(万手)',
+    precision: 2,
+    calcParams: [],
+    shouldOhlc: false,
+    shouldFormatBigNumber: false,
+    series: IndicatorSeries.Volume,
+    figures: [{ key: 'volumeWanHands', title: 'VOL(万手): ', type: 'bar' }],
+    calc: dataList => dataList.map(item => ({ volumeWanHands: (Number(item.volume) || 0) / 1_000_000 })),
+  })
+  volumeIndicatorRegistered = true
+}
+
 function macdZeroIndicatorStyles(): DeepPartial<IndicatorStyle> {
   return {
     lines: [
@@ -2931,7 +2978,14 @@ function createChartIndicators(chart: Chart, freq?: string) {
     true,
     { id: CANDLE_PANE_ID },
   )
-  chart.createIndicator('VOL', false, { minHeight: 64, height: 82 })
+  chart.createIndicator(
+    {
+      name: A_SHARE_VOLUME_INDICATOR_NAME,
+      styles: volumeIndicatorStyles(),
+    },
+    false,
+    { minHeight: 64, height: 82 },
+  )
   chart.createIndicator(
     {
       name: 'MACD',
@@ -3148,7 +3202,7 @@ function toKLineData(rawChart: Record<string, unknown> | undefined): KLineData[]
         low,
         close,
         volume: numberValue(record.volume) ?? numberValue(record.vol) ?? 0,
-        turnover: numberValue(record.turnover),
+        turnover: numberValue(record.turnover) ?? numberValue(record.amount),
       } satisfies KLineData
     })
     .filter((item): item is KLineData => Boolean(item))
@@ -3173,6 +3227,14 @@ function keyLevelsFromSymbolData(symbolData: WorkbenchSymbolData | null): Strate
 
 function latestClose(data: KLineData[]): number | undefined {
   return data[data.length - 1]?.close
+}
+
+function latestVolume(data: KLineData[]): number | undefined {
+  return numberValue(data[data.length - 1]?.volume)
+}
+
+function latestAmount(data: KLineData[]): number | undefined {
+  return numberValue(data[data.length - 1]?.turnover)
 }
 
 function movingAverageLevel(data: KLineData[], period: number): number | undefined {
@@ -3711,6 +3773,22 @@ function formatNumber(value: unknown, digits = 2): string {
   const number = numberValue(value)
   if (number === undefined) return 'N/A'
   return number.toFixed(digits)
+}
+
+function formatAStockVolume(value: unknown): string {
+  const shares = numberValue(value)
+  if (shares === undefined) return 'N/A'
+  const wanHands = shares / 1_000_000
+  if (Math.abs(wanHands) >= 10000) return `${(wanHands / 10000).toFixed(2)}亿手`
+  return `${wanHands.toFixed(2)}万手`
+}
+
+function formatTurnoverAmount(value: unknown): string {
+  const amount = numberValue(value)
+  if (amount === undefined || amount <= 0) return 'N/A'
+  if (Math.abs(amount) >= 100_000_000) return `${(amount / 100_000_000).toFixed(2)}亿`
+  if (Math.abs(amount) >= 10_000) return `${(amount / 10_000).toFixed(2)}万`
+  return amount.toFixed(0)
 }
 
 function formatPercent(value: unknown): string {
@@ -5015,6 +5093,15 @@ export function StrategyChartTerminal({
   const primaryValueLabel = chartMeta.is_price_kline === false
     ? (locale === 'zh-CN' ? '热度收盘' : 'Heat close')
     : (locale === 'zh-CN' ? '最新价' : 'Last')
+  const latestVolumeLabel = formatAStockVolume(latestVolume(klineData))
+  const latestAmountLabel = formatTurnoverAmount(latestAmount(klineData))
+  const latestTradingValueLine =
+    latestVolumeLabel !== 'N/A' || latestAmountLabel !== 'N/A'
+      ? [
+          latestVolumeLabel !== 'N/A' ? `${locale === 'zh-CN' ? '成交量' : 'Volume'} ${latestVolumeLabel}` : '',
+          latestAmountLabel !== 'N/A' ? `${locale === 'zh-CN' ? '成交额' : 'Amount'} ${latestAmountLabel}` : '',
+        ].filter(Boolean).join(' · ')
+      : ''
   const updatedTimeLabel =
     compactText(shell?.session?.data_as_of) ||
     (lastUpdated ? readableTime(lastUpdated, locale, chartTimezone) : '')
@@ -5281,6 +5368,7 @@ export function StrategyChartTerminal({
     if (!chartContainerRef.current) return
     ensureSignalOverlay()
     ensureDivergenceOverlay()
+    ensureVolumeIndicator()
     ensureMacdZeroIndicator()
     const chart = init(chartContainerRef.current, {
       locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
@@ -5929,6 +6017,9 @@ export function StrategyChartTerminal({
               {chartFormula ? (
                 <div style={mutedTextStyle}>{chartFormula}</div>
               ) : null}
+              {latestTradingValueLine ? (
+                <div style={chartTradingValueLineStyle}>{latestTradingValueLine}</div>
+              ) : null}
               <div style={indicatorLegendStyle}>
                 {activeMaPeriods.map((period, index) => (
                   <span key={`ma-${period}`} style={indicatorLegendItemStyle}>
@@ -5936,6 +6027,10 @@ export function StrategyChartTerminal({
                     {chartMeta.is_price_kline === false ? `热度MA${period}` : `MA${period}`}
                   </span>
                 ))}
+                <span style={indicatorLegendItemStyle}>
+                  <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up }} />
+                  {chartMeta.is_price_kline === false ? '热度量能' : 'VOL(万手)'}
+                </span>
                 {MACD_LINE_COLORS.map((color, index) => (
                   <span key={`macd-${index}`} style={indicatorLegendItemStyle}>
                     <span style={{ ...indicatorLegendSwatchStyle, background: color }} />
