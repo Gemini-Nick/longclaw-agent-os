@@ -14,6 +14,9 @@ type ObservedFetchOptions = {
   timeoutMs?: number
   source: string
   action?: string
+  method?: string
+  headers?: HeadersInit
+  body?: BodyInit | null
 }
 
 declare global {
@@ -75,7 +78,12 @@ export async function observedFetchJson<T>(
   let errorMessage: string | undefined
 
   try {
-    const response = await fetch(`${baseUrl}${path}`, { signal: controller.signal })
+    const response = await fetch(`${baseUrl}${path}`, {
+      signal: controller.signal,
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+    })
     status = response.status
     let payload: unknown = {}
     try {

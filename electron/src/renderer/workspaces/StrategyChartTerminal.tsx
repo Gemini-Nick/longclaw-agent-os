@@ -969,6 +969,19 @@ const watchlistButtonActiveRowStyle: React.CSSProperties = {
   background: terminalTheme.accentSoft,
 }
 
+const manualClueDeleteStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelInset,
+  color: terminalTheme.mutedStrong,
+  padding: '3px 6px',
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 800,
+  textAlign: 'left',
+}
+
 const watchlistHeaderCellStyle: React.CSSProperties = {
   padding: '5px 4px',
   borderBottom: `1px solid ${terminalTheme.borderStrong}`,
@@ -1142,6 +1155,28 @@ const tradeMapDefinitionStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+}
+
+const topStripToggleStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  padding: '2px 6px',
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 9,
+  fontWeight: 850,
+  lineHeight: 1.15,
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapCompactRailStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 4,
+  minWidth: 0,
+  overflow: 'hidden',
+  flex: '1 1 auto',
 }
 
 const tradeMapRailStyle: React.CSSProperties = {
@@ -2502,6 +2537,23 @@ function isActiveProviderProblem(item: Record<string, unknown>): boolean {
   return true
 }
 
+function providerHasHealthyPeer(item: Record<string, unknown>, rows: Record<string, unknown>[]): boolean {
+  const provider = compactText(item.provider)
+  const domain = compactText(item.domain)
+  const endpoint = compactText(item.endpoint)
+  if (!domain || !endpoint) return false
+  return rows.some(peer => {
+    if (compactText(peer.provider) === provider) return false
+    if (compactText(peer.domain) !== domain || compactText(peer.endpoint) !== endpoint) return false
+    const status = compactText(peer.status).toLowerCase()
+    return ['ok', 'running'].includes(status) && Boolean(compactText(peer.last_success_at))
+  })
+}
+
+function activeProviderProblems(providerHealth: Record<string, unknown>[]): Record<string, unknown>[] {
+  return providerHealth.filter(item => isActiveProviderProblem(item) && !providerHasHealthyPeer(item, providerHealth))
+}
+
 function cacheRefreshSeconds(cacheStatus: StrategyDashboard['cache_status']): number {
   if (!cacheStatus.available) return 10
   const runStatus = compactText(recordValue(cacheStatus.postmarket_backfill.run).status).toLowerCase()
@@ -2689,11 +2741,15 @@ async function fetchJson<T>(
   signal: AbortSignal | undefined,
   source: string,
   action?: string,
+  request?: { method?: string; body?: BodyInit | null; headers?: HeadersInit },
 ): Promise<T> {
   return observedFetchJson<T>(baseUrl, path, {
     signal,
     source,
     action,
+    method: request?.method,
+    headers: request?.headers,
+    body: request?.body,
     timeoutMs: 45_000,
   })
 }
@@ -4552,6 +4608,21 @@ function watchlistRowIsActive(row: WatchlistRow, target: ChartTarget): boolean {
   return row.targetLabel === target.label || row.label === target.label || row.code === target.label || row.name === target.label
 }
 
+function rowIsManualClue(row: WatchlistRow): boolean {
+  return Boolean(row.raw.manual_clue || row.raw.deletable || compactText(row.raw.source_collection) === 'terminal_manual_clues')
+}
+
+function stockRowsContainSearchValue(rows: WatchlistRow[], value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  if (!normalized) return false
+  return rows.some(row => {
+    if (row.kind !== 'stock' && row.targetKind !== 'stock') return false
+    return [row.label, row.name, row.code, row.targetLabel, compactText(row.raw.raw_code), compactText(row.raw.symbol)]
+      .filter(Boolean)
+      .some(candidate => candidate === value || candidate.toLowerCase() === normalized)
+  })
+}
+
 const candidateGroupOrder = ['leaders', 'weighted', 'elastic', 'source_leaders', 'constituents']
 
 function candidateGroupLabel(key: string, locale: LongclawLocale): string {
@@ -4712,6 +4783,10 @@ export function StrategyChartTerminal({
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
+  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1000 : window.innerHeight))
+  const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(() => (
+    typeof window === 'undefined' ? true : window.innerWidth > 1440 && window.innerHeight > 900
+  ))
 
   useEffect(() => {
     activeWatchlistTabRef.current = activeWatchlistTab
@@ -4857,6 +4932,15 @@ export function StrategyChartTerminal({
     () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
     [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
   )
+  const allStockWatchlistRows = useMemo(
+    () => [
+      ...groupedWatchlistRows.buy_candidates,
+      ...groupedWatchlistRows.watch_stocks,
+      ...groupedWatchlistRows.focus_stocks,
+      ...groupedWatchlistRows.risk_stocks,
+    ],
+    [groupedWatchlistRows],
+  )
   const tradeRoleCounts = useMemo(
     () => tradeRoleCountsForGroups(groupedWatchlistRows),
     [groupedWatchlistRows],
@@ -4908,6 +4992,8 @@ export function StrategyChartTerminal({
     [availableCustomSignalFreqOptions, currentFreq],
   )
   const layoutMode = terminalLayoutMode(viewportWidth)
+  const compactTopDiagnostics = layoutMode !== 'cinema' || viewportHeight <= 900
+  const showTopDiagnosticsDetail = !compactTopDiagnostics || topDiagnosticsExpanded
   const chartTimezone = useMemo(() => chartMarketTimezone(symbolData, shell), [shell, symbolData])
   const chartLineage = useMemo(() => chartLineageLabel(symbolData, locale), [locale, symbolData])
   const chartFormula = useMemo(() => chartFormulaLabel(symbolData, locale), [locale, symbolData])
@@ -5042,7 +5128,10 @@ export function StrategyChartTerminal({
   }, [dashboard])
 
   useEffect(() => {
-    const onResize = () => setViewportWidth(window.innerWidth)
+    const onResize = () => {
+      setViewportWidth(window.innerWidth)
+      setViewportHeight(window.innerHeight)
+    }
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
@@ -5057,6 +5146,10 @@ export function StrategyChartTerminal({
       autoCollapsedForFocusRef.current = false
     }
   }, [layoutMode])
+
+  useEffect(() => {
+    if (compactTopDiagnostics) setTopDiagnosticsExpanded(false)
+  }, [compactTopDiagnostics])
 
   useEffect(() => {
     setSearchDraft(target.label)
@@ -5312,18 +5405,72 @@ export function StrategyChartTerminal({
     [activeWatchlistRows, activeWatchlistTab, expandedChainKeys, selectTarget, target],
   )
 
+  const addManualClueFromSearch = useCallback(
+    async (value: string, freq: string) => {
+      if (!baseUrl) return
+      try {
+        await fetchJson<Record<string, unknown>>(
+          baseUrl,
+          '/api/workbench/manual-clues',
+          undefined,
+          'strategy.manual-clue',
+          'add',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: value, freq }),
+          },
+        )
+        setActiveWatchlistTab('buy_candidates')
+        setActiveTradeRole('all')
+        void loadShell().catch(() => undefined)
+      } catch (rawError) {
+        const apiError = rawError as ApiError
+        setError(apiError.message || (locale === 'zh-CN' ? '临时线索加入失败。' : 'Failed to add temporary clue.'))
+      }
+    },
+    [baseUrl, loadShell, locale],
+  )
+
+  const deleteManualClue = useCallback(
+    async (row: WatchlistRow) => {
+      if (!baseUrl) return
+      const symbol = row.code || row.targetLabel || row.label
+      if (!symbol) return
+      try {
+        await fetchJson<Record<string, unknown>>(
+          baseUrl,
+          `/api/workbench/manual-clues/${encodeURIComponent(symbol)}`,
+          undefined,
+          'strategy.manual-clue',
+          'delete',
+          { method: 'DELETE' },
+        )
+        void loadShell().catch(() => undefined)
+      } catch (rawError) {
+        const apiError = rawError as ApiError
+        setError(apiError.message || (locale === 'zh-CN' ? '临时线索删除失败。' : 'Failed to remove temporary clue.'))
+      }
+    },
+    [baseUrl, loadShell, locale],
+  )
+
   const submitSearch = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault()
       const value = searchDraft.trim()
       if (!value) return
       const isIndex = indexTargets.some(row => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value)
+      const shouldAddManualClue = !isIndex && !stockRowsContainSearchValue(allStockWatchlistRows, value)
       selectTarget(
         { label: value, kind: isIndex ? 'index' : 'auto', freq: target.freq || DEFAULT_TERMINAL_FREQ },
         'strategy.search.submit',
       )
+      if (shouldAddManualClue) {
+        void addManualClueFromSearch(value, target.freq || DEFAULT_TERMINAL_FREQ)
+      }
     },
-    [indexTargets, searchDraft, selectTarget, target.freq],
+    [addManualClueFromSearch, allStockWatchlistRows, indexTargets, searchDraft, selectTarget, target.freq],
   )
 
   const refreshNow = useCallback(() => {
@@ -5458,7 +5605,13 @@ export function StrategyChartTerminal({
             ? '信号实时入口未配置，当前显示降级摘要。'
             : 'Signals live endpoint is not configured. Showing a degraded summary.'}
         </div>
-        <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
+        <CacheMonitorStrip
+          locale={locale}
+          cacheStatus={dashboard.cache_status}
+          mode={layoutMode}
+          compact={!showTopDiagnosticsDetail}
+          onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
+        />
         <TradeMapStrip
           locale={locale}
           shell={shell}
@@ -5466,6 +5619,8 @@ export function StrategyChartTerminal({
           activeRole={activeTradeRole}
           onRoleSelect={activateTradeRole}
           onCommand={handleTradeCommand}
+          compact={!showTopDiagnosticsDetail}
+          onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
         />
         <div style={fallbackGridStyle}>
           <Panel
@@ -5640,7 +5795,13 @@ export function StrategyChartTerminal({
         </button>
       </div>
 
-      <CacheMonitorStrip locale={locale} cacheStatus={dashboard.cache_status} mode={layoutMode} />
+      <CacheMonitorStrip
+        locale={locale}
+        cacheStatus={dashboard.cache_status}
+        mode={layoutMode}
+        compact={!showTopDiagnosticsDetail}
+        onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
+      />
       <TradeMapStrip
         locale={locale}
         shell={shell}
@@ -5648,6 +5809,8 @@ export function StrategyChartTerminal({
         activeRole={activeTradeRole}
         onRoleSelect={activateTradeRole}
         onCommand={handleTradeCommand}
+        compact={!showTopDiagnosticsDetail}
+        onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
 
       {shell?.notices?.length ? (
@@ -5726,6 +5889,7 @@ export function StrategyChartTerminal({
               expandedChainKeys={expandedChainKeys}
               onSelect={row => activateWatchlistRow(row)}
               onCandidateSelect={row => selectCandidateTarget(row)}
+              onDeleteManualClue={deleteManualClue}
             />
           </Panel>
         </div>
@@ -6244,6 +6408,8 @@ function TradeMapStrip({
   activeRole,
   onRoleSelect,
   onCommand,
+  compact = false,
+  onToggleCompact,
 }: {
   locale: LongclawLocale
   shell: WorkbenchShell | null
@@ -6257,6 +6423,8 @@ function TradeMapStrip({
   activeRole: TradeRoleKey
   onRoleSelect: (role: TradeRoleKey) => void
   onCommand: (command: TradeCommandKey) => void
+  compact?: boolean
+  onToggleCompact?: () => void
 }) {
   const tradeMap = tradeMapItemsFromShell(shell, groups)
   const rawAlerts = Array.isArray(shell?.ai_alerts) ? shell.ai_alerts.map(item => recordValue(item)) : []
@@ -6269,6 +6437,36 @@ function TradeMapStrip({
     .map(item => `${item.label}: ${item.name}${item.summary ? `，${item.summary}` : ''}`)
     .join(' | ')
   if (!mapLine && alerts.length === 0) return null
+  const toggleLabel = compact
+    ? (locale === 'zh-CN' ? '展开' : 'Expand')
+    : (locale === 'zh-CN' ? '收起' : 'Collapse')
+  if (compact) {
+    return (
+      <div style={tradeMapStripStyle}>
+        <div style={tradeMapHeaderStyle}>
+          <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日交易地图' : 'Trade map'}</div>
+          <div style={tradeMapCompactRailStyle} title={mapLine}>
+            {tradeMap.items.slice(0, 4).map(item => (
+              <button
+                key={`${item.role}-${item.name}`}
+                type="button"
+                style={tradeMapChipStyle(item.role, activeRole === item.role)}
+                title={`${item.name} · ${item.summary || ''}`}
+                onClick={() => onRoleSelect(item.role)}
+              >
+                {`${item.label}: ${item.name}`}
+              </button>
+            ))}
+          </div>
+          {onToggleCompact ? (
+            <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+              {toggleLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
   return (
     <div style={tradeMapStripStyle}>
       <div style={tradeMapHeaderStyle}>
@@ -6280,6 +6478,11 @@ function TradeMapStrip({
             tradeMap.mode ? (tradeMap.mode === 'daily_close' ? (locale === 'zh-CN' ? '休市日复用收盘' : 'closed-day close') : tradeMap.mode) : '',
           ].filter(Boolean).join(' · ')}
         </div>
+        {onToggleCompact ? (
+          <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+            {toggleLabel}
+          </button>
+        ) : null}
       </div>
       <div style={tradeMapRailStyle}>
         {tradeMap.items.map(item => {
@@ -6426,10 +6629,14 @@ function CacheMonitorStrip({
   locale,
   cacheStatus,
   mode,
+  compact = false,
+  onToggleCompact,
 }: {
   locale: LongclawLocale
   cacheStatus: StrategyDashboard['cache_status']
   mode: TerminalLayoutMode
+  compact?: boolean
+  onToggleCompact?: () => void
 }) {
   cacheStatus = normalizeCacheStatus(cacheStatus)
   const liveSummary = recordValue(cacheStatus.live_low_latency.summary)
@@ -6557,7 +6764,7 @@ function CacheMonitorStrip({
         ? 'partial'
         : 'ok'
 
-  const providerProblems = providerHealth.filter(isActiveProviderProblem)
+  const providerProblems = activeProviderProblems(providerHealth)
   const firstProviderProblem = providerProblems[0] ?? {}
   const sourceProblemCount = providerProblems.length
   const taskBlockerCount = blockers.length
@@ -6573,12 +6780,38 @@ function CacheMonitorStrip({
   const refreshSeconds = cacheRefreshSeconds(cacheStatus)
   const updatedAt = compactClock(cacheStatus.updated_at, locale)
   const monitorStatus = cacheStatus.available && liveStatus === 'ok' && sourceProblemCount === 0 ? 'ok' : liveStatus
+  const monitorColor = monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error
+  const toggleLabel = compact
+    ? (locale === 'zh-CN' ? '展开' : 'Expand')
+    : (locale === 'zh-CN' ? '收起' : 'Collapse')
+
+  if (compact) {
+    const summaryLine = locale === 'zh-CN'
+      ? `盘中 ${liveStatusLabel} · 盘后 ${cacheStatusLabel(postStatus, 'pending')} · Mongo ${countText(dailyToday)}/${countText(dailySymbols)} · 网络源 ${sourceProblemCount ? 'BLOCKED' : 'OK'}`
+      : `live ${liveStatusLabel} · post ${cacheStatusLabel(postStatus, 'pending')} · mongo ${countText(dailyToday)}/${countText(dailySymbols)} · sources ${sourceProblemCount ? 'BLOCKED' : 'OK'}`
+    return (
+      <div style={cacheMonitorStripStyle}>
+        <div style={cacheMonitorToolbarStyle}>
+          <div style={cacheMonitorToolbarTitleStyle}>
+            <span style={cacheStatusDotStyle(monitorColor)} />
+            {locale === 'zh-CN' ? 'Signals 缓存监控' : 'Signals cache monitor'}
+          </div>
+          <div style={cacheMonitorToolbarMetaStyle} title={summaryLine}>{summaryLine}</div>
+          {onToggleCompact ? (
+            <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+              {toggleLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={cacheMonitorStripStyle}>
       <div style={cacheMonitorToolbarStyle}>
         <div style={cacheMonitorToolbarTitleStyle}>
-          <span style={cacheStatusDotStyle(monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error)} />
+          <span style={cacheStatusDotStyle(monitorColor)} />
           {locale === 'zh-CN' ? 'Signals 缓存监控' : 'Signals cache monitor'}
         </div>
         <div style={cacheMonitorToolbarMetaStyle}>
@@ -6586,6 +6819,11 @@ function CacheMonitorStrip({
             ? `交易日 ${cacheStatus.trade_date || '-'} · 北京时间 ${updatedAt || '-'} · 自动刷新 ${refreshSeconds}秒`
             : `trade ${cacheStatus.trade_date || '-'} · updated ${updatedAt || '-'} · refresh ${refreshSeconds}s`}
         </div>
+        {onToggleCompact ? (
+          <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+            {toggleLabel}
+          </button>
+        ) : null}
       </div>
       <div style={cacheMonitorGridStyle(mode)}>
         <CacheMonitorCell
@@ -6648,7 +6886,7 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
     focus_stocks: ['terminal_stock_pool.focus_stocks', '确认买点：大周期不冲突，30m买点和5m/15m下单周期都确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'confirmed entry: big cycle clear, 30m and 5m/15m confirmed', 'Day=realtime quote change'],
     risk_stocks: ['terminal_stock_pool.risk_stocks', '暂不参与：过期、破位、冲突、高潮或卖点出现', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'skip now: expired, broken, conflicted, crowded, or sell signal', 'Day=realtime quote change'],
     watch_stocks: ['terminal_stock_pool.watch_stocks', '盯盘池：线索到买点之间，区分低吸观察和试仓候选', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'watch pool: from clue to entry, split dip watch and probe candidate', 'Day=realtime quote change'],
-    buy_candidates: ['terminal_stock_pool.clue_stocks + strategy_snapshots.strategy_candidate', '线索池：只有来源但还没有硬技术买点', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.clue_stocks + strategy_snapshots.strategy_candidate', 'clue pool: sourced but no hard technical entry yet', 'Day=realtime quote change'],
+    buy_candidates: ['terminal_manual_clues + terminal_stock_pool.clue_stocks', '线索池：用户探索或系统来源，还没有硬技术买点', '日涨幅=实时快照涨跌幅', 'terminal_manual_clues + terminal_stock_pool.clue_stocks', 'clue pool: user exploration or system sourced, no hard technical entry yet', 'Day=realtime quote change'],
   }
   const item = meta[tab]
   return zh
@@ -6678,6 +6916,7 @@ function WatchlistTabbedTable({
   expandedChainKeys,
   onSelect,
   onCandidateSelect,
+  onDeleteManualClue,
 }: {
   locale: LongclawLocale
   activeTab: WatchlistTabKey
@@ -6708,6 +6947,7 @@ function WatchlistTabbedTable({
   expandedChainKeys: Set<string>
   onSelect: (row: WatchlistRow) => void
   onCandidateSelect: (row: Record<string, unknown>) => void
+  onDeleteManualClue: (row: WatchlistRow) => void
 }) {
   const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
     { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
@@ -6851,6 +7091,7 @@ function WatchlistTabbedTable({
         expandedChainKeys={expandedChainKeys}
         onSelect={onSelect}
         onCandidateSelect={onCandidateSelect}
+        onDeleteManualClue={onDeleteManualClue}
       />
     </div>
   )
@@ -7109,6 +7350,7 @@ function WatchlistTable({
   expandedChainKeys,
   onSelect,
   onCandidateSelect,
+  onDeleteManualClue,
 }: {
   locale: LongclawLocale
   activeTab: WatchlistTabKey
@@ -7120,6 +7362,7 @@ function WatchlistTable({
   expandedChainKeys: Set<string>
   onSelect: (row: WatchlistRow) => void
   onCandidateSelect: (row: Record<string, unknown>) => void
+  onDeleteManualClue: (row: WatchlistRow) => void
 }) {
   if (rows.length === 0) {
     return <div style={emptyStateDarkStyle}>{emptyText}</div>
@@ -7159,6 +7402,7 @@ function WatchlistTable({
           : row.decision.opportunitySide === 'right'
             ? miniSignalBadgeStyle
             : miniNeutralSignalBadgeStyle
+        const manualClue = rowIsManualClue(row)
         return (
           <React.Fragment key={row.id}>
             <button
@@ -7231,6 +7475,16 @@ function WatchlistTable({
                 row={row}
                 onSelect={onCandidateSelect}
               />
+            ) : null}
+            {manualClue ? (
+              <button
+                type="button"
+                style={manualClueDeleteStyle}
+                title={locale === 'zh-CN' ? '只删除这个用户临时线索，不影响自动股票池。' : 'Remove this user clue only; automatic pool is untouched.'}
+                onClick={() => onDeleteManualClue(row)}
+              >
+                {locale === 'zh-CN' ? `删除临时线索 · ${row.name}` : `Remove temp clue · ${row.name}`}
+              </button>
             ) : null}
           </React.Fragment>
         )
