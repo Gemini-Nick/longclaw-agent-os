@@ -818,6 +818,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
+    x: 80,
     y: 30,
     title: windowTitleForLocale(DEFAULT_LOCALE),
     icon: appIconPath,
@@ -827,6 +828,26 @@ function createWindow() {
       nodeIntegration: false,
     },
   })
+  mainWindow.once('ready-to-show', () => {
+    if (!mainWindow) return
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    mainWindow.setAlwaysOnTop(true, 'floating')
+    mainWindow.show()
+    mainWindow.moveTop()
+    mainWindow.focus()
+    setTimeout(() => {
+      if (!mainWindow) return
+      mainWindow.setAlwaysOnTop(false)
+      mainWindow.setVisibleOnAllWorkspaces(false)
+    }, 1200)
+    log('electron window ready-to-show', {
+      visible: mainWindow.isVisible(),
+      focused: mainWindow.isFocused(),
+      bounds: mainWindow.getBounds(),
+    })
+  })
+  mainWindow.show()
+  mainWindow.focus()
 
   if (process.env.ELECTRON_DEV) {
     mainWindow.loadURL('http://localhost:5173')

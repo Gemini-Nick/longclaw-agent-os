@@ -54,6 +54,10 @@ type AIFactorRecord = Record<string, unknown> & {
   draft_items: Array<{ label: string; value: string }>
   workflow: ResearchWorkflow
   portfolio: PortfolioConstruction
+  us_driver_nodes: USDriverNode[]
+  cn_mapping_nodes: CNMappingNode[]
+  rhythm_windows: RhythmWindow[]
+  rhythm: RhythmState
   failure_samples: Array<Record<string, unknown>>
 }
 
@@ -93,6 +97,11 @@ type PortfolioLeg = {
   symbols: string[]
   weight: number
   role: string
+  candidates?: AShareCandidate[]
+  core_candidates?: AShareCandidate[]
+  elastic_candidates?: AShareCandidate[]
+  confidence?: number
+  confirmation_rule?: string
 }
 
 type PortfolioConstruction = {
@@ -102,6 +111,70 @@ type PortfolioConstruction = {
   signal_formula: string
   rebalance: string
   portfolio_role: string
+}
+
+type USDriverNode = {
+  node_id: string
+  name: string
+  role: string
+  layer: string
+  symbols: string[]
+  conditional_symbols: string[]
+  weight: number
+  driver_rule: string
+  benchmark_symbols: string[]
+  kline_timeframes: Array<Record<string, unknown>>
+}
+
+type AShareCandidate = {
+  symbol: string
+  name: string
+  role: string
+  relation: string
+  priority: number
+  selection_score: number
+  score_status: string
+  mapping_reason: string
+  exclusion_reason: string
+}
+
+type CNMappingNode = {
+  source_node_id: string
+  source_driver: string
+  group: string
+  target_chain_id: string
+  symbols: string[]
+  core_candidates: AShareCandidate[]
+  elastic_candidates: AShareCandidate[]
+  top_candidates: AShareCandidate[]
+  mapping_reason: string
+  confirmation_rule: string
+  lag_rule: string
+  confidence: number
+  selection_status: string
+  selection_score_formula: string
+}
+
+type RhythmWindow = {
+  window_id: string
+  label: string
+  market: string
+  timeframe: string
+  question: string
+  status: string
+  demo_observation: string
+  kline_marker: Record<string, unknown>
+}
+
+type RhythmState = {
+  mode: string
+  status: string
+  demo: boolean
+  no_auto_order: boolean
+  windows: RhythmWindow[]
+  path_samples: Array<Record<string, unknown>>
+  selected_us_driver: Record<string, unknown>
+  selected_cn_mapping: Record<string, unknown>
 }
 
 type AIFactorFactoryPayload = Record<string, unknown> & {
@@ -125,6 +198,27 @@ const factoryGridStyle: React.CSSProperties = {
   gridTemplateColumns: 'minmax(310px, 0.9fr) minmax(410px, 1.25fr) minmax(320px, 0.92fr)',
   gap: 12,
   alignItems: 'start',
+}
+
+const tradingDeskGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(330px, 0.95fr) minmax(440px, 1.25fr) minmax(330px, 0.95fr)',
+  gap: 12,
+  alignItems: 'start',
+}
+
+const timelineGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+  gap: 8,
+}
+
+const candidateRowStyle: React.CSSProperties = {
+  ...surfaceStyles.listRow,
+  display: 'grid',
+  gridTemplateColumns: '86px minmax(0, 1fr) 58px',
+  gap: 8,
+  alignItems: 'center',
 }
 
 const workspaceStackStyle: React.CSSProperties = {
@@ -554,6 +648,67 @@ const fallbackFactor: AIFactorRecord = {
     rebalance: '日频；US T 日收盘定格，美股信号只允许影响 A股 T+1 及之后。',
     portfolio_role: '触发篮子只负责方向和强度，反应篮子才进入观察池；两者都不是自动下单组合。',
   },
+  us_driver_nodes: [
+    {
+      node_id: 'optical_interconnect',
+      name: '光器件/光模块/CPO',
+      role: 'primary_driver',
+      layer: 'midstream',
+      symbols: ['COHR', 'LITE', 'FN', 'AAOI', 'CIEN'],
+      conditional_symbols: [],
+      weight: 0.4,
+      driver_rule: 'LITE/COHR/FN 是光器件和光模块直接触发源，AVGO 只作为网络 ASIC/硅光旁证。',
+      benchmark_symbols: ['SOX', 'QQQ'],
+      kline_timeframes: [],
+    },
+  ],
+  cn_mapping_nodes: [
+    {
+      source_node_id: 'optical_interconnect',
+      source_driver: '光器件/光模块/CPO',
+      group: '光模块/CPO',
+      target_chain_id: 'optical_module',
+      symbols: ['SZ.300308', 'SZ.300502', 'SZ.300394'],
+      core_candidates: [
+        {
+          symbol: 'SZ.300308',
+          name: '中际旭创',
+          role: 'core',
+          relation: '高速光模块/CPO链主',
+          priority: 100,
+          selection_score: 0,
+          score_status: 'draft_mapping_pending_kline',
+          mapping_reason: 'A股光模块/CPO核心映射。',
+          exclusion_reason: '',
+        },
+      ],
+      elastic_candidates: [],
+      top_candidates: [],
+      mapping_reason: 'COHR/LITE/FN/AAOI/CIEN 是光器件和光模块直接触发源。',
+      confirmation_rule: 'A股光模块/CPO池 T+1 开盘不过热，龙头和弹性标的出现量价承接。',
+      lag_rule: 'US_T_close_to_A_T_plus_1',
+      confidence: 0.88,
+      selection_status: 'draft_mapping_pending_kline',
+      selection_score_formula: 'mapping_confidence * us_driver_strength * cn_acceptance_strength * historical_lead_lag * liquidity - penalties',
+    },
+  ],
+  rhythm_windows: [
+    { window_id: 'us_overnight_close', label: '昨夜美股', market: 'US', timeframe: 'daily/60m/15m', question: '美股到底在炒哪条AI硬件支链？', status: 'pending_data', demo_observation: '', kline_marker: {} },
+    { window_id: 'cn_call_auction', label: '今日竞价', market: 'A', timeframe: '集合竞价', question: 'A股映射池是否高开过热？', status: 'pending_data', demo_observation: '', kline_marker: {} },
+    { window_id: 'cn_open_30m', label: '开盘30分钟', market: 'A', timeframe: '5m/30m', question: '高开后能否回踩承接？', status: 'pending_data', demo_observation: '', kline_marker: {} },
+    { window_id: 'cn_intraday_confirm', label: '盘中确认', market: 'A', timeframe: '5m/30m', question: '同链条是否扩散？', status: 'pending_data', demo_observation: '', kline_marker: {} },
+    { window_id: 'cn_close_review', label: '收盘复盘', market: 'A', timeframe: 'daily/30m', question: '样本如何归因？', status: 'pending_data', demo_observation: '', kline_marker: {} },
+  ],
+  rhythm: {
+    mode: 'not_run',
+    status: 'pending_kline_fusion',
+    demo: false,
+    no_auto_order: true,
+    windows: [],
+    path_samples: [],
+    selected_us_driver: {},
+    selected_cn_mapping: {},
+  },
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -655,6 +810,11 @@ function normalizePortfolioLegs(value: unknown, fallback: PortfolioLeg[]): Portf
     symbols: stringArrayValue(row.symbols ?? row.tickers ?? row.codes ?? row.concepts),
     weight: numberValue(row.weight ?? row.target_weight, fallback[index]?.weight ?? 0),
     role: textValue(row.role ?? row.reason ?? row.description, fallback[index]?.role ?? ''),
+    candidates: normalizeAShareCandidates(row.candidates),
+    core_candidates: normalizeAShareCandidates(row.core_candidates),
+    elastic_candidates: normalizeAShareCandidates(row.elastic_candidates),
+    confidence: numberValue(row.confidence, 0),
+    confirmation_rule: textValue(row.confirmation_rule),
   }))
 }
 
@@ -668,6 +828,134 @@ function normalizePortfolio(value: unknown): PortfolioConstruction {
     signal_formula: textValue(raw.signal_formula ?? raw.formula, fallback.signal_formula),
     rebalance: textValue(raw.rebalance ?? raw.frequency, fallback.rebalance),
     portfolio_role: textValue(raw.portfolio_role ?? raw.role, fallback.portfolio_role),
+  }
+}
+
+function normalizeAShareCandidates(value: unknown): AShareCandidate[] {
+  return asRecordArray(value).map((row, index) => ({
+    symbol: textValue(row.symbol ?? row.code, ''),
+    name: textValue(row.name ?? row.display_name, ''),
+    role: textValue(row.role ?? row.type, index === 0 ? 'core' : 'elastic'),
+    relation: textValue(row.relation ?? row.reason ?? row.description, ''),
+    priority: numberValue(row.priority, 0),
+    selection_score: numberValue(row.selection_score ?? row.score, 0),
+    score_status: textValue(row.score_status ?? row.selection_status, ''),
+    mapping_reason: textValue(row.mapping_reason, ''),
+    exclusion_reason: textValue(row.exclusion_reason ?? row.blocker, ''),
+  })).filter(item => item.symbol || item.name)
+}
+
+function normalizeUSDriverNodes(value: unknown, portfolio: PortfolioConstruction): USDriverNode[] {
+  const rows = asRecordArray(value)
+  if (rows.length === 0) {
+    return portfolio.us_trigger_basket.map((leg, index) => ({
+      node_id: `driver-${index + 1}`,
+      name: leg.group,
+      role: index === 0 ? 'primary_driver' : 'confirming_driver',
+      layer: '',
+      symbols: leg.symbols,
+      conditional_symbols: [],
+      weight: leg.weight,
+      driver_rule: leg.role,
+      benchmark_symbols: ['SOX', 'QQQ'],
+      kline_timeframes: [],
+    }))
+  }
+  return rows.map((row, index) => ({
+    node_id: textValue(row.node_id ?? row.id, `driver-${index + 1}`),
+    name: textValue(row.name ?? row.group, `driver-${index + 1}`),
+    role: textValue(row.role, index === 0 ? 'primary_driver' : 'confirming_driver'),
+    layer: textValue(row.layer, ''),
+    symbols: stringArrayValue(row.symbols),
+    conditional_symbols: stringArrayValue(row.conditional_symbols),
+    weight: numberValue(row.weight, 0),
+    driver_rule: textValue(row.driver_rule ?? row.rule ?? row.description, ''),
+    benchmark_symbols: stringArrayValue(row.benchmark_symbols).length > 0
+      ? stringArrayValue(row.benchmark_symbols)
+      : ['SOX', 'QQQ'],
+    kline_timeframes: asRecordArray(row.kline_timeframes),
+  }))
+}
+
+function normalizeCNMappingNodes(value: unknown, portfolio: PortfolioConstruction): CNMappingNode[] {
+  const rows = asRecordArray(value)
+  if (rows.length === 0) {
+    return portfolio.cn_reaction_basket.map((leg, index) => ({
+      source_node_id: `mapping-${index + 1}`,
+      source_driver: '',
+      group: leg.group,
+      target_chain_id: '',
+      symbols: leg.symbols,
+      core_candidates: leg.core_candidates ?? [],
+      elastic_candidates: leg.elastic_candidates ?? [],
+      top_candidates: [...(leg.core_candidates ?? []), ...(leg.elastic_candidates ?? [])].slice(0, 6),
+      mapping_reason: leg.role,
+      confirmation_rule: leg.confirmation_rule ?? '',
+      lag_rule: 'US_T_close_to_A_T_plus_1',
+      confidence: leg.confidence ?? 0,
+      selection_status: 'draft_mapping_pending_kline',
+      selection_score_formula: 'mapping_confidence * us_driver_strength * cn_acceptance_strength * historical_lead_lag * liquidity - penalties',
+    }))
+  }
+  return rows.map((row, index) => {
+    const core = normalizeAShareCandidates(row.core_candidates)
+    const elastic = normalizeAShareCandidates(row.elastic_candidates)
+    const top = normalizeAShareCandidates(row.top_candidates)
+    return {
+      source_node_id: textValue(row.source_node_id ?? row.node_id, `mapping-${index + 1}`),
+      source_driver: textValue(row.source_driver, ''),
+      group: textValue(row.group ?? row.name, `mapping-${index + 1}`),
+      target_chain_id: textValue(row.target_chain_id, ''),
+      symbols: stringArrayValue(row.symbols),
+      core_candidates: core,
+      elastic_candidates: elastic,
+      top_candidates: top.length > 0 ? top : [...core, ...elastic].slice(0, 6),
+      mapping_reason: textValue(row.mapping_reason ?? row.role ?? row.reason, ''),
+      confirmation_rule: textValue(row.confirmation_rule, ''),
+      lag_rule: textValue(row.lag_rule, 'US_T_close_to_A_T_plus_1'),
+      confidence: numberValue(row.confidence, 0),
+      selection_status: textValue(row.selection_status, 'draft_mapping_pending_kline'),
+      selection_score_formula: textValue(
+        row.selection_score_formula,
+        'mapping_confidence * us_driver_strength * cn_acceptance_strength * historical_lead_lag * liquidity - penalties',
+      ),
+    }
+  })
+}
+
+function normalizeRhythmWindow(value: unknown, fallback: RhythmWindow): RhythmWindow {
+  const raw = asRecord(value)
+  return {
+    window_id: textValue(raw.window_id ?? raw.id, fallback.window_id),
+    label: textValue(raw.label ?? raw.name, fallback.label),
+    market: textValue(raw.market, fallback.market),
+    timeframe: textValue(raw.timeframe ?? raw.freq, fallback.timeframe),
+    question: textValue(raw.question ?? raw.description, fallback.question),
+    status: textValue(raw.status, fallback.status),
+    demo_observation: textValue(raw.demo_observation ?? raw.observation, fallback.demo_observation),
+    kline_marker: asRecord(raw.kline_marker),
+  }
+}
+
+function normalizeRhythmWindows(value: unknown): RhythmWindow[] {
+  const rows = asRecordArray(value)
+  const fallback = fallbackFactor.rhythm_windows
+  if (rows.length === 0) return fallback
+  return rows.map((row, index) => normalizeRhythmWindow(row, fallback[index] ?? fallback[0]))
+}
+
+function normalizeRhythm(value: unknown, windows: RhythmWindow[]): RhythmState {
+  const raw = asRecord(value)
+  const rawWindows = normalizeRhythmWindows(raw.windows)
+  return {
+    mode: textValue(raw.mode, fallbackFactor.rhythm.mode),
+    status: textValue(raw.status, fallbackFactor.rhythm.status),
+    demo: booleanValue(raw.demo, false),
+    no_auto_order: booleanValue(raw.no_auto_order, true),
+    windows: rawWindows.length > 0 ? rawWindows : windows,
+    path_samples: asRecordArray(raw.path_samples),
+    selected_us_driver: asRecord(raw.selected_us_driver),
+    selected_cn_mapping: asRecord(raw.selected_cn_mapping),
   }
 }
 
@@ -765,7 +1053,7 @@ function signedPercentText(value: number): string {
   return `${prefix}${normalized.toFixed(1)}%`
 }
 
-type FactorActionKey = 'draft' | 'validate' | 'failures' | 'publish' | 'disable'
+type FactorActionKey = 'draft' | 'rhythm' | 'validate' | 'failures' | 'publish' | 'disable'
 
 function factorAction(
   actionKey: FactorActionKey,
@@ -787,6 +1075,7 @@ function factorAction(
       label,
       ...payloadOverrides,
       ...(actionKey === 'validate' ? { demo_mode: true, mode: 'demo' } : {}),
+      ...(actionKey === 'rhythm' ? { mode: 'demo' } : {}),
       ...(actionKey === 'publish' ? { live_enabled: true } : {}),
     },
     metadata: {
@@ -794,7 +1083,9 @@ function factorAction(
       signals_web_base_url: factor.signals_web_base_url ?? '',
       endpoint: actionKey === 'failures'
         ? ''
-        : `/api/strategy/ai-factor-factory/${actionKey === 'publish' ? 'publish' : actionKey}`,
+        : `/api/strategy/ai-factor-factory/${
+            actionKey === 'publish' ? 'publish' : actionKey === 'rhythm' ? 'rhythm-demo' : actionKey
+          }`,
     },
   }
 }
@@ -809,6 +1100,10 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
   const development = asRecord(raw.development)
   const feedback = asRecord(raw.feedback)
   const draftSource = raw.draft ?? raw.research ?? raw.factor_draft ?? raw.definition ?? raw.formula
+  const portfolioSource = raw.portfolio_construction ?? development.portfolio_construction
+  const portfolio = normalizePortfolio(portfolioSource)
+  const rhythmWindows = normalizeRhythmWindows(asRecord(portfolioSource).rhythm_windows)
+  const rhythm = normalizeRhythm(raw.rhythm, rhythmWindows)
   const sampleCount = numberValue(
     metrics.sample_count ?? metrics.samples ?? validation.sample_count ?? raw.sample_count ?? raw.samples ?? raw.n_samples,
     0,
@@ -817,6 +1112,10 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
     metrics.verified ?? validation.verified,
     sampleCount > 0,
   )
+  const rawLiveStatus = textValue(raw.live_status ?? raw.production_status)
+  const derivedLiveStatus = verified
+    ? (booleanValue(raw.live_enabled ?? raw.enabled ?? raw.live, false) ? 'live_enabled' : 'paper_only')
+    : 'not_verified'
   return {
     ...raw,
     factor_id: textValue(raw.factor_id ?? raw.id ?? raw.idea_id, `ai-factor-${index + 1}`),
@@ -854,12 +1153,9 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
       raw.ai_explanation ?? raw.explanation ?? raw.rationale,
       fallbackFactor.ai_explanation,
     ),
-    live_status: textValue(
-      raw.live_status ?? raw.production_status,
-      verified
-        ? (booleanValue(raw.live_enabled ?? raw.enabled ?? raw.live, false) ? 'live_enabled' : 'paper_only')
-        : 'not_verified',
-    ),
+    live_status: rawLiveStatus && !(verified && rawLiveStatus === 'not_verified')
+      ? rawLiveStatus
+      : derivedLiveStatus,
     reproducibility_summary: textValue(
       reproducibility.as_of_boundary ?? reproducibility.data_snapshot ?? raw.reproducibility_summary,
       fallbackFactor.reproducibility_summary,
@@ -867,7 +1163,11 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
     paper_account: normalizePaperAccount(raw.paper_account, verified),
     draft_items: draftItems(draftSource, fallbackFactor.draft_items),
     workflow: normalizeResearchWorkflow(raw.research_workflow ?? development.research_workflow),
-    portfolio: normalizePortfolio(raw.portfolio_construction ?? development.portfolio_construction),
+    portfolio,
+    us_driver_nodes: normalizeUSDriverNodes(asRecord(portfolioSource).us_driver_nodes, portfolio),
+    cn_mapping_nodes: normalizeCNMappingNodes(asRecord(portfolioSource).cn_mapping_nodes, portfolio),
+    rhythm_windows: rhythmWindows,
+    rhythm,
     failure_samples: failureSamples,
   }
 }
@@ -1038,16 +1338,18 @@ function metricItems(factor: AIFactorRecord, locale: LongclawLocale) {
 function actionLabels(locale: LongclawLocale) {
   if (locale !== 'zh-CN') {
     return {
-      draft: 'Generate draft',
-      validate: 'Run validation',
+      draft: 'Generate mapping',
+      rhythm: 'Fuse K-lines',
+      validate: 'Run historical validation',
       failures: 'Failure samples',
       observe: 'Add to watch pool',
       disable: 'Disable factor',
     }
   }
   return {
-    draft: '生成因子草稿',
-    validate: '运行验证',
+    draft: '生成映射草稿',
+    rhythm: '融合K线节奏',
+    validate: '运行历史验证',
     failures: '查看失败样本',
     observe: '加入观察池',
     disable: '停用因子',
@@ -1769,6 +2071,283 @@ function CrossMarketPortfolio({
   )
 }
 
+function roleText(role: string, locale: LongclawLocale) {
+  if (locale !== 'zh-CN') return humanizeTokenLocale(locale, role)
+  if (role === 'primary_driver') return '主驱动'
+  if (role === 'confirming_driver') return '确认'
+  if (role === 'core') return '核心'
+  if (role === 'elastic') return '弹性'
+  return humanizeTokenLocale(locale, role)
+}
+
+function RhythmTimeline({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  const windows = factor.rhythm.windows.length > 0 ? factor.rhythm.windows : factor.rhythm_windows
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '跨市场交易节奏' : 'Cross-market rhythm'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '从昨夜美股到今日A股承接，按交易窗口推进研究。'
+          : 'Move from US overnight drivers to A-share acceptance windows.'
+      }
+    >
+      <div style={timelineGridStyle}>
+        {windows.map((window, index) => (
+          <div key={`${window.window_id}:${index}`} style={fieldBoxStyle}>
+            <div style={inlineMetaStyle}>
+              <div style={stepNumberStyle}>{String(index + 1).padStart(2, '0')}</div>
+              <span style={statusBadgeStyle(window.market === 'US' ? 'info' : 'specified')}>{window.market}</span>
+            </div>
+            <div style={{ ...stepLabelStyle, marginTop: 6 }}>{window.label}</div>
+            <div style={chromeStyles.monoMeta}>{window.timeframe}</div>
+            <p style={{ ...paragraphStyle, marginTop: 6 }}>
+              {window.demo_observation || window.question}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function MarketDriverPanel({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '美股在炒什么' : 'What US is trading'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '按AI硬件支链识别主驱动、确认和反证，不把 AVGO/SMCI 误当成光模块或液冷。'
+          : 'Identify the US AI hardware leg, confirmations, and counter evidence.'
+      }
+    >
+      <div style={columnStyle}>
+        {factor.us_driver_nodes.slice(0, 6).map(node => (
+          <div key={node.node_id} style={panelBlockStyle}>
+            <div style={cardHeaderStyle}>
+              <div style={titleBlockStyle}>
+                <div style={cardTitleStyle}>{node.name}</div>
+                <div style={chromeStyles.quietMeta}>{node.driver_rule}</div>
+              </div>
+              <span style={statusBadgeStyle(node.role)}>{roleText(node.role, locale)}</span>
+            </div>
+            <TokenList tokens={node.symbols} />
+            {node.conditional_symbols.length > 0 ? (
+              <div style={chromeStyles.quietMeta}>
+                {locale === 'zh-CN' ? '条件证据：' : 'Conditional: '}
+                {node.conditional_symbols.join(' / ')}
+              </div>
+            ) : null}
+            <div style={inlineMetaStyle}>
+              <span style={chromeStyles.monoMeta}>weight {percentText(node.weight)}</span>
+              <span style={chromeStyles.monoMeta}>vs {node.benchmark_symbols.join('/')}</span>
+              <span style={chromeStyles.monoMeta}>D / 60m / 15m</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function CandidateRow({ candidate, locale }: { candidate: AShareCandidate; locale: LongclawLocale }) {
+  return (
+    <div style={candidateRowStyle}>
+      <div style={chromeStyles.monoMeta}>{candidate.symbol || '未映射'}</div>
+      <div style={titleBlockStyle}>
+        <div style={fieldValueStyle}>{candidate.name || candidate.relation}</div>
+        <div style={chromeStyles.quietMeta}>{candidate.relation || candidate.mapping_reason}</div>
+      </div>
+      <div style={{ ...metricValueStyle, fontSize: 13, textAlign: 'right' }}>
+        {candidate.selection_score > 0 ? candidate.selection_score.toFixed(1) : roleText(candidate.role, locale)}
+      </div>
+    </div>
+  )
+}
+
+function ChinaMappingPanel({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '中国该炒什么' : 'What China maps to'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '直接落到 A股代码池，按核心、弹性、补涨和剔除原因排序。'
+          : 'Map to tradable A-share tickers with priority and exclusion reasons.'
+      }
+    >
+      <div style={columnStyle}>
+        {factor.cn_mapping_nodes.slice(0, 6).map(node => (
+          <div key={`${node.source_node_id}:${node.group}`} style={panelBlockStyle}>
+            <div style={cardHeaderStyle}>
+              <div style={titleBlockStyle}>
+                <div style={cardTitleStyle}>{node.group}</div>
+                <div style={chromeStyles.quietMeta}>{node.mapping_reason}</div>
+              </div>
+              <span style={statusBadgeStyle('specified')}>{percentText(node.confidence)}</span>
+            </div>
+            <div style={chromeStyles.quietMeta}>{node.confirmation_rule}</div>
+            <div style={columnStyle}>
+              {(node.top_candidates.length > 0 ? node.top_candidates : [...node.core_candidates, ...node.elastic_candidates])
+                .slice(0, 5)
+                .map(candidate => (
+                  <CandidateRow key={`${node.group}:${candidate.symbol}:${candidate.name}`} candidate={candidate} locale={locale} />
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function KlineFusionPanel({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  return (
+    <Section
+      title={locale === 'zh-CN' ? 'K线融合与路径样本' : 'K-line fusion and path samples'}
+      subtitle={
+        locale === 'zh-CN'
+          ? 'demo 只验证前台交互路径；真实指标必须来自历史验证 artifact。'
+          : 'Demo validates the UI path only; real metrics must come from validation artifacts.'
+      }
+    >
+      <div style={validationDetailGridStyle}>
+        <div style={panelBlockStyle}>
+          <div style={inlineMetaStyle}>
+            <span style={statusBadgeStyle(factor.rhythm.demo ? 'demo' : factor.rhythm.status)}>
+              {factor.rhythm.demo ? 'demo' : factor.rhythm.status}
+            </span>
+            <span style={chromeStyles.monoMeta}>{'US D/60m/15m -> A D/30m/5m'}</span>
+          </div>
+          <p style={paragraphStyle}>
+            {locale === 'zh-CN'
+              ? '节奏融合不直接给买卖指令，只判断美股驱动是否能被 A股竞价、开盘30分钟和盘中扩散接住。'
+              : 'Rhythm fusion never creates orders; it checks whether A-share windows accept the US driver.'}
+          </p>
+        </div>
+        <div style={columnStyle}>
+          {(factor.rhythm.path_samples.length > 0 ? factor.rhythm.path_samples : factor.failure_samples).slice(0, 3).map((row, index) => {
+            const sample = asRecord(row)
+            return (
+              <div key={textValue(sample.case_id, `path-${index}`)} style={panelBlockStyle}>
+                <div style={inlineMetaStyle}>
+                  <span style={statusBadgeStyle(textValue(sample.outcome ?? sample.reason, 'sample'))}>
+                    {textValue(sample.outcome, locale === 'zh-CN' ? '样本' : 'sample')}
+                  </span>
+                  <span style={chromeStyles.monoMeta}>{textValue(sample.cn_symbol ?? sample.symbol)}</span>
+                </div>
+                <p style={paragraphStyle}>
+                  {textValue(sample.path ?? sample.failure_reason ?? sample.reason ?? sample.title, locale === 'zh-CN' ? '暂无路径样本。' : 'No path sample.')}
+                </p>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function ObservationPanel({
+  factor,
+  locale,
+  labels,
+  onOpenRecord,
+  onRunAction,
+  onActionStart,
+  onActionResult,
+  onActionError,
+  runningActionKey,
+  ideaPayload,
+}: {
+  factor: AIFactorRecord
+  locale: LongclawLocale
+  labels: ReturnType<typeof actionLabels>
+  onOpenRecord: AIFactorFactoryWorkspaceProps['onOpenRecord']
+  onRunAction?: AIFactorFactoryWorkspaceProps['onRunAction']
+  onActionStart?: (action: LongclawOperatorAction) => void
+  onActionResult?: (action: LongclawOperatorAction, result: Record<string, unknown>) => void
+  onActionError?: (action: LongclawOperatorAction, message: string) => void
+  runningActionKey?: string
+  ideaPayload: Record<string, unknown>
+}) {
+  const gate = gateItems(factor, locale)
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '验证与观察账户' : 'Validation and paper account'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '只有验证、批准、启用同时满足，才进入策略页盘前池。'
+          : 'Only verified, approved, and enabled factors enter the strategy pre-market pool.'
+      }
+      actions={
+        <div style={actionRowStyle}>
+          <FactorActionButton
+            actionKey="rhythm"
+            label={labels.rhythm}
+            factor={factor}
+            onOpenRecord={onOpenRecord}
+            onRunAction={onRunAction}
+            onActionStart={onActionStart}
+            onActionResult={onActionResult}
+            onActionError={onActionError}
+            runningActionKey={runningActionKey}
+            payloadOverrides={ideaPayload}
+          />
+          <FactorActionButton
+            actionKey="validate"
+            label={labels.validate}
+            factor={factor}
+            onOpenRecord={onOpenRecord}
+            onRunAction={onRunAction}
+            onActionStart={onActionStart}
+            onActionResult={onActionResult}
+            onActionError={onActionError}
+            runningActionKey={runningActionKey}
+            payloadOverrides={ideaPayload}
+          />
+        </div>
+      }
+    >
+      <div style={columnStyle}>
+        <MetricGrid factor={factor} locale={locale} compact />
+        <PaperAccountSummary factor={factor} locale={locale} />
+        <div style={columnStyle}>
+          {gate.map(item => (
+            <div key={item.label} style={checklistRowStyle}>
+              <span style={checkDotStyle(item.passed)} />
+              <span>{item.label}</span>
+            </div>
+          ))}
+        </div>
+        <div style={actionRowStyle}>
+          <FactorActionButton
+            actionKey="publish"
+            label={labels.observe}
+            factor={factor}
+            onOpenRecord={onOpenRecord}
+            onRunAction={onRunAction}
+            onActionStart={onActionStart}
+            onActionResult={onActionResult}
+            onActionError={onActionError}
+            runningActionKey={runningActionKey}
+            disabled={!factor.verified}
+          />
+          <FactorActionButton
+            actionKey="disable"
+            label={labels.disable}
+            factor={factor}
+            onOpenRecord={onOpenRecord}
+            onRunAction={onRunAction}
+            onActionStart={onActionStart}
+            onActionResult={onActionResult}
+            onActionError={onActionError}
+            runningActionKey={runningActionKey}
+          />
+        </div>
+      </div>
+    </Section>
+  )
+}
+
 export function AIFactorFactoryWorkspace({
   locale,
   dashboard,
@@ -1826,7 +2405,10 @@ export function AIFactorFactoryWorkspace({
   ) => {
     const payload = factorRecordFromActionResult(result, action)
     const factorId = textValue(payload.factor_id, selectedFactor?.factor_id ?? fallbackFactor.factor_id)
-    const base = factors.find(factor => factor.factor_id === factorId) ?? selectedFactor
+    const existingFactor = factors.find(factor => factor.factor_id === factorId)
+    const base = existingFactor ?? (
+      factorId === selectedFactor?.factor_id ? selectedFactor : undefined
+    )
     const merged = mergeFactorPayload(base, payload, factors.length)
     setFactorOverrides(previous => ({
       ...previous,
@@ -1864,10 +2446,15 @@ export function AIFactorFactoryWorkspace({
 
   if (!selectedFactor) return null
 
-  const ideaPayload = { idea: ideaText.trim() || selectedFactor.thesis }
+  const currentIdeaText = ideaText.trim()
+  const ideaPayload = {
+    idea: currentIdeaText || selectedFactor.thesis,
+    factor_id: currentIdeaText && currentIdeaText !== selectedFactor.thesis ? '' : selectedFactor.factor_id,
+  }
   const fields = intakeFields(selectedFactor, locale)
-  const steps = researchSteps(locale)
   const gate = gateItems(selectedFactor, locale)
+  const primaryDriver = selectedFactor.us_driver_nodes[0]
+  const primaryMapping = selectedFactor.cn_mapping_nodes[0]
 
   return (
     <div style={workspaceStackStyle}>
@@ -1876,12 +2463,12 @@ export function AIFactorFactoryWorkspace({
           <div style={cardHeaderStyle}>
             <div style={titleBlockStyle}>
               <h2 style={chromeStyles.sectionTitle}>
-                {locale === 'zh-CN' ? '因子工作单' : 'Factor ticket'}
+                {locale === 'zh-CN' ? '跨市场映射工作单' : 'Cross-market mapping ticket'}
               </h2>
               <div style={chromeStyles.subtleText}>
                 {locale === 'zh-CN'
-                  ? '先写交易假设，再让 Signals 复现和验证。'
-                  : 'Start with a trading hypothesis, then let Signals reproduce and validate it.'}
+                  ? '输入美股驱动线索，生成 A股代码映射和多周期节奏。'
+                  : 'Enter US driver clues, then build A-share mapping and multi-timeframe rhythm.'}
               </div>
             </div>
             <div style={actionRowStyle}>
@@ -1909,6 +2496,19 @@ export function AIFactorFactoryWorkspace({
                 tone="primary"
                 disabled={!ideaText.trim()}
               />
+              <FactorActionButton
+                actionKey="rhythm"
+                label={labels.rhythm}
+                factor={selectedFactor}
+                onOpenRecord={onOpenRecord}
+                onRunAction={onRunAction}
+                onActionStart={handleActionStart}
+                onActionResult={handleActionResult}
+                onActionError={handleActionError}
+                runningActionKey={runningActionKey}
+                payloadOverrides={ideaPayload}
+                disabled={!ideaText.trim()}
+              />
             </div>
           </div>
           <textarea
@@ -1917,8 +2517,8 @@ export function AIFactorFactoryWorkspace({
             style={ticketInputStyle}
             placeholder={
               locale === 'zh-CN'
-                ? '例：美股 AI 硬件链大涨后，A股光模块/CPO/存储是否存在 T+1 联动，开盘承接和放量确认哪个更有效？'
-                : 'Example: after US AI hardware rallies, does CN optical/CPO/memory show T+1 linkage, and which confirmation works better?'
+                ? '例：LITE/COHR/FN 光器件链尾盘加速，同时 VRT/ETN/NVT 液冷链走强后，A股光模块与液冷谁能在 T+1 竞价和开盘30分钟承接？'
+                : 'Example: after LITE/COHR/FN optical and VRT/ETN/NVT cooling rally, which A-share mapped basket accepts on T+1?'
             }
           />
           <div style={fieldGridStyle}>
@@ -1942,28 +2542,38 @@ export function AIFactorFactoryWorkspace({
           ) : null}
         </div>
         <div style={compactColumnStyle}>
-          <div style={stepGridStyle}>
-            {steps.map((step, index) => (
-              <button
-                key={step.id}
-                type="button"
-                style={{
-                  ...stepBoxStyle,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  borderColor: activeWorkflowStage === step.id ? 'rgba(208, 138, 84, 0.46)' : palette.border,
-                  background: activeWorkflowStage === step.id ? 'rgba(208, 138, 84, 0.10)' : palette.panel,
-                }}
-                onClick={() => setActiveWorkflowStage(step.id)}
-              >
-                <div style={stepNumberStyle}>{String(index + 1).padStart(2, '0')}</div>
-                <div style={stepLabelStyle}>{step.label}</div>
-                <div style={chromeStyles.quietMeta}>{step.detail}</div>
-              </button>
-            ))}
+          <div style={fieldGridStyle}>
+            <WorkflowField
+              label={locale === 'zh-CN' ? '美股主驱动' : 'Primary US driver'}
+              value={primaryDriver ? `${primaryDriver.name} · ${primaryDriver.symbols.join('/')}` : 'N/A'}
+            />
+            <WorkflowField
+              label={locale === 'zh-CN' ? 'A股主映射' : 'Primary A mapping'}
+              value={primaryMapping ? `${primaryMapping.group} · ${primaryMapping.symbols.slice(0, 4).join('/')}` : 'N/A'}
+            />
+            <WorkflowField
+              label={locale === 'zh-CN' ? '节奏状态' : 'Rhythm'}
+              value={selectedFactor.rhythm.demo ? 'demo simulated' : selectedFactor.rhythm.status}
+            />
+            <WorkflowField
+              label={locale === 'zh-CN' ? '实盘门禁' : 'Live gate'}
+              value={selectedFactor.verified ? (selectedFactor.live_enabled ? 'published' : 'verified') : 'not verified'}
+            />
           </div>
           <MetricGrid factor={selectedFactor} locale={locale} compact />
           <div style={actionRowStyle}>
+            <FactorActionButton
+              actionKey="rhythm"
+              label={labels.rhythm}
+              factor={selectedFactor}
+              onOpenRecord={onOpenRecord}
+              onRunAction={onRunAction}
+              onActionStart={handleActionStart}
+              onActionResult={handleActionResult}
+              onActionError={handleActionError}
+              runningActionKey={runningActionKey}
+              payloadOverrides={ideaPayload}
+            />
             <FactorActionButton
               actionKey="validate"
               label={labels.validate}
@@ -1998,21 +2608,26 @@ export function AIFactorFactoryWorkspace({
         </div>
       </section>
 
-      <ResearchWorkflowPanel
-        factor={selectedFactor}
-        locale={locale}
-        activeStage={activeWorkflowStage}
-        onStageChange={setActiveWorkflowStage}
-        onOpenRecord={onOpenRecord}
-        onRunAction={onRunAction}
-        onActionStart={handleActionStart}
-        onActionResult={handleActionResult}
-        onActionError={handleActionError}
-        runningActionKey={runningActionKey}
-        ideaPayload={ideaPayload}
-      />
+      <RhythmTimeline factor={selectedFactor} locale={locale} />
 
-      <CrossMarketPortfolio factor={selectedFactor} locale={locale} />
+      <div style={tradingDeskGridStyle}>
+        <MarketDriverPanel factor={selectedFactor} locale={locale} />
+        <ChinaMappingPanel factor={selectedFactor} locale={locale} />
+        <ObservationPanel
+          factor={selectedFactor}
+          locale={locale}
+          labels={labels}
+          onOpenRecord={onOpenRecord}
+          onRunAction={onRunAction}
+          onActionStart={handleActionStart}
+          onActionResult={handleActionResult}
+          onActionError={handleActionError}
+          runningActionKey={runningActionKey}
+          ideaPayload={ideaPayload}
+        />
+      </div>
+
+      <KlineFusionPanel factor={selectedFactor} locale={locale} />
 
       <div style={factoryGridStyle}>
         <div style={columnStyle}>

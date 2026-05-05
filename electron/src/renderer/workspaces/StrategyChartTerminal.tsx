@@ -2425,6 +2425,7 @@ function strategyLineageLabel(lineage: string[], locale: LongclawLocale): string
 function decisionSourceLabel(source: string, locale: LongclawLocale): string {
   const normalized = source.toLowerCase()
   const labels: Array<[string, [string, string]]> = [
+    ['ai_factor_factory', ['AI因子工厂', 'AI factor factory']],
     ['terminal_technical_signals', ['技术信号', 'Technical signals']],
     ['technical_trigger', ['技术触发', 'Technical trigger']],
     ['technical_signal', ['技术信号', 'Technical signal']],
@@ -2521,6 +2522,8 @@ function rawDecisionStage(row: Record<string, unknown>, stageHint?: WatchlistTab
 
 function rawSourceKeys(row: Record<string, unknown>): string[] {
   const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  const metadata = recordValue(row.metadata)
+  const aiFactorOverlay = recordValue(metadata.ai_factor_factory)
   return uniqueCompact([
     ...(Array.isArray(row.source_collections) ? row.source_collections : []),
     ...(Array.isArray(row.source_tags) ? row.source_tags : []),
@@ -2530,6 +2533,8 @@ function rawSourceKeys(row: Record<string, unknown>): string[] {
     row.heat_source,
     row.signal_origin,
     row.signal_family,
+    metadata.source,
+    aiFactorOverlay.source,
     ...reasons.flatMap(reason => [
       reason.source_collection,
       reason.reason_type,
@@ -5453,9 +5458,7 @@ export function StrategyChartTerminal({
     const sectorRows = Array.isArray(groups.sector_boards) && groups.sector_boards.length > 0
       ? groups.sector_boards
       : clusterRows
-    const candidateRows = Array.isArray(groups.buy_candidates) && groups.buy_candidates.length > 0
-      ? groups.buy_candidates
-      : buyRows
+    const candidateRows = Array.isArray(groups.buy_candidates) ? groups.buy_candidates : []
     const focusRows = Array.isArray(groups.focus_stocks) ? groups.focus_stocks : []
     const riskRows = Array.isArray(groups.risk_stocks) ? groups.risk_stocks : []
     const watchRows = Array.isArray(groups.watch_stocks) ? groups.watch_stocks : []
@@ -8208,13 +8211,19 @@ function sectorLeaderForWatchlist(row: WatchlistRow): string {
 
 function sourceLabelForWatchlist(row: WatchlistRow): string {
   const raw = row.raw
+  const metadata = recordValue(raw.metadata)
+  const aiFactorOverlay = recordValue(metadata.ai_factor_factory)
   const collections = Array.isArray(raw.source_collections)
     ? raw.source_collections.map(item => compactText(item)).filter(Boolean)
     : []
+  const aiFactorSource =
+    compactText(metadata.source) === 'ai_factor_factory' || compactText(aiFactorOverlay.source) === 'ai_factor_factory'
   return (
+    (aiFactorSource ? 'AI因子工厂' : '') ||
     collections.slice(0, 2).join('+') ||
     compactText(raw.source_collection) ||
     compactText(raw.source) ||
+    compactText(metadata.source) ||
     compactText(raw.heat_source) ||
     ''
   )

@@ -1304,6 +1304,13 @@ export class LongclawControlPlaneClient {
             : null,
           web1
             ? signalsApiAction(
+                'pack:signals:ai_factor:rhythm',
+                '融合K线节奏',
+                { factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1' },
+              )
+            : null,
+          web1
+            ? signalsApiAction(
                 'pack:signals:ai_factor:validate',
                 '运行验证',
                 { factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1' },
@@ -1719,6 +1726,8 @@ export class LongclawControlPlaneClient {
       const endpoint =
         action === 'draft'
           ? 'draft'
+          : action === 'rhythm'
+            ? 'rhythm-demo'
           : action === 'validate'
             ? 'validate'
             : action === 'publish' || action === 'observe'
