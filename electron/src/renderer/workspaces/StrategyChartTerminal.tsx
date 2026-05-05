@@ -5536,10 +5536,10 @@ export function StrategyChartTerminal({
   const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
   const activeWatchlistEmptyText = activeWatchlistTab === 'ai_focus'
     ? (aiRankingStatus === 'running'
-        ? (locale === 'zh-CN' ? 'AI 正在筛选候选池。' : 'AI is ranking candidates.')
+        ? (locale === 'zh-CN' ? '正在刷新已批准因子观察池。' : 'Refreshing approved factor watch pool.')
         : aiRanking
-          ? (locale === 'zh-CN' ? 'AI 没有返回可匹配到候选池的标的。' : 'AI returned no matchable candidates.')
-          : (locale === 'zh-CN' ? '点击上方“运行AI精选”，用现有 agent 通道筛选候选池。' : 'Run AI picks from the top strip.'))
+          ? (locale === 'zh-CN' ? '已批准因子没有返回可匹配到候选池的标的。' : 'Approved factors returned no matchable candidates.')
+          : (locale === 'zh-CN' ? '点击上方“刷新因子观察”，用已批准因子筛选候选池。' : 'Refresh factor watch from the top strip.'))
     : activeWatchlistTab === 'focus_stocks'
     ? (compactText(focusGroupMeta.empty_reason)
       ? `${locale === 'zh-CN' ? '确认买点为空' : 'Confirmed entry empty'}: ${compactText(focusGroupMeta.empty_reason)}`
@@ -6095,7 +6095,7 @@ export function StrategyChartTerminal({
 
   const runAiRanking = useCallback(async () => {
     if (aiCandidateInputs.length === 0) {
-      setAiError(locale === 'zh-CN' ? '候选池为空，无法运行 AI 精选。' : 'No candidates to rank.')
+      setAiError(locale === 'zh-CN' ? '候选池为空，无法刷新因子观察。' : 'No candidates to rank.')
       return
     }
     if (!window.strategyAI?.rankCandidates) {
@@ -6125,7 +6125,7 @@ export function StrategyChartTerminal({
           '证据不足必须明说',
         ],
       })
-      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? 'AI 精选失败。' : 'AI ranking failed.'))
+      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? '因子观察刷新失败。' : 'Factor watch refresh failed.'))
       const ranking = normalizeAiRanking(response.output ?? {}, response.run)
       setAiRanking(ranking)
       setAiReviewsByKey(previous => {
@@ -6204,9 +6204,9 @@ export function StrategyChartTerminal({
           '没有证据就返回证据不足',
         ],
       })
-      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? 'AI 复核失败。' : 'AI review failed.'))
+      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? '因子复核失败。' : 'Factor review failed.'))
       const review = normalizeAiReview(response.output ?? {}, response.run)
-      if (!review) throw new Error(locale === 'zh-CN' ? 'AI 复核没有返回有效标的。' : 'AI review returned no valid symbol.')
+      if (!review) throw new Error(locale === 'zh-CN' ? '因子复核没有返回有效标的。' : 'Factor review returned no valid symbol.')
       setAiReviewsByKey(previous => ({ ...previous, [rowAiKey(row)]: review }))
       setAiReviewStatus('success')
       recordObservationEvent('strategy.ai.review.success', {
@@ -7340,9 +7340,9 @@ function commandKeyForLabel(label: string): TradeCommandKey {
 }
 
 function strategyAiStatusLabel(status: StrategyAiTaskStatus, locale: LongclawLocale): string {
-  if (status === 'running') return locale === 'zh-CN' ? 'AI运行中' : 'AI running'
-  if (status === 'success') return locale === 'zh-CN' ? 'AI已生成' : 'AI ready'
-  if (status === 'failed') return locale === 'zh-CN' ? 'AI失败' : 'AI failed'
+  if (status === 'running') return locale === 'zh-CN' ? '因子刷新中' : 'Factor running'
+  if (status === 'success') return locale === 'zh-CN' ? '因子已生成' : 'Factor ready'
+  if (status === 'failed') return locale === 'zh-CN' ? '因子失败' : 'Factor failed'
   return locale === 'zh-CN' ? '待运行' : 'Idle'
 }
 
@@ -7409,7 +7409,7 @@ function AiStrategyStatusStrip({
   const disabled = status === 'running' || candidateCount === 0
   const headline = ranking?.summary || (
     candidateCount > 0
-      ? (locale === 'zh-CN' ? '把 Signals 候选池交给现有 agent 通道筛一遍。' : 'Send the Signals pool through the existing agent.')
+      ? (locale === 'zh-CN' ? '用已批准因子对 Signals 候选池做降噪排序。' : 'Rank the Signals pool with approved factors.')
       : (locale === 'zh-CN' ? '候选池为空，等待 Signals 输出。' : 'No candidates yet.')
   )
   const toggleLabel = compact
@@ -7418,12 +7418,12 @@ function AiStrategyStatusStrip({
   const runLabel = status === 'running'
     ? (locale === 'zh-CN' ? '筛选中' : 'Running')
     : ranking
-      ? (locale === 'zh-CN' ? '重新精选' : 'Rerank')
-      : (locale === 'zh-CN' ? '运行AI精选' : 'Run AI picks')
+      ? (locale === 'zh-CN' ? '重新刷新' : 'Refresh')
+      : (locale === 'zh-CN' ? '刷新因子观察' : 'Refresh factors')
   return (
     <div style={tradeMapStripStyle}>
       <div style={tradeMapHeaderStyle}>
-        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日 AI 精选' : 'AI picks today'}</div>
+        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日因子观察' : 'Factor watch today'}</div>
         <div style={tradeMapMetaStyle}>
           {[
             `${locale === 'zh-CN' ? '候选' : 'candidates'} ${candidateCount}`,
@@ -7472,7 +7472,7 @@ function AiStrategyStatusStrip({
               <span style={mutedTextStyle}>
                 {status === 'running'
                   ? (locale === 'zh-CN' ? 'agent 正在读取候选池。' : 'Agent is reading the pool.')
-                  : (locale === 'zh-CN' ? '还没有 AI 精选结果。' : 'No AI picks yet.')}
+                  : (locale === 'zh-CN' ? '还没有已批准因子观察结果。' : 'No approved factor watch results yet.')}
               </span>
             )}
           </div>
@@ -7516,7 +7516,7 @@ function AiTradeReviewPanel({
   return (
     <div style={commandBarShellStyle}>
       <div style={candidateGroupHeaderStyle}>
-        <span>{locale === 'zh-CN' ? 'AI 交易复核台' : 'AI trade review'}</span>
+        <span>{locale === 'zh-CN' ? '因子交易复核台' : 'Factor trade review'}</span>
         <span>{meta}</span>
       </div>
       <div style={aiReviewBodyStyle}>
@@ -7527,7 +7527,7 @@ function AiTradeReviewPanel({
           <button type="button" style={panelActionButtonStyle} disabled={disabled} onClick={() => onReview(row)}>
             {status === 'running'
               ? (locale === 'zh-CN' ? '复核中' : 'Reviewing')
-              : (locale === 'zh-CN' ? 'AI复核当前标的' : 'Review current')}
+              : (locale === 'zh-CN' ? '复核当前标的' : 'Review current')}
           </button>
         </div>
         {review ? (
@@ -7546,8 +7546,8 @@ function AiTradeReviewPanel({
         ) : (
           <div style={emptyStateDarkStyle}>
             {row
-              ? (locale === 'zh-CN' ? `${row.name} 只有 Signals 规则解释，尚未经过 agent 复核。` : `${row.name} has Signals context but no agent review yet.`)
-              : (locale === 'zh-CN' ? '左侧选中 AI 精选或候选标的后再复核。' : 'Pick a candidate first.')}
+              ? (locale === 'zh-CN' ? `${row.name} 只有 Signals 规则解释，尚未经过因子复核。` : `${row.name} has Signals context but no factor review yet.`)
+              : (locale === 'zh-CN' ? '左侧选中因子观察或候选标的后再复核。' : 'Pick a candidate first.')}
           </div>
         )}
         {error && status === 'failed' ? <div style={errorDarkStyle}>{error}</div> : null}
@@ -7883,7 +7883,7 @@ function CacheMonitorStrip({
 
 function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const labels: Partial<Record<WatchlistTabKey, [string, string]>> = {
-    ai_focus: ['AI精选', 'AI picks'],
+    ai_focus: ['因子观察', 'Factor watch'],
     focus_stocks: ['确认买点', 'Confirmed entry'],
     risk_stocks: ['暂不参与', 'Skip now'],
     watch_stocks: ['盯盘池', 'Watch pool'],
@@ -7896,7 +7896,7 @@ function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): s
 function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
-    ai_focus: ['agent + terminal_stock_pool', 'AI 第二交易员精选：从候选池降噪排序，右侧逐票复核', '日涨幅=实时快照涨跌幅', 'agent + terminal_stock_pool', 'AI second trader picks: rank and review candidates', 'Day=realtime quote change'],
+    ai_focus: ['approved_factors + terminal_stock_pool', '已批准因子观察：从候选池降噪排序，右侧逐票复核', '日涨幅=实时快照涨跌幅', 'approved_factors + terminal_stock_pool', 'approved factor watch: rank and review candidates', 'Day=realtime quote change'],
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
     sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '日涨幅=板块当日涨跌幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Day=board change'],
     focus_stocks: ['terminal_stock_pool.focus_stocks', '确认买点：大周期不冲突，30m买点和5m/15m下单周期都确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'confirmed entry: big cycle clear, 30m and 5m/15m confirmed', 'Day=realtime quote change'],
@@ -7972,7 +7972,7 @@ function WatchlistTabbedTable({
   onDeleteManualClue: (row: WatchlistRow) => void
 }) {
   const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
-    { key: 'ai_focus', label: locale === 'zh-CN' ? 'AI精选' : 'AI picks', count: groups.ai_focus.length },
+    { key: 'ai_focus', label: locale === 'zh-CN' ? '因子观察' : 'Factor watch', count: groups.ai_focus.length },
     { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
     { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
   ]
@@ -7982,14 +7982,14 @@ function WatchlistTabbedTable({
   const focusCount = groups.focus_stocks.length
   const sourceCount = groups.buy_candidates.length
   const modeTitle = aiFocusCount > 0
-    ? (locale === 'zh-CN' ? 'AI精选待复核' : 'AI picks to review')
+    ? (locale === 'zh-CN' ? '因子观察待复核' : 'Factor watch to review')
     : focusCount > 0
     ? (locale === 'zh-CN' ? '确认买点待复核' : 'Confirmed entries to review')
     : watchCount > 0
       ? (locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entries')
       : (locale === 'zh-CN' ? '先看线索池' : 'Start with clues')
   const modeMeta = aiFocusCount > 0
-    ? (locale === 'zh-CN' ? '先看AI理由，再进右侧复核' : 'Read AI rationale, then review on the right')
+    ? (locale === 'zh-CN' ? '先看因子理由，再进右侧复核' : 'Read factor rationale, then review on the right')
     : focusCount > 0
     ? (locale === 'zh-CN' ? '先复核位置、止损和失效条件' : 'Review level, stop, and invalidation first')
     : watchCount > 0
@@ -8003,7 +8003,7 @@ function WatchlistTabbedTable({
           <div style={decisionModeMetaStyle}>{modeMeta}</div>
         </div>
         {[
-          [locale === 'zh-CN' ? 'AI' : 'AI', aiFocusCount, terminalTheme.accentText],
+          [locale === 'zh-CN' ? '因子' : 'Factor', aiFocusCount, terminalTheme.accentText],
           [locale === 'zh-CN' ? '盯盘' : 'Watch', watchCount, tradingDeskTheme.colors.auroraGold],
           [locale === 'zh-CN' ? '买点' : 'Entry', focusCount, tradingDeskTheme.market.up],
         ].map(([label, value, color]) => (
@@ -8139,10 +8139,10 @@ function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: num
 function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [string, string, string, string] {
   if (activeTab === 'ai_focus') {
     return [
-      locale === 'zh-CN' ? 'AI精选' : 'AI pick',
+      locale === 'zh-CN' ? '因子观察' : 'Factor watch',
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? 'AI理由' : 'AI reason',
+      locale === 'zh-CN' ? '因子理由' : 'Factor reason',
     ]
   }
   if (activeTab === 'sector_boards') {

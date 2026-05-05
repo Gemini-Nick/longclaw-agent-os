@@ -319,6 +319,21 @@ function localAction(
   }
 }
 
+function signalsApiAction(
+  actionId: string,
+  label: string,
+  payload: Record<string, unknown>,
+) {
+  return {
+    action_id: actionId,
+    run_id: 'ai_factor_factory',
+    kind: 'signals_api',
+    label,
+    payload,
+    metadata: { workspace: 'ai_factor_factory' },
+  }
+}
+
 function packDiagnostic(
   diagnosticId: string,
   status: string,
@@ -1266,6 +1281,20 @@ export class LongclawControlPlaneClient {
                 { value: `curl -fsS ${clusterCheckUrl}` },
               )
             : null,
+          web1
+            ? signalsApiAction(
+                'pack:signals:ai_factor:draft',
+                '生成因子草稿',
+                { factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1' },
+              )
+            : null,
+          web1
+            ? signalsApiAction(
+                'pack:signals:ai_factor:validate',
+                '运行验证',
+                { factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1' },
+              )
+            : null,
         ].filter(Boolean)
 
         const chartContext = chartData
@@ -1667,6 +1696,36 @@ export class LongclawControlPlaneClient {
   }
 
   async executeAction(actionId: string, payload: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    if (actionId.startsWith('pack:signals:ai_factor:')) {
+      if (!this.signalsWebBaseUrl) {
+        throw new Error(`Signals web endpoint is required for action: ${actionId}`)
+      }
+      const action = actionId.split(':').at(-1)
+      const endpoint =
+        action === 'draft'
+          ? 'draft'
+          : action === 'validate'
+            ? 'validate'
+            : action === 'publish' || action === 'observe'
+              ? 'publish'
+              : action === 'disable'
+                ? 'disable'
+                : ''
+      if (!endpoint) {
+        throw new Error(`Unknown Signals AI factor action: ${actionId}`)
+      }
+      return fetchJson(
+        `${this.signalsWebBaseUrl}/api/strategy/ai-factor-factory/${endpoint}`,
+        value => value as Record<string, unknown>,
+        this.fetchImpl,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      )
+    }
+
     if (!this.hermesAgentOsBaseUrl) {
       if (this.dueDiligenceBaseUrl && actionId.startsWith('pack:due_diligence:review:decision:')) {
         const reviewId = actionId.split(':').slice(-2, -1)[0]

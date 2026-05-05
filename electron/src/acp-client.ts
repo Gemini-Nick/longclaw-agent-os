@@ -75,6 +75,319 @@ export function inspectConfiguredAcpBridge(
   }
 }
 
+// --- Codex App-Server Client (native protocol, no Zed adapter) ---
+
+interface CodexAppServerClientOptions {
+  cwd?: string
+  codexPath?: string
+  model?: string
+}
+
+export class CodexAppServerClient {
+  private proc: ChildProcess | null = null
+  private rl: Interface | null = null
+  private nextId = 0
+  private threadId = ''
+  private cwd: string
+  private codexPath: string
+  private model: string
+  private chunkHandler: AcpChunkHandler = {}
+  private promptLock: Promise<any> = Promise.resolve()
+  private pending = new Map<number, {
+    resolve: (resp: RpcResponse) => void
+    reject: (err: Error) => void
+  }>()
+
+  // Turn state
+  private turnResolve: ((text: string) => void) | null = null
+  private turnReject: ((err: Error) => void) | null = null
+  private turnTextParts: string[] = []
+  private turnThreadId = ''
+
+  constructor(options: CodexAppServerClientOptions = {}) {
+    this.cwd = options.cwd || os.homedir()
+    this.codexPath = options.codexPath || '/opt/homebrew/bin/codex'
+    this.model = options.model || ''
+  }
+
+  async connect(): Promise<void> {
+    const args = ['app-server', '--listen', 'stdio://']
+    console.error(`[codex] spawning: ${this.codexPath} ${args.join(' ')}`)
+
+    this.proc = spawn(this.codexPath, args, {
+      env: { ...process.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
+    })
+
+    this.proc.stderr?.on('data', (data: Buffer) => {
+      console.error(`[codex stderr] ${data.toString().trim()}`)
+    })
+
+    this.rl = createInterface({ input: this.proc.stdout! })
+    this.rl.on('line', (line) => this.handleLine(line))
+
+    this.proc.on('error', (err) => {
+      console.error(`[codex] spawn error:`, err)
+      this.rejectAll(new Error(`codex spawn error: ${err.message}`))
+    })
+
+    this.proc.on('exit', (code, signal) => {
+      console.error(`[codex] process exited: code=${code} signal=${signal}`)
+      this.rejectAll(new Error(`codex process exited: code=${code}`))
+    })
+
+    // Initialize handshake
+    const initResp = await this.send('initialize', {
+      clientInfo: { name: 'longxiaoxia', version: '0.2.0' },
+    })
+    console.error(`[codex] initialize OK: ${JSON.stringify(initResp.result).slice(0, 100)}`)
+
+    // codex app-server expects an "initialized" notification
+    await this.notify('initialized', null)
+    console.error('[codex] initialized notification sent')
+
+    // Create thread
+    const threadParams: Record<string, unknown> = {
+      approvalPolicy: 'never',
+      cwd: this.cwd,
+      sandbox: 'danger-full-access',
+    }
+    if (this.model) threadParams['model'] = this.model
+
+    const threadResp = await this.send('thread/start', threadParams)
+    this.threadId = threadResp.result?.thread?.id || ''
+    console.error(`[codex] thread created: ${this.threadId}`)
+  }
+
+  async prompt(text: string, handler: AcpChunkHandler = {}): Promise<string> {
+    const prev = this.promptLock
+    let resolveLock: () => void
+    this.promptLock = new Promise<void>(r => { resolveLock = r })
+
+    try { await prev } catch {}
+
+    this.chunkHandler = handler
+
+    return new Promise<string>((resolve, reject) => {
+      this.turnResolve = (result: string) => {
+        resolveLock!()
+        resolve(result)
+      }
+      this.turnReject = (err: Error) => {
+        resolveLock!()
+        reject(err)
+      }
+      this.turnTextParts = []
+      this.turnThreadId = this.threadId
+
+      const turnParams: Record<string, unknown> = {
+        threadId: this.threadId,
+        approvalPolicy: 'never',
+        input: [{ type: 'text', text }],
+        sandboxPolicy: { type: 'dangerFullAccess' },
+        cwd: this.cwd,
+      }
+      if (this.model) turnParams['model'] = this.model
+
+      console.error(`[codex] turn/start: "${text.slice(0, 50)}..."`)
+      this.send('turn/start', turnParams).catch((err) => {
+        reject(new Error(`turn/start failed: ${err.message}`))
+      })
+    })
+  }
+
+  private handleLine(line: string) {
+    let msg: RpcResponse
+    try { msg = JSON.parse(line) } catch { return }
+
+    // Response to our request (has id)
+    if (msg.id !== undefined && msg.id !== null) {
+      const pending = this.pending.get(msg.id)
+      if (pending) {
+        this.pending.delete(msg.id)
+        if (msg.error) {
+          pending.reject(new Error(`RPC error ${msg.error.code}: ${msg.error.message}`))
+        } else {
+          pending.resolve(msg)
+        }
+      }
+      return
+    }
+
+    // Notification (no id) — codex app-server events
+    switch (msg.method) {
+      case 'item/agentMessage/delta':
+        this.handleDelta(msg.params)
+        break
+      case 'item/started':
+        this.handleItemStarted(msg.params)
+        break
+      case 'item/completed':
+        this.handleItemCompleted(msg.params)
+        break
+      case 'turn/completed':
+        this.handleTurnCompleted()
+        break
+      case 'turn/started':
+        // informational, ignore
+        break
+      case 'turn/approval/request':
+        this.handlePermissionRequest(msg)
+        break
+      case 'error':
+        this.handleError(msg.params)
+        break
+      default:
+        if (msg.method) {
+          // log unknown events for debugging but don't spam
+          if (msg.method !== 'hook/started' && msg.method !== 'hook/completed' &&
+              msg.method !== 'warning' && msg.method !== 'thread/started' &&
+              msg.method !== 'thread/status/changed' && msg.method !== 'thread/tokenUsage/updated' &&
+              msg.method !== 'account/rateLimits/updated' && msg.method !== 'skills/changed' &&
+              msg.method !== 'mcpServer/startupStatus/updated') {
+            console.error(`[codex] unhandled notification: ${msg.method}`)
+          }
+        }
+    }
+  }
+
+  private handleDelta(params: any) {
+    const delta = params?.delta || ''
+    if (!delta) return
+    this.turnTextParts.push(delta)
+    this.chunkHandler.onText?.(delta)
+  }
+
+  private handleItemStarted(params: any) {
+    if (params?.item?.type !== 'agentMessage') return
+    for (const c of params.item.content || []) {
+      if (c.type === 'text' && c.text) {
+        this.turnTextParts.push(c.text)
+        this.chunkHandler.onText?.(c.text)
+      }
+    }
+  }
+
+  private handleItemCompleted(params: any) {
+    // item/completed carries the full text in item.text — use as authoritative
+    // source to cover any missed deltas
+    if (params?.item?.type !== 'agentMessage') return
+    const fullText = params.item.text
+    if (fullText && fullText.length > this.turnTextParts.join('').length) {
+      this.turnTextParts = [fullText]
+    }
+  }
+
+  private handleTurnCompleted() {
+    const result = this.turnTextParts.join('').trim()
+    console.error(`[codex] turn completed: ${result.length} chars`)
+    if (this.turnResolve) {
+      this.turnResolve(result || '')
+      this.turnResolve = null
+      this.turnReject = null
+    }
+  }
+
+  private handleError(params: any) {
+    const message = params?.error?.message || 'codex app-server error'
+    console.error(`[codex] error event: ${message}`)
+    if (this.turnReject) {
+      this.turnReject(new Error(message))
+      this.turnResolve = null
+      this.turnReject = null
+    }
+  }
+
+  private handlePermissionRequest(req: any) {
+    let optionId = 'allow'
+    for (const opt of req.params?.options || []) {
+      if (opt.kind === 'allow') {
+        optionId = opt.optionId
+        break
+      }
+    }
+    const response = {
+      jsonrpc: '2.0',
+      id: req.id,
+      result: {
+        outcome: {
+          outcome: 'selected',
+          optionId,
+        },
+      },
+    }
+    const data = JSON.stringify(response) + '\n'
+    this.proc?.stdin?.write(data, (err) => {
+      if (err) console.error(`[codex] permission response write error:`, err)
+    })
+    console.error(`[codex] auto-allowed permission request`)
+  }
+
+  private send(method: string, params: any): Promise<RpcResponse> {
+    const id = ++this.nextId
+    const req: RpcRequest = { jsonrpc: '2.0', id, method, params }
+    return new Promise((resolve, reject) => {
+      if (!this.proc?.stdin?.writable) {
+        reject(new Error('codex stdin not writable'))
+        return
+      }
+      this.pending.set(id, { resolve, reject })
+      const data = JSON.stringify(req) + '\n'
+      this.proc!.stdin!.write(data, (err) => {
+        if (err) {
+          this.pending.delete(id)
+          reject(err)
+        }
+      })
+    })
+  }
+
+  private notify(method: string, params: any): Promise<void> {
+    const msg = { jsonrpc: '2.0', method, params: params || undefined }
+    return new Promise((resolve, reject) => {
+      if (!this.proc?.stdin?.writable) {
+        reject(new Error('codex stdin not writable'))
+        return
+      }
+      const data = JSON.stringify(msg) + '\n'
+      this.proc!.stdin!.write(data, (err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+    })
+  }
+
+  alive(): boolean {
+    return (
+      this.proc !== null &&
+      !this.proc.killed &&
+      this.proc.exitCode === null &&
+      this.proc.signalCode === null
+    )
+  }
+
+  close(): void {
+    this.rl?.close()
+    this.rl = null
+    if (this.proc) {
+      this.proc.kill()
+      this.proc = null
+    }
+    this.rejectAll(new Error('codex client closed'))
+  }
+
+  private rejectAll(err: Error) {
+    for (const [, p] of this.pending) p.reject(err)
+    this.pending.clear()
+    if (this.turnReject) {
+      this.turnReject(err)
+      this.turnResolve = null
+      this.turnReject = null
+    }
+  }
+}
+
 export class AcpClient {
   private proc: ChildProcess | null = null
   private rl: Interface | null = null

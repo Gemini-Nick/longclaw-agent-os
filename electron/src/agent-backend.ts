@@ -4,9 +4,9 @@
  * mode=acp:  通过 ACP 连接 CC Desktop（当前默认）
  * mode=sdk:  直接用 OAS createAgent() 调 API（未来）
  */
-import { AcpClient, AcpClientOptions } from './acp-client.js'
+import { AcpClient, AcpClientOptions, CodexAppServerClient } from './acp-client.js'
 
-export type AgentMode = 'acp' | 'sdk'
+export type AgentMode = 'acp' | 'sdk' | 'codex-app-server'
 
 export interface AgentEvent {
   type: 'text' | 'tool' | 'result' | 'error'
@@ -55,6 +55,58 @@ export class AcpBackend implements AgentBackend {
       onEvent({ type: 'result', result: { ok: true } })
     } catch (err: any) {
       console.error('[acp-backend] query error:', err)
+      onEvent({ type: 'error', error: err.message || String(err) })
+    }
+  }
+
+  clear(): void {
+    if (this.client) {
+      this.client.close()
+      this.client = null
+    }
+  }
+
+  close(): void {
+    this.client?.close()
+    this.client = null
+  }
+
+  alive(): boolean {
+    return this.client?.alive() ?? false
+  }
+}
+
+// --- Codex App-Server Mode ---
+
+export class CodexAppServerBackend implements AgentBackend {
+  mode: AgentMode = 'codex-app-server'
+  private client: CodexAppServerClient | null = null
+  private options: { cwd?: string; model?: string }
+
+  constructor(options: { cwd?: string; model?: string } = {}) {
+    this.options = options
+  }
+
+  async connect(): Promise<void> {
+    this.client = new CodexAppServerClient({
+      cwd: this.options.cwd,
+      model: this.options.model,
+    })
+    await this.client.connect()
+  }
+
+  async query(message: string, onEvent: (event: AgentEvent) => void): Promise<void> {
+    if (!this.client || !this.client.alive()) {
+      await this.connect()
+    }
+    try {
+      await this.client!.prompt(message, {
+        onText: (text) => onEvent({ type: 'text', text }),
+        onToolUse: (name, input) => onEvent({ type: 'tool', toolName: name, toolInput: input }),
+      })
+      onEvent({ type: 'result', result: { ok: true } })
+    } catch (err: any) {
+      console.error('[codex-backend] query error:', err)
       onEvent({ type: 'error', error: err.message || String(err) })
     }
   }
@@ -154,6 +206,7 @@ export function createBackend(mode: AgentMode, options: any = {}): AgentBackend 
   switch (mode) {
     case 'acp': return new AcpBackend(options)
     case 'sdk': return new SdkBackend(options)
+    case 'codex-app-server': return new CodexAppServerBackend(options)
     default: throw new Error(`Unknown agent mode: ${mode}`)
   }
 }

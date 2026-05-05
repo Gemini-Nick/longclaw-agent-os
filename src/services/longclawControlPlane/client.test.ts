@@ -854,4 +854,42 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       true,
     )
   })
+
+  it('routes AI factor actions directly to the Signals API in local mode', async () => {
+    const requests: Array<{ url: string; method: string; body: unknown }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      requests.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      })
+      return new Response(
+        JSON.stringify({
+          factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1',
+          status: 'validated',
+          metrics: { verified: true, sample_count: 5 },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsWebBaseUrl: 'http://signals-web.local',
+      fetchImpl,
+    })
+
+    const result = await client.executeAction('pack:signals:ai_factor:validate', {
+      factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1',
+    })
+
+    expect(result.status).toBe('validated')
+    expect(requests).toEqual([
+      {
+        url: 'http://signals-web.local/api/strategy/ai-factor-factory/validate',
+        method: 'POST',
+        body: { factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1' },
+      },
+    ])
+  })
 })

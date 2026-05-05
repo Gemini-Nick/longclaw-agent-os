@@ -793,7 +793,7 @@ let localRuntimeSeatPreference: LocalRuntimeSeatPreference =
 const DEFAULT_LOCALE = 'zh-CN'
 
 function getAgentMode(): AgentMode {
-  return (process.env.AGENT_MODE as AgentMode) || 'acp'
+  return (process.env.AGENT_MODE as AgentMode) || 'codex-app-server'
 }
 
 function windowTitleForLocale(locale: string): string {
@@ -910,6 +910,8 @@ async function ensureBackend(): Promise<AgentBackend> {
 
   if (mode === 'acp') {
     backend = createBackend('acp', { cwd: currentCwd })
+  } else if (mode === 'codex-app-server') {
+    backend = createBackend('codex-app-server', { cwd: currentCwd })
   } else {
     backend = createBackend('sdk', {
       model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',

@@ -40,13 +40,14 @@ import {
   Section,
   StatusStrip,
 } from './workspaces/shared.js'
+import { AIFactorFactoryWorkspace } from './workspaces/AIFactorFactoryWorkspace.js'
 import { PackWorkspace } from './workspaces/PackWorkspace.js'
 import { ExecutionConsole } from './workspaces/TaskWorkspace.js'
 import WeChatWorkspace from './workspaces/WeChatWorkspace.js'
 import CapabilitiesWorkspace from './workspaces/CapabilitiesWorkspace.js'
 import { recordObservationEvent } from './observation.js'
 
-export type SurfaceId = 'strategy' | 'backtest' | 'execution' | 'wechat' | 'factory'
+export type SurfaceId = 'strategy' | 'ai_factor_factory' | 'backtest' | 'execution' | 'wechat' | 'factory'
 type Page = SurfaceId
 type PackTab = 'due_diligence' | 'signals'
 export type WorkMode = 'local' | 'cloud_sandbox' | 'weclaw_dispatch'
@@ -549,6 +550,7 @@ function pageTitle(locale: LongclawLocale, page: Page): string {
   if (page === 'wechat') return t(locale, 'page.wechat.title')
   if (page === 'factory') return t(locale, 'page.plugins.title')
   if (page === 'execution') return t(locale, 'page.execution.title')
+  if (page === 'ai_factor_factory') return t(locale, 'page.ai_factor_factory.title')
   if (page === 'backtest') return t(locale, 'page.backtest.title')
   return t(locale, 'page.strategy.title')
 }
@@ -557,6 +559,7 @@ function pageEyebrow(locale: LongclawLocale, page: Page): string {
   if (page === 'wechat') return t(locale, 'page.wechat.eyebrow')
   if (page === 'factory') return t(locale, 'page.plugins.eyebrow')
   if (page === 'execution') return t(locale, 'page.execution.eyebrow')
+  if (page === 'ai_factor_factory') return t(locale, 'page.ai_factor_factory.eyebrow')
   if (page === 'backtest') return t(locale, 'page.backtest.eyebrow')
   return t(locale, 'page.strategy.eyebrow')
 }
@@ -565,6 +568,7 @@ function pageDescription(locale: LongclawLocale, page: Page): string {
   if (page === 'wechat') return t(locale, 'page.wechat.description')
   if (page === 'factory') return t(locale, 'page.plugins.description')
   if (page === 'execution') return t(locale, 'page.execution.description')
+  if (page === 'ai_factor_factory') return t(locale, 'page.ai_factor_factory.description')
   if (page === 'backtest') return t(locale, 'page.backtest.description')
   return t(locale, 'page.strategy.description')
 }
@@ -1867,7 +1871,7 @@ export default function App() {
     () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, Boolean(selected)),
     [selected, threadSidebarOpen, viewportTier, viewportWidth],
   )
-  const isFullBleedPackPage = page === 'strategy' || page === 'backtest'
+  const isFullBleedPackPage = page === 'strategy' || page === 'ai_factor_factory' || page === 'backtest'
   const isWeChatPage = page === 'wechat'
   const hideContextSidebar = isFullBleedPackPage || page === 'execution' || page === 'factory' || page === 'wechat'
   const wechatBound = wechatBindingStatus?.state === 'bound'
@@ -2321,7 +2325,7 @@ export default function App() {
           setActionMessage(`${action.label} completed`)
           return
         }
-        if (!runtimeStatus.longclawCoreConnected) {
+        if (!runtimeStatus.longclawCoreConnected && action.kind !== 'signals_api') {
           setActionMessage(
             'This action needs Longclaw Core connectivity. The client is currently running in degraded mode.',
           )
@@ -2705,6 +2709,12 @@ export default function App() {
           id: 'strategy',
           label: t(locale, 'nav.strategy'),
           glyph: locale === 'zh-CN' ? '策' : 'S',
+          group: 'primary',
+        },
+        {
+          id: 'ai_factor_factory',
+          label: t(locale, 'nav.ai_factor_factory'),
+          glyph: locale === 'zh-CN' ? '因' : 'F',
           group: 'primary',
         },
         {
@@ -3867,12 +3877,16 @@ export default function App() {
             </>
           )}
 
-          {(page === 'strategy' || page === 'backtest') && (
+          {(page === 'strategy' || page === 'ai_factor_factory' || page === 'backtest') && (
             <>
               <div style={threadSidebarSectionHeaderStyle}>
                 <div>
                   <div style={chromeStyles.eyebrowLight}>
-                    {page === 'strategy' ? t(locale, 'nav.strategy') : t(locale, 'nav.backtest')}
+                    {page === 'strategy'
+                      ? t(locale, 'nav.strategy')
+                      : page === 'ai_factor_factory'
+                        ? t(locale, 'nav.ai_factor_factory')
+                        : t(locale, 'nav.backtest')}
                   </div>
                   <div style={threadSidebarHeadingStyle}>{t(locale, 'sidebar.signals_connectors')}</div>
                 </div>
@@ -4012,6 +4026,16 @@ export default function App() {
                   onRunAction={runAction}
                   onOpenRun={openRun}
                   onOpenRecord={openRecord}
+                />
+              )}
+
+              {page === 'ai_factor_factory' && (
+                <AIFactorFactoryWorkspace
+                  locale={locale}
+                  dashboard={dashboard?.pack_id === 'signals' ? dashboard : null}
+                  signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
+                  onOpenRecord={openRecord}
+                  onRunAction={runAction}
                 />
               )}
 

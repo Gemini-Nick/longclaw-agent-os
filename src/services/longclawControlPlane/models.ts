@@ -1056,6 +1056,45 @@ const SignalsSourceConfidenceSchema = z.preprocess(value => {
 
 const SignalsCacheMetricSchema = z.record(z.string(), z.unknown()).default({})
 
+const SignalsAIFactorSchema = z.object({
+  factor_id: z.string().default(''),
+  version: z.string().default(''),
+  title: z.string().default(''),
+  hypothesis: z.string().default(''),
+  status: z.string().default('draft'),
+  live_enabled: z.boolean().default(false),
+  updated_at: z.string().default(''),
+  last_verified_at: z.string().default(''),
+  draft: JsonRecordSchema.default({}),
+  metrics: JsonRecordSchema.default({}),
+  ai_explanation: z.array(z.string()).default([]),
+  failure_samples: z.array(JsonRecordSchema).default([]),
+  watchlist_symbols: z.array(JsonRecordSchema).default([]),
+  risk_tags: z.array(z.string()).default([]),
+}).passthrough()
+
+const SignalsAIFactorFactorySchema = z.object({
+  factory_id: z.string().default(''),
+  as_of: z.string().default(''),
+  generated_at: z.string().default(''),
+  title: z.string().default('AI因子工厂'),
+  summary: JsonRecordSchema.default({}),
+  active_factor_id: z.string().default(''),
+  factors: z.array(SignalsAIFactorSchema).default([]),
+  data_lineage: JsonRecordSchema.default({}),
+  error: z.string().default(''),
+}).passthrough().default({
+  factory_id: '',
+  as_of: '',
+  generated_at: '',
+  title: 'AI因子工厂',
+  summary: {},
+  active_factor_id: '',
+  factors: [],
+  data_lineage: {},
+  error: '',
+})
+
 export const SignalsCacheStatusSchema = z.object({
   available: z.boolean().default(false),
   mode: z.string().default('unavailable'),
@@ -1136,6 +1175,7 @@ export const SignalsDashboardSchema = z.object({
   deep_links: z.array(SignalsDeepLinkSchema).default([]),
   operator_actions: z.array(LongclawOperatorActionSchema).default([]),
   cache_status: SignalsCacheStatusSchema,
+  ai_factor_factory: SignalsAIFactorFactorySchema,
 })
 
 export type LongclawDomainPackDescriptor = z.infer<typeof LongclawDomainPackDescriptorSchema>
