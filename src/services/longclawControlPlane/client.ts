@@ -1027,7 +1027,15 @@ export class LongclawControlPlaneClient {
         const runs = await this.listRuns()
         const recentRuns = runs.filter(run => run.domain === 'financial_analysis').slice(0, 20)
         const reviewRuns = runs.filter(run => run.capability === 'review').slice(0, 10)
-        const [marketContext, indexReports, predictionOverview, reviewResults, reviewStatus, tradeSummary] =
+        const [
+          marketContext,
+          indexReports,
+          predictionOverview,
+          reviewResults,
+          reviewStatus,
+          tradeSummary,
+          aiFactorFactory,
+        ] =
           await Promise.all([
             fetchJsonOrNull(
               web1 ? `${web1}/api/index/context` : undefined,
@@ -1059,6 +1067,11 @@ export class LongclawControlPlaneClient {
             ),
             fetchJsonOrNull(
               web1 ? `${web1}/api/trade/summary` : undefined,
+              value => recordValue(value),
+              this.fetchImpl,
+            ),
+            fetchJsonOrNull(
+              web1 ? `${web1}/api/strategy/ai-factor-factory` : undefined,
               value => recordValue(value),
               this.fetchImpl,
             ),
@@ -1155,6 +1168,7 @@ export class LongclawControlPlaneClient {
             reviewResults ||
             reviewStatus ||
             tradeSummary ||
+            aiFactorFactory ||
             chartData ||
             clusterLatestResult.source === 'web1' ||
             backtestAnalysisResult.source === 'web1',
@@ -1599,6 +1613,7 @@ export class LongclawControlPlaneClient {
           decision_queue: decisionQueue,
           strategy_kpis: strategyKpis,
           source_confidence: sourceConfidence,
+          ai_factor_factory: aiFactorFactory ?? undefined,
           recent_runs: recentRuns,
           review_runs: reviewRuns,
           buy_candidates: uniqueBuyCandidates,

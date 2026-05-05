@@ -751,6 +751,28 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
       }
+      if (url === 'http://signals-web.local/api/strategy/ai-factor-factory') {
+        return new Response(
+          JSON.stringify({
+            factory_id: 'ai-factor-factory:2026-04-24',
+            factors: [
+              {
+                factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1',
+                title: '美股 AI 硬件 -> A股光模块/CPO/存储联动因子',
+                status: 'validated',
+                metrics: { verified: true, sample_count: 5, rank_ic: 0.91 },
+                paper_account: {
+                  enabled: true,
+                  mode: 'paper_observation',
+                  no_auto_order: true,
+                },
+                failure_samples: [{ symbol: 'SZ.300308', return_t5: -0.02 }],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
       if (url === 'http://signals-web.local/api/cluster/latest?top=5') {
         return new Response(
           JSON.stringify({
@@ -803,12 +825,18 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.backtest_summary.total).toBe(5)
     expect(dashboard.backtest_jobs[0]?.source).toBe('web1')
     expect(dashboard.daily_brief.market_bias).toBe('结构性机会')
+    expect(dashboard.ai_factor_factory.factors[0]?.metrics.sample_count).toBe(5)
+    expect(dashboard.ai_factor_factory.factors[0]?.paper_account).toMatchObject({
+      enabled: true,
+      no_auto_order: true,
+    })
     expect(dashboard.decision_queue.some(item => item.symbol === 'SZ.000001')).toBe(true)
     expect(dashboard.strategy_kpis.find(item => item.kpi_id === 'backtest_evaluated')?.value).toBe('4/5')
     expect(
       dashboard.source_confidence.find(item => item.source_id === 'signals-web1')?.status,
     ).toBe('available')
     expect(requests).toContain('http://signals-web.local/api/cluster/latest?top=5')
+    expect(requests).toContain('http://signals-web.local/api/strategy/ai-factor-factory')
     expect(requests).toContain(
       'http://signals-web.local/api/backtest/analyze?code=000001&freq=daily&signal_group=all&lookback=180',
     )
@@ -868,7 +896,13 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
         JSON.stringify({
           factor_id: 'us_ai_hardware_to_cn_optical_cpo_memory_v1',
           status: 'validated',
-          metrics: { verified: true, sample_count: 5 },
+          metrics: { verified: true, sample_count: 5, win_rate: 0.6, avg_return_t5: 0.024, rank_ic: 0.91 },
+          failure_samples: [{ symbol: 'SZ.300308', return_t5: -0.018 }],
+          paper_account: {
+            enabled: true,
+            mode: 'paper_observation',
+            no_auto_order: true,
+          },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       )
@@ -884,6 +918,9 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     })
 
     expect(result.status).toBe('validated')
+    expect(result.metrics).toMatchObject({ sample_count: 5, rank_ic: 0.91 })
+    expect(result.failure_samples).toHaveLength(1)
+    expect(result.paper_account).toMatchObject({ enabled: true, no_auto_order: true })
     expect(requests).toEqual([
       {
         url: 'http://signals-web.local/api/strategy/ai-factor-factory/validate',
