@@ -2957,6 +2957,24 @@ function normalizeTimestamp(value: unknown): number | undefined {
   return raw < 10_000_000_000 ? raw * 1000 : raw
 }
 
+function marketDateTimestamp(value: unknown): number | undefined {
+  const raw = compactText(value)
+  if (!raw) return undefined
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/)
+  if (!match) {
+    const parsed = Date.parse(raw)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = match[4] ? Number(match[4]) : 15
+  const minute = match[5] ? Number(match[5]) : 0
+  const second = match[6] ? Number(match[6]) : 0
+  if (![year, month, day, hour, minute, second].every(Number.isFinite)) return undefined
+  return Date.UTC(year, month - 1, day, hour - 8, minute, second)
+}
+
 function isBuySignal(value?: string): boolean {
   const normalized = String(value ?? '').toLowerCase()
   return (
@@ -3571,6 +3589,32 @@ function signalsFromSymbolData(symbolData: WorkbenchSymbolData | null): Strategy
   return Array.isArray(chartSignals) ? (chartSignals as StrategySignal[]) : []
 }
 
+function referenceSignalsForIndexChart(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
+  if (!symbolData || compactText(symbolData.target?.kind) !== 'index') return []
+  const rows = Array.isArray(symbolData.related_custom_signals) ? symbolData.related_custom_signals : []
+  const currentFreq = normalizeSignalFreq(symbolData.target?.effective_freq ?? symbolData.target?.requested_freq)
+  return rows
+    .map(row => {
+      const record = recordValue(row)
+      const signalType = compactText(record.type) || compactText(record.signal_type)
+      const freq = compactText(record.freq)
+      const normalizedFreq = normalizeSignalFreq(freq)
+      const name = compactText(record.name) || compactText(record.symbol)
+      if (!signalType || !freq) return null
+      return {
+        ...(row as StrategySignal),
+        type: signalType,
+        signal_type: signalType,
+        price: undefined,
+        source: [compactText(record.source), 'reference_stock_signal'].filter(Boolean).join(' '),
+        details: [name, compactText(record.details), compactText(record.relation)].filter(Boolean).join(' · '),
+        display_scope: normalizedFreq && currentFreq && normalizedFreq !== currentFreq ? 'other_timeframe' : 'current_timeframe',
+        target_kind: 'reference_stock',
+      } satisfies StrategySignal
+    })
+    .filter((item): item is StrategySignal => Boolean(item))
+}
+
 function keyLevelsFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategyKeyLevel[] {
   if (!symbolData) return []
   const summaryLevels = symbolData.summary?.key_levels
@@ -3820,7 +3864,10 @@ function macdDivergences(data: KLineData[], freq?: string): MacdDivergenceSignal
 }
 
 function signalTimestamp(signal: StrategySignal): number | undefined {
-  return normalizeTimestamp(signal.dt ?? signal.time ?? signal.timestamp)
+  return (
+    normalizeTimestamp(signal.dt ?? signal.time ?? signal.timestamp) ??
+    marketDateTimestamp(signal.signal_date ?? signal.date_str)
+  )
 }
 
 function nearestChartBarForTimestamp(data: KLineData[], timestamp: number): KLineData | undefined {
@@ -3833,11 +3880,17 @@ function nearestChartBarForTimestamp(data: KLineData[], timestamp: number): KLin
   return data.find(item => item.timestamp >= timestamp) ?? last
 }
 
+function signalSideForOverlay(signal: StrategySignal): SignalOverlayData['side'] {
+  if (signal.signal_side === 'sell') return 'sell'
+  if (signal.signal_side === 'buy') return 'buy'
+  return signalOverlaySide(signal.type ?? signal.signal_type)
+}
+
 function signalOverlayPrice(signal: StrategySignal, bar: KLineData | undefined): number | undefined {
   const explicit = numberValue(signal.price)
   if (explicit !== undefined) return explicit
   if (!bar) return undefined
-  const side = signalOverlaySide(signal.type ?? signal.signal_type)
+  const side = signalSideForOverlay(signal)
   if (side === 'sell') return bar.high
   if (side === 'buy') return bar.low
   return bar.close
@@ -3854,6 +3907,7 @@ function shortSignalLabel(value?: string): string {
   if (normalized.includes('价平量增')) return '价量歧'
   if (normalized.includes('量价同步扩张')) return '量价扩'
   if (normalized.includes('量价同步扩跌')) return '扩跌'
+  if (normalized.includes('头肩顶')) return '头肩'
   if (normalized.includes('量价收敛')) return '收敛'
   if (normalized.includes('巨量分歧') || normalized.includes('极端量能分歧')) return '分歧'
   if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
@@ -3933,9 +3987,10 @@ function isVolumeSignal(signal: StrategySignal): boolean {
 
 function signalOverlayPriority(signal: StrategySignal): number {
   const normalized = String(signal.type ?? '').toLowerCase()
+  const side = signalSideForOverlay(signal)
   let priority = 35
-  if (isSellSignal(signal.type) || normalized.includes('顶背离')) priority = 90
-  else if (isBuySignal(signal.type) || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
+  if (side === 'sell' || normalized.includes('顶背离')) priority = 90
+  else if (side === 'buy' || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
   else if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) priority = 70
   else if (normalized.includes('macd') || normalized.includes('背驰')) priority = 60
   else if (normalized.includes('成交量') || normalized.includes('放量') || normalized.includes('缩量')) priority = 58
@@ -3962,6 +4017,9 @@ function compactScopeLabel(signal: StrategySignal, currentFreq?: string): string
 
 function isCustomUserSignal(signal: StrategySignal): boolean {
   const source = `${signal.source ?? ''} ${signal.pool_status ?? ''} ${signal.details ?? ''}`.toLowerCase()
+  if (source.includes('reference_stock_signal') || source.includes('terminal_technical_signals') || source.includes('technical_signal_scan')) {
+    return false
+  }
   return source.includes('signal_records') || source.includes('backtest') || source.includes('custom') || source.includes('自定义') || source.includes('回测') || isPersonalizedSignalType(signal.type)
 }
 
@@ -3969,8 +4027,9 @@ function signalSourceLabel(signal: StrategySignal): string {
   if (isCustomUserSignal(signal)) return '自定义'
   const source = String(signal.source ?? '').toLowerCase()
   if (source.includes('volume')) return '量能'
-  if (source.includes('terminal_technical_signals')) return '硬技术'
+  if (source.includes('terminal_technical_signals') || source.includes('technical_signal_scan')) return '硬技术'
   if (source.includes('signal_pool') || source.includes('signals')) return '信号池'
+  if (source.includes('reference_stock_signal')) return '参考'
   return ''
 }
 
@@ -4063,7 +4122,7 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
     const price = signalOverlayPrice(signal, bar)
     if (price === undefined) return
     const label = shortSignalLabel(signal.type ?? signal.signal_type)
-    const side = signalOverlaySide(signal.type ?? signal.signal_type)
+    const side = signalSideForOverlay(signal)
     const custom = isCustomUserSignal(signal)
     const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
     const laneKey = `${alignedTimestamp}:${side}`
@@ -4098,7 +4157,7 @@ function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: St
     const volumeValue = numberValue(dataByTimestamp.get(timestamp)?.volume)
     if (volumeValue === undefined) return
     const label = shortSignalLabel(signal.type ?? signal.signal_type)
-    const side = signal.signal_side === 'sell' ? 'sell' : signal.signal_side === 'buy' ? 'buy' : signalOverlaySide(signal.type ?? signal.signal_type)
+    const side = signalSideForOverlay(signal)
     chart.createOverlay(
       {
         name: VOLUME_SIGNAL_OVERLAY_NAME,
@@ -5348,6 +5407,8 @@ export function StrategyChartTerminal({
 
   const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
+  const referenceChartSignals = useMemo(() => referenceSignalsForIndexChart(symbolData), [symbolData])
+  const chartSignals = useMemo(() => [...signals, ...referenceChartSignals], [referenceChartSignals, signals])
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
   const visibleCustomSignals = useMemo(() => signals.filter(isCustomUserSignal), [signals])
   const customSignalCount = useMemo(
@@ -5372,8 +5433,8 @@ export function StrategyChartTerminal({
     () => (Array.isArray(symbolData?.related_custom_signals) ? symbolData.related_custom_signals : []),
     [symbolData?.related_custom_signals],
   )
-  const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, signals, currentFreq), [currentFreq, klineData, signals])
-  const evidenceSignals = useMemo(() => displaySignalsForEvidence(signals), [signals])
+  const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, chartSignals, currentFreq), [chartSignals, currentFreq, klineData])
+  const evidenceSignals = useMemo(() => displaySignalsForEvidence(chartSignals), [chartSignals])
   const currentVisibleSignals = useMemo(
     () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期'),
     [chartVisibleSignals, currentFreq],
@@ -5436,6 +5497,12 @@ export function StrategyChartTerminal({
     ? shellBuyCandidates
     : dashboard.buy_candidates as Array<Record<string, unknown>>
   const targetCandidateRows = Array.isArray(symbolData?.candidate_stocks) ? symbolData.candidate_stocks : []
+  const referenceCandidateSignalRows = useMemo(
+    () => targetCandidateRows
+      .filter(row => timeframeSignalBadges(row).length > 0 || (Array.isArray(row.reference_signals) && row.reference_signals.length > 0))
+      .slice(0, 5),
+    [targetCandidateRows],
+  )
   const targetCandidateGroups = useMemo(() => candidateGroupsFromSymbolData(symbolData), [symbolData])
   const sellRows = dashboard.sell_warnings as Array<Record<string, unknown>>
   const indexTargets = shell?.indices ?? []
@@ -5955,15 +6022,15 @@ export function StrategyChartTerminal({
       return
     }
     chart.applyNewData(chartDisplayData)
-    createSignalOverlays(chart, chartDisplayData, signals, currentFreq)
-    createVolumeSignalOverlays(chart, chartDisplayData, signals, currentFreq)
+    createSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq)
+    createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq)
     createLevelOverlays(chart, chartDisplayData, chartKeyLevels)
     createDivergenceOverlays(chart, divergences)
     if (!lastChartUpdateSilentRef.current) {
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [chartDisplayData, chartKeyLevels, currentFreq, divergences, signals])
+  }, [chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
@@ -6826,6 +6893,61 @@ export function StrategyChartTerminal({
               </div>
             ) : (
                 <div style={compactListStyle}>
+                {referenceCandidateSignalRows.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '参考个股周期买卖点' : 'Reference stock timeframes'}</span>
+                      <span>{referenceCandidateSignalRows.length}</span>
+                    </div>
+                    {referenceCandidateSignalRows.map((candidate, index) => {
+                      const label = candidateStockLabel(candidate)
+                      const badges = timeframeSignalBadges(candidate)
+                      const referenceSignals = Array.isArray(candidate.reference_signals) ? candidate.reference_signals : []
+                      return (
+                        <button
+                          key={`${label || 'candidate'}-${index}`}
+                          type="button"
+                          style={targetButtonStyle}
+                          onClick={() => {
+                            if (label) selectTarget({ label, kind: 'stock', freq: target.freq }, 'strategy.reference-candidate-signal.click')
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={rowTitleStyle}>{compactText(candidate.name) || label || 'N/A'}</div>
+                              <div style={mutedLineStyle}>
+                                {[label, compactText(candidate.relation), compactText(candidate.latest_signal)].filter(Boolean).join(' · ')}
+                              </div>
+                            </div>
+                            <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.reference_signal_count) || referenceSignals.length || badges.length}</span>
+                          </div>
+                          <div style={signalBadgeRowStyle}>
+                            {badges.slice(0, 6).map(badge => (
+                              <span
+                                key={`${label || index}-${badge.side}-${badge.label}`}
+                                style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                              >
+                                {badge.side === 'sell' ? `卖${badge.label}` : badge.label}
+                              </span>
+                            ))}
+                          </div>
+                          {referenceSignals.length > 0 ? (
+                            <div style={mutedTwoLineStyle}>
+                              {referenceSignals
+                                .slice(0, 3)
+                                .map(signal => {
+                                  const item = recordValue(signal)
+                                  return [displayFreqLabel(compactText(item.freq)), compactText(item.signal_type) || compactText(item.type), compactText(item.date_str)].filter(Boolean).join(' ')
+                                })
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
                 <div style={signalBlockStyle}>
                   <div style={candidateGroupHeaderStyle}>
                     <span>{locale === 'zh-CN' ? '本周期信号' : 'Current timeframe'}</span>
@@ -6955,7 +7077,7 @@ export function StrategyChartTerminal({
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                           <div style={rowTitleStyle}>{compactText(signal.name, compactText(signal.symbol, 'Signal'))}</div>
-                          <span style={customSignalBadgeStyle}>自定义 {displayFreqLabel(signal.freq)}</span>
+                          <span style={customSignalBadgeStyle}>{signalSourceLabel(signal) || (locale === 'zh-CN' ? '关联' : 'Related')} {displayFreqLabel(signal.freq)}</span>
                         </div>
                         <div style={mutedTwoLineStyle}>
                           {[signal.type || signal.signal_type, signal.relation, signal.date_str, signal.details].filter(Boolean).join(' · ')}
@@ -9021,6 +9143,7 @@ function TargetRows({
           {section.rows.slice(0, 8).map((row, index) => {
             const label = labelForTarget(row)
             const score = compactText(row.attention_score) || compactText(row.fused_total) || compactText(row.total_score) || compactText(row.score)
+            const signalBadges = timeframeSignalBadges(row)
             return (
               <button
                 key={`${section.key}-${label || 'target'}-${index}`}
@@ -9036,10 +9159,23 @@ function TargetRows({
                     {compactText(row.leader_tier) || compactText(row.representative_type) || '候选'}
                   </span>
                 </div>
+                {signalBadges.length > 0 ? (
+                  <div style={signalBadgeRowStyle}>
+                    {signalBadges.slice(0, 5).map(badge => (
+                      <span
+                        key={`${section.key}-${label || index}-${badge.side}-${badge.label}`}
+                        style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                      >
+                        {badge.side === 'sell' ? `卖${badge.label}` : badge.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <div style={mutedTwoLineStyle}>
                   {[
                     compactText(row.symbol) || compactText(row.code),
                     compactText(row.chain_role) || compactText(row.relation),
+                    compactText(row.latest_signal),
                     score ? `关注 ${score}` : '',
                     compactText(row.why_watch),
                     Array.isArray(row.risk_flags) ? row.risk_flags.map(item => compactText(item)).filter(Boolean).join('/') : '',
