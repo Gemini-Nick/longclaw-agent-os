@@ -331,8 +331,8 @@ type TradeMapItem = {
   source?: string
 }
 
-const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['ai_focus', 'macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
-const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['ai_focus', 'buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
   { key: 'all', zh: '全部', en: 'All' },
@@ -1989,8 +1989,7 @@ const headerMetricValueStyle: React.CSSProperties = {
   lineHeight: 1.12,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
-  whiteSpace: 'normal',
-  wordBreak: 'break-word',
+  whiteSpace: 'nowrap',
 }
 
 const chartConclusionStyle: React.CSSProperties = {
@@ -5277,6 +5276,32 @@ function chainRowKey(row: WatchlistRow): string {
   ].filter(Boolean).join(':')
 }
 
+function chainContextFromSymbolSummary(symbolData: WorkbenchSymbolData | null): Record<string, unknown> {
+  const summary = recordValue(symbolData?.summary)
+  const mapping = recordValue(summary.mapping_chain)
+  if (Object.keys(mapping).length > 0) return mapping
+  const position = recordValue(summary.chain_position)
+  if (Object.keys(position).length === 0) return {}
+  const chainName = compactText(position.chain) || compactText(position.chain_name)
+  const nodeName = compactText(position.node) || compactText(position.node_name) || compactText(position.role)
+  return {
+    ...position,
+    chain_name: chainName,
+    node_name: nodeName,
+    phase: compactText(position.phase),
+    mapping_status: compactText(position.source) || 'security_chain_memberships',
+    mapping_chain: {
+      chain_name: chainName,
+      node_name: nodeName,
+      layer: compactText(position.layer),
+      stage: compactText(position.stage),
+      confidence: position.confidence,
+      exposure_score: position.exposure_score,
+      source_note: position.source_note,
+    },
+  }
+}
+
 function candidateStockLabel(row: Record<string, unknown>): string {
   return (
     compactText(row.symbol) ||
@@ -5363,7 +5388,7 @@ export function StrategyChartTerminal({
   const activeRequestRef = useRef(0)
   const shellRefreshInFlightRef = useRef(false)
   const shellLoadedRef = useRef(false)
-  const activeWatchlistTabRef = useRef<WatchlistTabKey>('ai_focus')
+  const activeWatchlistTabRef = useRef<WatchlistTabKey>('sector_boards')
   const silentSymbolRefreshInFlightRef = useRef(false)
   const manualSymbolAbortRef = useRef<AbortController | null>(null)
   const dashboardRef = useRef(dashboard)
@@ -5379,7 +5404,7 @@ export function StrategyChartTerminal({
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
-  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('ai_focus')
+  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('sector_boards')
   const [activeTradeRole, setActiveTradeRole] = useState<TradeRoleKey>('all')
   const [suppressClimax, setSuppressClimax] = useState(false)
   const [selectedRangeKey, setSelectedRangeKey] = useState('')
@@ -5397,9 +5422,7 @@ export function StrategyChartTerminal({
   const lastAiRankingHashRef = useRef('')
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1000 : window.innerHeight))
-  const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(() => (
-    typeof window === 'undefined' ? true : window.innerWidth > 1440 && window.innerHeight > 900
-  ))
+  const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(false)
 
   useEffect(() => {
     activeWatchlistTabRef.current = activeWatchlistTab
@@ -5604,13 +5627,7 @@ export function StrategyChartTerminal({
     [activeDecisionRow, aiReviewsByKey],
   )
   const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
-  const activeWatchlistEmptyText = activeWatchlistTab === 'ai_focus'
-    ? (aiRankingStatus === 'running'
-        ? (locale === 'zh-CN' ? '正在刷新已批准因子观察池。' : 'Refreshing approved factor watch pool.')
-        : aiRanking
-          ? (locale === 'zh-CN' ? '已批准因子没有返回可匹配到候选池的标的。' : 'Approved factors returned no matchable candidates.')
-          : (locale === 'zh-CN' ? '点击上方“刷新因子观察”，用已批准因子筛选候选池。' : 'Refresh factor watch from the top strip.'))
-    : activeWatchlistTab === 'focus_stocks'
+  const activeWatchlistEmptyText = activeWatchlistTab === 'focus_stocks'
     ? (compactText(focusGroupMeta.empty_reason)
       ? `${locale === 'zh-CN' ? '确认买点为空' : 'Confirmed entry empty'}: ${compactText(focusGroupMeta.empty_reason)}`
       : (locale === 'zh-CN' ? '确认买点为空，先看盯盘池。' : 'No confirmed entries. Check the watch pool.'))
@@ -5627,7 +5644,9 @@ export function StrategyChartTerminal({
         ? `当前交易角色「${tradeRoleLabel(activeTradeRole, locale)}」下没有标的。`
         : `No names for ${tradeRoleLabel(activeTradeRole, locale)}.`)
     : activeWatchlistEmptyText
-  const latestSignal = compactText(symbolData?.summary?.latest_signal, dashboard.chart_context?.latest_signal ?? '')
+  const latestSignal = symbolData
+    ? compactText(symbolData.summary?.latest_signal)
+    : compactText(dashboard.chart_context?.latest_signal ?? '')
   const summaryTitle =
     compactText(symbolData?.summary?.title) ||
     compactText(symbolData?.target?.label) ||
@@ -5653,7 +5672,8 @@ export function StrategyChartTerminal({
     [displayVolumeInWanHands, klineData],
   )
   const activeChartMode = chartModeFromTarget(target, symbolData)
-  const chainContext = selectedChainContext ?? recordValue(symbolData?.summary?.mapping_chain)
+  const symbolChainContext = useMemo(() => chainContextFromSymbolSummary(symbolData), [symbolData])
+  const chainContext = selectedChainContext ?? symbolChainContext
   const primaryValueLabel = chartMeta.is_price_kline === false
     ? (locale === 'zh-CN' ? '热度收盘' : 'Heat close')
     : (locale === 'zh-CN' ? '最新价' : 'Last')
@@ -6038,6 +6058,9 @@ export function StrategyChartTerminal({
         previous: target,
         next,
       })
+      if (!['industry', 'concept'].includes(compactText(next.kind).toLowerCase())) {
+        setSelectedChainContext(null)
+      }
       manualSymbolAbortRef.current?.abort()
       const controller = new AbortController()
       manualSymbolAbortRef.current = controller
@@ -6438,19 +6461,6 @@ export function StrategyChartTerminal({
           compact={!showTopDiagnosticsDetail}
           onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
         />
-        <AiStrategyStatusStrip
-          locale={locale}
-          ranking={aiRanking}
-          status={aiRankingStatus}
-          error={aiError}
-          candidateCount={aiCandidateInputs.length}
-          inputHash={aiCandidateHash}
-          rows={aiFocusRows}
-          onRun={runAiRanking}
-          onOpenAiFocus={() => setActiveWatchlistTab('ai_focus')}
-          compact={!showTopDiagnosticsDetail}
-          onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
-        />
         <div style={fallbackGridStyle}>
           <Panel
             title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
@@ -6631,20 +6641,6 @@ export function StrategyChartTerminal({
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
-      <AiStrategyStatusStrip
-        locale={locale}
-        ranking={aiRanking}
-        status={aiRankingStatus}
-        error={aiError}
-        candidateCount={aiCandidateInputs.length}
-        inputHash={aiCandidateHash}
-        rows={aiFocusRows}
-        onRun={runAiRanking}
-        onOpenAiFocus={() => setActiveWatchlistTab('ai_focus')}
-        compact={!showTopDiagnosticsDetail}
-        onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
-      />
-
       {shell?.notices?.length ? (
         <div style={noticeDarkStyle}>{shell.notices.join(' ')}</div>
       ) : null}
@@ -6739,16 +6735,7 @@ export function StrategyChartTerminal({
               </div>
               <div style={chartModeSummaryStyle}>
                 <span style={chartModeCurrentStyle}>{chartModeLabel(activeChartMode, locale)}</span>
-                <span style={chartModePurposeStyle} title={chartModePurpose(activeChartMode, locale)}>
-                  {chartModePurpose(activeChartMode, locale)}
-                </span>
               </div>
-              {chartLineage ? (
-                <div style={mutedTextStyle}>{chartLineage}</div>
-              ) : null}
-              {chartFormula ? (
-                <div style={mutedTextStyle}>{chartFormula}</div>
-              ) : null}
               {latestTradingValueLine ? (
                 <div style={chartTradingValueLineStyle}>{latestTradingValueLine}</div>
               ) : null}
@@ -6821,10 +6808,6 @@ export function StrategyChartTerminal({
               </div>
             </div>
           </div>
-
-          {symbolData?.summary?.conclusion ? (
-            <div style={chartConclusionStyle}>{String(symbolData.summary.conclusion)}</div>
-          ) : null}
 
           <div style={chartCanvasShellStyle}>
             <div ref={chartContainerRef} style={chartCanvasStyle} />
@@ -7671,8 +7654,8 @@ function AiTradeReviewPanel({
         ) : (
           <div style={emptyStateDarkStyle}>
             {row
-              ? (locale === 'zh-CN' ? `${row.name} 只有 Signals 规则解释，尚未经过因子复核。` : `${row.name} has Signals context but no factor review yet.`)
-              : (locale === 'zh-CN' ? '左侧选中因子观察或候选标的后再复核。' : 'Pick a candidate first.')}
+              ? (locale === 'zh-CN' ? `${row.name} 只有 Signals 规则解释，尚未经过复核。` : `${row.name} has Signals context but no review yet.`)
+              : (locale === 'zh-CN' ? '左侧选中候选标的后再复核。' : 'Pick a candidate first.')}
           </div>
         )}
         {error && status === 'failed' ? <div style={errorDarkStyle}>{error}</div> : null}
@@ -8097,25 +8080,19 @@ function WatchlistTabbedTable({
   onDeleteManualClue: (row: WatchlistRow) => void
 }) {
   const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
-    { key: 'ai_focus', label: locale === 'zh-CN' ? '因子观察' : 'Factor watch', count: groups.ai_focus.length },
     { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
     { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
   ]
   const panelMeta = watchlistPanelMeta(activeTab, locale)
-  const aiFocusCount = groups.ai_focus.length
   const watchCount = groups.watch_stocks.length
   const focusCount = groups.focus_stocks.length
   const sourceCount = groups.buy_candidates.length
-  const modeTitle = aiFocusCount > 0
-    ? (locale === 'zh-CN' ? '因子观察待复核' : 'Factor watch to review')
-    : focusCount > 0
+  const modeTitle = focusCount > 0
     ? (locale === 'zh-CN' ? '确认买点待复核' : 'Confirmed entries to review')
     : watchCount > 0
       ? (locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entries')
       : (locale === 'zh-CN' ? '先看线索池' : 'Start with clues')
-  const modeMeta = aiFocusCount > 0
-    ? (locale === 'zh-CN' ? '先看因子理由，再进右侧复核' : 'Read factor rationale, then review on the right')
-    : focusCount > 0
+  const modeMeta = focusCount > 0
     ? (locale === 'zh-CN' ? '先复核位置、止损和失效条件' : 'Review level, stop, and invalidation first')
     : watchCount > 0
       ? (locale === 'zh-CN' ? '看还差大周期、30m还是5m/15m' : 'Check missing big cycle, 30m, or 5m/15m')
@@ -8128,7 +8105,7 @@ function WatchlistTabbedTable({
           <div style={decisionModeMetaStyle}>{modeMeta}</div>
         </div>
         {[
-          [locale === 'zh-CN' ? '因子' : 'Factor', aiFocusCount, terminalTheme.accentText],
+          [locale === 'zh-CN' ? '线索' : 'Clue', sourceCount, terminalTheme.accentText],
           [locale === 'zh-CN' ? '盯盘' : 'Watch', watchCount, tradingDeskTheme.colors.auroraGold],
           [locale === 'zh-CN' ? '买点' : 'Entry', focusCount, tradingDeskTheme.market.up],
         ].map(([label, value, color]) => (
