@@ -969,6 +969,14 @@ const chainDrawerButtonStyle: React.CSSProperties = {
   padding: '3px 5px',
 }
 
+const chainLifecycleButtonStyle: React.CSSProperties = {
+  ...targetButtonStyle,
+  padding: '4px 6px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+}
+
 const chainContextHeroStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.borderStrong}`,
   borderRadius: 5,
@@ -5229,19 +5237,46 @@ function stockRowsContainSearchValue(rows: WatchlistRow[], value: string): boole
   })
 }
 
-const candidateGroupOrder = ['leaders', 'weighted', 'elastic', 'source_leaders', 'constituents']
+const candidateGroupOrder = ['upstream', 'leaders', 'weighted', 'elastic', 'downstream', 'source_leaders', 'constituents']
 
 function candidateGroupLabel(key: string, locale: LongclawLocale): string {
   const labels: Record<string, [string, string]> = {
+    upstream: ['上游供给', 'Upstream'],
     leaders: ['龙头梯队', 'Leaders'],
     weighted: ['权重/链主', 'Weighted'],
     elastic: ['弹性标的', 'Elastic'],
+    downstream: ['下游承接', 'Downstream'],
     source_leaders: ['当日领涨', 'Top movers'],
     constituents: ['成分候选', 'Constituents'],
   }
   const label = labels[key]
   if (!label) return key
   return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function chainRelationToneStyle(key: string): React.CSSProperties {
+  if (key === 'upstream') {
+    return {
+      borderColor: tradingDeskTheme.chart.gold,
+      background: `${tradingDeskTheme.chart.gold}18`,
+      color: tradingDeskTheme.chart.gold,
+    }
+  }
+  if (key === 'downstream') {
+    return {
+      borderColor: tradingDeskTheme.chart.line,
+      background: `${tradingDeskTheme.chart.line}18`,
+      color: terminalTheme.infoText,
+    }
+  }
+  if (key === 'leaders' || key === 'weighted') {
+    return {
+      borderColor: terminalTheme.accent,
+      background: terminalTheme.accentSoft,
+      color: terminalTheme.accentText,
+    }
+  }
+  return {}
 }
 
 function candidateGroupsFromSymbolData(symbolData: WorkbenchSymbolData | null): Record<string, Record<string, unknown>[]> {
@@ -5280,6 +5315,8 @@ function chainContextFromSymbolSummary(symbolData: WorkbenchSymbolData | null): 
   const summary = recordValue(symbolData?.summary)
   const mapping = recordValue(summary.mapping_chain)
   if (Object.keys(mapping).length > 0) return mapping
+  const explicit = recordValue(summary.chain_context)
+  if (Object.keys(explicit).length > 0) return explicit
   const position = recordValue(summary.chain_position)
   if (Object.keys(position).length === 0) return {}
   const chainName = compactText(position.chain) || compactText(position.chain_name)
@@ -5310,6 +5347,18 @@ function candidateStockLabel(row: Record<string, unknown>): string {
     compactText(row.label) ||
     compactText(row.name)
   )
+}
+
+function uniqueCandidateRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const output: Record<string, unknown>[] = []
+  rows.forEach((row, index) => {
+    const key = (candidateStockLabel(row) || `${compactText(row.name)}-${index}`).toUpperCase()
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    output.push(row)
+  })
+  return output
 }
 
 function chartModeFromTarget(target: ChartTarget, symbolData: WorkbenchSymbolData | null): ChartModeKey {
@@ -8909,11 +8958,12 @@ function ChainTargetDrawer({
         <div key={`${row.id}-${section.key}`} style={chainDrawerGroupStyle}>
           <div style={candidateGroupHeaderStyle}>
             <span>{section.label}</span>
-            <span style={monoTextStyle}>{section.rows.length}</span>
+            <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>{section.rows.length}</span>
           </div>
           {section.rows.slice(0, 6).map((candidate, index) => {
             const label = candidateStockLabel(candidate)
             const risk = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.map(item => compactText(item)).filter(Boolean).slice(0, 2).join('/') : ''
+            const relation = compactText(candidate.chain_relation_type)
             return (
               <button
                 key={`${row.id}-${section.key}-${label || index}`}
@@ -8931,7 +8981,7 @@ function ChainTargetDrawer({
                 <div style={{ minWidth: 0 }}>
                   <div style={rowTitleStyle}>{compactText(candidate.name) || label || 'N/A'}</div>
                   <div style={watchlistSubStyle}>
-                    {[label, compactText(candidate.leader_tier), compactText(candidate.chain_role) || compactText(candidate.relation)].filter(Boolean).join(' · ')}
+                    {[label, relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier), compactText(candidate.chain_role) || compactText(candidate.relation)].filter(Boolean).join(' · ')}
                   </div>
                 </div>
                 <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(formatPercent(candidate.day_change_pct)) }}>
@@ -8962,7 +9012,14 @@ function ChainContextRail({
 }) {
   const source = Object.keys(context).length > 0 ? context : recordValue(symbolData?.summary?.mapping_chain)
   const groups = candidateGroupsFromRow(source)
-  const candidates = candidateGroupOrder.flatMap(key => groups[key] ?? [])
+  const previewRows = Array.isArray(source.focus_stocks_preview)
+    ? source.focus_stocks_preview.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const groupedCandidates = candidateGroupOrder.flatMap(key => groups[key] ?? [])
+  const candidates = previewRows.length > 0 ? uniqueCandidateRows(previewRows) : uniqueCandidateRows(groupedCandidates)
+  const candidateSections = candidateGroupOrder
+    .map(key => ({ key, label: candidateGroupLabel(key, locale), rows: uniqueCandidateRows(groups[key] ?? []) }))
+    .filter(section => section.rows.length > 0)
   const dataTruth = recordValue(source.data_truth ?? symbolData?.data_truth)
   const viewpoint = recordValue(source.viewpoint_context ?? symbolData?.viewpoint_context)
   const technical = recordValue(source.technical_linkage)
@@ -9007,7 +9064,37 @@ function ChainContextRail({
             <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
             <span>{candidates.length}</span>
           </div>
-          {candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => (
+          {candidateSections.length > 0 ? candidateSections.map(section => (
+            <div key={`chain-context-${section.key}`} style={compactListStyle}>
+              <div style={candidateGroupHeaderStyle}>
+                <span>{section.label}</span>
+                <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>{section.rows.length}</span>
+              </div>
+              {section.rows.slice(0, section.key === 'leaders' ? 3 : 4).map((candidate, index) => {
+                const relation = compactText(candidate.chain_relation_type)
+                return (
+                  <button
+                    key={`${section.key}-${candidateStockLabel(candidate) || index}-${index}`}
+                    type="button"
+                    style={chainLifecycleButtonStyle}
+                    onClick={() => onSelect(candidate)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+                      <div style={rowTitleStyle}>{compactText(candidate.name) || candidateStockLabel(candidate) || 'N/A'}</div>
+                      <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>
+                        {relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier) || '观察'}
+                      </span>
+                    </div>
+                    <div style={mutedTwoLineStyle}>
+                      {[candidateStockLabel(candidate), compactText(candidate.chain_role) || compactText(candidate.relation), `涨幅 ${formatPercent(candidate.day_change_pct)}`, compactText(candidate.latest_signal)]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )) : candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => (
             <button
               key={`${candidateStockLabel(candidate) || index}-${index}`}
               type="button"
