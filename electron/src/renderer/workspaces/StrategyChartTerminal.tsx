@@ -1865,6 +1865,15 @@ const signalBadgeRowStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
+const stockDecisionBadgeStackStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  justifyContent: 'center',
+  alignItems: 'flex-end',
+  minWidth: 0,
+}
+
 const miniSignalBadgeStyle: React.CSSProperties = {
   border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
   borderRadius: 3,
@@ -4557,14 +4566,13 @@ function sectorPolicyLabelForRow(row: WatchlistRow): string {
 }
 
 function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
-  const explicit = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
-  if (explicit) return explicit
   const role = stockTradeRoleForRow(row)
-  const chain = chainBriefForWatchlist(row)
   const missing = compactText(row.raw.missing_condition)
   const setup = compactText(row.raw.setup_explanation)
   const sectorReason = compactText(row.raw.sector_policy_reason)
   const withSector = (text: string) => [sectorReason, text].filter(Boolean).join(locale === 'zh-CN' ? '；' : '; ')
+  const explicit = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
+  if (explicit) return withSector(explicit)
   if (role === 'left_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '低吸进攻：左侧买点叠加关键均线，复核位置和失效条件。' : 'Left attack: review level and invalidation.'))
   if (role === 'right_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '右侧进攻：执行周期买点和均线确认，复核下单节奏。' : 'Right attack: review execution timing.'))
   if (role === 'watch') return withSector(setup || missing || (locale === 'zh-CN' ? '盯盘观察：买点还缺确认。' : 'Watch: entry still needs confirmation.'))
@@ -4575,7 +4583,12 @@ function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
 
 function traderEvidenceSummary(row: WatchlistRow, locale: LongclawLocale): string {
   const explicit = compactText(row.raw.evidence_summary)
-  if (explicit) return explicit
+  if (explicit) {
+    return [
+      sectorPolicyLabelForRow(row) ? `${locale === 'zh-CN' ? '板块' : 'Sector'} ${sectorPolicyLabelForRow(row)}` : '',
+      explicit,
+    ].filter(Boolean).join(' · ')
+  }
   const chain = chainBriefForWatchlist(row)
   const cycle = timeframeSignalSideSummary(row, locale)
   const source = Array.isArray(row.raw.source_collections)
@@ -8817,7 +8830,10 @@ function WatchlistTable({
                 ) : activeTab === 'ai_focus' ? (
                   <span style={mutedTwoLineStyle}>{row.rankReason || row.traderAction || actionLabel}</span>
                 ) : stockDecision ? (
-                  <span style={signalBadgeRowStyle}>
+                  <span style={stockDecisionBadgeStackStyle}>
+                    {sectorPolicyLabel ? (
+                      <span style={miniNeutralSignalBadgeStyle}>{sectorPolicyLabel}</span>
+                    ) : null}
                     <span style={stageBadgeStyle}>{actionLabel}</span>
                   </span>
                 ) : row.signalBadges.length > 0 ? (
