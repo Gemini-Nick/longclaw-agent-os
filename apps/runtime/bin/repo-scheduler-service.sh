@@ -502,6 +502,8 @@ check_autostage_guards() {
     esac
 
     case "$rel_path" in
+      .env.example|.env.sample|.env.template|*/.env.example|*/.env.sample|*/.env.template)
+        ;;
       .env|.env.*|*/.env|*/.env.*|*.pem|*.key|*.p12|*.pfx|*.kdbx|*id_rsa*|*id_ed25519*|*credentials.json|*service-account*.json|*.mobileprovision)
         issue_count=$((issue_count + 1))
         log "workspace=$repo auto_commit blocked=sensitive_path path=$rel_path"
