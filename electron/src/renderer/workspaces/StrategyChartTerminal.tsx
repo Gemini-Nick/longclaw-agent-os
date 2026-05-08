@@ -8055,7 +8055,7 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
     ai_focus: ['approved_factors + terminal_stock_pool', '已批准因子观察：从候选池降噪排序，右侧逐票复核', '日涨幅=实时快照涨跌幅', 'approved_factors + terminal_stock_pool', 'approved factor watch: rank and review candidates', 'Day=realtime quote change'],
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
-    sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '日涨幅=板块当日涨跌幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Day=board change'],
+    sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '驱动涨幅=主驱动行业/概念涨跌幅，不等于链主/弹性股涨幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Driver=primary mapped board/concept change, not representative stock change'],
     focus_stocks: ['terminal_stock_pool.focus_stocks', '确认买点：大周期不冲突，30m买点和5m/15m下单周期都确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'confirmed entry: big cycle clear, 30m and 5m/15m confirmed', 'Day=realtime quote change'],
     risk_stocks: ['terminal_stock_pool.risk_stocks', '暂不参与：过期、破位、冲突、高潮或卖点出现', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'skip now: expired, broken, conflicted, crowded, or sell signal', 'Day=realtime quote change'],
     watch_stocks: ['terminal_stock_pool.watch_stocks', '盯盘池：线索到买点之间，区分低吸观察和试仓候选', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'watch pool: from clue to entry, split dip watch and probe candidate', 'Day=realtime quote change'],
@@ -8299,8 +8299,8 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
   if (activeTab === 'sector_boards') {
     return [
       locale === 'zh-CN' ? '板块' : 'Board',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
-      locale === 'zh-CN' ? '当日领涨' : 'Top mover',
+      locale === 'zh-CN' ? '驱动涨幅' : 'Driver',
+      locale === 'zh-CN' ? '主驱动' : 'Driver source',
       locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic',
     ]
   }
@@ -8355,6 +8355,34 @@ function sectorLeaderForWatchlist(row: WatchlistRow): string {
     compactText(recordValue(raw.source_leader).name) ||
     'N/A'
   )
+}
+
+function sectorPrimaryDomainForWatchlist(row: WatchlistRow): string {
+  const primary = recordValue(row.raw.primary_domain)
+  const name = compactText(primary.name)
+  if (!name) return sectorLeaderForWatchlist(row)
+  const change = formatPercent(primary.change_pct)
+  return change !== 'N/A' ? `${name} ${change}` : name
+}
+
+function chainChangeExplainForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const explicit = compactText(row.raw.change_explain)
+  if (explicit) return explicit
+  const primary = recordValue(row.raw.primary_domain)
+  const reference = recordValue(row.raw.reference_domain)
+  const confirmation = recordValue(row.raw.representative_confirmation)
+  const primaryName = compactText(primary.name)
+  const referenceName = compactText(reference.name)
+  const parts = [
+    primaryName
+      ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'} ${primaryName} ${formatPercent(primary.change_pct)}`
+      : '',
+    referenceName && referenceName !== primaryName
+      ? `${locale === 'zh-CN' ? '参考' : 'Reference'} ${referenceName} ${formatPercent(reference.change_pct)}`
+      : '',
+    compactText(confirmation.label),
+  ].filter(Boolean)
+  return parts.join(locale === 'zh-CN' ? '；' : '; ')
 }
 
 function sourceLabelForWatchlist(row: WatchlistRow): string {
@@ -8606,8 +8634,9 @@ function WatchlistTable({
         const cursor = row.id === cursorRowId
         const expanded = activeTab === 'sector_boards' && expandedChainKeys.has(chainRowKey(row))
         const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
-        const secondMetric = activeTab === 'sector_boards' ? sectorLeaderForWatchlist(row) : row.dayChange
+        const secondMetric = activeTab === 'sector_boards' ? sectorPrimaryDomainForWatchlist(row) : row.dayChange
         const rowSource = sourceLabelForWatchlist(row)
+        const chainChangeExplain = activeTab === 'sector_boards' ? chainChangeExplainForWatchlist(row, locale) : ''
         const stockDecision = STOCK_WATCHLIST_TABS.includes(activeTab)
         const actionLabel = decisionActionLabel(row.decision, locale)
         const identityLabel = stockDecision ? tradeIdentityLabelForRow(row, locale) : ''
@@ -8635,6 +8664,8 @@ function WatchlistTable({
                 rowSource ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${rowSource}` : '',
                 compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '报价源' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
                 compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间收益源' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'}: ${sectorPrimaryDomainForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' && chainChangeExplain ? chainChangeExplain : '',
                 activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
                 activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
                 stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
@@ -8679,7 +8710,7 @@ function WatchlistTable({
                   <div style={watchlistSubStyle}>
                     {stockDecision
                       ? traderRead
-                      : [row.rankLabel, row.traderAction, row.rankReason || row.explanation].filter(Boolean).join(' · ')}
+                      : [row.rankLabel, row.traderAction, chainChangeExplain || row.rankReason || row.explanation].filter(Boolean).join(' · ')}
                   </div>
                 ) : null}
               </div>
@@ -8932,6 +8963,7 @@ function ChainTargetDrawer({
     .filter(section => section.rows.length > 0)
   const technical = recordValue(row.raw.technical_linkage)
   const viewpoint = recordValue(row.raw.viewpoint_context)
+  const changeExplain = chainChangeExplainForWatchlist(row, locale)
   const riskFlags = Array.isArray(row.raw.risk_flags) ? row.raw.risk_flags.map(item => compactText(item)).filter(Boolean) : []
   if (sections.length === 0) {
     return (
@@ -8948,6 +8980,7 @@ function ChainTargetDrawer({
         <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
         <span>
           {[
+            changeExplain,
             compactText(technical.summary),
             compactText(viewpoint.status),
             riskFlags.length > 0 ? riskFlags.map(flag => riskFlagLabel(flag, locale)).join('/') : '',
