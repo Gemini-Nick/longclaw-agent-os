@@ -5131,13 +5131,12 @@ function toWatchlistRow(
   if (!label && !name) return null
   const code = codeForWatchlist(row)
   const dayChange = dayChangeForWatchlist(row)
-  const rangeValues = rangeColumns.map((column, columnIndex) => {
+  const targetKind = compactText(row.target_kind) || kind
+  const rangeValues = rangeColumns.map(column => {
     const explicit = readRangeReturn(row, column)
     if (explicit !== undefined) return formatPercent(explicit)
-    if (columnIndex === 0) return dayChange
-    return 'N/A'
+    return targetKind === 'stock' ? '计算失败' : 'N/A'
   })
-  const targetKind = compactText(row.target_kind) || kind
   const targetLabel = compactText(row.target_label) || label
   const signalBadges = timeframeSignalBadges(row)
   const laneStatus = recordValue(row.lane_status)
@@ -9168,6 +9167,14 @@ function ChainContextRail({
   const viewpoint = recordValue(source.viewpoint_context ?? symbolData?.viewpoint_context)
   const technical = recordValue(source.technical_linkage)
   const mapping = recordValue(source.mapping_chain ?? symbolData?.summary?.mapping_chain)
+  const activeDriver = recordValue(source.active_driver_concept)
+  const primaryChainDriver = recordValue(source.primary_chain_driver)
+  const driverCandidates = Array.isArray(source.concept_driver_candidates)
+    ? source.concept_driver_candidates.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const secondaryChains = Array.isArray(source.secondary_chain_positions)
+    ? source.secondary_chain_positions.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
   const risks = [
     ...(Array.isArray(source.risk_flags) ? source.risk_flags : []),
     ...(dataTruth.freq_fallback ? ['freq_fallback'] : []),
@@ -9203,6 +9210,64 @@ function ChainContextRail({
             <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span>
           </div>
         </div>
+        {(Object.keys(activeDriver).length > 0 || driverCandidates.length > 0) && (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '本次涨幅驱动' : 'Move driver'}</span>
+              <span style={{ ...miniNeutralSignalBadgeStyle, ...percentTone(formatPercent(activeDriver.change_pct)) }}>
+                {formatPercent(activeDriver.change_pct)}
+              </span>
+            </div>
+            <div style={mutedTwoLineStyle}>
+              {compactText(source.driver_summary) ||
+                [compactText(activeDriver.name), compactText(activeDriver.chain_name), compactText(activeDriver.node_name)]
+                  .filter(Boolean)
+                  .join(' · ')}
+            </div>
+            {Object.keys(primaryChainDriver).length > 0 && compactText(primaryChainDriver.name) !== compactText(activeDriver.name) && (
+              <div style={mutedLineStyle}>
+                {locale === 'zh-CN' ? '主链相关：' : 'Primary-chain related: '}
+                {[compactText(primaryChainDriver.name), formatPercent(primaryChainDriver.change_pct), compactText(primaryChainDriver.chain_name)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
+            <div style={chartMetaRowStyle}>
+              {driverCandidates.slice(0, 5).map((driver, index) => (
+                <span key={`${compactText(driver.name)}-${index}`} style={{ ...miniNeutralSignalBadgeStyle, ...percentTone(formatPercent(driver.change_pct)) }}>
+                  {[compactText(driver.name), formatPercent(driver.change_pct)].filter(Boolean).join(' ')}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {secondaryChains.length > 0 && (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '多概念暴露' : 'Multi-theme exposure'}</span>
+              <span>{secondaryChains.length}</span>
+            </div>
+            {secondaryChains.slice(0, 5).map((item, index) => {
+              const chainChange = numberValue(item.change_pct)
+              const chainChangeText = chainChange === undefined ? '' : formatPercent(chainChange)
+              return (
+                <div key={`${compactText(item.chain_id)}-${compactText(item.node_id)}-${index}`} style={dataRowStyle}>
+                  <span style={miniNeutralSignalBadgeStyle}>{compactText(item.membership_type) || 'theme'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={mutedTwoLineStyle}>
+                      {[compactText(item.chain_name), compactText(item.node_name), chainChangeText].filter(Boolean).join(' · ')}
+                    </div>
+                    <div style={mutedLineStyle}>
+                      {Array.isArray(item.source_board_names)
+                        ? item.source_board_names.map(name => compactText(name)).filter(Boolean).slice(0, 4).join(' / ')
+                        : ''}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
         <div style={signalBlockStyle}>
           <div style={candidateGroupHeaderStyle}>
             <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
