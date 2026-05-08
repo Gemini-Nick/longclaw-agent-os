@@ -5226,6 +5226,33 @@ function rowIsManualClue(row: WatchlistRow): boolean {
   return Boolean(row.raw.manual_clue || row.raw.deletable || compactText(row.raw.source_collection) === 'terminal_manual_clues')
 }
 
+function manualClueDeleteKeys(row: WatchlistRow): string[] {
+  const raw = row.raw
+  const candidates = [
+    row.id,
+    row.code,
+    row.label,
+    row.targetLabel,
+    compactText(raw.symbol),
+    compactText(raw.raw_code),
+    compactText(raw.code),
+    compactText(raw.target_label),
+  ]
+  const seen = new Set<string>()
+  return candidates
+    .map(value => compactText(value).trim().toLowerCase())
+    .filter(value => {
+      if (!value || seen.has(value)) return false
+      seen.add(value)
+      return true
+    })
+}
+
+function manualClueMatchesDeleteKeys(row: WatchlistRow, keys: Set<string>): boolean {
+  if (!rowIsManualClue(row) || keys.size === 0) return false
+  return manualClueDeleteKeys(row).some(key => keys.has(key))
+}
+
 function stockRowsContainSearchValue(rows: WatchlistRow[], value: string): boolean {
   const normalized = value.trim().toLowerCase()
   if (!normalized) return false
@@ -5463,6 +5490,7 @@ export function StrategyChartTerminal({
   const [pendingListUpdate, setPendingListUpdate] = useState(false)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [optimisticDeletedManualClueKeys, setOptimisticDeletedManualClueKeys] = useState<Set<string>>(() => new Set())
   const [aiRanking, setAiRanking] = useState<AiRankingResult | null>(null)
   const [aiReviewsByKey, setAiReviewsByKey] = useState<Record<string, AiCandidateReview>>({})
   const [aiRankingStatus, setAiRankingStatus] = useState<StrategyAiTaskStatus>('idle')
@@ -5620,14 +5648,26 @@ export function StrategyChartTerminal({
       legacy: legacyRows,
     }
   }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, visibleRangeColumns])
+  const visibleGroupedWatchlistRows = useMemo(() => {
+    if (optimisticDeletedManualClueKeys.size === 0) return groupedWatchlistRows
+    return {
+      macro_indices: groupedWatchlistRows.macro_indices,
+      sector_boards: groupedWatchlistRows.sector_boards,
+      buy_candidates: groupedWatchlistRows.buy_candidates.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      focus_stocks: groupedWatchlistRows.focus_stocks.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      risk_stocks: groupedWatchlistRows.risk_stocks.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      watch_stocks: groupedWatchlistRows.watch_stocks.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      legacy: groupedWatchlistRows.legacy.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+    }
+  }, [groupedWatchlistRows, optimisticDeletedManualClueKeys])
   const allStockWatchlistRows = useMemo(
     () => [
-      ...groupedWatchlistRows.buy_candidates,
-      ...groupedWatchlistRows.watch_stocks,
-      ...groupedWatchlistRows.focus_stocks,
-      ...groupedWatchlistRows.risk_stocks,
+      ...visibleGroupedWatchlistRows.buy_candidates,
+      ...visibleGroupedWatchlistRows.watch_stocks,
+      ...visibleGroupedWatchlistRows.focus_stocks,
+      ...visibleGroupedWatchlistRows.risk_stocks,
     ],
-    [groupedWatchlistRows],
+    [visibleGroupedWatchlistRows],
   )
   const aiCandidateInputs = useMemo(
     () => allStockWatchlistRows.slice(0, 32).map((row, index) => aiCandidateInput(row, index)),
@@ -5640,11 +5680,26 @@ export function StrategyChartTerminal({
   )
   const displayWatchlistGroups = useMemo(
     () => ({
-      ...groupedWatchlistRows,
+      ...visibleGroupedWatchlistRows,
       ai_focus: aiFocusRows,
     }),
-    [aiFocusRows, groupedWatchlistRows],
+    [aiFocusRows, visibleGroupedWatchlistRows],
   )
+
+  useEffect(() => {
+    if (optimisticDeletedManualClueKeys.size === 0) return
+    const stillPresent = [
+      ...groupedWatchlistRows.buy_candidates,
+      ...groupedWatchlistRows.focus_stocks,
+      ...groupedWatchlistRows.risk_stocks,
+      ...groupedWatchlistRows.watch_stocks,
+      ...groupedWatchlistRows.legacy,
+    ].some(row => manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys))
+    if (!stillPresent) {
+      setOptimisticDeletedManualClueKeys(new Set())
+    }
+  }, [groupedWatchlistRows, optimisticDeletedManualClueKeys])
+
   const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab].length > 0
     ? displayWatchlistGroups[activeWatchlistTab]
     : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? displayWatchlistGroups.legacy : [])
@@ -5653,18 +5708,18 @@ export function StrategyChartTerminal({
     [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
   )
   const tradeRoleCounts = useMemo(
-    () => tradeRoleCountsForGroups(groupedWatchlistRows),
-    [groupedWatchlistRows],
+    () => tradeRoleCountsForGroups(visibleGroupedWatchlistRows),
+    [visibleGroupedWatchlistRows],
   )
   const activateTradeRole = useCallback(
     (role: TradeRoleKey) => {
       setActiveTradeRole(role)
       if (role !== 'all') {
-        setActiveWatchlistTab(preferredWatchlistTabForTradeRole(role, activeWatchlistTab, groupedWatchlistRows))
+        setActiveWatchlistTab(preferredWatchlistTabForTradeRole(role, activeWatchlistTab, visibleGroupedWatchlistRows))
       }
       setListCursorIndex(0)
     },
-    [activeWatchlistTab, groupedWatchlistRows],
+    [activeWatchlistTab, visibleGroupedWatchlistRows],
   )
   const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
   const activeDecisionRow = useMemo(
@@ -6176,6 +6231,7 @@ export function StrategyChartTerminal({
             body: JSON.stringify({ symbol: value, freq }),
           },
         )
+        setOptimisticDeletedManualClueKeys(previous => previous.size > 0 ? new Set() : previous)
         setActiveWatchlistTab('buy_candidates')
         setActiveTradeRole('all')
         void loadShell().catch(() => undefined)
@@ -6192,6 +6248,14 @@ export function StrategyChartTerminal({
       if (!baseUrl) return
       const symbol = row.code || row.targetLabel || row.label
       if (!symbol) return
+      const deleteKeys = manualClueDeleteKeys(row)
+      if (deleteKeys.length > 0) {
+        setOptimisticDeletedManualClueKeys(previous => {
+          const next = new Set(previous)
+          deleteKeys.forEach(key => next.add(key))
+          return next
+        })
+      }
       try {
         await fetchJson<Record<string, unknown>>(
           baseUrl,
@@ -6203,6 +6267,13 @@ export function StrategyChartTerminal({
         )
         void loadShell().catch(() => undefined)
       } catch (rawError) {
+        if (deleteKeys.length > 0) {
+          setOptimisticDeletedManualClueKeys(previous => {
+            const next = new Set(previous)
+            deleteKeys.forEach(key => next.delete(key))
+            return next
+          })
+        }
         const apiError = rawError as ApiError
         setError(apiError.message || (locale === 'zh-CN' ? '临时线索删除失败。' : 'Failed to remove temporary clue.'))
       }
