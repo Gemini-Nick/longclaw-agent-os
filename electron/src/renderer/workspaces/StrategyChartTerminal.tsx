@@ -1129,6 +1129,54 @@ const watchlistSubStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const stockWatchlistNameCellStyle: React.CSSProperties = {
+  ...watchlistNameCellStyle,
+  padding: '7px 6px',
+  whiteSpace: 'normal',
+}
+
+const stockWatchlistTitleMetaStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 800,
+}
+
+const stockWatchlistBadgeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 3,
+  marginTop: 4,
+  minWidth: 0,
+  overflow: 'hidden',
+}
+
+const stockWatchlistSummaryStyle: React.CSSProperties = {
+  ...mutedTwoLineStyle,
+  marginTop: 4,
+  color: terminalTheme.text,
+  fontSize: 10,
+  lineHeight: 1.35,
+}
+
+const stockWatchlistContextStyle: React.CSSProperties = {
+  ...watchlistSubStyle,
+  marginTop: 3,
+  whiteSpace: 'nowrap',
+}
+
+const stockWatchlistButtonRowStyle: React.CSSProperties = {
+  minHeight: 74,
+  borderBottom: `1px solid ${terminalTheme.borderMuted}`,
+  background: terminalTheme.panelSoft,
+}
+
+const stockWatchlistButtonActiveRowExtraStyle: React.CSSProperties = {
+  background: terminalTheme.accentSoft,
+}
+
 const indicatorLegendStyle: React.CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -1891,6 +1939,37 @@ const miniSellSignalBadgeStyle: React.CSSProperties = {
   border: `1px solid ${tradingDeskTheme.alpha.errorBorder}`,
   background: tradingDeskTheme.alpha.errorSurface,
   color: tradingDeskTheme.market.down,
+}
+
+function stockDisplayBadgeStyle(tone: string): React.CSSProperties {
+  if (tone === 'risk') {
+    return miniSellSignalBadgeStyle
+  }
+  if (tone === 'buy') {
+    return {
+      ...miniSignalBadgeStyle,
+      border: `1px solid ${tradingDeskTheme.market.up}`,
+      background: 'rgba(38, 166, 154, 0.12)',
+      color: tradingDeskTheme.market.up,
+    }
+  }
+  if (tone === 'hot') {
+    return {
+      ...miniSignalBadgeStyle,
+      border: `1px solid ${tradingDeskTheme.colors.auroraGold}`,
+      background: 'rgba(224, 168, 58, 0.12)',
+      color: tradingDeskTheme.colors.auroraGold,
+    }
+  }
+  if (tone === 'wait' || tone === 'watch') {
+    return {
+      ...miniSignalBadgeStyle,
+      border: `1px solid ${terminalTheme.accent}`,
+      background: terminalTheme.accentSoft,
+      color: terminalTheme.accentText,
+    }
+  }
+  return miniNeutralSignalBadgeStyle
 }
 
 const miniNeutralSignalBadgeStyle: React.CSSProperties = {
@@ -2963,6 +3042,8 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
 function trimTrailingSlash(value?: string): string {
   return value?.trim().replace(/\/+$/, '') ?? ''
 }
+
+const DEFAULT_SIGNALS_WEB_BASE_URL = 'http://127.0.0.1:8011'
 
 function urlFromDashboard(dashboard: StrategyDashboard): string {
   const terminalLink = dashboard.deep_links.find(link => link.link_id === 'signals-terminal')
@@ -4565,12 +4646,42 @@ function sectorPolicyLabelForRow(row: WatchlistRow): string {
   return market && label === '防守放宽' ? `${label}/${market}` : label
 }
 
+type StockDisplayBadge = {
+  label: string
+  tone: string
+}
+
+function stockDisplayBadges(row: WatchlistRow): StockDisplayBadge[] {
+  const rawBadges = Array.isArray(row.raw.display_badges) ? row.raw.display_badges : []
+  const badges = rawBadges
+    .map(item => {
+      const badge = recordValue(item)
+      const label = compactText(badge.label)
+      if (!label) return null
+      return { label, tone: compactText(badge.tone) || 'neutral' }
+    })
+    .filter((item): item is StockDisplayBadge => Boolean(item))
+  if (badges.length > 0) return badges.slice(0, 5)
+  return [
+    compactText(row.raw.stage_label) ? { label: compactText(row.raw.stage_label), tone: row.decision.stage === 'entry_ready' ? 'buy' : 'watch' } : null,
+    compactText(row.raw.setup_mode_label) ? { label: compactText(row.raw.setup_mode_label), tone: 'info' } : null,
+    sectorPolicyLabelForRow(row) ? { label: sectorPolicyLabelForRow(row), tone: 'info' } : null,
+    compactText(row.raw.risk_marker) ? { label: compactText(row.raw.risk_marker), tone: 'risk' } : null,
+  ].filter((item): item is StockDisplayBadge => Boolean(item)).slice(0, 5)
+}
+
+function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
+  return compactText(row.raw.display_action) || decisionActionLabel(row.decision, locale)
+}
+
 function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
   const role = stockTradeRoleForRow(row)
   const missing = compactText(row.raw.missing_condition)
   const setup = compactText(row.raw.setup_explanation)
   const sectorReason = compactText(row.raw.sector_policy_reason)
   const withSector = (text: string) => [sectorReason, text].filter(Boolean).join(locale === 'zh-CN' ? '；' : '; ')
+  const displaySummary = compactText(row.raw.display_summary)
+  if (displaySummary) return withSector(displaySummary)
   const explicit = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
   if (explicit) return withSector(explicit)
   if (role === 'left_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '低吸进攻：左侧买点叠加关键均线，复核位置和失效条件。' : 'Left attack: review level and invalidation.'))
@@ -4579,6 +4690,15 @@ function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
   if (role === 'clue') return withSector(setup || missing || (locale === 'zh-CN' ? '线索池：只有来源，还不是买点。' : 'Clue only, not an entry.'))
   if (role === 'risk_first') return locale === 'zh-CN' ? '暂不参与：不在机会池，非持仓不作为风险动作推送。' : 'Skip now; not an opportunity task.'
   return withSector(setup || missing || row.rankReason || row.explanation || watchlistRowSignalLine(row, locale))
+}
+
+function stockContextLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const breakout = compactText(row.raw.display_breakout)
+  const evidence = traderEvidenceSummary(row, locale)
+  const invalidates = compactText(row.decision.invalidatesWhen || row.invalidatesWhen)
+  return [breakout, evidence, invalidates ? `${locale === 'zh-CN' ? '失效' : 'Invalid'} ${invalidates}` : '']
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function traderEvidenceSummary(row: WatchlistRow, locale: LongclawLocale): string {
@@ -5486,7 +5606,10 @@ export function StrategyChartTerminal({
   signalsWebBaseUrl,
   onOpenRecord,
 }: StrategyChartTerminalProps) {
-  const baseUrl = trimTrailingSlash(signalsWebBaseUrl) || urlFromDashboard(dashboard)
+  const baseUrl =
+    trimTrailingSlash(signalsWebBaseUrl) ||
+    urlFromDashboard(dashboard) ||
+    DEFAULT_SIGNALS_WEB_BASE_URL
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -8148,7 +8271,7 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
     ai_focus: ['approved_factors + terminal_stock_pool', '已批准因子观察：从候选池降噪排序，右侧逐票复核', '日涨幅=实时快照涨跌幅', 'approved_factors + terminal_stock_pool', 'approved factor watch: rank and review candidates', 'Day=realtime quote change'],
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
-    sector_boards: ['chain_heat_snapshots', '产业链/概念异动与链路映射', '驱动涨幅=主驱动行业/概念涨跌幅，不等于链主/弹性股涨幅', 'chain_heat_snapshots', 'chain/concept heat and mapping', 'Driver=primary mapped board/concept change, not representative stock change'],
+    sector_boards: ['chain_heat_snapshots', '产业链异动雷达：源板块 -> 语义路由 -> 链主确认', '驱动涨幅=源行业/概念涨跌幅；确认=链主/弹性是否跟随', 'chain_heat_snapshots', 'chain event radar: source board -> semantic route -> representative confirmation', 'Driver=source board/concept change; confirmation=representative follow-through'],
     focus_stocks: ['terminal_stock_pool.focus_stocks', '买点池：低吸进攻/右侧进攻，必须有买点质量和均线确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'entry pool: left/right attack with setup quality and MA confirmation', 'Day=realtime quote change'],
     risk_stocks: ['terminal_stock_pool.risk_stocks', '暂不参与：只作剔除依据，非持仓不推风险动作', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.risk_stocks', 'skip now: exclusion only; no non-held risk action', 'Day=realtime quote change'],
     watch_stocks: ['terminal_stock_pool.watch_stocks', '盯盘池：买点或均线共振还差一环', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.watch_stocks', 'watch pool: setup or MA confirmation still missing', 'Day=realtime quote change'],
@@ -8375,12 +8498,14 @@ function WatchlistTabbedTable({
 }
 
 function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
-  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, 68px)` : ''
+  const stockTab = activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks'
+  const rangeWidth = stockTab ? 72 : 68
+  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, ${rangeWidth}px)` : ''
   if (activeTab === 'sector_boards') {
     return `minmax(100px, 1fr) 50px 60px 62px${rangeColumns}`
   }
-  if (activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks') {
-    return `minmax(96px, 1fr) 48px 52px 56px${rangeColumns}`
+  if (stockTab) {
+    return `minmax(176px, 1.5fr) 56px 58px minmax(78px, 0.7fr)${rangeColumns}`
   }
   return `minmax(96px, 1fr) 48px 52px 54px${rangeColumns}`
 }
@@ -8404,10 +8529,10 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
   }
   if (activeTab === 'sector_boards') {
     return [
-      locale === 'zh-CN' ? '板块' : 'Board',
+      locale === 'zh-CN' ? '产业链' : 'Chain',
       locale === 'zh-CN' ? '驱动涨幅' : 'Driver',
-      locale === 'zh-CN' ? '主驱动' : 'Driver source',
-      locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic',
+      locale === 'zh-CN' ? '源行业/概念' : 'Source/concept',
+      locale === 'zh-CN' ? '确认/链主' : 'Confirm/core',
     ]
   }
   if (activeTab === 'focus_stocks') {
@@ -8464,11 +8589,188 @@ function sectorLeaderForWatchlist(row: WatchlistRow): string {
 }
 
 function sectorPrimaryDomainForWatchlist(row: WatchlistRow): string {
+  const sourceDriver = recordValue(row.raw.source_driver)
   const primary = recordValue(row.raw.primary_domain)
-  const name = compactText(primary.name)
+  const name = compactText(sourceDriver.name) || compactText(primary.name)
   if (!name) return sectorLeaderForWatchlist(row)
-  const change = formatPercent(primary.change_pct)
-  return change !== 'N/A' ? `${name} ${change}` : name
+  const kind = compactText(sourceDriver.kind_label) || (
+    compactText(sourceDriver.kind) === 'concept' || compactText(primary.kind) === 'concept'
+      ? (row.raw.kind === 'concept' ? '概念' : '概念')
+      : compactText(sourceDriver.kind) === 'industry' || compactText(primary.kind) === 'industry'
+        ? '行业'
+        : ''
+  )
+  const change = formatPercent(sourceDriver.change_pct ?? primary.change_pct)
+  const prefix = kind ? `[${kind}] ` : ''
+  return change !== 'N/A' ? `${prefix}${name} ${change}` : `${prefix}${name}`
+}
+
+function sectorConceptOverlayForWatchlist(row: WatchlistRow): string {
+  const overlays = Array.isArray(row.raw.source_concept_overlays) ? row.raw.source_concept_overlays : []
+  const labels = overlays
+    .map(item => {
+      const record = recordValue(item)
+      const name = compactText(record.name)
+      if (!name) return ''
+      const change = formatPercent(record.change_pct)
+      const matched = Array.isArray(record.matched_names)
+        ? record.matched_names.map(value => compactText(value)).filter(Boolean).slice(0, 2).join('/')
+        : ''
+      const body = change !== 'N/A' ? `[概念] ${name} ${change}` : `[概念] ${name}`
+      return matched ? `${body}(${matched})` : body
+    })
+    .filter(Boolean)
+    .slice(0, 2)
+  return labels.join(' / ')
+}
+
+function sectorConceptOverlayDetailForWatchlist(row: WatchlistRow): string {
+  const groups = Array.isArray(row.raw.source_event_concept_overlays) ? row.raw.source_event_concept_overlays : []
+  return groups
+    .map(item => {
+      const record = recordValue(item)
+      const source = recordValue(record.source)
+      const sourceName = compactText(source.name)
+      const concepts = Array.isArray(record.concepts)
+        ? record.concepts
+          .map(value => {
+            const concept = recordValue(value)
+            const name = compactText(concept.name)
+            if (!name) return ''
+            const change = formatPercent(concept.change_pct)
+            return change !== 'N/A' ? `${name} ${change}` : name
+          })
+          .filter(Boolean)
+          .slice(0, 3)
+          .join('/')
+        : ''
+      return sourceName && concepts ? `${sourceName}: ${concepts}` : ''
+    })
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('；')
+}
+
+function sectorThemeOverlayForWatchlist(row: WatchlistRow): string {
+  const overlays = Array.isArray(row.raw.source_theme_overlays) ? row.raw.source_theme_overlays : []
+  const labels = overlays
+    .map(item => {
+      const record = recordValue(item)
+      const name = compactText(record.name)
+      if (!name) return ''
+      const change = formatPercent(record.change_pct)
+      const matched = Array.isArray(record.matched_names)
+        ? record.matched_names.map(value => compactText(value)).filter(Boolean).slice(0, 2).join('/')
+        : ''
+      const body = change !== 'N/A' ? `[主题] ${name} ${change}` : `[主题] ${name}`
+      return matched ? `${body}(${matched})` : body
+    })
+    .filter(Boolean)
+    .slice(0, 1)
+  return labels.join(' / ')
+}
+
+function sectorThemeOverlayDetailForWatchlist(row: WatchlistRow): string {
+  const groups = Array.isArray(row.raw.source_event_theme_overlays) ? row.raw.source_event_theme_overlays : []
+  return groups
+    .map(item => {
+      const record = recordValue(item)
+      const source = recordValue(record.source)
+      const sourceName = compactText(source.name)
+      const themes = Array.isArray(record.themes)
+        ? record.themes
+          .map(value => {
+            const theme = recordValue(value)
+            const name = compactText(theme.name)
+            if (!name) return ''
+            const change = formatPercent(theme.change_pct)
+            return change !== 'N/A' ? `${name} ${change}` : name
+          })
+          .filter(Boolean)
+          .slice(0, 2)
+          .join('/')
+        : ''
+      return sourceName && themes ? `${sourceName}: ${themes}` : ''
+    })
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('；')
+}
+
+function sectorSourceAndConceptForWatchlist(row: WatchlistRow): string {
+  return [
+    sectorPrimaryDomainForWatchlist(row),
+    sectorConceptOverlayForWatchlist(row),
+    sectorThemeOverlayForWatchlist(row),
+  ].filter(Boolean).join(' / ')
+}
+
+function sectorOverlayNamesForWatchlist(row: WatchlistRow, field: 'source_concept_overlays' | 'source_theme_overlays', limit = 2): string[] {
+  const overlays = Array.isArray(row.raw[field]) ? row.raw[field] : []
+  return overlays
+    .map(item => compactText(recordValue(item).name))
+    .filter(Boolean)
+    .slice(0, limit)
+}
+
+function sectorStatusForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const confirmation = recordValue(row.raw.chain_confirmation)
+  const label = compactText(confirmation.label)
+  if (label) return label
+  if (compactText(row.raw.domain) === 'theme_heat') return locale === 'zh-CN' ? '主题热度' : 'Theme heat'
+  return chainPhaseLabel(compactText(row.raw.phase), locale)
+}
+
+function sectorStatusToneForWatchlist(row: WatchlistRow): React.CSSProperties {
+  const status = compactText(recordValue(row.raw.chain_confirmation).status)
+  if (status === 'confirmed') return { color: tradingDeskTheme.market.up, borderColor: tradingDeskTheme.market.up }
+  if (status === 'theme_heat') return { color: tradingDeskTheme.colors.auroraGold, borderColor: tradingDeskTheme.colors.auroraGold }
+  if (status === 'elastic_rebound' || status === 'mixed') return { color: '#e0a83a', borderColor: '#8a6726' }
+  if (status === 'source_only') return { color: terminalTheme.accentText, borderColor: terminalTheme.accent }
+  if (status === 'not_confirmed' || status === 'weak') return { color: tradingDeskTheme.market.down, borderColor: tradingDeskTheme.market.down }
+  return chainPhaseTone(compactText(row.raw.phase))
+}
+
+function sectorTitleForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const sourceDriver = recordValue(row.raw.source_driver)
+  const nodeName = compactText(row.raw.node_name)
+  const chainName = compactText(row.raw.chain_name).replace(/产业链$/u, '')
+  const driverName = compactText(sourceDriver.name) || compactText(recordValue(row.raw.primary_domain).name)
+  const conceptNames = sectorOverlayNamesForWatchlist(row, 'source_concept_overlays', 2)
+  const themeNames = sectorOverlayNamesForWatchlist(row, 'source_theme_overlays', 1)
+  const base = compactText(row.raw.domain) === 'theme_heat'
+    ? (driverName || nodeName || row.name)
+    : (nodeName || row.name)
+  const context = [driverName, ...conceptNames, ...themeNames]
+    .filter((value, index, values) => value && values.indexOf(value) === index && value !== base)
+    .slice(0, 3)
+    .join('/')
+  if (base && context) return `${base} · ${context}`
+  if (base && chainName && chainName !== base && compactText(row.raw.domain) !== 'theme_heat') return `${base} · ${chainName}`
+  return base || row.name || (locale === 'zh-CN' ? '板块' : 'Sector')
+}
+
+function sectorSublineForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const status = sectorStatusForWatchlist(row, locale)
+  const source = sectorSourceAndConceptForWatchlist(row)
+  return [status, source].filter(Boolean).join(' · ')
+}
+
+function sectorActionLineForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const confirmation = recordValue(row.raw.chain_confirmation)
+  const status = compactText(confirmation.status)
+  const label = sectorStatusForWatchlist(row, locale)
+  if (locale !== 'zh-CN') return label
+  if (status === 'confirmed') return `${label}：链主/弹性跟随，复核扩散延续`
+  if (status === 'elastic_rebound') return `${label}：链主不强，先看弹性标的和三线扩散`
+  if (status === 'source_only') {
+    const source = sectorPrimaryDomainForWatchlist(row).replace(/^\[[^\]]+\]\s*/u, '')
+    return `${label}：${source || '源板块'}在涨，等链主确认后再当主线`
+  }
+  if (status === 'mixed') return `${label}：只看强分支，不当整链共振`
+  if (status === 'theme_heat') return '观察事件/风格扩散，不当成行业主线'
+  if (status === 'not_confirmed' || status === 'weak') return `${label}：不当产业链主线`
+  return label || row.traderAction
 }
 
 function chainChangeExplainForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
@@ -8513,10 +8815,13 @@ function sourceLabelForWatchlist(row: WatchlistRow): string {
 
 function sectorCarrierForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
   const raw = row.raw
+  const confirmation = recordValue(raw.chain_confirmation)
+  const confirmationLabel = compactText(confirmation.label)
   const reps = recordValue(raw.representatives)
   const core = recordValue(Array.isArray(reps.core) ? reps.core[0] : undefined)
   const elastic = recordValue(Array.isArray(reps.elastic) ? reps.elastic[0] : undefined)
-  const coreLabel = locale === 'zh-CN' ? '链主' : 'Core'
+  const themeRow = compactText(raw.domain) === 'theme_heat'
+  const coreLabel = themeRow ? (locale === 'zh-CN' ? '热股' : 'Hot') : (locale === 'zh-CN' ? '链主' : 'Core')
   const elasticLabel = locale === 'zh-CN' ? '弹性' : 'Elastic'
   const carrier = recordValue(raw.carrier)
   const target = recordValue(raw.target)
@@ -8527,10 +8832,14 @@ function sectorCarrierForWatchlist(row: WatchlistRow, locale: LongclawLocale): s
     compactText(raw.carrier_range_return_symbol) ||
     compactText(raw.target_symbol)
   const elasticName = compactText(elastic.name)
-  if (coreName && elasticName && elasticName !== coreName) return `${coreLabel} ${coreName} / ${elasticLabel} ${elasticName}`
-  if (coreName) return `${coreLabel} ${coreName}`
-  if (elasticName) return `${elasticLabel} ${elasticName}`
-  return compactText(row.signal) || (locale === 'zh-CN' ? '待映射' : 'Unmapped')
+  const carrierText = coreName && elasticName && elasticName !== coreName
+    ? `${coreLabel} ${coreName} / ${elasticLabel} ${elasticName}`
+    : coreName
+      ? `${coreLabel} ${coreName}`
+      : elasticName
+        ? `${elasticLabel} ${elasticName}`
+        : compactText(row.signal) || (locale === 'zh-CN' ? '待映射' : 'Unmapped')
+  return [confirmationLabel, carrierText].filter(Boolean).join(' · ')
 }
 
 function chainPhaseLabel(phase: string, locale: LongclawLocale): string {
@@ -8615,28 +8924,32 @@ function ChainHeatVisualization({
   return (
     <div style={chainVizShellStyle}>
       <div style={chainVizGridStyle}>
-        {chainRows.map(row => {
-          const phase = compactText(row.raw.phase)
-          const heat = numberValue(row.raw.heat_score) ?? 0
-          const width = `${Math.max(8, Math.min(100, (heat / maxHeat) * 100))}%`
-          const active = watchlistRowIsActive(row, target)
-          const domains = chainDomainLabels(row)
-          return (
-            <button
-              key={`chain-viz-${row.id}`}
-              type="button"
-              style={active ? chainVizNodeActiveStyle : chainVizNodeStyle}
-              onClick={() => onSelect(row)}
-              title={[
-                row.name,
-                chainSignalLabel(row.raw.trading_signal, locale),
-                domains.join('/'),
-              ].filter(Boolean).join(' · ')}
-            >
-              <div style={chainVizTopLineStyle}>
-                <div style={chainVizTitleStyle}>{row.name}</div>
-                <div style={{ ...chainVizMetricStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
-              </div>
+	        {chainRows.map(row => {
+	          const phase = compactText(row.raw.phase)
+	          const heat = numberValue(row.raw.heat_score) ?? 0
+	          const width = `${Math.max(8, Math.min(100, (heat / maxHeat) * 100))}%`
+	          const active = watchlistRowIsActive(row, target)
+	          const domains = chainDomainLabels(row)
+	          const sectorTitle = sectorTitleForWatchlist(row, locale)
+	          const sectorStatus = sectorStatusForWatchlist(row, locale)
+	          return (
+	            <button
+	              key={`chain-viz-${row.id}`}
+	              type="button"
+	              style={active ? chainVizNodeActiveStyle : chainVizNodeStyle}
+	              onClick={() => onSelect(row)}
+	              title={[
+	                sectorTitle,
+	                row.name !== sectorTitle ? row.name : '',
+	                sectorStatus,
+	                sectorSourceAndConceptForWatchlist(row),
+	                domains.join('/'),
+	              ].filter(Boolean).join(' · ')}
+	            >
+	              <div style={chainVizTopLineStyle}>
+	                <div style={chainVizTitleStyle}>{sectorTitle}</div>
+	                <div style={{ ...chainVizMetricStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+	              </div>
               <div style={chainVizBarTrackStyle}>
                 <div style={{ ...chainVizBarStyle, width, background: chainVizBarColor(phase) }} />
               </div>
@@ -8650,14 +8963,14 @@ function ChainHeatVisualization({
                     <span key={`${row.id}-domain-${domain}`} style={chainVizChipStyle}>{domain}</span>
                   ))}
                 </span>
-              </div>
-              <div style={chainVizMetaStyle}>
-                <span style={{ ...chainVizChipStyle, ...chainPhaseTone(phase) }}>{chainPhaseLabel(phase, locale)}</span>
-                <span style={chainVizChipStyle}>{chainSignalLabel(row.raw.trading_signal, locale)}</span>
-                <span style={chainVizChipStyle}>5m {formatNumber(row.raw.momentum_5m)}</span>
-                <span style={chainVizChipStyle}>15m {formatNumber(row.raw.momentum_15m)}</span>
-                <span style={chainVizChipStyle}>30m {formatNumber(row.raw.momentum_30m)}</span>
-              </div>
+	              </div>
+	              <div style={chainVizMetaStyle}>
+	                <span style={{ ...chainVizChipStyle, ...sectorStatusToneForWatchlist(row) }}>{sectorStatus}</span>
+	                <span style={chainVizChipStyle}>{sectorPrimaryDomainForWatchlist(row)}</span>
+	                <span style={chainVizChipStyle}>5m {formatNumber(row.raw.momentum_5m)}</span>
+	                <span style={chainVizChipStyle}>15m {formatNumber(row.raw.momentum_15m)}</span>
+	                <span style={chainVizChipStyle}>30m {formatNumber(row.raw.momentum_30m)}</span>
+	              </div>
             </button>
           )
         })}
@@ -8739,18 +9052,22 @@ function WatchlistTable({
         const active = watchlistRowIsActive(row, target)
         const cursor = row.id === cursorRowId
         const expanded = activeTab === 'sector_boards' && expandedChainKeys.has(chainRowKey(row))
-        const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
-        const secondMetric = activeTab === 'sector_boards' ? sectorPrimaryDomainForWatchlist(row) : row.dayChange
-        const rowSource = sourceLabelForWatchlist(row)
-        const chainChangeExplain = activeTab === 'sector_boards' ? chainChangeExplainForWatchlist(row, locale) : ''
-        const stockDecision = STOCK_WATCHLIST_TABS.includes(activeTab)
-        const actionLabel = decisionActionLabel(row.decision, locale)
+	        const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
+	        const secondMetric = activeTab === 'sector_boards' ? sectorSourceAndConceptForWatchlist(row) : row.dayChange
+	        const rowSource = sourceLabelForWatchlist(row)
+	        const chainChangeExplain = activeTab === 'sector_boards' ? chainChangeExplainForWatchlist(row, locale) : ''
+	        const sectorTitle = activeTab === 'sector_boards' ? sectorTitleForWatchlist(row, locale) : row.name
+	        const sectorSubline = activeTab === 'sector_boards' ? sectorSublineForWatchlist(row, locale) : ''
+	        const tableActionLine = activeTab === 'sector_boards' ? sectorActionLineForWatchlist(row, locale) : row.traderAction
+	        const stockDecision = STOCK_WATCHLIST_TABS.includes(activeTab)
+        const actionLabel = stockDecision ? stockDisplayAction(row, locale) : decisionActionLabel(row.decision, locale)
         const identityLabel = stockDecision ? tradeIdentityLabelForRow(row, locale) : ''
         const sectorPolicyLabel = stockDecision ? sectorPolicyLabelForRow(row) : ''
-        const chainBrief = stockDecision ? chainBriefForWatchlist(row) : ''
         const stageLabel = stockDecision ? compactText(row.raw.stage_label) || decisionStageLabel(row.decision.stage, locale) : ''
         const traderRead = stockDecision ? traderReadLine(row, locale) : ''
         const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : ''
+        const contextLine = stockDecision ? stockContextLine(row, locale) : ''
+        const displayBadges = stockDecision ? stockDisplayBadges(row) : []
         const stageBadgeStyle = row.decision.opportunitySide === 'risk'
           ? miniSellSignalBadgeStyle
           : row.decision.opportunitySide === 'right'
@@ -8764,17 +9081,24 @@ function WatchlistTable({
               tabIndex={0}
               style={{
                 ...(active ? activeButtonRowStyle : buttonRowStyle),
+                ...(stockDecision ? stockWatchlistButtonRowStyle : {}),
+                ...(stockDecision && active ? stockWatchlistButtonActiveRowExtraStyle : {}),
                 ...(cursor ? { boxShadow: `inset 3px 0 ${terminalTheme.accent}` } : {}),
-              }}
-              title={[
-                row.name,
-                rowSource ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${rowSource}` : '',
-                compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '报价源' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
-                compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间收益源' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
-                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'}: ${sectorPrimaryDomainForWatchlist(row)}` : '',
-                activeTab === 'sector_boards' && chainChangeExplain ? chainChangeExplain : '',
-                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
-                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+	              }}
+	              title={[
+	                sectorTitle,
+	                activeTab === 'sector_boards' && row.name !== sectorTitle ? `${locale === 'zh-CN' ? '原链路' : 'Raw chain'}: ${row.name}` : '',
+	                rowSource ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${rowSource}` : '',
+	                compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '报价源' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
+	                compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间收益源' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
+	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'}: ${sectorPrimaryDomainForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && sectorConceptOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '概念叠加' : 'Concept overlay'}: ${sectorConceptOverlayForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && sectorConceptOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源概念' : 'Source concepts'}: ${sectorConceptOverlayDetailForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && sectorThemeOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '主题叠加' : 'Theme overlay'}: ${sectorThemeOverlayForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && sectorThemeOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源主题' : 'Source themes'}: ${sectorThemeOverlayDetailForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && chainChangeExplain ? chainChangeExplain : '',
+	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
                 stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
                 stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '证据' : 'Evidence'}: ${evidenceLine}` : '',
                 row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${row.rankReason}` : '',
@@ -8788,10 +9112,13 @@ function WatchlistTable({
                   onSelect(row)
                 }
               }}
-            >
-              <div style={watchlistNameCellStyle}>
-                <div style={watchlistNameTitleRowStyle}>
-                  <div style={watchlistNameStyle}>{row.name}</div>
+	            >
+	              <div style={stockDecision ? stockWatchlistNameCellStyle : watchlistNameCellStyle}>
+	                <div style={watchlistNameTitleRowStyle}>
+	                  <div style={watchlistNameStyle}>{sectorTitle}</div>
+                  {stockDecision && row.code ? (
+                    <div style={stockWatchlistTitleMetaStyle}>{row.code}</div>
+                  ) : null}
                   {manualClue ? (
                     <button
                       type="button"
@@ -8805,21 +9132,43 @@ function WatchlistTable({
                         event.stopPropagation()
                       }}
                       onClick={event => handleManualClueDeleteClick(event, row)}
-                    >
+	                    >
                       {armedDeleteRowId === row.id ? (locale === 'zh-CN' ? '确认' : 'Sure') : '×'}
                     </button>
                   ) : null}
-                </div>
-                <div style={watchlistSubStyle}>
-                  {[stockDecision ? identityLabel : row.typeLabel, sectorPolicyLabel, stockDecision ? (chainBrief || row.code) : row.code, stockDecision ? stageLabel : '', ...(!stockDecision ? row.tags.slice(0, 2) : [])].filter(Boolean).join(' · ')}
-                </div>
-                {stockDecision || row.explanation || row.traderAction || row.rankLabel || row.rankReason ? (
-                  <div style={watchlistSubStyle}>
-                    {stockDecision
-                      ? traderRead
-                      : [row.rankLabel, row.traderAction, chainChangeExplain || row.rankReason || row.explanation].filter(Boolean).join(' · ')}
-                  </div>
-                ) : null}
+	                </div>
+                {stockDecision ? (
+                  <>
+                    <div style={stockWatchlistBadgeRowStyle}>
+                      {displayBadges.length > 0
+                        ? displayBadges.map(badge => (
+                          <span key={`${row.id}-display-${badge.tone}-${badge.label}`} style={stockDisplayBadgeStyle(badge.tone)}>
+                            {badge.label}
+                          </span>
+                        ))
+                        : [identityLabel, sectorPolicyLabel, stageLabel].filter(Boolean).map(label => (
+                          <span key={`${row.id}-fallback-${label}`} style={miniNeutralSignalBadgeStyle}>{label}</span>
+                        ))}
+                    </div>
+                    <div style={stockWatchlistSummaryStyle}>{traderRead || actionLabel}</div>
+                    {contextLine ? (
+                      <div style={stockWatchlistContextStyle}>{contextLine}</div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div style={watchlistSubStyle}>
+                      {activeTab === 'sector_boards'
+                        ? sectorSubline
+                        : [row.typeLabel, row.code, ...row.tags.slice(0, 2)].filter(Boolean).join(' · ')}
+                    </div>
+	                    {row.explanation || tableActionLine || row.rankLabel || row.rankReason ? (
+	                      <div style={watchlistSubStyle}>
+	                        {[row.rankLabel, tableActionLine, chainChangeExplain || row.rankReason || row.explanation].filter(Boolean).join(' · ')}
+	                      </div>
+	                    ) : null}
+                  </>
+                )}
               </div>
               <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? percentTone(firstMetric) : {}) }}>{firstMetric}</div>
               <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? {} : percentTone(secondMetric)) }}>{secondMetric}</div>
@@ -8830,10 +9179,15 @@ function WatchlistTable({
                   <span style={mutedTwoLineStyle}>{row.rankReason || row.traderAction || actionLabel}</span>
                 ) : stockDecision ? (
                   <span style={stockDecisionBadgeStackStyle}>
-                    {sectorPolicyLabel ? (
-                      <span style={miniNeutralSignalBadgeStyle}>{sectorPolicyLabel}</span>
-                    ) : null}
                     <span style={stageBadgeStyle}>{actionLabel}</span>
+                    {displayBadges
+                      .filter(badge => ['risk', 'hot', 'wait'].includes(badge.tone))
+                      .slice(0, 2)
+                      .map(badge => (
+                        <span key={`${row.id}-action-${badge.tone}-${badge.label}`} style={stockDisplayBadgeStyle(badge.tone)}>
+                          {badge.label}
+                        </span>
+                      ))}
                   </span>
                 ) : row.signalBadges.length > 0 ? (
                   <span style={signalBadgeRowStyle}>

@@ -33,6 +33,7 @@ HARNESS_BIN="${LONGCLAW_HARNESS_BIN:-}"
 ROUTING_CONTROLLER_BIN="${LONGCLAW_ROUTING_CONTROLLER_BIN:-}"
 ROADMAP_SYNC_BIN="${LONGCLAW_ROADMAP_SYNC_BIN:-}"
 WECHAT_CONTROL_BIN="${LONGCLAW_WECHAT_CONTROL_BIN:-}"
+WECHAT_SUMMARY_POLICY="${LONGCLAW_WECHAT_SUMMARY_POLICY:-critical}"
 ROADMAP_QUEUE_FILE="${LONGCLAW_ROADMAP_QUEUE_FILE:-$RUNTIME_STATE_DIR/roadmap-queue.json}"
 HERMES_REPO="${LONGCLAW_HERMES_REPO:-$REPO_ROOT/hermes-agent}"
 KNOWLEDGE_VAULT_DIR="${LONGCLAW_KNOWLEDGE_VAULT:-$HOME/Desktop/知识库}"
@@ -48,6 +49,31 @@ ts() {
 
 log() {
   printf '[%s] %s\n' "$(ts)" "$*" >>"$LOG_FILE"
+}
+
+should_send_wechat_summary() {
+  case "$WECHAT_SUMMARY_POLICY" in
+    always) return 0 ;;
+    never) return 1 ;;
+    actionable)
+      (( sync_issues > 0 )) && return 0
+      (( auto_commits > 0 )) && return 0
+      (( cloud_pushes > 0 )) && return 0
+      [[ "$routing_status" == "failed" ]] && return 0
+      [[ "$harness_status" == "failed" ]] && return 0
+      [[ "$roadmap_sync_status" == "failed" ]] && return 0
+      return 1
+      ;;
+    critical|"") ;;
+    *)
+      log "unknown LONGCLAW_WECHAT_SUMMARY_POLICY=$WECHAT_SUMMARY_POLICY; using critical"
+      ;;
+  esac
+
+  [[ "$routing_status" == "failed" ]] && return 0
+  [[ "$harness_status" == "failed" ]] && return 0
+  [[ "$roadmap_sync_status" == "failed" ]] && return 0
+  return 1
 }
 
 run_git_timed() {
@@ -1390,22 +1416,27 @@ main() {
     result_text="$result_text"$'\n'"⚠️ Roadmap: 同步失败，请查看 scheduler.task.log"
   fi
 
-  wechat_summary_output="$(run_wechat_summary_send || true)"
-  if [[ "$wechat_summary_output" == *'"status": "sent"'* ]] || [[ "$wechat_summary_output" == *'"status":"sent"'* ]]; then
-    wechat_summary_status="sent"
-    result_text="$result_text"$'\n'"💬 WeChat: 已在有效 context window 内发送本轮摘要"
-  elif [[ "$wechat_summary_output" == *'"reason": "window_unavailable"'* ]] || [[ "$wechat_summary_output" == *'"reason":"window_unavailable"'* ]]; then
-    wechat_summary_status="skipped_window_unavailable"
-    result_text="$result_text"$'\n'"🪟 WeChat: 当前不在 live context window，摘要仅保留在本地 runtime / dashboard"
-  elif [[ "$wechat_summary_output" == *'"status": "skipped"'* ]] || [[ "$wechat_summary_output" == *'"status":"skipped"'* ]]; then
-    wechat_summary_status="skipped"
-    result_text="$result_text"$'\n'"💬 WeChat: 本轮摘要未重复发送，已保留本地状态"
-  elif [[ "$wechat_summary_output" == *'"status": "failed"'* ]] || [[ "$wechat_summary_output" == *'"status":"failed"'* ]]; then
-    wechat_summary_status="failed"
-    result_text="$result_text"$'\n'"⚠️ WeChat: 摘要发送失败，状态已保留在本地 runtime / dashboard"
+  if should_send_wechat_summary; then
+    wechat_summary_output="$(run_wechat_summary_send || true)"
+    if [[ "$wechat_summary_output" == *'"status": "sent"'* ]] || [[ "$wechat_summary_output" == *'"status":"sent"'* ]]; then
+      wechat_summary_status="sent"
+      result_text="$result_text"$'\n'"💬 WeChat: 已发送本轮可执行摘要"
+    elif [[ "$wechat_summary_output" == *'"reason": "window_unavailable"'* ]] || [[ "$wechat_summary_output" == *'"reason":"window_unavailable"'* ]]; then
+      wechat_summary_status="skipped_window_unavailable"
+      result_text="$result_text"$'\n'"🪟 WeChat: 当前不在 live context window，摘要仅保留在本地 runtime / dashboard"
+    elif [[ "$wechat_summary_output" == *'"status": "skipped"'* ]] || [[ "$wechat_summary_output" == *'"status":"skipped"'* ]]; then
+      wechat_summary_status="skipped"
+      result_text="$result_text"$'\n'"💬 WeChat: 本轮摘要未重复发送，已保留本地状态"
+    elif [[ "$wechat_summary_output" == *'"status": "failed"'* ]] || [[ "$wechat_summary_output" == *'"status":"failed"'* ]]; then
+      wechat_summary_status="failed"
+      result_text="$result_text"$'\n'"⚠️ WeChat: 摘要发送失败，状态已保留在本地 runtime / dashboard"
+    else
+      wechat_summary_status="unknown"
+      result_text="$result_text"$'\n'"⚠️ WeChat: 摘要结果未知，请查看 scheduler.task.log"
+    fi
   else
-    wechat_summary_status="unknown"
-    result_text="$result_text"$'\n'"⚠️ WeChat: 摘要结果未知，请查看 scheduler.task.log"
+    wechat_summary_status="skipped_not_actionable"
+    result_text="$result_text"$'\n'"💬 WeChat: 非关键系统摘要已静音，仅保留本地状态"
   fi
 
   if run_roadmap_sync; then

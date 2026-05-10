@@ -1522,7 +1522,9 @@ async function collectRuntimeStatus(
     process.env.LONGCLAW_AGENT_OS_BASE_URL ?? process.env.LONGCLAW_HERMES_AGENT_OS_BASE_URL
   const dueDiligenceBaseUrl = process.env.LONGCLAW_DUE_DILIGENCE_BASE_URL
   const signalsStateRoot = process.env.LONGCLAW_SIGNALS_STATE_ROOT
-  const signalsWebBaseUrl = process.env.LONGCLAW_SIGNALS_WEB_BASE_URL
+  const configuredSignalsWebBaseUrl = process.env.LONGCLAW_SIGNALS_WEB_BASE_URL?.replace(/\/$/, '')
+  const defaultSignalsWebBaseUrl = `http://127.0.0.1:${process.env.LONGCLAW_SIGNALS_WEB_PORT ?? '8011'}`
+  const signalsWebCandidateUrl = configuredSignalsWebBaseUrl || defaultSignalsWebBaseUrl
   const acpBridge = inspectConfiguredAcpBridge()
   const currentSeatPreference = getLocalRuntimeSeatPreference()
   const localRuntimeSeat = await probeLocalRuntimeSeat(currentSeatPreference)
@@ -1531,7 +1533,7 @@ async function collectRuntimeStatus(
   const duePackVisible = packs.some(pack => pack.pack_id === 'due_diligence')
   const signalsPackVisible = packs.some(pack => pack.pack_id === 'signals')
   const normalizedCoreBaseUrl = coreBaseUrl?.replace(/\/$/, '')
-  const [coreHealthReady, dueHealthReady] = await Promise.all([
+  const [coreHealthReady, dueHealthReady, signalsWebReady] = await Promise.all([
     // `getOverview()` can fall back to a synthesized local summary when Hermes is down,
     // so connectivity must come from a direct probe rather than the fulfilled state alone.
     probeHttpOk(
@@ -1544,7 +1546,9 @@ async function collectRuntimeStatus(
         ? `${dueDiligenceBaseUrl.replace(/\/$/, '')}/healthz`
         : undefined,
     ),
+    probeHttpOk(`${signalsWebCandidateUrl}/api/workbench/shell`),
   ])
+  const signalsWebBaseUrl = configuredSignalsWebBaseUrl || (signalsWebReady ? signalsWebCandidateUrl : '')
 
   return {
     stack_env_loaded: runtimeStackEnv.loaded,
