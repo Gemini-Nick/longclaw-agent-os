@@ -34,6 +34,16 @@ type AIFactorRecord = Record<string, unknown> & {
   title: string
   thesis: string
   status: string
+  research_mode: string
+  factor_origin: string
+  factor_family: Record<string, unknown>
+  industry_beta: Record<string, unknown>
+  expectation_alpha: Record<string, unknown>
+  technical_confirmation: Record<string, unknown>
+  strategy_integration: Record<string, unknown>
+  factor_exposures: Record<string, unknown>
+  validation_status: string
+  risk_overlay_flags: string[]
   last_verified_at: string
   sample_count: number
   win_rate: number
@@ -91,6 +101,7 @@ type ResearchWorkflow = {
 }
 
 type WorkflowStageKey = 'idea' | 'signals' | 'event' | 'validation' | 'lifecycle'
+type WorkbenchMode = 'research_first' | 'signal_first'
 
 type PortfolioLeg = {
   group: string
@@ -180,6 +191,8 @@ type RhythmState = {
 type AIFactorFactoryPayload = Record<string, unknown> & {
   ideas?: unknown
   factors?: unknown
+  candidate_factor_ideas?: unknown
+  factor_idea_queue?: unknown
   drafts?: unknown
   validation_results?: unknown
   failure_samples?: unknown
@@ -258,6 +271,48 @@ const activeIdeaCardStyle: React.CSSProperties = {
   ...ideaCardStyle,
   borderColor: 'rgba(208, 138, 84, 0.44)',
   background: 'rgba(208, 138, 84, 0.08)',
+}
+
+const modeSwitchStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 8,
+}
+
+const modeButtonStyle = (active: boolean): React.CSSProperties => ({
+  ...surfaceStyles.listRow,
+  ...surfaceStyles.listRowInteractive,
+  borderColor: active ? 'rgba(208, 138, 84, 0.55)' : palette.border,
+  background: active ? 'rgba(208, 138, 84, 0.10)' : palette.surface,
+  cursor: 'pointer',
+  alignItems: 'flex-start',
+})
+
+const strategyWorkbenchGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(360px, 0.82fr) minmax(520px, 1.18fr)',
+  gap: 12,
+  alignItems: 'start',
+}
+
+const strategyInsightGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 8,
+}
+
+const strategyTwoColumnStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+  gap: 12,
+  alignItems: 'start',
+}
+
+const candidateQueueGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(360px, 0.92fr) minmax(460px, 1.08fr)',
+  gap: 12,
+  alignItems: 'start',
 }
 
 const cardHeaderStyle: React.CSSProperties = {
@@ -541,7 +596,36 @@ const fallbackFactor: AIFactorRecord = {
   thesis:
     '跟踪美股 AI 硬件链的隔夜强度、订单/资本开支线索与 A 股光模块、CPO、存储方向的开盘承接和量价确认。',
   status: 'idea',
-  last_verified_at: '未验证',
+  research_mode: 'research_first',
+  factor_origin: 'industry_research',
+  factor_family: {
+    family_id: 'industry_factor.ai_hardware',
+    label: 'AI硬件行业因子',
+    mode: 'research_first',
+  },
+  industry_beta: {
+    name: 'ai_hardware_industry_chain',
+    label: 'AI硬件产业链行业 beta',
+  },
+  expectation_alpha: {
+    name: 'ai_expectation_revision',
+    label: 'AI 产业预期修正 alpha',
+  },
+  technical_confirmation: {
+    chan: '一买/二买/三买、中枢突破、背驰',
+    macd: 'MACD 面积和背驰确认趋势是否破坏',
+  },
+  strategy_integration: {
+    outputs: ['factor_exposure', 'factor_origin', 'validation_status'],
+  },
+  factor_exposures: {
+    primary: 'industry_factor.ai_hardware',
+    mode: 'research_first',
+    origin: 'industry_research',
+  },
+  validation_status: 'not_run',
+  risk_overlay_flags: ['gap_overheat', 'chain_divergence', 'support_break_without_reclaim'],
+  last_verified_at: '未复盘',
   sample_count: 0,
   win_rate: 0,
   avg_return: 0,
@@ -555,12 +639,12 @@ const fallbackFactor: AIFactorRecord = {
   draft:
     '输入：NVDA/AMD/AVGO/SMCI 组合隔夜收益、SOX 指数强度、AI server 供应链新闻强度；映射：A 股光模块、CPO、HBM/存储、PCB 代表板块；触发：美股硬件强势且 A 股开盘 30 分钟放量承接。',
   validation_summary:
-    '未运行验证。样本数、胜率、收益、IC 和失败样本必须来自 Signals 验证 artifact。',
+    '未完成样本复盘。样本数、胜率、收益、IC 和失败样本必须来自 Signals 复盘结果。',
   ai_explanation:
     'AI 解释重点不是给单票结论，而是把海外硬件景气变化转成 A 股产业链观察假设，并要求盘中量价确认后才进入观察池。',
   live_status: 'not_verified',
   reproducibility_summary:
-    'US T close 只能影响 A股 T+1 及之后；验证需固定数据快照、交易日历、成本、滑点和股票池。',
+    'US T close 只能影响 A股 T+1 及之后；复盘需固定数据快照、交易日历、成本、滑点和股票池。',
   paper_account: {
     enabled: false,
     mode: 'observe_only',
@@ -619,15 +703,15 @@ const fallbackFactor: AIFactorRecord = {
     lifecycle: [
       { state: 'created', action: '保存因子想法、标的池和参数', gate: 'factor_id 唯一，参数可复现' },
       { state: 'inited', action: '固定数据快照、交易日历、成本、滑点和 as-of 边界', gate: 'US T close 只能影响 A股 T+1' },
-      { state: 'validated', action: '运行 T+1/T+5/T+10/T+20、IC、分层收益、MFE/MAE、失败样本', gate: '有验证 artifact 和样本数' },
-      { state: 'trading_false', action: '通过门禁后进入 paper factor account', gate: '只观察，不自动交易' },
+      { state: 'sample_replayed', action: '复盘 T+1/T+5/T+10/T+20、IC、分层收益、MFE/MAE、失败样本', gate: '有样本复盘结果和样本数' },
+      { state: 'observation_ready', action: '样本复盘通过后进入观察账户', gate: '只观察，不自动交易' },
       { state: 'disabled', action: '失败样本或失效条件触发后停用', gate: '不会污染策略页盘前池' },
     ],
     local_simulation: {
       data: 'Signals 本地数据快照；美股/A股日历按 as-of 固定。',
       account: 'paper factor account；记录模拟持仓、收益、回撤、暴露和换手。',
       portfolio: '美股篮子只做触发源，A股反应池才做观察组合。',
-      storage: '实验账本写入 ai_factor_experiment_ledger，发布门禁写入 strategy_snapshot 前。',
+      storage: '研究账本写入 ai_factor_experiment_ledger，进入观察池前同步 strategy_snapshot。',
     },
   },
   portfolio: {
@@ -1116,12 +1200,28 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
   const derivedLiveStatus = verified
     ? (booleanValue(raw.live_enabled ?? raw.enabled ?? raw.live, false) ? 'live_enabled' : 'paper_only')
     : 'not_verified'
+  const factorFamily = asRecord(raw.factor_family)
+  const industryBeta = asRecord(raw.industry_beta)
+  const expectationAlpha = asRecord(raw.expectation_alpha)
+  const technicalConfirmation = asRecord(raw.technical_confirmation)
+  const strategyIntegration = asRecord(raw.strategy_integration)
+  const factorExposures = asRecord(raw.factor_exposures)
   return {
     ...raw,
     factor_id: textValue(raw.factor_id ?? raw.id ?? raw.idea_id, `ai-factor-${index + 1}`),
     title: textValue(raw.title ?? raw.name ?? raw.summary, fallbackFactor.title),
     thesis: textValue(raw.thesis ?? raw.hypothesis ?? raw.description ?? raw.idea, fallbackFactor.thesis),
     status: textValue(raw.status ?? raw.state, 'idea'),
+    research_mode: textValue(raw.research_mode ?? raw.mode, fallbackFactor.research_mode),
+    factor_origin: textValue(raw.factor_origin ?? raw.origin, fallbackFactor.factor_origin),
+    factor_family: Object.keys(factorFamily).length > 0 ? factorFamily : fallbackFactor.factor_family,
+    industry_beta: Object.keys(industryBeta).length > 0 ? industryBeta : fallbackFactor.industry_beta,
+    expectation_alpha: Object.keys(expectationAlpha).length > 0 ? expectationAlpha : fallbackFactor.expectation_alpha,
+    technical_confirmation: Object.keys(technicalConfirmation).length > 0 ? technicalConfirmation : fallbackFactor.technical_confirmation,
+    strategy_integration: Object.keys(strategyIntegration).length > 0 ? strategyIntegration : fallbackFactor.strategy_integration,
+    factor_exposures: Object.keys(factorExposures).length > 0 ? factorExposures : fallbackFactor.factor_exposures,
+    validation_status: textValue(validation.status ?? raw.validation_status, fallbackFactor.validation_status),
+    risk_overlay_flags: stringArrayValue(raw.risk_overlay_flags ?? raw.risk_tags),
     last_verified_at: textValue(
       raw.last_verified_at ?? raw.last_validation_at ?? raw.updated_at,
       'N/A',
@@ -1146,8 +1246,8 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
     validation_summary: textValue(
       feedback.summary ?? metrics.summary ?? raw.validation_summary ?? raw.validation_result ?? raw.backtest_summary,
       verified
-        ? '验证 artifact 已生成；指标来自 Signals 因子研发内核。'
-        : '未运行验证。没有验证 artifact，因此不显示胜率和收益。',
+        ? '样本复盘已生成；指标来自 Signals 因子研发内核。'
+        : '未完成样本复盘。没有复盘结果，因此不显示胜率和收益。',
     ),
     ai_explanation: joinedText(
       raw.ai_explanation ?? raw.explanation ?? raw.rationale,
@@ -1199,6 +1299,31 @@ function normalizeFactoryFactors(
     ...factor,
     signals_web_base_url: signalsWebBaseUrl ?? '',
   }))
+}
+
+function normalizeCandidateFactorIdeas(
+  dashboard: SignalsDashboard | null,
+  signalsWebBaseUrl?: string,
+): AIFactorRecord[] {
+  const rawFactoryValue = (dashboard as (SignalsDashboard & { ai_factor_factory?: unknown }) | null)
+    ?.ai_factor_factory
+  const rawFactory = asRecord(rawFactoryValue) as AIFactorFactoryPayload
+  const rawCandidates = [
+    ...asRecordArray(rawFactory.candidate_factor_ideas),
+    ...asRecordArray(rawFactory.factor_idea_queue),
+  ]
+  const seen = new Set<string>()
+  return rawCandidates
+    .map(normalizeFactor)
+    .filter(factor => {
+      if (seen.has(factor.factor_id)) return false
+      seen.add(factor.factor_id)
+      return true
+    })
+    .map(factor => ({
+      ...factor,
+      signals_web_base_url: signalsWebBaseUrl ?? '',
+    }))
 }
 
 function hasFactorPayload(record: Record<string, unknown>): boolean {
@@ -1295,11 +1420,11 @@ function mergeFactorOverrides(
 }
 
 function metricItems(factor: AIFactorRecord, locale: LongclawLocale) {
-  const notVerified = locale === 'zh-CN' ? '未验证' : 'Unverified'
+  const notVerified = locale === 'zh-CN' ? '未复盘' : 'Not replayed'
   const valueOrUnverified = (value: string) => factor.verified ? value : notVerified
   return [
     {
-      label: locale === 'zh-CN' ? '最近验证' : 'Last verified',
+      label: locale === 'zh-CN' ? '最近复盘' : 'Last replay',
       value: factor.verified ? factor.last_verified_at : notVerified,
     },
     {
@@ -1338,21 +1463,21 @@ function metricItems(factor: AIFactorRecord, locale: LongclawLocale) {
 function actionLabels(locale: LongclawLocale) {
   if (locale !== 'zh-CN') {
     return {
-      draft: 'Generate mapping',
-      rhythm: 'Fuse K-lines',
-      validate: 'Run historical validation',
+      draft: 'Build factor definition',
+      rhythm: 'Review price rhythm',
+      validate: 'Replay samples',
       failures: 'Failure samples',
-      observe: 'Add to watch pool',
-      disable: 'Disable factor',
+      observe: 'Move to observation',
+      disable: 'Stop tracking',
     }
   }
   return {
-    draft: '生成映射草稿',
-    rhythm: '融合K线节奏',
-    validate: '运行历史验证',
+    draft: '生成因子定义',
+    rhythm: '推演K线节奏',
+    validate: '复盘历史样本',
     failures: '查看失败样本',
-    observe: '加入观察池',
-    disable: '停用因子',
+    observe: '进入观察池',
+    disable: '停止跟踪',
   }
 }
 
@@ -1362,16 +1487,16 @@ function researchSteps(locale: LongclawLocale): Array<{ id: WorkflowStageKey; la
       { id: 'idea', label: 'Idea', detail: 'Trading hypothesis' },
       { id: 'signals', label: 'Signals', detail: 'czsc atomic signals' },
       { id: 'event', label: 'Event', detail: 'all / any / not' },
-      { id: 'validation', label: 'Validation', detail: 'Alphalens-style evidence' },
+      { id: 'validation', label: 'Sample replay', detail: 'Alphalens-style evidence' },
       { id: 'lifecycle', label: 'Lifecycle', detail: 'init / observe / disable' },
     ]
   }
   return [
-    { id: 'idea', label: '写想法', detail: '交易假设' },
-    { id: 'signals', label: '信号层', detail: 'czsc 原子信号' },
-    { id: 'event', label: '事件层', detail: 'all / any / not' },
-    { id: 'validation', label: '验证层', detail: '分层与失败样本' },
-    { id: 'lifecycle', label: '生命周期', detail: '初始化/观察/停用' },
+    { id: 'idea', label: '提出假设', detail: '行业 beta / 预期 alpha' },
+    { id: 'signals', label: '拆量价证据', detail: '趋势、震荡、背驰、量能' },
+    { id: 'event', label: '形成观察条件', detail: '必须满足/任选确认/风险覆盖' },
+    { id: 'validation', label: '复盘样本', detail: '收益、失败、回撤、扩散率' },
+    { id: 'lifecycle', label: '策略赋能', detail: '候选排序/观察池/风险覆盖' },
   ]
 }
 
@@ -1400,17 +1525,55 @@ function gateItems(factor: AIFactorRecord, locale: LongclawLocale) {
   const approved = ['observable', 'published'].includes(factor.status) || factor.live_enabled
   if (locale !== 'zh-CN') {
     return [
-      { label: 'Validation artifact exists', passed: verified },
+      { label: 'Sample replay evidence exists', passed: verified },
       { label: 'Failure samples reviewed', passed: failuresReviewed },
       { label: 'Trader approved observation', passed: approved },
       { label: 'No auto-order instruction', passed: true },
     ]
   }
   return [
-    { label: '已有验证 artifact 和样本数', passed: verified },
+    { label: '已有样本复盘和样本数', passed: verified },
     { label: '失败样本已复核并形成边界', passed: failuresReviewed },
     { label: '交易员允许进入观察池', passed: approved },
     { label: 'AI 不产生自动下单指令', passed: true },
+  ]
+}
+
+function researchModeLabel(mode: string, locale: LongclawLocale): string {
+  if (mode === 'signal_first') {
+    return locale === 'zh-CN' ? '技术发现因子' : 'Signal-first'
+  }
+  if (mode === 'research_first') {
+    return locale === 'zh-CN' ? '投研发现因子' : 'Research-first'
+  }
+  return humanizeTokenLocale(locale, mode || 'unknown')
+}
+
+function factorScoreItems(factor: AIFactorRecord, locale: LongclawLocale) {
+  const assessment = asRecord(factor.beta_alpha_assessment)
+  const breakdown = asRecord(factor.factor_score_breakdown)
+  const technical = asRecord(factor.technical_confirmation)
+  const score = (key: string) => numberValue(
+    factor[key] ??
+      assessment[key] ??
+      breakdown[key] ??
+      technical[key],
+    0,
+  )
+  const text = (value: number) => value > 0 ? value.toFixed(1) : (locale === 'zh-CN' ? '待复盘' : 'Pending')
+  return [
+    {
+      label: locale === 'zh-CN' ? '行业 beta' : 'Industry beta',
+      value: text(score('industry_beta_score')),
+    },
+    {
+      label: locale === 'zh-CN' ? '预期 alpha' : 'Expectation alpha',
+      value: text(score('expectation_alpha_score')),
+    },
+    {
+      label: locale === 'zh-CN' ? '技术确认' : 'Technical confirmation',
+      value: text(score('technical_confirmation_score')),
+    },
   ]
 }
 
@@ -1573,7 +1736,7 @@ function FailureSamplePreview({
             <div style={fieldValueStyle}>
               {textValue(
                 row.reason ?? row.title,
-                locale === 'zh-CN' ? '验证后回看边界。' : 'Review boundary after validation.',
+                locale === 'zh-CN' ? '复盘后回看边界。' : 'Review boundary after sample replay.',
               )}
             </div>
           </div>
@@ -1607,11 +1770,11 @@ function PaperAccountPanel({
     },
     {
       label: locale === 'zh-CN' ? '累计收益' : 'Total return',
-      value: enabled ? signedPercentText(numberValue(paper.total_return, 0)) : locale === 'zh-CN' ? '未验证' : 'Not verified',
+      value: enabled ? signedPercentText(numberValue(paper.total_return, 0)) : locale === 'zh-CN' ? '未复盘' : 'Not replayed',
     },
     {
       label: locale === 'zh-CN' ? '最大回撤' : 'Max drawdown',
-      value: enabled ? signedPercentText(numberValue(paper.max_drawdown, 0)) : locale === 'zh-CN' ? '未验证' : 'Not verified',
+      value: enabled ? signedPercentText(numberValue(paper.max_drawdown, 0)) : locale === 'zh-CN' ? '未复盘' : 'Not replayed',
     },
     {
       label: locale === 'zh-CN' ? '模拟暴露' : 'Exposure',
@@ -1634,7 +1797,7 @@ function PaperAccountPanel({
           <span style={statusBadgeStyle(enabled ? 'paper_only' : 'not_verified')}>
             {enabled
               ? locale === 'zh-CN' ? '模拟观察中' : 'Paper observation'
-              : locale === 'zh-CN' ? '等待验证' : 'Waiting validation'}
+              : locale === 'zh-CN' ? '等待样本复盘' : 'Waiting sample replay'}
           </span>
           <span style={statusBadgeStyle(booleanValue(paper.no_auto_order, true) ? 'disabled' : 'risk')}>
             {locale === 'zh-CN' ? '不自动下单' : 'No auto order'}
@@ -1644,7 +1807,7 @@ function PaperAccountPanel({
           {equityCurve.length > 0
             ? `${locale === 'zh-CN' ? '权益曲线样本' : 'Equity curve points'}: ${equityCurve.length}`
             : locale === 'zh-CN'
-              ? '运行验证后生成模拟权益曲线。'
+              ? '复盘样本后生成模拟权益曲线。'
               : 'Run validation to generate a paper equity curve.'}
         </div>
       </div>
@@ -1745,7 +1908,7 @@ function ResearchWorkflowPanel({
   const validationRequirements = locale === 'zh-CN'
     ? [
         '固定 US T 收盘 -> A股 T+1 as-of 边界',
-        '计算 T+1/T+5/T+10/T+20 forward return',
+        '复盘 T+1/T+5/T+10/T+20 后续收益',
         '输出 IC、Rank IC、分位收益和 long-short spread',
         '输出 MFE/MAE、turnover、行业/概念分组表现',
         '沉淀失败样本，用于回到信号/事件层修正',
@@ -1776,7 +1939,7 @@ function ResearchWorkflowPanel({
           </div>
           <div style={actionRowStyle}>
             <button type="button" style={secondaryButtonStyle} onClick={() => onStageChange('event')}>
-              {locale === 'zh-CN' ? '编成事件' : 'Compose event'}
+              {locale === 'zh-CN' ? '形成观察条件' : 'Build observation setup'}
             </button>
           </div>
         </div>
@@ -1788,16 +1951,16 @@ function ResearchWorkflowPanel({
         <div style={columnStyle}>
           <div style={workflowContentGridStyle}>
             <WorkflowField
-              label={locale === 'zh-CN' ? 'czsc Operate' : 'czsc Operate'}
+              label={locale === 'zh-CN' ? '观察方向' : 'Observation side'}
               value={<span style={statusBadgeStyle('specified')}>{factor.workflow.event.operate}</span>}
             />
             <WorkflowField
-              label={locale === 'zh-CN' ? '事件输出' : 'Event output'}
+              label={locale === 'zh-CN' ? '条件成立后' : 'When conditions hold'}
               value={factor.workflow.event.next}
             />
-            <WorkflowField label="signals_all" value={<TokenList tokens={factor.workflow.event.signals_all} />} />
-            <WorkflowField label="signals_any" value={<TokenList tokens={factor.workflow.event.signals_any} />} />
-            <WorkflowField label="signals_not" value={<TokenList tokens={factor.workflow.event.signals_not} />} />
+            <WorkflowField label={locale === 'zh-CN' ? '必须满足' : 'Must hold'} value={<TokenList tokens={factor.workflow.event.signals_all} />} />
+            <WorkflowField label={locale === 'zh-CN' ? '任选确认' : 'Any confirmation'} value={<TokenList tokens={factor.workflow.event.signals_any} />} />
+            <WorkflowField label={locale === 'zh-CN' ? '风险排除' : 'Risk exclusions'} value={<TokenList tokens={factor.workflow.event.signals_not} />} />
             <div style={fieldBoxStyle}>
               <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '交易观察' : 'Trade observation'}</div>
               {Object.entries(factor.workflow.trade_observation).map(([key, value]) => (
@@ -1821,7 +1984,7 @@ function ResearchWorkflowPanel({
               payloadOverrides={ideaPayload}
             />
             <button type="button" style={secondaryButtonStyle} onClick={() => onStageChange('validation')}>
-              {locale === 'zh-CN' ? '去验证' : 'Go to validation'}
+              {locale === 'zh-CN' ? '去复盘样本' : 'Go to sample replay'}
             </button>
           </div>
         </div>
@@ -1943,7 +2106,7 @@ function ResearchWorkflowPanel({
             disabled={!String(ideaPayload.idea ?? '').trim()}
           />
           <button type="button" style={secondaryButtonStyle} onClick={() => onStageChange('signals')}>
-            {locale === 'zh-CN' ? '进入信号层' : 'Go to signals'}
+            {locale === 'zh-CN' ? '拆量价证据' : 'Break down evidence'}
           </button>
         </div>
       </div>
@@ -1959,7 +2122,7 @@ function ResearchWorkflowPanel({
           </h2>
           <div style={chromeStyles.subtleText}>
             {locale === 'zh-CN'
-              ? '从交易想法开始，逐层生成 signal、event、验证证据和观察生命周期。'
+              ? '从行业故事开始，逐层拆成量价证据、观察条件、样本复盘和策略使用。'
               : 'Start from an idea, then build signals, event, evidence, and lifecycle gates.'}
           </div>
         </div>
@@ -2205,7 +2368,7 @@ function KlineFusionPanel({ factor, locale }: { factor: AIFactorRecord; locale: 
       title={locale === 'zh-CN' ? 'K线融合与路径样本' : 'K-line fusion and path samples'}
       subtitle={
         locale === 'zh-CN'
-          ? 'demo 只验证前台交互路径；真实指标必须来自历史验证 artifact。'
+          ? 'demo 只检查前台交互路径；真实指标必须来自历史样本复盘。'
           : 'Demo validates the UI path only; real metrics must come from validation artifacts.'
       }
     >
@@ -2272,11 +2435,11 @@ function ObservationPanel({
   const gate = gateItems(factor, locale)
   return (
     <Section
-      title={locale === 'zh-CN' ? '验证与观察账户' : 'Validation and paper account'}
+      title={locale === 'zh-CN' ? '样本复盘与观察账户' : 'Sample replay and paper account'}
       subtitle={
         locale === 'zh-CN'
-          ? '只有验证、批准、启用同时满足，才进入策略页盘前池。'
-          : 'Only verified, approved, and enabled factors enter the strategy pre-market pool.'
+          ? '只有样本复盘、人工确认、观察启用同时满足，才进入策略页盘前池。'
+          : 'Only sample replay, trader review, and observation enablement enter the strategy pre-market pool.'
       }
       actions={
         <div style={actionRowStyle}>
@@ -2348,6 +2511,271 @@ function ObservationPanel({
   )
 }
 
+function WorkbenchModeSwitch({
+  mode,
+  locale,
+  onChange,
+}: {
+  mode: WorkbenchMode
+  locale: LongclawLocale
+  onChange: (mode: WorkbenchMode) => void
+}) {
+  const items: Array<{ mode: WorkbenchMode; title: string; detail: string }> = locale === 'zh-CN'
+    ? [
+        { mode: 'research_first', title: '从行业假设出发', detail: '先定 AI 硬件这类行业因子，再用量价结构确认承接。' },
+        { mode: 'signal_first', title: '从盘面异动出发', detail: '先看全市场技术异动，再反推可能的行业 beta 或预期 alpha。' },
+      ]
+    : [
+        { mode: 'research_first', title: 'Start from thesis', detail: 'Define an industry factor first, then confirm acceptance in price and volume.' },
+        { mode: 'signal_first', title: 'Start from market action', detail: 'Cluster technical action first, then infer possible beta or alpha.' },
+      ]
+  return (
+    <div style={modeSwitchStyle}>
+      {items.map(item => (
+        <button
+          key={item.mode}
+          type="button"
+          style={modeButtonStyle(mode === item.mode)}
+          onClick={() => onChange(item.mode)}
+        >
+          <div style={titleBlockStyle}>
+            <div style={inlineMetaStyle}>
+              <span style={statusBadgeStyle(item.mode)}>{researchModeLabel(item.mode, locale)}</span>
+              {mode === item.mode ? <span style={statusBadgeStyle('active')}>{locale === 'zh-CN' ? '当前路径' : 'Current'}</span> : null}
+            </div>
+            <div style={cardTitleStyle}>{item.title}</div>
+            <div style={chromeStyles.quietMeta}>{item.detail}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function FactorIdentityPanel({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  const familyLabel = textValue(factor.factor_family.label, factor.title)
+  const betaLabel = textValue(factor.industry_beta.label ?? factor.industry_beta.name, 'industry beta')
+  const alphaLabel = textValue(factor.expectation_alpha.label ?? factor.expectation_alpha.name, 'expectation alpha')
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '因子定位' : 'Factor positioning'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '先说清楚这条因子为什么存在，再讨论买点和观察池。'
+          : 'Clarify why the factor exists before discussing entries and watch lists.'
+      }
+    >
+      <div style={columnStyle}>
+        <div style={inlineMetaStyle}>
+          <span style={statusBadgeStyle(factor.research_mode)}>
+            {researchModeLabel(factor.research_mode, locale)}
+          </span>
+          <span style={statusBadgeStyle(factor.factor_origin)}>
+            {humanizeTokenLocale(locale, factor.factor_origin)}
+          </span>
+          <span style={statusBadgeStyle(factor.validation_status)}>
+            {humanizeTokenLocale(locale, factor.validation_status)}
+          </span>
+        </div>
+        <div style={strategyInsightGridStyle}>
+          <WorkflowField label={locale === 'zh-CN' ? '因子族' : 'Family'} value={familyLabel} />
+          <WorkflowField label={locale === 'zh-CN' ? '行业 beta' : 'Industry beta'} value={betaLabel} />
+          <WorkflowField label={locale === 'zh-CN' ? '预期 alpha' : 'Expectation alpha'} value={alphaLabel} />
+        </div>
+        <div style={panelBlockStyle}>
+          <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '因子假设' : 'Thesis'}</div>
+          <p style={paragraphStyle}>{factor.thesis}</p>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function FactorScoreGrid({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  return (
+    <div style={strategyInsightGridStyle}>
+      {factorScoreItems(factor, locale).map(item => (
+        <div key={item.label} style={metricCellStyle}>
+          <div style={metricValueStyle}>{item.value}</div>
+          <div style={chromeStyles.quietMeta}>{item.label}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StrategyEnablementPanel({ factor, locale }: { factor: AIFactorRecord; locale: LongclawLocale }) {
+  const outputs = stringArrayValue(factor.strategy_integration.outputs)
+  const groups = stringArrayValue(factor.factor_exposures.groups)
+  const risks = factor.risk_overlay_flags.length > 0 ? factor.risk_overlay_flags : ['gap_overheat', 'chain_divergence']
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '策略赋能' : 'Strategy use'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '策略模块拿到的是因子暴露、承接强度和风险覆盖，不只是买点。'
+          : 'The strategy module receives exposure, acceptance strength, and risk overlays, not just entries.'
+      }
+    >
+      <div style={columnStyle}>
+        <FactorScoreGrid factor={factor} locale={locale} />
+        <div style={strategyTwoColumnStyle}>
+          <div style={panelBlockStyle}>
+            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '影响位置' : 'Where it affects strategy'}</div>
+            <TokenList tokens={outputs.length > 0 ? outputs : ['candidate_sorting', 'watch_pool', 'risk_review']} />
+          </div>
+          <div style={panelBlockStyle}>
+            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '风险覆盖' : 'Risk overlays'}</div>
+            <TokenList tokens={risks} />
+          </div>
+        </div>
+        {groups.length > 0 ? (
+          <div style={panelBlockStyle}>
+            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '行业暴露' : 'Exposure groups'}</div>
+            <TokenList tokens={groups} />
+          </div>
+        ) : null}
+      </div>
+    </Section>
+  )
+}
+
+function ResearchBookPanel({
+  factors,
+  selectedFactor,
+  locale,
+  onSelect,
+}: {
+  factors: AIFactorRecord[]
+  selectedFactor: AIFactorRecord
+  locale: LongclawLocale
+  onSelect: (factorId: string) => void
+}) {
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '研究账本' : 'Research book'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '这里放已经进入研发链路的因子，不放未复核的盘面异动。'
+          : 'This holds factors already in the research loop, not unreviewed market-action ideas.'
+      }
+    >
+      <div style={utilityStyles.stackedList}>
+        {factors.map(factor => (
+          <button
+            key={factor.factor_id}
+            type="button"
+            style={factor.factor_id === selectedFactor.factor_id ? activeIdeaCardStyle : ideaCardStyle}
+            onClick={() => onSelect(factor.factor_id)}
+          >
+            <div style={cardHeaderStyle}>
+              <div style={titleBlockStyle}>
+                <div style={inlineMetaStyle}>
+                  <span style={statusBadgeStyle(factor.research_mode)}>
+                    {researchModeLabel(factor.research_mode, locale)}
+                  </span>
+                  <span style={statusBadgeStyle(factor.status)}>
+                    {humanizeTokenLocale(locale, factor.status)}
+                  </span>
+                </div>
+                <div style={cardTitleStyle}>{factor.title}</div>
+                <div style={chromeStyles.quietMeta}>{factor.thesis}</div>
+              </div>
+            </div>
+            <FactorScoreGrid factor={factor} locale={locale} />
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function TechnicalDiscoveryQueue({
+  candidates,
+  locale,
+  onOpenRecord,
+  onUseCandidate,
+}: {
+  candidates: AIFactorRecord[]
+  locale: LongclawLocale
+  onOpenRecord: AIFactorFactoryWorkspaceProps['onOpenRecord']
+  onUseCandidate: (candidate: AIFactorRecord) => void
+}) {
+  return (
+    <Section
+      title={locale === 'zh-CN' ? '技术发现候选' : 'Market-action discoveries'}
+      subtitle={
+        locale === 'zh-CN'
+          ? '这些只是盘面异动聚类，不等于可用因子；先补投研证据，再进入研发链路。'
+          : 'These are clustered market-action ideas, not usable factors until research evidence is added.'
+      }
+    >
+      <div style={utilityStyles.stackedList}>
+        {candidates.length === 0 ? (
+          <div style={panelBlockStyle}>
+            <div style={fieldValueStyle}>
+              {locale === 'zh-CN'
+                ? '暂无技术发现候选。等待全市场技术扫描写入 terminal_technical_signals。'
+                : 'No market-action discoveries yet. Waiting for the technical signal scan.'}
+            </div>
+          </div>
+        ) : candidates.map(candidate => {
+          const sourceSignals = asRecordArray(candidate.source_signals)
+          return (
+            <div key={candidate.factor_id} style={panelBlockStyle}>
+              <div style={cardHeaderStyle}>
+                <div style={titleBlockStyle}>
+                  <div style={inlineMetaStyle}>
+                    <span style={statusBadgeStyle(candidate.research_mode)}>
+                      {researchModeLabel(candidate.research_mode, locale)}
+                    </span>
+                    <span style={statusBadgeStyle(candidate.factor_origin)}>
+                      {humanizeTokenLocale(locale, candidate.factor_origin)}
+                    </span>
+                  </div>
+                  <div style={cardTitleStyle}>{candidate.title}</div>
+                  <div style={chromeStyles.quietMeta}>{candidate.thesis}</div>
+                </div>
+              </div>
+              <FactorScoreGrid factor={candidate} locale={locale} />
+              {sourceSignals.length > 0 ? (
+                <div style={panelBlockStyle}>
+                  <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '盘面证据' : 'Market evidence'}</div>
+                  {sourceSignals.slice(0, 4).map((signal, index) => (
+                    <div key={`${candidate.factor_id}:signal:${index}`} style={fieldValueStyle}>
+                      <span style={chromeStyles.monoMeta}>{textValue(signal.symbol, `signal-${index + 1}`)}</span>
+                      {' · '}
+                      {textValue(signal.signal_type)}
+                      {' · '}
+                      {textValue(signal.freq)}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div style={actionRowStyle}>
+                <button
+                  type="button"
+                  style={secondaryButtonStyle}
+                  onClick={() => onOpenRecord(candidate.title, candidate)}
+                >
+                  {locale === 'zh-CN' ? '打开复核' : 'Open review'}
+                </button>
+                <button
+                  type="button"
+                  style={primaryButtonStyle}
+                  onClick={() => onUseCandidate(candidate)}
+                >
+                  {locale === 'zh-CN' ? '带入因子假设' : 'Use as thesis'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Section>
+  )
+}
+
 export function AIFactorFactoryWorkspace({
   locale,
   dashboard,
@@ -2357,6 +2785,10 @@ export function AIFactorFactoryWorkspace({
 }: AIFactorFactoryWorkspaceProps) {
   const dashboardFactors = React.useMemo(
     () => normalizeFactoryFactors(dashboard, signalsWebBaseUrl),
+    [dashboard, signalsWebBaseUrl],
+  )
+  const candidateIdeas = React.useMemo(
+    () => normalizeCandidateFactorIdeas(dashboard, signalsWebBaseUrl),
     [dashboard, signalsWebBaseUrl],
   )
   const [factorOverrides, setFactorOverrides] = React.useState<Record<string, AIFactorRecord>>({})
@@ -2372,6 +2804,7 @@ export function AIFactorFactoryWorkspace({
   const failureRows = selectedFactor?.failure_samples ?? []
   const [ideaText, setIdeaText] = React.useState<string>(() => selectedFactor?.thesis ?? fallbackFactor.thesis)
   const [activeWorkflowStage, setActiveWorkflowStage] = React.useState<WorkflowStageKey>('idea')
+  const [workbenchMode, setWorkbenchMode] = React.useState<WorkbenchMode>('research_first')
   const [runningActionKey, setRunningActionKey] = React.useState<string>('')
   const [actionRunState, setActionRunState] = React.useState<ActionRunState | null>(null)
 
@@ -2451,430 +2884,193 @@ export function AIFactorFactoryWorkspace({
     idea: currentIdeaText || selectedFactor.thesis,
     factor_id: currentIdeaText && currentIdeaText !== selectedFactor.thesis ? '' : selectedFactor.factor_id,
   }
-  const fields = intakeFields(selectedFactor, locale)
-  const gate = gateItems(selectedFactor, locale)
-  const primaryDriver = selectedFactor.us_driver_nodes[0]
-  const primaryMapping = selectedFactor.cn_mapping_nodes[0]
+  const handleUseCandidate = (candidate: AIFactorRecord) => {
+    setWorkbenchMode('research_first')
+    setSelectedFactorId(selectedFactor.factor_id)
+    setIdeaText(candidate.thesis)
+    setActiveWorkflowStage('idea')
+    onOpenRecord(
+      locale === 'zh-CN' ? '技术发现转投研假设' : 'Discovery to thesis',
+      {
+        source_candidate_factor_id: candidate.factor_id,
+        source_candidate_title: candidate.title,
+        idea: candidate.thesis,
+        research_mode: 'research_first',
+        factor_origin: 'research_from_technical_discovery',
+      },
+    )
+  }
+
+  const factorReadyText = selectedFactor.verified
+    ? selectedFactor.live_enabled
+      ? locale === 'zh-CN' ? '已进入观察池' : 'In observation'
+      : locale === 'zh-CN' ? '样本已复盘' : 'Samples replayed'
+    : locale === 'zh-CN' ? '等待样本复盘' : 'Waiting sample replay'
 
   return (
     <div style={workspaceStackStyle}>
-      <section style={intakeShellStyle}>
-        <div style={compactColumnStyle}>
-          <div style={cardHeaderStyle}>
-            <div style={titleBlockStyle}>
-              <h2 style={chromeStyles.sectionTitle}>
-                {locale === 'zh-CN' ? '跨市场映射工作单' : 'Cross-market mapping ticket'}
-              </h2>
-              <div style={chromeStyles.subtleText}>
-                {locale === 'zh-CN'
-                  ? '输入美股驱动线索，生成 A股代码映射和多周期节奏。'
-                  : 'Enter US driver clues, then build A-share mapping and multi-timeframe rhythm.'}
-              </div>
-            </div>
-            <div style={actionRowStyle}>
-              <button
-                type="button"
-                style={secondaryButtonStyle}
-                onClick={() => {
-                  setIdeaText('')
-                  setActiveWorkflowStage('idea')
-                }}
-              >
-                {locale === 'zh-CN' ? '新建研究' : 'New research'}
-              </button>
-              <FactorActionButton
-                actionKey="draft"
-                label={labels.draft}
-                factor={selectedFactor}
-                onOpenRecord={onOpenRecord}
-                onRunAction={onRunAction}
-                onActionStart={handleActionStart}
-                onActionResult={handleActionResult}
-                onActionError={handleActionError}
-                runningActionKey={runningActionKey}
-                payloadOverrides={ideaPayload}
-                tone="primary"
-                disabled={!ideaText.trim()}
-              />
-              <FactorActionButton
-                actionKey="rhythm"
-                label={labels.rhythm}
-                factor={selectedFactor}
-                onOpenRecord={onOpenRecord}
-                onRunAction={onRunAction}
-                onActionStart={handleActionStart}
-                onActionResult={handleActionResult}
-                onActionError={handleActionError}
-                runningActionKey={runningActionKey}
-                payloadOverrides={ideaPayload}
-                disabled={!ideaText.trim()}
-              />
-            </div>
-          </div>
-          <textarea
-            value={ideaText}
-            onChange={event => setIdeaText(event.target.value)}
-            style={ticketInputStyle}
-            placeholder={
-              locale === 'zh-CN'
-                ? '例：LITE/COHR/FN 光器件链尾盘加速，同时 VRT/ETN/NVT 液冷链走强后，A股光模块与液冷谁能在 T+1 竞价和开盘30分钟承接？'
-                : 'Example: after LITE/COHR/FN optical and VRT/ETN/NVT cooling rally, which A-share mapped basket accepts on T+1?'
-            }
+      <WorkbenchModeSwitch mode={workbenchMode} locale={locale} onChange={setWorkbenchMode} />
+
+      {workbenchMode === 'signal_first' ? (
+        <div style={candidateQueueGridStyle}>
+          <TechnicalDiscoveryQueue
+            candidates={candidateIdeas}
+            locale={locale}
+            onOpenRecord={onOpenRecord}
+            onUseCandidate={handleUseCandidate}
           />
-          <div style={fieldGridStyle}>
-            {fields.map(field => (
-              <div key={field.label} style={fieldBoxStyle}>
-                <div style={fieldLabelStyle}>{field.label}</div>
-                <div style={fieldValueStyle}>{field.value}</div>
-              </div>
-            ))}
-          </div>
-          {actionRunState ? (
-            <div
-              style={
-                actionRunState.state === 'failed'
-                  ? utilityStyles.warningBanner
-                  : utilityStyles.noticeBanner
+          <div style={columnStyle}>
+            <Section
+              title={locale === 'zh-CN' ? '如何把异动变成因子' : 'Turn action into a factor'}
+              subtitle={
+                locale === 'zh-CN'
+                  ? '先判断是行业 beta、预期 alpha，还是震荡内反弹；再带入因子假设区做样本复盘。'
+                  : 'Classify beta, alpha, or range bounce first, then move it into the thesis workflow.'
               }
             >
-              {actionRunState.message}
-            </div>
-          ) : null}
-        </div>
-        <div style={compactColumnStyle}>
-          <div style={fieldGridStyle}>
-            <WorkflowField
-              label={locale === 'zh-CN' ? '美股主驱动' : 'Primary US driver'}
-              value={primaryDriver ? `${primaryDriver.name} · ${primaryDriver.symbols.join('/')}` : 'N/A'}
-            />
-            <WorkflowField
-              label={locale === 'zh-CN' ? 'A股主映射' : 'Primary A mapping'}
-              value={primaryMapping ? `${primaryMapping.group} · ${primaryMapping.symbols.slice(0, 4).join('/')}` : 'N/A'}
-            />
-            <WorkflowField
-              label={locale === 'zh-CN' ? '节奏状态' : 'Rhythm'}
-              value={selectedFactor.rhythm.demo ? 'demo simulated' : selectedFactor.rhythm.status}
-            />
-            <WorkflowField
-              label={locale === 'zh-CN' ? '实盘门禁' : 'Live gate'}
-              value={selectedFactor.verified ? (selectedFactor.live_enabled ? 'published' : 'verified') : 'not verified'}
-            />
-          </div>
-          <MetricGrid factor={selectedFactor} locale={locale} compact />
-          <div style={actionRowStyle}>
-            <FactorActionButton
-              actionKey="rhythm"
-              label={labels.rhythm}
-              factor={selectedFactor}
-              onOpenRecord={onOpenRecord}
-              onRunAction={onRunAction}
-              onActionStart={handleActionStart}
-              onActionResult={handleActionResult}
-              onActionError={handleActionError}
-              runningActionKey={runningActionKey}
-              payloadOverrides={ideaPayload}
-            />
-            <FactorActionButton
-              actionKey="validate"
-              label={labels.validate}
-              factor={selectedFactor}
-              onOpenRecord={onOpenRecord}
-              onRunAction={onRunAction}
-              onActionStart={handleActionStart}
-              onActionResult={handleActionResult}
-              onActionError={handleActionError}
-              runningActionKey={runningActionKey}
-              payloadOverrides={ideaPayload}
-            />
-            <FactorActionButton
-              actionKey="failures"
-              label={labels.failures}
-              factor={selectedFactor}
-              onOpenRecord={onOpenRecord}
-            />
-            <FactorActionButton
-              actionKey="publish"
-              label={labels.observe}
-              factor={selectedFactor}
-              onOpenRecord={onOpenRecord}
-              onRunAction={onRunAction}
-              onActionStart={handleActionStart}
-              onActionResult={handleActionResult}
-              onActionError={handleActionError}
-              runningActionKey={runningActionKey}
-              disabled={!selectedFactor.verified}
-            />
-          </div>
-        </div>
-      </section>
-
-      <RhythmTimeline factor={selectedFactor} locale={locale} />
-
-      <div style={tradingDeskGridStyle}>
-        <MarketDriverPanel factor={selectedFactor} locale={locale} />
-        <ChinaMappingPanel factor={selectedFactor} locale={locale} />
-        <ObservationPanel
-          factor={selectedFactor}
-          locale={locale}
-          labels={labels}
-          onOpenRecord={onOpenRecord}
-          onRunAction={onRunAction}
-          onActionStart={handleActionStart}
-          onActionResult={handleActionResult}
-          onActionError={handleActionError}
-          runningActionKey={runningActionKey}
-          ideaPayload={ideaPayload}
-        />
-      </div>
-
-      <KlineFusionPanel factor={selectedFactor} locale={locale} />
-
-      <div style={factoryGridStyle}>
-        <div style={columnStyle}>
-        <Section
-          title={locale === 'zh-CN' ? '实验账本' : 'Experiment ledger'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '每张卡是一条可复现因子实验，不是聊天记录。'
-              : 'Each card is a reproducible factor experiment, not a chat transcript.'
-          }
-        >
-          <div style={utilityStyles.stackedList}>
-            {factors.map(factor => (
-              <button
-                key={factor.factor_id}
-                type="button"
-                style={
-                  factor.factor_id === selectedFactor.factor_id
-                    ? activeIdeaCardStyle
-                    : ideaCardStyle
-                }
-                onClick={() => {
-                  setSelectedFactorId(factor.factor_id)
-                  setActiveWorkflowStage('idea')
-                }}
-              >
-                <div style={cardHeaderStyle}>
-                  <div style={titleBlockStyle}>
-                    <div style={cardTitleStyle}>{factor.title}</div>
-                    <div style={chromeStyles.quietMeta}>{factor.thesis}</div>
-                  </div>
-                  <span style={statusBadgeStyle(factor.status)}>
-                    {humanizeTokenLocale(locale, factor.status)}
-                  </span>
+              <div style={columnStyle}>
+                <div style={checklistRowStyle}>
+                  <span style={checkDotStyle(candidateIdeas.length > 0)} />
+                  <span>{locale === 'zh-CN' ? '全市场技术信号已形成聚类' : 'Technical signal clusters exist'}</span>
                 </div>
-                <MetricGrid factor={factor} locale={locale} />
-              </button>
-            ))}
-          </div>
-        </Section>
-      </div>
-
-      <div style={columnStyle}>
-        <Section
-          title={locale === 'zh-CN' ? '可验证定义' : 'Verifiable definition'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '把一句盘面判断拆成股票池、触发、回避、失效和证明口径。'
-              : 'Convert the idea into a reproducible definition before trading.'
-          }
-          actions={
-            <div style={actionRowStyle}>
-              <FactorActionButton
-                actionKey="draft"
-                label={labels.draft}
-                factor={selectedFactor}
-                onOpenRecord={onOpenRecord}
-                onRunAction={onRunAction}
-                onActionStart={handleActionStart}
-                onActionResult={handleActionResult}
-                onActionError={handleActionError}
-                runningActionKey={runningActionKey}
-                payloadOverrides={ideaPayload}
-              />
-              <FactorActionButton
-                actionKey="validate"
-                label={labels.validate}
-                factor={selectedFactor}
-                onOpenRecord={onOpenRecord}
-                onRunAction={onRunAction}
-                onActionStart={handleActionStart}
-                onActionResult={handleActionResult}
-                onActionError={handleActionError}
-                runningActionKey={runningActionKey}
-                payloadOverrides={ideaPayload}
-              />
-            </div>
-          }
-        >
-          <div style={panelBlockStyle}>
-            <div style={inlineMetaStyle}>
-              <span style={statusBadgeStyle(selectedFactor.status)}>
-                {humanizeTokenLocale(locale, selectedFactor.status)}
-              </span>
-              <span style={chromeStyles.monoMeta}>{selectedFactor.factor_id}</span>
-            </div>
-            <p style={paragraphStyle}>{selectedFactor.draft}</p>
-          </div>
-        </Section>
-
-        <Section
-          title={locale === 'zh-CN' ? '可复现边界' : 'Reproducibility'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '固定 as-of、数据快照、成本、滑点和股票池，避免未来函数。'
-              : 'Lock as-of, data snapshot, costs, slippage, and universe to prevent leakage.'
-          }
-        >
-          <div style={panelBlockStyle}>
-            <p style={paragraphStyle}>{selectedFactor.reproducibility_summary}</p>
-          </div>
-        </Section>
-
-        <Section
-          title={locale === 'zh-CN' ? '验证结果' : 'Validation result'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '展示样本覆盖、胜率、收益和最大不利波动，避免只看 AI 解释。'
-              : 'Show coverage, win rate, return, and adverse movement before relying on AI text.'
-          }
-        >
-          <div style={columnStyle}>
-            <MetricGrid factor={selectedFactor} locale={locale} />
-            <div style={validationDetailGridStyle}>
-              <PaperAccountSummary factor={selectedFactor} locale={locale} />
-              <FailureSamplePreview rows={failureRows} locale={locale} />
-            </div>
-            <div style={panelBlockStyle}>
-              <div style={chromeStyles.quietMeta}>
-                {locale === 'zh-CN' ? '验证摘要' : 'Validation summary'}
+                <div style={checklistRowStyle}>
+                  <span style={checkDotStyle(false)} />
+                  <span>{locale === 'zh-CN' ? '补产业链、事件、订单或资金扩散证据' : 'Add chain, event, order, or flow evidence'}</span>
+                </div>
+                <div style={checklistRowStyle}>
+                  <span style={checkDotStyle(false)} />
+                  <span>{locale === 'zh-CN' ? '转成投研假设并复盘样本' : 'Convert to thesis and replay samples'}</span>
+                </div>
+                <div style={checklistRowStyle}>
+                  <span style={checkDotStyle(false)} />
+                  <span>{locale === 'zh-CN' ? '只在样本有效后进入观察池' : 'Enter observation only after sample evidence'}</span>
+                </div>
               </div>
-              <p style={paragraphStyle}>{selectedFactor.validation_summary}</p>
-            </div>
+            </Section>
+            <StrategyEnablementPanel factor={selectedFactor} locale={locale} />
           </div>
-        </Section>
-      </div>
-
-      <div style={columnStyle}>
-        <Section
-          title={locale === 'zh-CN' ? '发布门禁' : 'Promotion gate'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '只有通过验证和人工确认，才能进入策略页盘前池。'
-              : 'Only validated and approved factors can enter the strategy pre-market pool.'
-          }
-          actions={
-            <div style={actionRowStyle}>
-              <FactorActionButton
-                actionKey="publish"
-                label={labels.observe}
-                factor={selectedFactor}
-                onOpenRecord={onOpenRecord}
-                onRunAction={onRunAction}
-                onActionStart={handleActionStart}
-                onActionResult={handleActionResult}
-                onActionError={handleActionError}
-                runningActionKey={runningActionKey}
-                disabled={!selectedFactor.verified}
-              />
-              <FactorActionButton
-                actionKey="disable"
-                label={labels.disable}
-                factor={selectedFactor}
-                onOpenRecord={onOpenRecord}
-                onRunAction={onRunAction}
-                onActionStart={handleActionStart}
-                onActionResult={handleActionResult}
-                onActionError={handleActionError}
-                runningActionKey={runningActionKey}
-              />
-            </div>
-          }
-        >
-          <div style={panelBlockStyle}>
-            <div style={checklistStyle}>
-              {gate.map(item => (
-                <div key={item.label} style={checklistRowStyle}>
-                  <span style={checkDotStyle(item.passed)} />
-                  <span>{item.label}</span>
+        </div>
+      ) : (
+        <div style={strategyWorkbenchGridStyle}>
+          <div style={columnStyle}>
+            <Section
+              title={locale === 'zh-CN' ? '因子假设区' : 'Factor thesis'}
+              subtitle={
+                locale === 'zh-CN'
+                  ? '先写清楚行业故事，再让系统拆成可复盘的因子定义。'
+                  : 'Write the industry story first, then turn it into a replayable factor definition.'
+              }
+              actions={
+                <div style={actionRowStyle}>
+                  <button
+                    type="button"
+                    style={secondaryButtonStyle}
+                    onClick={() => {
+                      setIdeaText('')
+                      setActiveWorkflowStage('idea')
+                    }}
+                  >
+                    {locale === 'zh-CN' ? '新建假设' : 'New thesis'}
+                  </button>
+                  <FactorActionButton
+                    actionKey="draft"
+                    label={labels.draft}
+                    factor={selectedFactor}
+                    onOpenRecord={onOpenRecord}
+                    onRunAction={onRunAction}
+                    onActionStart={handleActionStart}
+                    onActionResult={handleActionResult}
+                    onActionError={handleActionError}
+                    runningActionKey={runningActionKey}
+                    payloadOverrides={ideaPayload}
+                    tone="primary"
+                    disabled={!ideaText.trim()}
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
-        </Section>
+              }
+            >
+              <div style={columnStyle}>
+                <textarea
+                  value={ideaText}
+                  onChange={event => setIdeaText(event.target.value)}
+                  style={ticketInputStyle}
+                  placeholder={
+                    locale === 'zh-CN'
+                      ? '例：AI 硬件链存在行业 beta，GB200、光模块、液冷、铜连接、PCB、存储的预期变化可能带来 alpha；今天 A股是否出现真实承接？'
+                      : 'Example: AI hardware has industry beta and expectation alpha across GB200, optical, cooling, copper, PCB, and memory; did A-shares accept it today?'
+                  }
+                />
+                {actionRunState ? (
+                  <div
+                    style={
+                      actionRunState.state === 'failed'
+                        ? utilityStyles.warningBanner
+                        : utilityStyles.noticeBanner
+                    }
+                  >
+                    {actionRunState.message}
+                  </div>
+                ) : null}
+              </div>
+            </Section>
 
-        <Section
-          title={locale === 'zh-CN' ? 'AI解释' : 'AI explanation'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '只保留因子逻辑、边界和反馈建议。'
-              : 'Keep only factor logic, boundaries, and feedback suggestions.'
-          }
-        >
-          <div style={panelBlockStyle}>
-            <p style={paragraphStyle}>{selectedFactor.ai_explanation}</p>
-          </div>
-        </Section>
-
-        <PackListSection
-          locale={locale}
-          title={locale === 'zh-CN' ? '失败样本' : 'Failure samples'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '优先打开失败样本，反推因子边界。'
-              : 'Open failures first to refine factor boundaries.'
-          }
-          rows={failureRows}
-          onOpen={item =>
-            onOpenRecord(
-              labels.failures,
-              {
-                ...item,
-                factor_id: selectedFactor.factor_id,
-                parent_factor_title: selectedFactor.title,
-              },
-              [factorAction('failures', labels.failures, selectedFactor)],
-            )
-          }
-        />
-
-        <Section
-          title={locale === 'zh-CN' ? '实盘状态' : 'Live status'}
-          subtitle={
-            locale === 'zh-CN'
-              ? '只展示是否启用和运行状态，真实交易开关仍留给外部控制面。'
-              : 'Expose enablement and runtime state while actual trading stays outside this component.'
-          }
-          actions={
-            <FactorActionButton
-              actionKey="failures"
-              label={labels.failures}
-              factor={selectedFactor}
-              onOpenRecord={onOpenRecord}
+            <ResearchBookPanel
+              factors={factors}
+              selectedFactor={selectedFactor}
+              locale={locale}
+              onSelect={factorId => {
+                setSelectedFactorId(factorId)
+                setActiveWorkflowStage('idea')
+              }}
             />
-          }
-        >
-          <div style={panelBlockStyle}>
-            <div style={inlineMetaStyle}>
-              <span style={statusBadgeStyle(selectedFactor.live_status)}>
-                {humanizeTokenLocale(locale, selectedFactor.live_status)}
-              </span>
-              <span style={statusBadgeStyle(selectedFactor.live_enabled ? 'active' : 'disabled')}>
-                {selectedFactor.live_enabled
-                  ? locale === 'zh-CN' ? '实盘已启用' : 'Live enabled'
-                  : locale === 'zh-CN' ? '实盘未启用' : 'Live disabled'}
-              </span>
-            </div>
-            <div style={chromeStyles.quietMeta}>
-              {signalsWebBaseUrl
-                ? `${locale === 'zh-CN' ? 'Signals 端点' : 'Signals endpoint'}: ${signalsWebBaseUrl}`
-                : locale === 'zh-CN'
-                  ? 'Signals 端点未传入'
-                  : 'Signals endpoint is not configured'}
-            </div>
           </div>
-        </Section>
-      </div>
+
+          <div style={columnStyle}>
+            <FactorIdentityPanel factor={selectedFactor} locale={locale} />
+            <Section
+              title={locale === 'zh-CN' ? '当前研发状态' : 'Current research state'}
+              subtitle={
+                locale === 'zh-CN'
+                  ? '这里直接回答：这条因子现在能不能给策略模块使用。'
+                  : 'This answers whether the strategy module can use this factor now.'
+              }
+            >
+              <div style={strategyInsightGridStyle}>
+                <WorkflowField
+                  label={locale === 'zh-CN' ? '样本复盘' : 'Sample replay'}
+                  value={selectedFactor.verified ? `${selectedFactor.sample_count}` : (locale === 'zh-CN' ? '未完成' : 'Not done')}
+                />
+                <WorkflowField
+                  label={locale === 'zh-CN' ? '观察状态' : 'Observation'}
+                  value={factorReadyText}
+                />
+                <WorkflowField
+                  label={locale === 'zh-CN' ? '策略使用' : 'Strategy use'}
+                  value={selectedFactor.live_enabled ? (locale === 'zh-CN' ? '可进入候选排序' : 'Can rank candidates') : (locale === 'zh-CN' ? '先做观察复核' : 'Review first')}
+                />
+              </div>
+            </Section>
+            <ResearchWorkflowPanel
+              factor={selectedFactor}
+              locale={locale}
+              activeStage={activeWorkflowStage}
+              onStageChange={setActiveWorkflowStage}
+              onOpenRecord={onOpenRecord}
+              onRunAction={onRunAction}
+              onActionStart={handleActionStart}
+              onActionResult={handleActionResult}
+              onActionError={handleActionError}
+              runningActionKey={runningActionKey}
+              ideaPayload={ideaPayload}
+            />
+            <StrategyEnablementPanel factor={selectedFactor} locale={locale} />
+          </div>
+        </div>
+      )}
+
+      <div style={strategyTwoColumnStyle}>
+        <CrossMarketPortfolio factor={selectedFactor} locale={locale} />
+        <PaperAccountPanel factor={selectedFactor} locale={locale} />
       </div>
     </div>
   )
