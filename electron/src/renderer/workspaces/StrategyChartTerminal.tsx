@@ -17,6 +17,7 @@ import type { SignalsDashboard } from '../../../../src/services/longclawControlP
 import { fontStacks, interaction, motion, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '../i18n.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
+import type { AiFactorStrategySignal } from './AIFactorFactoryWorkspace.js'
 import { rankLabelForWatchlist, rankReasonForWatchlist, signalScopeLabel, tagsForWatchlist } from './StrategyChartTags.js'
 
 type StrategyDashboard = Pick<
@@ -38,6 +39,7 @@ type StrategyChartTerminalProps = {
   locale: LongclawLocale
   dashboard: StrategyDashboard
   signalsWebBaseUrl?: string
+  aiFactorStrategySignals?: AiFactorStrategySignal[]
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }
 
@@ -2149,6 +2151,48 @@ const customSignalBadgeStyle: React.CSSProperties = {
   color: tradingDeskTheme.chart.line,
 }
 
+const aiFactorStrategyStripStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  gap: 6,
+  minHeight: 42,
+  padding: '4px 6px',
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: terminalTheme.panelInset,
+  overflowX: 'auto',
+  scrollbarGutter: 'stable',
+}
+
+const aiFactorStrategyCardStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  gap: 8,
+  minWidth: 260,
+  flex: '1 1 280px',
+  border: `1px solid ${tradingDeskTheme.alpha.accentBorder}`,
+  borderRadius: 5,
+  background: tradingDeskTheme.alpha.accentSurface,
+  padding: '5px 7px',
+  cursor: 'pointer',
+}
+
+const aiFactorStrategyTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 800,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const aiFactorSignalBadgeStyle: React.CSSProperties = {
+  ...miniNeutralSignalBadgeStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.accentBorder}`,
+  background: tradingDeskTheme.alpha.accentSurface,
+  color: terminalTheme.accentText,
+}
+
 const quickChipStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.borderStrong}`,
   borderRadius: 5,
@@ -3131,6 +3175,10 @@ function isPersonalizedSignalType(value?: string): boolean {
   )
 }
 
+function isAiFactorStrategySignal(signal: StrategySignal): boolean {
+  return String(signal.source ?? '').toLowerCase().includes('ai_factor_factory')
+}
+
 function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN'): string {
   if (!session) return locale === 'zh-CN' ? '未连接' : 'Disconnected'
   if (session.a_live || session.hk_live || session.us_live) {
@@ -3688,6 +3736,68 @@ function signalsFromSymbolData(symbolData: WorkbenchSymbolData | null): Strategy
   return Array.isArray(chartSignals) ? (chartSignals as StrategySignal[]) : []
 }
 
+function securityMatchKeys(value: unknown): string[] {
+  const raw = compactText(value).trim().toUpperCase()
+  if (!raw) return []
+  const compact = raw.replace(/[^A-Z0-9]/g, '')
+  const digits = raw.match(/\d{6}/)?.[0] ?? ''
+  return Array.from(new Set([raw, compact, digits].filter(Boolean)))
+}
+
+function aiFactorSignalMatchesTarget(
+  signal: AiFactorStrategySignal,
+  symbolData: WorkbenchSymbolData | null,
+  target: ChartTarget,
+): boolean {
+  const sourceSymbols = signal.sourceSymbols ?? []
+  if (sourceSymbols.length === 0) return false
+  const targetKeys = new Set(
+    [
+      target.label,
+      symbolData?.target?.label,
+      symbolData?.target?.symbol,
+      symbolData?.analysis_target,
+    ].flatMap(securityMatchKeys),
+  )
+  if (targetKeys.size === 0) return false
+  return sourceSymbols
+    .flatMap(securityMatchKeys)
+    .some(key => targetKeys.has(key))
+}
+
+function aiFactorStrategySignalsForChart(
+  signals: AiFactorStrategySignal[] = [],
+  data: KLineData[],
+  currentFreq: string,
+  symbolData: WorkbenchSymbolData | null,
+  target: ChartTarget,
+): StrategySignal[] {
+  if (signals.length === 0) return []
+  const latestBar = data[data.length - 1]
+  return signals.filter(signal => aiFactorSignalMatchesTarget(signal, symbolData, target)).map(signal => ({
+    timestamp: latestBar?.timestamp ?? Date.parse(signal.createdAt),
+    date_str: latestBar?.timestamp
+      ? new Date(latestBar.timestamp).toISOString().slice(0, 10)
+      : signal.createdAt.slice(0, 10),
+    type: 'AI因子观察',
+    signal_type: signal.title,
+    price: numberValue(latestBar?.close),
+    confidence: 0.72,
+    freq: currentFreq,
+    details: signal.thesis,
+    source: 'ai_factor_factory',
+    pool_status: 'strategy_observation',
+    chart_aligned: Boolean(latestBar),
+    display_scope: 'current',
+    signal_side: 'buy',
+    signal_family: 'ai_factor_factory',
+    symbol: signal.factorId,
+    name: signal.title,
+    relation: signal.strategyRole,
+    target_kind: 'factor',
+  }))
+}
+
 function referenceSignalsForIndexChart(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
   if (!symbolData || compactText(symbolData.target?.kind) !== 'index') return []
   const rows = Array.isArray(symbolData.related_custom_signals) ? symbolData.related_custom_signals : []
@@ -4026,6 +4136,7 @@ function shortSignalLabel(value?: string): string {
   if (normalized.includes('candlerun') || normalized.includes('candleaccel')) return '加速'
   if (normalized.includes('零上回踩')) return '零上'
   if (normalized.includes('零下企稳')) return '零下'
+  if (normalized.includes('ai因子') || normalized.includes('ai factor')) return 'AI因子'
   if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) return '观察'
   if (isSellSignal(raw)) return '卖'
   if (isBuySignal(raw)) return '买'
@@ -4088,7 +4199,8 @@ function signalOverlayPriority(signal: StrategySignal): number {
   const normalized = String(signal.type ?? '').toLowerCase()
   const side = signalSideForOverlay(signal)
   let priority = 35
-  if (side === 'sell' || normalized.includes('顶背离')) priority = 90
+  if (isAiFactorStrategySignal(signal)) priority = 88
+  else if (side === 'sell' || normalized.includes('顶背离')) priority = 90
   else if (side === 'buy' || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
   else if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) priority = 70
   else if (normalized.includes('macd') || normalized.includes('背驰')) priority = 60
@@ -4119,10 +4231,12 @@ function isCustomUserSignal(signal: StrategySignal): boolean {
   if (source.includes('reference_stock_signal') || source.includes('terminal_technical_signals') || source.includes('technical_signal_scan')) {
     return false
   }
+  if (source.includes('ai_factor_factory')) return true
   return source.includes('signal_records') || source.includes('backtest') || source.includes('custom') || source.includes('自定义') || source.includes('回测') || isPersonalizedSignalType(signal.type)
 }
 
 function signalSourceLabel(signal: StrategySignal): string {
+  if (isAiFactorStrategySignal(signal)) return 'AI因子'
   if (isCustomUserSignal(signal)) return '自定义'
   const source = String(signal.source ?? '').toLowerCase()
   if (source.includes('volume')) return '量能'
@@ -5600,10 +5714,52 @@ function riskFlagLabel(flag: string, locale: LongclawLocale): string {
   return label ? (locale === 'zh-CN' ? label[0] : label[1]) : humanizeTokenLocale(locale, flag)
 }
 
+function AiFactorStrategySignalStrip({
+  locale,
+  signals,
+  onOpenRecord,
+}: {
+  locale: LongclawLocale
+  signals: AiFactorStrategySignal[]
+  onOpenRecord: StrategyChartTerminalProps['onOpenRecord']
+}) {
+  if (signals.length === 0) return null
+  return (
+    <div style={aiFactorStrategyStripStyle}>
+      {signals.slice(0, 3).map(signal => (
+        <button
+          key={signal.id}
+          type="button"
+          style={aiFactorStrategyCardStyle}
+          onClick={() => {
+            onOpenRecord(
+              locale === 'zh-CN' ? `AI因子策略观察 ${signal.title}` : `AI factor observation ${signal.title}`,
+              signal as unknown as Record<string, unknown>,
+            )
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={aiFactorStrategyTitleStyle}>{signal.title}</div>
+            <div style={mutedLineStyle}>
+              {[signal.industryAttribution, signal.strategyRole].filter(Boolean).join(' · ')}
+            </div>
+            <div style={mutedTwoLineStyle}>{signal.thesis}</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <span style={aiFactorSignalBadgeStyle}>{locale === 'zh-CN' ? '策略观察' : 'Strategy'}</span>
+            <span style={monoTextStyle}>{signal.factorId}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function StrategyChartTerminal({
   locale,
   dashboard,
   signalsWebBaseUrl,
+  aiFactorStrategySignals = [],
   onOpenRecord,
 }: StrategyChartTerminalProps) {
   const baseUrl =
@@ -5661,8 +5817,15 @@ export function StrategyChartTerminal({
   const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
   const referenceChartSignals = useMemo(() => referenceSignalsForIndexChart(symbolData), [symbolData])
-  const chartSignals = useMemo(() => [...signals, ...referenceChartSignals], [referenceChartSignals, signals])
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const aiFactorChartSignals = useMemo(
+    () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq, symbolData, target),
+    [aiFactorStrategySignals, currentFreq, klineData, symbolData, target],
+  )
+  const chartSignals = useMemo(
+    () => [...signals, ...referenceChartSignals, ...aiFactorChartSignals],
+    [aiFactorChartSignals, referenceChartSignals, signals],
+  )
   const visibleCustomSignals = useMemo(() => signals.filter(isCustomUserSignal), [signals])
   const customSignalCount = useMemo(
     () => numberValue(symbolData?.custom_signal_count) ?? visibleCustomSignals.length,
@@ -6935,6 +7098,11 @@ export function StrategyChartTerminal({
             .join(' · ')}
         </div>
       ) : null}
+      <AiFactorStrategySignalStrip
+        locale={locale}
+        signals={aiFactorStrategySignals}
+        onOpenRecord={onOpenRecord}
+      />
 
       <div style={terminalGridLayoutStyle(leftCollapsed, rightCollapsed, layoutMode)}>
         {leftCollapsed ? (

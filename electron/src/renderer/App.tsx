@@ -40,7 +40,7 @@ import {
   Section,
   StatusStrip,
 } from './workspaces/shared.js'
-import { AIFactorFactoryWorkspace } from './workspaces/AIFactorFactoryWorkspace.js'
+import { AIFactorFactoryWorkspace, type AiFactorStrategySignal } from './workspaces/AIFactorFactoryWorkspace.js'
 import { PackWorkspace } from './workspaces/PackWorkspace.js'
 import { ExecutionConsole } from './workspaces/TaskWorkspace.js'
 import WeChatWorkspace from './workspaces/WeChatWorkspace.js'
@@ -1806,6 +1806,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [aiFactorStrategySignals, setAiFactorStrategySignals] = useState<AiFactorStrategySignal[]>([])
   const [taskFlowFilter, setTaskFlowFilter] = useState<TaskFlowFilter>('all')
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
   const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
@@ -1884,6 +1885,18 @@ export default function App() {
     () => localizePackNotice(locale, dashboard?.notice),
     [dashboard?.notice, locale],
   )
+  const addAiFactorStrategySignal = useCallback((signal: AiFactorStrategySignal) => {
+    setAiFactorStrategySignals(previous => [
+      signal,
+      ...previous.filter(item => item.factorId !== signal.factorId),
+    ].slice(0, 8))
+    setActionMessage(
+      locale === 'zh-CN'
+        ? `已加入策略观察：${signal.title}`
+        : `Added to strategy observation: ${signal.title}`,
+    )
+    setPage('strategy')
+  }, [locale])
   const filteredWeclawSessions = useMemo(() => {
     const query = wechatSearch.trim().toLowerCase()
     return weclawSessions.filter(session => {
@@ -4023,6 +4036,7 @@ export default function App() {
                   dashboard={dashboard}
                   signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
                   localizedNotice={localizedDashboardNotice}
+                  aiFactorStrategySignals={aiFactorStrategySignals}
                   onRunAction={runAction}
                   onOpenRun={openRun}
                   onOpenRecord={openRecord}
@@ -4036,6 +4050,7 @@ export default function App() {
                   signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
                   onOpenRecord={openRecord}
                   onRunAction={runAction}
+                  onAddStrategySignal={addAiFactorStrategySignal}
                 />
               )}
 

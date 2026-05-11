@@ -24,6 +24,7 @@ import {
   normalizePackRows,
 } from './shared.js'
 import { BacktestWorkbench } from './BacktestWorkbench.js'
+import type { AiFactorStrategySignal } from './AIFactorFactoryWorkspace.js'
 import { StrategyChartTerminal } from './StrategyChartTerminal.js'
 
 type SignalsPanel = 'overview' | 'chart' | 'review' | 'backtest' | 'connectors'
@@ -36,6 +37,7 @@ type PackWorkspaceProps = {
   dashboard: LongclawPackDashboard | null
   signalsWebBaseUrl?: string
   localizedNotice?: string | null
+  aiFactorStrategySignals?: AiFactorStrategySignal[]
   onRunAction: (action: LongclawOperatorAction) => Promise<void>
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (
@@ -1116,11 +1118,13 @@ function SignalsStrategyView({
   locale,
   dashboard,
   signalsWebBaseUrl,
+  aiFactorStrategySignals,
   onOpenRecord,
 }: {
   locale: LongclawLocale
   dashboard: SignalsStrategyVM
   signalsWebBaseUrl?: string
+  aiFactorStrategySignals?: AiFactorStrategySignal[]
   onOpenRecord: (
     title: string,
     record: Record<string, unknown>,
@@ -1132,6 +1136,7 @@ function SignalsStrategyView({
       locale={locale}
       dashboard={dashboard}
       signalsWebBaseUrl={signalsWebBaseUrl}
+      aiFactorStrategySignals={aiFactorStrategySignals}
       onOpenRecord={onOpenRecord}
     />
   )
@@ -1239,6 +1244,7 @@ export function PackWorkspace({
   dashboard,
   signalsWebBaseUrl,
   localizedNotice,
+  aiFactorStrategySignals,
   onRunAction,
   onOpenRun,
   onOpenRecord,
@@ -1284,6 +1290,7 @@ export function PackWorkspace({
           locale={locale}
           dashboard={toSignalsStrategyVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
+          aiFactorStrategySignals={aiFactorStrategySignals}
           onOpenRecord={onOpenRecord}
         />
       </div>

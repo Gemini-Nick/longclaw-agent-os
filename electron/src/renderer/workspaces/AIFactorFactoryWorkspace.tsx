@@ -27,6 +27,7 @@ type AIFactorFactoryWorkspaceProps = {
     actions?: LongclawOperatorAction[],
   ) => void
   onRunAction?: (action: LongclawOperatorAction) => Promise<void>
+  onAddStrategySignal?: (signal: AiFactorStrategySignal) => void
 }
 
 type AIFactorRecord = Record<string, unknown> & {
@@ -191,6 +192,7 @@ type RhythmState = {
 type AIFactorFactoryPayload = Record<string, unknown> & {
   ideas?: unknown
   factors?: unknown
+  rl_environments?: unknown
   candidate_factor_ideas?: unknown
   factor_idea_queue?: unknown
   drafts?: unknown
@@ -226,6 +228,25 @@ type TechnicalReviewKey =
   | 'research_thesis'
 
 type TechnicalReviewValues = Record<TechnicalReviewKey, string>
+
+export type AiFactorStrategySignal = {
+  id: string
+  factorId: string
+  title: string
+  thesis: string
+  origin: 'research_first' | 'signal_first'
+  factorOrigin: string
+  sourceCandidateTitle?: string
+  industryAttribution: string
+  betaAlphaJudgement: string
+  supportingEvidence: string
+  counterEvidence: string
+  sourceSymbols: string[]
+  factorExposure: string[]
+  riskOverlayFlags: string[]
+  strategyRole: string
+  createdAt: string
+}
 
 const factoryGridStyle: React.CSSProperties = {
   display: 'grid',
@@ -1283,10 +1304,10 @@ function factorAction(
       factor_id: factor.factor_id,
       idea: factor.thesis,
       label,
-      ...payloadOverrides,
       ...(actionKey === 'validate' ? { demo_mode: true, mode: 'demo' } : {}),
       ...(actionKey === 'rhythm' ? { mode: 'demo' } : {}),
       ...(actionKey === 'publish' ? { live_enabled: true } : {}),
+      ...payloadOverrides,
     },
     metadata: {
       workspace: 'ai_factor_factory',
@@ -1334,7 +1355,7 @@ function normalizeFactor(raw: Record<string, unknown>, index: number): AIFactorR
   const factorExposures = asRecord(raw.factor_exposures)
   return {
     ...raw,
-    factor_id: textValue(raw.factor_id ?? raw.id ?? raw.idea_id, `ai-factor-${index + 1}`),
+    factor_id: textValue(raw.factor_id ?? raw.id ?? raw.idea_id ?? raw.environment_id, `ai-factor-${index + 1}`),
     title: textValue(raw.title ?? raw.name ?? raw.summary, fallbackFactor.title),
     thesis: textValue(raw.thesis ?? raw.hypothesis ?? raw.description ?? raw.idea, fallbackFactor.thesis),
     status: textValue(raw.status ?? raw.state, 'idea'),
@@ -1434,10 +1455,13 @@ function normalizeCandidateFactorIdeas(
   const rawFactoryValue = (dashboard as (SignalsDashboard & { ai_factor_factory?: unknown }) | null)
     ?.ai_factor_factory
   const rawFactory = asRecord(rawFactoryValue) as AIFactorFactoryPayload
-  const rawCandidates = [
-    ...asRecordArray(rawFactory.candidate_factor_ideas),
-    ...asRecordArray(rawFactory.factor_idea_queue),
-  ]
+  const rawEnvironments = asRecordArray(rawFactory.rl_environments)
+  const rawCandidates = rawEnvironments.length > 0
+    ? rawEnvironments
+    : [
+        ...asRecordArray(rawFactory.candidate_factor_ideas),
+        ...asRecordArray(rawFactory.factor_idea_queue),
+      ]
   const seen = new Set<string>()
   return rawCandidates
     .map(normalizeFactor)
@@ -1675,7 +1699,92 @@ function researchModeLabel(mode: string, locale: LongclawLocale): string {
   return humanizeTokenLocale(locale, mode || 'unknown')
 }
 
+function rewardRecord(factor: AIFactorRecord): Record<string, unknown> {
+  return asRecord(asRecord(factor.evaluation).reward)
+}
+
+function factorEvaluationRecord(factor: AIFactorRecord): Record<string, unknown> {
+  return asRecord(asRecord(factor.evaluation).factor_evaluation)
+}
+
+function environmentMetricsRecord(factor: AIFactorRecord): Record<string, unknown> {
+  return asRecord(factor.environment_metrics)
+}
+
+function technicalCandidateAdvice(
+  candidate: AIFactorRecord,
+  locale: LongclawLocale,
+): { label: string; tone: string } {
+  const splitKeys = asRecord(candidate.split_keys)
+  const reward = rewardRecord(candidate)
+  const blockingGates = stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates)
+  const status = textValue(reward.status ?? candidate.status ?? candidate.validation_status)
+  const scanScope = textValue(splitKeys.scan_scope ?? candidate.scan_scope)
+  const resonanceGrade = textValue(splitKeys.resonance_grade ?? candidate.resonance_grade)
+  const isIntraday = scanScope.includes('intraday')
+  const isOverbroad = blockingGates.some(gate => gate.includes('overbroad')) || status === 'not_evaluable'
+
+  if (isOverbroad) {
+    return {
+      label: locale === 'zh-CN' ? '太宽/不可评' : 'Too broad',
+      tone: 'not_evaluable',
+    }
+  }
+  if (isIntraday || status === 'observation_only') {
+    return {
+      label: locale === 'zh-CN' ? '只观察' : 'Observe only',
+      tone: 'observation_only',
+    }
+  }
+  if (resonanceGrade.includes('conflict')) {
+    return {
+      label: locale === 'zh-CN' ? '先找反证' : 'Find counter-evidence',
+      tone: 'warning',
+    }
+  }
+  if (resonanceGrade.includes('strong_resonance') || resonanceGrade.includes('multi_period')) {
+    return {
+      label: locale === 'zh-CN' ? '优先复盘' : 'Replay first',
+      tone: 'validated',
+    }
+  }
+  return {
+    label: locale === 'zh-CN' ? '可复盘' : 'Replayable',
+    tone: status || 'pending_validation',
+  }
+}
+
 function factorScoreItems(factor: AIFactorRecord, locale: LongclawLocale) {
+  const environmentMetrics = environmentMetricsRecord(factor)
+  if (factor.research_mode === 'signal_first' && Object.keys(environmentMetrics).length > 0) {
+    const sourceSignals = asRecordArray(factor.source_signals)
+    const sourceSignalCount = numberValue(
+      environmentMetrics.source_signal_count ?? environmentMetrics.signal_count,
+      sourceSignals.length,
+    )
+    const uniqueSymbolCount = numberValue(
+      environmentMetrics.unique_symbol_count ?? environmentMetrics.symbol_count,
+      technicalSourceSymbols(factor).length,
+    )
+    const clusterCleanliness = numberValue(
+      environmentMetrics.cluster_cleanliness ?? factorEvaluationRecord(factor).cluster_cleanliness,
+      0,
+    )
+    return [
+      {
+        label: locale === 'zh-CN' ? '信号数' : 'Signals',
+        value: sourceSignalCount > 0 ? String(sourceSignalCount) : (locale === 'zh-CN' ? '待扫描' : 'Pending'),
+      },
+      {
+        label: locale === 'zh-CN' ? '股票数' : 'Symbols',
+        value: uniqueSymbolCount > 0 ? String(uniqueSymbolCount) : (locale === 'zh-CN' ? '待扫描' : 'Pending'),
+      },
+      {
+        label: locale === 'zh-CN' ? '干净度' : 'Cleanliness',
+        value: clusterCleanliness > 0 ? percentText(clusterCleanliness) : (locale === 'zh-CN' ? '待复盘' : 'Pending'),
+      },
+    ]
+  }
   const assessment = asRecord(factor.beta_alpha_assessment)
   const breakdown = asRecord(factor.factor_score_breakdown)
   const technical = asRecord(factor.technical_confirmation)
@@ -1766,6 +1875,18 @@ function technicalSignalLines(candidate: AIFactorRecord): string[] {
   })
 }
 
+function technicalSourceSymbols(candidate: AIFactorRecord): string[] {
+  const seen = new Set<string>()
+  return asRecordArray(candidate.source_signals)
+    .map(signal => textValue(signal.symbol ?? signal.raw_code ?? signal.code))
+    .filter(symbol => {
+      const key = symbol.trim().toUpperCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
 function technicalReviewValuesFromCandidate(
   candidate: AIFactorRecord,
   locale: LongclawLocale,
@@ -1790,6 +1911,36 @@ function technicalReviewValuesFromCandidate(
     supporting_evidence: evidenceLines.length > 0 ? evidenceLines.join('\n') : candidate.thesis,
     counter_evidence: '如果只是单票孤立拉升、链主不确认、放量后回落、或仍在震荡箱体内反抽，就不转成投研因子。',
     research_thesis: candidate.thesis,
+  }
+}
+
+function strategySignalFromTechnicalCandidate(
+  candidate: AIFactorRecord,
+  values: TechnicalReviewValues,
+): AiFactorStrategySignal {
+  const groups = stringArrayValue(candidate.factor_exposures.groups)
+  const outputs = stringArrayValue(candidate.strategy_integration.outputs)
+  return {
+    id: `ai-factor-signal:${candidate.factor_id}:${Date.now()}`,
+    factorId: candidate.factor_id,
+    title: candidate.title,
+    thesis: values.research_thesis.trim() || candidate.thesis,
+    origin: 'signal_first',
+    factorOrigin: candidate.factor_origin,
+    sourceCandidateTitle: candidate.title,
+    industryAttribution: values.industry_attribution.trim(),
+    betaAlphaJudgement: values.beta_alpha_judgement.trim(),
+    supportingEvidence: values.supporting_evidence.trim(),
+    counterEvidence: values.counter_evidence.trim(),
+    sourceSymbols: technicalSourceSymbols(candidate),
+    factorExposure: groups.length > 0 ? groups : [candidate.title],
+    riskOverlayFlags: candidate.risk_overlay_flags.length > 0
+      ? candidate.risk_overlay_flags
+      : ['isolated_move', 'leader_not_confirmed', 'range_rebound'],
+    strategyRole: outputs.length > 0
+      ? outputs.join(' / ')
+      : 'candidate_sorting / watch_pool / risk_review',
+    createdAt: new Date().toISOString(),
   }
 }
 
@@ -3137,11 +3288,11 @@ function TechnicalDiscoveryQueue({
 }) {
   return (
     <Section
-      title={locale === 'zh-CN' ? '技术信号池' : 'Technical signal pool'}
+      title={locale === 'zh-CN' ? '1 选技术环境' : '1 Select environment'}
       subtitle={
         locale === 'zh-CN'
-          ? '先选一组异动，再做行业归因；这里不是因子成品列表。'
-          : 'Select a cluster first, then attribute it; this is not a finished factor list.'
+          ? '优先选“优先复盘”；冲突环境先找反证，盘中环境先观察。'
+          : 'Start with Replay first; conflicts need counter-evidence, intraday clusters stay observe-only.'
       }
     >
       <div style={technicalQueueListStyle}>
@@ -3156,6 +3307,7 @@ function TechnicalDiscoveryQueue({
         ) : candidates.map(candidate => {
           const signalLines = technicalSignalLines(candidate)
           const scoreItems = factorScoreItems(candidate, locale)
+          const advice = technicalCandidateAdvice(candidate, locale)
           const active = candidate.factor_id === selectedCandidateId
           return (
             <button
@@ -3172,6 +3324,9 @@ function TechnicalDiscoveryQueue({
                     </span>
                     <span style={statusBadgeStyle(candidate.factor_origin)}>
                       {humanizeTokenLocale(locale, candidate.factor_origin)}
+                    </span>
+                    <span style={statusBadgeStyle(advice.tone)}>
+                      {advice.label}
                     </span>
                   </div>
                   <div style={cardTitleStyle}>{candidate.title}</div>
@@ -3205,11 +3360,13 @@ function TechnicalReviewTextArea({
   label,
   value,
   onChange,
+  placeholder,
   wide,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  placeholder?: string
   wide?: boolean
 }) {
   return (
@@ -3217,6 +3374,7 @@ function TechnicalReviewTextArea({
       <span style={fieldLabelStyle}>{label}</span>
       <textarea
         value={value}
+        placeholder={placeholder}
         onChange={event => onChange(event.target.value)}
         style={compactTextAreaStyle}
       />
@@ -3230,19 +3388,31 @@ function TechnicalFactorResearchPanel({
   values,
   onValueChange,
   onOpenRecord,
+  onRunAction,
+  onActionStart,
+  onActionResult,
+  onActionError,
   onUseCandidate,
+  onAddStrategySignal,
+  runningActionKey,
 }: {
   candidate: AIFactorRecord | undefined
   locale: LongclawLocale
   values: TechnicalReviewValues | null
   onValueChange: (key: TechnicalReviewKey, value: string) => void
   onOpenRecord: AIFactorFactoryWorkspaceProps['onOpenRecord']
+  onRunAction?: AIFactorFactoryWorkspaceProps['onRunAction']
+  onActionStart?: (action: LongclawOperatorAction) => void
+  onActionResult?: (action: LongclawOperatorAction, result: Record<string, unknown>) => void
+  onActionError?: (action: LongclawOperatorAction, message: string) => void
   onUseCandidate: (candidate: AIFactorRecord) => void
+  onAddStrategySignal?: AIFactorFactoryWorkspaceProps['onAddStrategySignal']
+  runningActionKey?: string
 }) {
   if (!candidate || !values) {
     return (
       <Section
-        title={locale === 'zh-CN' ? '异动归因工作台' : 'Discovery attribution desk'}
+        title={locale === 'zh-CN' ? '2 写研发假设' : '2 Write thesis'}
         subtitle={locale === 'zh-CN' ? '等待技术信号池出现候选。' : 'Waiting for discovery candidates.'}
       >
         <div style={fieldValueStyle}>
@@ -3253,24 +3423,36 @@ function TechnicalFactorResearchPanel({
   }
 
   const steps = locale === 'zh-CN'
-    ? ['选技术聚类', '做行业归因', '写投研假设', '进入样本复盘']
-    : ['Select cluster', 'Attribute industry', 'Write thesis', 'Replay samples']
+    ? ['选环境', '找主线', '写证据', '跑复盘']
+    : ['Select', 'Attribute', 'Evidence', 'Replay']
   const thesisReady = values.research_thesis.trim().length > 0
   const evidenceReady = values.supporting_evidence.trim().length > 0
   const attributionReady = values.industry_attribution.trim().length > 0
+  const strategyReady = thesisReady && evidenceReady && attributionReady
+  const environmentId = textValue(candidate.environment_id ?? candidate.factor_id)
+  const replayLabel = locale === 'zh-CN' ? '跑样本复盘' : 'Replay samples'
+  const replayPayload = {
+    mode: 'signal_first',
+    environment_id: environmentId,
+    persist: true,
+    demo_mode: false,
+  }
   const syntheticCandidate = {
     ...candidate,
     thesis: values.research_thesis.trim() || candidate.thesis,
     research_review: values,
   }
+  const handleAddStrategySignal = () => {
+    onAddStrategySignal?.(strategySignalFromTechnicalCandidate(syntheticCandidate, values))
+  }
 
   return (
     <Section
-      title={locale === 'zh-CN' ? '异动归因工作台' : 'Discovery attribution desk'}
+      title={locale === 'zh-CN' ? '2 写研发假设' : '2 Write thesis'}
       subtitle={
         locale === 'zh-CN'
-          ? '把技术异动翻译成可复盘的行业假设：先归因，再转入因子研发。'
-          : 'Translate technical action into a replayable industry thesis before factor research.'
+          ? '只写主线、收益逻辑、证据、反证和复盘规则；然后跑样本复盘。'
+          : 'Write attribution, edge logic, evidence, counter-evidence, and replay rule; then replay samples.'
       }
       actions={
         <div style={actionRowStyle}>
@@ -3281,13 +3463,35 @@ function TechnicalFactorResearchPanel({
           >
             {locale === 'zh-CN' ? '打开复核' : 'Open review'}
           </button>
+          <FactorActionButton
+            actionKey="validate"
+            label={replayLabel}
+            factor={candidate}
+            onOpenRecord={onOpenRecord}
+            onRunAction={onRunAction}
+            onActionStart={onActionStart}
+            onActionResult={onActionResult}
+            onActionError={onActionError}
+            payloadOverrides={replayPayload}
+            tone="primary"
+            disabled={!onRunAction}
+            runningActionKey={runningActionKey}
+          />
           <button
             type="button"
             style={buttonStyleForState(primaryButtonStyle, !thesisReady, 'primary')}
             disabled={!thesisReady}
             onClick={() => onUseCandidate(syntheticCandidate)}
           >
-            {locale === 'zh-CN' ? '写入因子假设' : 'Write thesis'}
+            {locale === 'zh-CN' ? '保存为研发假设' : 'Save thesis'}
+          </button>
+          <button
+            type="button"
+            style={buttonStyleForState(primaryButtonStyle, !strategyReady || !onAddStrategySignal, 'primary')}
+            disabled={!strategyReady || !onAddStrategySignal}
+            onClick={handleAddStrategySignal}
+          >
+            {locale === 'zh-CN' ? '送入观察草稿' : 'Draft observation'}
           </button>
         </div>
       }
@@ -3304,7 +3508,7 @@ function TechnicalFactorResearchPanel({
         </div>
         <div style={discoveryStepGridStyle}>
           {steps.map((step, index) => {
-            const complete = index === 0 || (index === 1 && attributionReady) || (index === 2 && thesisReady) || (index === 3 && evidenceReady && thesisReady)
+            const complete = index === 0 || (index === 1 && attributionReady) || (index === 2 && evidenceReady) || (index === 3 && thesisReady)
             return (
               <div key={step} style={discoveryStepStyle(complete)}>
                 <div style={stepNumberStyle}>{String(index + 1).padStart(2, '0')}</div>
@@ -3315,28 +3519,33 @@ function TechnicalFactorResearchPanel({
         </div>
         <div style={discoveryWorkbenchGridStyle}>
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '行业/概念归因' : 'Industry attribution'}
+            label={locale === 'zh-CN' ? '这些票像哪条主线？' : 'What theme do these names share?'}
             value={values.industry_attribution}
+            placeholder={locale === 'zh-CN' ? '例：光模块/CPO 同链条走强，不是单票孤立异动' : 'Example: optical/CPO chain strength, not an isolated stock move'}
             onChange={value => onValueChange('industry_attribution', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? 'beta / alpha 判断' : 'Beta / alpha call'}
+            label={locale === 'zh-CN' ? '为什么可能有收益？' : 'Why could it earn returns?'}
             value={values.beta_alpha_judgement}
+            placeholder={locale === 'zh-CN' ? '写清楚是行业 beta、预期 alpha，还是技术确认后的承接' : 'Classify beta, expectation alpha, or post-confirmation acceptance'}
             onChange={value => onValueChange('beta_alpha_judgement', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '支撑证据' : 'Supporting evidence'}
+            label={locale === 'zh-CN' ? '支持证据' : 'Supporting evidence'}
             value={values.supporting_evidence}
+            placeholder={locale === 'zh-CN' ? '保留股票、信号类型、周期；不要只写主题名' : 'Keep symbol, signal type, and timeframe; avoid theme-only notes'}
             onChange={value => onValueChange('supporting_evidence', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '反证/回避' : 'Counter evidence'}
+            label={locale === 'zh-CN' ? '什么情况证明错了？' : 'What would disprove it?'}
             value={values.counter_evidence}
+            placeholder={locale === 'zh-CN' ? '例：链主不确认、放量回落、分位收益不扩散、成本后收益为负' : 'Example: leader fails, volume fades, spread negative, cost-adjusted return negative'}
             onChange={value => onValueChange('counter_evidence', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '转入投研假设' : 'Research thesis to write'}
+            label={locale === 'zh-CN' ? '一句话复盘规则' : 'One-line replay rule'}
             value={values.research_thesis}
+            placeholder={locale === 'zh-CN' ? '例：收盘后出现同链条 gap/daily/strong_resonance，买入分位最高组，观察 T+5/T+20 forward return' : 'Example: postmarket gap/daily/strong_resonance, rank top quantile, inspect T+5/T+20 returns'}
             onChange={value => onValueChange('research_thesis', value)}
             wide
           />
@@ -3359,34 +3568,59 @@ function TechnicalResearchProgressPanel({
   const exposureGroups = candidate ? stringArrayValue(candidate.factor_exposures.groups) : []
   const hasThesis = Boolean(values?.research_thesis.trim())
   const hasAttribution = Boolean(values?.industry_attribution.trim())
+  const hasEvidence = Boolean(values?.supporting_evidence.trim())
+  const reward = candidate ? rewardRecord(candidate) : {}
+  const rewardStatus = candidate
+    ? textValue(reward.status ?? candidate.status ?? candidate.validation_status, 'pending_validation')
+    : ''
+  const blockingGates = candidate ? stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates) : []
   return (
     <div style={columnStyle}>
       <Section
-        title={locale === 'zh-CN' ? '研发进度' : 'Research progress'}
+        title={locale === 'zh-CN' ? '3 看能否观察' : '3 Can it observe?'}
         subtitle={
           locale === 'zh-CN'
-            ? '这一路只负责发现和转假设，不直接进入观察池。'
-            : 'This path discovers and converts; it does not enter observation directly.'
+            ? '复盘通过才允许观察；样本少、收益差、回撤大都只能停在观察草稿。'
+            : 'Observation needs a passed replay; low samples, weak return, or drawdown keeps it as draft only.'
         }
       >
         <div style={checklistStyle}>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(Boolean(candidate))} />
-            <span>{locale === 'zh-CN' ? '已选技术异动聚类' : 'Technical cluster selected'}</span>
+            <span>{locale === 'zh-CN' ? '选了一个环境' : 'Environment selected'}</span>
           </div>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(hasAttribution)} />
-            <span>{locale === 'zh-CN' ? '行业/概念归因已写清' : 'Attribution written'}</span>
+            <span>{locale === 'zh-CN' ? '写了主线归因' : 'Attribution written'}</span>
+          </div>
+          <div style={checklistRowStyle}>
+            <span style={checkDotStyle(hasEvidence)} />
+            <span>{locale === 'zh-CN' ? '写了支持证据' : 'Evidence written'}</span>
           </div>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(hasThesis)} />
-            <span>{locale === 'zh-CN' ? '已形成投研假设草稿' : 'Research thesis drafted'}</span>
+            <span>{locale === 'zh-CN' ? '写了一句话复盘规则' : 'Replay rule written'}</span>
           </div>
           <div style={checklistRowStyle}>
-            <span style={checkDotStyle(false)} />
-            <span>{locale === 'zh-CN' ? '转入样本复盘后才判断能否观察' : 'Replay samples before observation'}</span>
+            <span style={checkDotStyle(rewardStatus === 'validated')} />
+            <span>{locale === 'zh-CN' ? '复盘结果决定能否观察' : 'Replay result decides observation'}</span>
           </div>
         </div>
+        {candidate ? (
+          <div style={{ ...panelBlockStyle, marginTop: 10 }}>
+            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '当前复盘状态' : 'Replay status'}</div>
+            <div style={inlineMetaStyle}>
+              <span style={statusBadgeStyle(rewardStatus)}>
+                {humanizeTokenLocale(locale, rewardStatus)}
+              </span>
+              {blockingGates.slice(0, 2).map(gate => (
+                <span key={gate} style={statusBadgeStyle('warning')}>
+                  {humanizeTokenLocale(locale, gate)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </Section>
       <Section
         title={locale === 'zh-CN' ? '盘面证据' : 'Market evidence'}
@@ -3418,6 +3652,7 @@ export function AIFactorFactoryWorkspace({
   signalsWebBaseUrl,
   onOpenRecord,
   onRunAction,
+  onAddStrategySignal,
 }: AIFactorFactoryWorkspaceProps) {
   const dashboardFactors = React.useMemo(
     () => normalizeFactoryFactors(dashboard, signalsWebBaseUrl),
@@ -3439,7 +3674,7 @@ export function AIFactorFactoryWorkspace({
   const labels = actionLabels(locale)
   const [ideaText, setIdeaText] = React.useState<string>(() => selectedFactor?.thesis ?? fallbackFactor.thesis)
   const [activeWorkflowStage, setActiveWorkflowStage] = React.useState<WorkflowStageKey>('idea')
-  const [workbenchMode, setWorkbenchMode] = React.useState<WorkbenchMode>('research_first')
+  const [workbenchMode, setWorkbenchMode] = React.useState<WorkbenchMode>('signal_first')
   const [runningActionKey, setRunningActionKey] = React.useState<string>('')
   const [actionRunState, setActionRunState] = React.useState<ActionRunState | null>(null)
   const [pendingIdeaSource, setPendingIdeaSource] = React.useState<Record<string, unknown> | null>(null)
@@ -3651,7 +3886,13 @@ export function AIFactorFactoryWorkspace({
             values={technicalReviewValues}
             onValueChange={handleTechnicalReviewValueChange}
             onOpenRecord={onOpenRecord}
+            onRunAction={onRunAction}
+            onActionStart={handleActionStart}
+            onActionResult={handleActionResult}
+            onActionError={handleActionError}
             onUseCandidate={handleUseCandidate}
+            onAddStrategySignal={onAddStrategySignal}
+            runningActionKey={runningActionKey}
           />
           <TechnicalResearchProgressPanel
             candidate={selectedTechnicalCandidate}
