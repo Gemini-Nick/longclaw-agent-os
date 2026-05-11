@@ -1691,7 +1691,7 @@ function gateItems(factor: AIFactorRecord, locale: LongclawLocale) {
 
 function researchModeLabel(mode: string, locale: LongclawLocale): string {
   if (mode === 'signal_first') {
-    return locale === 'zh-CN' ? '技术发现因子' : 'Signal-first'
+    return locale === 'zh-CN' ? '盘面线索因子' : 'Market-signal factor'
   }
   if (mode === 'research_first') {
     return locale === 'zh-CN' ? '投研发现因子' : 'Research-first'
@@ -1707,8 +1707,142 @@ function factorEvaluationRecord(factor: AIFactorRecord): Record<string, unknown>
   return asRecord(asRecord(factor.evaluation).factor_evaluation)
 }
 
+function portfolioEvaluationRecord(factor: AIFactorRecord): Record<string, unknown> {
+  return asRecord(asRecord(factor.evaluation).portfolio_evaluation)
+}
+
 function environmentMetricsRecord(factor: AIFactorRecord): Record<string, unknown> {
   return asRecord(factor.environment_metrics)
+}
+
+function splitKeysRecord(factor: AIFactorRecord): Record<string, unknown> {
+  return asRecord(factor.split_keys)
+}
+
+function signalFirstTheme(candidate: AIFactorRecord, locale: LongclawLocale): string {
+  const splitKeys = splitKeysRecord(candidate)
+  const theme = textValue(splitKeys.theme ?? candidate.factor_exposures.theme)
+  if (!theme || theme === '技术结构共振') {
+    return locale === 'zh-CN' ? '主题待归因' : 'Theme pending'
+  }
+  return theme
+}
+
+function factorResearchQuestion(candidate: AIFactorRecord, locale: LongclawLocale): string {
+  const splitKeys = splitKeysRecord(candidate)
+  const theme = signalFirstTheme(candidate, locale)
+  const signalType = humanizeTokenLocale(locale, textValue(splitKeys.signal_type_family, 'technical'))
+  const freq = humanizeTokenLocale(locale, textValue(splitKeys.freq_bucket, 'daily'))
+  const scope = humanizeTokenLocale(locale, textValue(splitKeys.scan_scope, 'postmarket'))
+  if (locale !== 'zh-CN') {
+    return `Does ${theme} ${scope}/${freq}/${signalType} predict forward returns?`
+  }
+  return `${theme}的${scope}/${freq}/${signalType}，是否有未来收益预测力？`
+}
+
+function themeQualityText(candidate: AIFactorRecord, locale: LongclawLocale): string {
+  const splitKeys = splitKeysRecord(candidate)
+  const theme = textValue(splitKeys.theme ?? candidate.factor_exposures.theme)
+  const metrics = environmentMetricsRecord(candidate)
+  const cleanliness = numberValue(metrics.cluster_cleanliness, 0)
+  const reward = rewardRecord(candidate)
+  const gates = stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates)
+  if (gates.some(gate => gate.includes('overbroad'))) {
+    return locale === 'zh-CN' ? '过宽' : 'Broad'
+  }
+  if (!theme || theme === '技术结构共振' || cleanliness <= 0.65) {
+    return locale === 'zh-CN' ? '待归因' : 'Pending'
+  }
+  if (cleanliness >= 0.9) {
+    return locale === 'zh-CN' ? '集中' : 'Focused'
+  }
+  return locale === 'zh-CN' ? '待确认' : 'Review'
+}
+
+function signalFirstDecision(
+  candidate: AIFactorRecord | undefined,
+  locale: LongclawLocale,
+): { label: string; detail: string; tone: string } {
+  if (!candidate) {
+    return {
+      label: locale === 'zh-CN' ? '先选择一个因子问题' : 'Select a factor question',
+      detail: locale === 'zh-CN' ? '左侧选中一个问题后，再定义股票池、信号和复盘规则。' : 'Pick a question first, then define universe, signal, and replay rule.',
+      tone: 'pending',
+    }
+  }
+  const reward = rewardRecord(candidate)
+  const status = textValue(reward.status ?? candidate.status ?? candidate.validation_status, 'pending_validation')
+  const gates = stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates)
+  if (status === 'validated') {
+    return {
+      label: locale === 'zh-CN' ? '可进入观察' : 'Ready for observation',
+      detail: locale === 'zh-CN' ? '预测力和组合承接都通过后，才允许进入观察草稿。' : 'Predictive power and portfolio fit passed.',
+      tone: 'validated',
+    }
+  }
+  if (status === 'observation_only') {
+    return {
+      label: locale === 'zh-CN' ? '只能观察' : 'Observation only',
+      detail: locale === 'zh-CN' ? '盘中边界或样本不足时，只保留为研究线索，不发布为策略。' : 'Intraday boundary or weak sample support keeps this as research context.',
+      tone: 'observation_only',
+    }
+  }
+  if (status === 'not_evaluable') {
+    return {
+      label: locale === 'zh-CN' ? '暂不可评估' : 'Not evaluable',
+      detail: gates.length > 0
+        ? `${locale === 'zh-CN' ? '阻塞：' : 'Blocked by: '}${gates.map(gate => humanizeTokenLocale(locale, gate)).join(' / ')}`
+        : (locale === 'zh-CN' ? '主题过宽、样本不足或数据边界不清。' : 'Theme is too broad, samples are insufficient, or data boundary is unclear.'),
+      tone: 'not_evaluable',
+    }
+  }
+  if (status === 'rejected') {
+    return {
+      label: locale === 'zh-CN' ? '淘汰或重写' : 'Reject or rewrite',
+      detail: locale === 'zh-CN' ? '预测力、分位扩散或组合承接没有通过。' : 'Predictive power, quantile spread, or portfolio fit failed.',
+      tone: 'rejected',
+    }
+  }
+  return {
+    label: locale === 'zh-CN' ? '先跑预测力复盘' : 'Replay predictive power first',
+    detail: locale === 'zh-CN' ? '不要看技术指标本身，先验证它对 T+5/T+20 forward return 是否有排序能力。' : 'Do not judge the indicator itself; first test whether it ranks T+5/T+20 forward returns.',
+    tone: 'pending_validation',
+  }
+}
+
+function signalFirstRewardItems(candidate: AIFactorRecord | undefined, locale: LongclawLocale) {
+  if (!candidate) return []
+  const reward = rewardRecord(candidate)
+  const factorEval = factorEvaluationRecord(candidate)
+  const portfolioEval = portfolioEvaluationRecord(candidate)
+  const scoreText = (value: unknown) => {
+    const score = numberValue(value, 0)
+    return score > 0 ? score.toFixed(1) : (locale === 'zh-CN' ? '待复盘' : 'Pending')
+  }
+  const returnText = (value: unknown) => {
+    const score = numberValue(value, 0)
+    return score !== 0 ? signedPercentText(score) : (locale === 'zh-CN' ? '待复盘' : 'Pending')
+  }
+  return [
+    {
+      label: locale === 'zh-CN' ? '预测力分' : 'Factor score',
+      value: scoreText(reward.factor_score),
+    },
+    {
+      label: locale === 'zh-CN' ? 'Rank IC' : 'Rank IC',
+      value: numberValue(factorEval.rank_ic, 0) !== 0
+        ? numberValue(factorEval.rank_ic, 0).toFixed(3)
+        : (locale === 'zh-CN' ? '待复盘' : 'Pending'),
+    },
+    {
+      label: locale === 'zh-CN' ? '分位扩散' : 'Quantile spread',
+      value: returnText(factorEval.quantile_spread),
+    },
+    {
+      label: locale === 'zh-CN' ? '组合承接' : 'Portfolio score',
+      value: scoreText(reward.portfolio_score ?? portfolioEval.portfolio_score),
+    },
+  ]
 }
 
 function technicalCandidateAdvice(
@@ -1726,30 +1860,30 @@ function technicalCandidateAdvice(
 
   if (isOverbroad) {
     return {
-      label: locale === 'zh-CN' ? '太宽/不可评' : 'Too broad',
+      label: locale === 'zh-CN' ? '先补主题归因' : 'Attribute first',
       tone: 'not_evaluable',
     }
   }
   if (isIntraday || status === 'observation_only') {
     return {
-      label: locale === 'zh-CN' ? '只观察' : 'Observe only',
+      label: locale === 'zh-CN' ? '盘中只观察' : 'Intraday observe',
       tone: 'observation_only',
     }
   }
   if (resonanceGrade.includes('conflict')) {
     return {
-      label: locale === 'zh-CN' ? '先找反证' : 'Find counter-evidence',
+      label: locale === 'zh-CN' ? '先写失效条件' : 'Define invalidation',
       tone: 'warning',
     }
   }
   if (resonanceGrade.includes('strong_resonance') || resonanceGrade.includes('multi_period')) {
     return {
-      label: locale === 'zh-CN' ? '优先复盘' : 'Replay first',
+      label: locale === 'zh-CN' ? '进入预测力复盘' : 'Replay predictive power',
       tone: 'validated',
     }
   }
   return {
-    label: locale === 'zh-CN' ? '可复盘' : 'Replayable',
+    label: locale === 'zh-CN' ? '定义后复盘' : 'Define then replay',
     tone: status || 'pending_validation',
   }
 }
@@ -1766,22 +1900,18 @@ function factorScoreItems(factor: AIFactorRecord, locale: LongclawLocale) {
       environmentMetrics.unique_symbol_count ?? environmentMetrics.symbol_count,
       technicalSourceSymbols(factor).length,
     )
-    const clusterCleanliness = numberValue(
-      environmentMetrics.cluster_cleanliness ?? factorEvaluationRecord(factor).cluster_cleanliness,
-      0,
-    )
     return [
       {
-        label: locale === 'zh-CN' ? '信号数' : 'Signals',
+        label: locale === 'zh-CN' ? '线索数' : 'Clues',
         value: sourceSignalCount > 0 ? String(sourceSignalCount) : (locale === 'zh-CN' ? '待扫描' : 'Pending'),
       },
       {
-        label: locale === 'zh-CN' ? '股票数' : 'Symbols',
+        label: locale === 'zh-CN' ? '标的数' : 'Symbols',
         value: uniqueSymbolCount > 0 ? String(uniqueSymbolCount) : (locale === 'zh-CN' ? '待扫描' : 'Pending'),
       },
       {
-        label: locale === 'zh-CN' ? '干净度' : 'Cleanliness',
-        value: clusterCleanliness > 0 ? percentText(clusterCleanliness) : (locale === 'zh-CN' ? '待复盘' : 'Pending'),
+        label: locale === 'zh-CN' ? '主题质量' : 'Theme quality',
+        value: themeQualityText(factor, locale),
       },
     ]
   }
@@ -1899,18 +2029,18 @@ function technicalReviewValuesFromCandidate(
   if (locale !== 'zh-CN') {
     return {
       industry_attribution: exposureText,
-      beta_alpha_judgement: `First classify whether this is broad beta (${betaLabel}) or expectation alpha (${alphaLabel}); do not treat it as a tradable factor until the attribution is explained.`,
+      beta_alpha_judgement: `Trigger: same-theme signal appears after close; classify whether it is broad beta (${betaLabel}) or expectation alpha (${alphaLabel}).`,
       supporting_evidence: evidenceLines.length > 0 ? evidenceLines.join('\n') : candidate.thesis,
-      counter_evidence: 'Reject if signals are isolated, the chain leader does not confirm, or the move is only a range bounce after overextension.',
-      research_thesis: candidate.thesis,
+      counter_evidence: 'Invalidate if signals are isolated, the leader does not confirm, quantile spread is not positive, or cost-adjusted return is negative.',
+      research_thesis: `Replay rule: rank by signal strength, test Rank IC, quantile spread, T+5/T+20 returns, then gate with cost-adjusted return, drawdown, and turnover.`,
     }
   }
   return {
     industry_attribution: exposureText,
-    beta_alpha_judgement: `先判断这是同产业链同步变强的行业 beta（${betaLabel}），还是少数高暴露标的先走强的预期 alpha（${alphaLabel}）；未完成归因前不能当成可用因子。`,
+    beta_alpha_judgement: `触发定义：收盘后出现同主题技术线索；先判断这是行业 beta（${betaLabel}），还是少数高暴露标的先走强的预期 alpha（${alphaLabel}）。`,
     supporting_evidence: evidenceLines.length > 0 ? evidenceLines.join('\n') : candidate.thesis,
-    counter_evidence: '如果只是单票孤立拉升、链主不确认、放量后回落、或仍在震荡箱体内反抽，就不转成投研因子。',
-    research_thesis: candidate.thesis,
+    counter_evidence: '如果只是单票孤立拉升、链主不确认、分位收益不扩散、成本后收益为负，就不进入观察。',
+    research_thesis: '复盘规则：按信号强度排序，先看 Rank IC、分位收益、T+5/T+20 forward return，再用成本后收益、回撤和换手做组合 gate。',
   }
 }
 
@@ -2889,12 +3019,12 @@ function WorkbenchModeSwitch({
 }) {
   const items: Array<{ mode: WorkbenchMode; title: string; detail: string }> = locale === 'zh-CN'
     ? [
-        { mode: 'research_first', title: '从行业假设出发', detail: '先定 AI 硬件这类行业因子，再用量价结构确认承接。' },
-        { mode: 'signal_first', title: '从盘面异动出发', detail: '先看全市场技术异动，再反推可能的行业 beta 或预期 alpha。' },
+        { mode: 'research_first', title: '已有行业假设', detail: '先写产业链逻辑，再验证量价承接和组合风险。' },
+        { mode: 'signal_first', title: '从盘面线索找因子', detail: '先形成可验证问题，再跑预测力和组合承接。' },
       ]
     : [
-        { mode: 'research_first', title: 'Start from thesis', detail: 'Define an industry factor first, then confirm acceptance in price and volume.' },
-        { mode: 'signal_first', title: 'Start from market action', detail: 'Cluster technical action first, then infer possible beta or alpha.' },
+        { mode: 'research_first', title: 'Existing industry thesis', detail: 'Write the chain logic first, then validate price acceptance and risk.' },
+        { mode: 'signal_first', title: 'Find factors from market clues', detail: 'Define a testable question, then replay predictive power and portfolio fit.' },
       ]
   return (
     <div style={modeSwitchStyle}>
@@ -3288,11 +3418,11 @@ function TechnicalDiscoveryQueue({
 }) {
   return (
     <Section
-      title={locale === 'zh-CN' ? '1 选技术环境' : '1 Select environment'}
+      title={locale === 'zh-CN' ? '1 选择因子问题' : '1 Select factor question'}
       subtitle={
         locale === 'zh-CN'
-          ? '优先选“优先复盘”；冲突环境先找反证，盘中环境先观察。'
-          : 'Start with Replay first; conflicts need counter-evidence, intraday clusters stay observe-only.'
+          ? '这里不是指标清单，只选一个要验证的问题：它是否能预测未来收益。'
+          : 'This is not an indicator list. Pick one question: does it predict future returns?'
       }
     >
       <div style={technicalQueueListStyle}>
@@ -3322,16 +3452,14 @@ function TechnicalDiscoveryQueue({
                     <span style={statusBadgeStyle(candidate.research_mode)}>
                       {researchModeLabel(candidate.research_mode, locale)}
                     </span>
-                    <span style={statusBadgeStyle(candidate.factor_origin)}>
-                      {humanizeTokenLocale(locale, candidate.factor_origin)}
-                    </span>
                     <span style={statusBadgeStyle(advice.tone)}>
                       {advice.label}
                     </span>
                   </div>
-                  <div style={cardTitleStyle}>{candidate.title}</div>
+                  <div style={cardTitleStyle}>{factorResearchQuestion(candidate, locale)}</div>
                   <div style={chromeStyles.quietMeta}>
-                    {candidate.thesis}
+                    {locale === 'zh-CN' ? '来源线索：' : 'Source clues: '}
+                    {candidate.title}
                   </div>
                 </div>
               </div>
@@ -3412,7 +3540,7 @@ function TechnicalFactorResearchPanel({
   if (!candidate || !values) {
     return (
       <Section
-        title={locale === 'zh-CN' ? '2 写研发假设' : '2 Write thesis'}
+        title={locale === 'zh-CN' ? '2 定义因子' : '2 Define factor'}
         subtitle={locale === 'zh-CN' ? '等待技术信号池出现候选。' : 'Waiting for discovery candidates.'}
       >
         <div style={fieldValueStyle}>
@@ -3423,14 +3551,14 @@ function TechnicalFactorResearchPanel({
   }
 
   const steps = locale === 'zh-CN'
-    ? ['选环境', '找主线', '写证据', '跑复盘']
-    : ['Select', 'Attribute', 'Evidence', 'Replay']
+    ? ['股票池', '信号定义', '预测力假设', '复盘验证']
+    : ['Universe', 'Signal', 'Edge', 'Replay']
   const thesisReady = values.research_thesis.trim().length > 0
   const evidenceReady = values.supporting_evidence.trim().length > 0
   const attributionReady = values.industry_attribution.trim().length > 0
   const strategyReady = thesisReady && evidenceReady && attributionReady
   const environmentId = textValue(candidate.environment_id ?? candidate.factor_id)
-  const replayLabel = locale === 'zh-CN' ? '跑样本复盘' : 'Replay samples'
+  const replayLabel = locale === 'zh-CN' ? '跑预测力复盘' : 'Replay predictive power'
   const replayPayload = {
     mode: 'signal_first',
     environment_id: environmentId,
@@ -3448,11 +3576,11 @@ function TechnicalFactorResearchPanel({
 
   return (
     <Section
-      title={locale === 'zh-CN' ? '2 写研发假设' : '2 Write thesis'}
+      title={locale === 'zh-CN' ? '2 定义因子' : '2 Define factor'}
       subtitle={
         locale === 'zh-CN'
-          ? '只写主线、收益逻辑、证据、反证和复盘规则；然后跑样本复盘。'
-          : 'Write attribution, edge logic, evidence, counter-evidence, and replay rule; then replay samples.'
+          ? '先把盘面线索翻译成因子定义：股票池、触发信号、预测力假设、失效条件。'
+          : 'Translate market clues into factor definition: universe, trigger, edge, and invalidation.'
       }
       actions={
         <div style={actionRowStyle}>
@@ -3483,7 +3611,7 @@ function TechnicalFactorResearchPanel({
             disabled={!thesisReady}
             onClick={() => onUseCandidate(syntheticCandidate)}
           >
-            {locale === 'zh-CN' ? '保存为研发假设' : 'Save thesis'}
+            {locale === 'zh-CN' ? '保存因子定义' : 'Save factor definition'}
           </button>
           <button
             type="button"
@@ -3501,8 +3629,8 @@ function TechnicalFactorResearchPanel({
           <span style={statusBadgeStyle(candidate.research_mode)}>
             {researchModeLabel(candidate.research_mode, locale)}
           </span>
-          <span style={statusBadgeStyle(candidate.factor_origin)}>
-            {humanizeTokenLocale(locale, candidate.factor_origin)}
+          <span style={statusBadgeStyle(technicalCandidateAdvice(candidate, locale).tone)}>
+            {technicalCandidateAdvice(candidate, locale).label}
           </span>
           <span style={chromeStyles.monoMeta}>{candidate.factor_id}</span>
         </div>
@@ -3519,33 +3647,33 @@ function TechnicalFactorResearchPanel({
         </div>
         <div style={discoveryWorkbenchGridStyle}>
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '这些票像哪条主线？' : 'What theme do these names share?'}
+            label={locale === 'zh-CN' ? '股票池 / 主题归因' : 'Universe / theme attribution'}
             value={values.industry_attribution}
-            placeholder={locale === 'zh-CN' ? '例：光模块/CPO 同链条走强，不是单票孤立异动' : 'Example: optical/CPO chain strength, not an isolated stock move'}
+            placeholder={locale === 'zh-CN' ? '例：光模块/CPO 链条，不是单票孤立异动；如果只是技术结构共振，就写“主题待归因”' : 'Example: optical/CPO chain, not isolated names; write theme pending if attribution is weak'}
             onChange={value => onValueChange('industry_attribution', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '为什么可能有收益？' : 'Why could it earn returns?'}
+            label={locale === 'zh-CN' ? '信号触发定义' : 'Signal trigger definition'}
             value={values.beta_alpha_judgement}
-            placeholder={locale === 'zh-CN' ? '写清楚是行业 beta、预期 alpha，还是技术确认后的承接' : 'Classify beta, expectation alpha, or post-confirmation acceptance'}
+            placeholder={locale === 'zh-CN' ? '例：收盘后出现同主题 gap/daily/strong_resonance，按信号强度排序' : 'Example: postmarket same-theme gap/daily/strong_resonance, ranked by signal strength'}
             onChange={value => onValueChange('beta_alpha_judgement', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '支持证据' : 'Supporting evidence'}
+            label={locale === 'zh-CN' ? '为什么应该有预测力？' : 'Why should it predict?'}
             value={values.supporting_evidence}
-            placeholder={locale === 'zh-CN' ? '保留股票、信号类型、周期；不要只写主题名' : 'Keep symbol, signal type, and timeframe; avoid theme-only notes'}
+            placeholder={locale === 'zh-CN' ? '写交易逻辑：资金扩散、同链条确认、强者恒强、还是风险释放后的修复' : 'Write the trading logic: diffusion, chain confirmation, momentum, or post-risk repair'}
             onChange={value => onValueChange('supporting_evidence', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '什么情况证明错了？' : 'What would disprove it?'}
+            label={locale === 'zh-CN' ? '失效条件 / 反证' : 'Invalidation / counter-evidence'}
             value={values.counter_evidence}
             placeholder={locale === 'zh-CN' ? '例：链主不确认、放量回落、分位收益不扩散、成本后收益为负' : 'Example: leader fails, volume fades, spread negative, cost-adjusted return negative'}
             onChange={value => onValueChange('counter_evidence', value)}
           />
           <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '一句话复盘规则' : 'One-line replay rule'}
+            label={locale === 'zh-CN' ? '复盘规则' : 'Replay rule'}
             value={values.research_thesis}
-            placeholder={locale === 'zh-CN' ? '例：收盘后出现同链条 gap/daily/strong_resonance，买入分位最高组，观察 T+5/T+20 forward return' : 'Example: postmarket gap/daily/strong_resonance, rank top quantile, inspect T+5/T+20 returns'}
+            placeholder={locale === 'zh-CN' ? '例：按 factor_value 分组，看 Rank IC、分位收益、T+5/T+20 forward return，再看成本后收益和回撤' : 'Example: bucket by factor_value, inspect Rank IC, quantile spread, T+5/T+20 returns, then cost and drawdown'}
             onChange={value => onValueChange('research_thesis', value)}
             wide
           />
@@ -3569,53 +3697,83 @@ function TechnicalResearchProgressPanel({
   const hasThesis = Boolean(values?.research_thesis.trim())
   const hasAttribution = Boolean(values?.industry_attribution.trim())
   const hasEvidence = Boolean(values?.supporting_evidence.trim())
+  const hasSignalDefinition = Boolean(values?.beta_alpha_judgement.trim())
   const reward = candidate ? rewardRecord(candidate) : {}
   const rewardStatus = candidate
     ? textValue(reward.status ?? candidate.status ?? candidate.validation_status, 'pending_validation')
     : ''
   const blockingGates = candidate ? stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates) : []
+  const decision = signalFirstDecision(candidate, locale)
+  const rewardItems = signalFirstRewardItems(candidate, locale)
+  const replayDone = Boolean(candidate && rewardStatus !== 'pending_validation')
   return (
     <div style={columnStyle}>
       <Section
-        title={locale === 'zh-CN' ? '3 看能否观察' : '3 Can it observe?'}
+        title={locale === 'zh-CN' ? '3 研发判定' : '3 Research decision'}
         subtitle={
           locale === 'zh-CN'
-            ? '复盘通过才允许观察；样本少、收益差、回撤大都只能停在观察草稿。'
-            : 'Observation needs a passed replay; low samples, weak return, or drawdown keeps it as draft only.'
+            ? '先判预测力，再判组合承接；没有通过 gate 就不能发布。'
+            : 'Judge predictive power first, then portfolio fit; no publish without gates.'
         }
       >
+        <div style={panelBlockStyle}>
+          <div style={inlineMetaStyle}>
+            <span style={statusBadgeStyle(decision.tone)}>{decision.label}</span>
+          </div>
+          <div style={fieldValueStyle}>{decision.detail}</div>
+        </div>
+        {rewardItems.length > 0 ? (
+          <div style={{ ...compactScoreRowStyle, marginTop: 8, gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
+            {rewardItems.map(item => (
+              <div key={item.label} style={compactScoreCellStyle}>
+                <div style={{ ...metricValueStyle, fontSize: 14 }}>{item.value}</div>
+                <div style={chromeStyles.quietMeta}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div style={checklistStyle}>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(Boolean(candidate))} />
-            <span>{locale === 'zh-CN' ? '选了一个环境' : 'Environment selected'}</span>
+            <span>{locale === 'zh-CN' ? '选了一个可验证因子问题' : 'Testable factor question selected'}</span>
           </div>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(hasAttribution)} />
-            <span>{locale === 'zh-CN' ? '写了主线归因' : 'Attribution written'}</span>
+            <span>{locale === 'zh-CN' ? '股票池/主题归因已定义' : 'Universe/theme defined'}</span>
+          </div>
+          <div style={checklistRowStyle}>
+            <span style={checkDotStyle(hasSignalDefinition)} />
+            <span>{locale === 'zh-CN' ? '信号触发已定义' : 'Signal trigger defined'}</span>
           </div>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(hasEvidence)} />
-            <span>{locale === 'zh-CN' ? '写了支持证据' : 'Evidence written'}</span>
+            <span>{locale === 'zh-CN' ? '预测力假设已写清' : 'Predictive thesis written'}</span>
           </div>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(hasThesis)} />
-            <span>{locale === 'zh-CN' ? '写了一句话复盘规则' : 'Replay rule written'}</span>
+            <span>{locale === 'zh-CN' ? '复盘规则已定义' : 'Replay rule defined'}</span>
+          </div>
+          <div style={checklistRowStyle}>
+            <span style={checkDotStyle(replayDone)} />
+            <span>{locale === 'zh-CN' ? '已跑预测力复盘' : 'Predictive replay run'}</span>
           </div>
           <div style={checklistRowStyle}>
             <span style={checkDotStyle(rewardStatus === 'validated')} />
-            <span>{locale === 'zh-CN' ? '复盘结果决定能否观察' : 'Replay result decides observation'}</span>
+            <span>{locale === 'zh-CN' ? '组合承接 gate 通过' : 'Portfolio gate passed'}</span>
           </div>
         </div>
         {candidate ? (
           <div style={{ ...panelBlockStyle, marginTop: 10 }}>
-            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '当前复盘状态' : 'Replay status'}</div>
+            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '阻塞 gate' : 'Blocking gates'}</div>
             <div style={inlineMetaStyle}>
               <span style={statusBadgeStyle(rewardStatus)}>
                 {humanizeTokenLocale(locale, rewardStatus)}
               </span>
-              {blockingGates.slice(0, 2).map(gate => (
+              {(blockingGates.length > 0 ? blockingGates : ['none']).slice(0, 3).map(gate => (
                 <span key={gate} style={statusBadgeStyle('warning')}>
-                  {humanizeTokenLocale(locale, gate)}
+                  {gate === 'none'
+                    ? (locale === 'zh-CN' ? '暂无' : 'None')
+                    : humanizeTokenLocale(locale, gate)}
                 </span>
               ))}
             </div>
@@ -3623,8 +3781,8 @@ function TechnicalResearchProgressPanel({
         ) : null}
       </Section>
       <Section
-        title={locale === 'zh-CN' ? '盘面证据' : 'Market evidence'}
-        subtitle={locale === 'zh-CN' ? '保留来源信号，避免凭主题想象归因。' : 'Keep source signals to avoid narrative-only attribution.'}
+        title={locale === 'zh-CN' ? '原始盘面线索' : 'Raw market clues'}
+        subtitle={locale === 'zh-CN' ? '这里只是证据来源，不是交易结论。' : 'These are evidence sources, not trading conclusions.'}
       >
         <div style={columnStyle}>
           {sourceSignals.length > 0 ? sourceSignals.slice(0, 6).map(line => (
