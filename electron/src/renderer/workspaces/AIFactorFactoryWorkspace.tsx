@@ -490,6 +490,43 @@ const panelBlockStyle: React.CSSProperties = {
   gap: 8,
 }
 
+const factorLaunchPanelStyle: React.CSSProperties = {
+  ...surfaceStyles.section,
+  borderColor: 'rgba(89, 217, 142, 0.26)',
+  background: 'rgba(89, 217, 142, 0.055)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+}
+
+const factorDefinitionGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+  gap: 8,
+}
+
+const factorPrimaryActionRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+  alignItems: 'center',
+}
+
+const advancedDetailsStyle: React.CSSProperties = {
+  ...surfaceStyles.mutedSection,
+  borderRadius: 8,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+}
+
+const detailsSummaryStyle: React.CSSProperties = {
+  color: palette.ink,
+  fontSize: 13,
+  fontWeight: 750,
+  cursor: 'pointer',
+}
+
 const draftEditorWideBlockStyle: React.CSSProperties = {
   ...panelBlockStyle,
   gridColumn: '1 / -1',
@@ -3609,12 +3646,14 @@ function TechnicalFactorResearchPanel({
   const attributionReady = values.industry_attribution.trim().length > 0
   const strategyReady = thesisReady && evidenceReady && attributionReady
   const environmentId = textValue(candidate.environment_id ?? candidate.factor_id)
-  const replayLabel = locale === 'zh-CN' ? '跑预测力复盘' : 'Replay predictive power'
+  const replayLabel = locale === 'zh-CN' ? '定义因子并跑历史复盘' : 'Define factor and replay history'
   const replayPayload = {
     mode: 'signal_first',
     environment_id: environmentId,
     persist: true,
     demo_mode: false,
+    idea: values.research_thesis.trim() || candidate.thesis,
+    research_review: values,
   }
   const syntheticCandidate = {
     ...candidate,
@@ -3623,17 +3662,53 @@ function TechnicalFactorResearchPanel({
   }
   const attributionSummary = attributionSummaryText(candidate, locale)
   const nextTask = nextTaskText(candidate, locale)
+  const decision = signalFirstDecision(candidate, locale)
+  const reward = rewardRecord(candidate)
+  const rewardStatus = textValue(reward.status ?? candidate.status ?? candidate.validation_status, 'pending_validation')
+  const strategyGatePassed = rewardStatus === 'validated'
+  const strategyButtonDisabled = !strategyReady || !strategyGatePassed || !onAddStrategySignal
+  const definitionRows = [
+    {
+      label: locale === 'zh-CN' ? '因子问题' : 'Factor question',
+      value: factorResearchQuestion(candidate, locale),
+    },
+    {
+      label: locale === 'zh-CN' ? '股票池/主题' : 'Universe/theme',
+      value: values.industry_attribution || signalFirstTheme(candidate, locale),
+    },
+    {
+      label: locale === 'zh-CN' ? '触发信号' : 'Trigger',
+      value: values.beta_alpha_judgement,
+    },
+    {
+      label: locale === 'zh-CN' ? '排序方式' : 'Ranking',
+      value: locale === 'zh-CN'
+        ? '同一环境内按信号强度 / factor_value 做横截面排序'
+        : 'Rank same-environment names by signal strength / factor_value',
+    },
+    {
+      label: locale === 'zh-CN' ? '验证窗口' : 'Forward window',
+      value: 'T+5 / T+20 forward return',
+    },
+    {
+      label: locale === 'zh-CN' ? '进入策略条件' : 'Strategy gate',
+      value: locale === 'zh-CN'
+        ? 'Rank IC > 0、分位扩散为正、成本后收益和回撤通过'
+        : 'Rank IC > 0, positive spread, cost-adjusted return and drawdown pass',
+    },
+  ]
   const handleAddStrategySignal = () => {
+    if (strategyButtonDisabled) return
     onAddStrategySignal?.(strategySignalFromTechnicalCandidate(syntheticCandidate, values))
   }
 
   return (
     <Section
-      title={locale === 'zh-CN' ? '2 定义因子' : '2 Define factor'}
+      title={locale === 'zh-CN' ? '2 生成可复盘因子' : '2 Generate replayable factor'}
       subtitle={
         locale === 'zh-CN'
-          ? '先把盘面线索翻译成因子定义：股票池、触发信号、预测力假设、失效条件。'
-          : 'Translate market clues into factor definition: universe, trigger, edge, and invalidation.'
+          ? '系统先给出因子定义；你只跑复盘，过 gate 后送策略观察。'
+          : 'The system drafts the factor definition; replay it first, then send it to strategy observation after gates pass.'
       }
       actions={
         <div style={actionRowStyle}>
@@ -3642,100 +3717,123 @@ function TechnicalFactorResearchPanel({
             style={secondaryButtonStyle}
             onClick={() => onOpenRecord(candidate.title, { ...candidate, research_review: values })}
           >
-            {locale === 'zh-CN' ? '打开复核' : 'Open review'}
-          </button>
-          <FactorActionButton
-            actionKey="validate"
-            label={replayLabel}
-            factor={candidate}
-            onOpenRecord={onOpenRecord}
-            onRunAction={onRunAction}
-            onActionStart={onActionStart}
-            onActionResult={onActionResult}
-            onActionError={onActionError}
-            payloadOverrides={replayPayload}
-            tone="primary"
-            disabled={!onRunAction}
-            runningActionKey={runningActionKey}
-          />
-          <button
-            type="button"
-            style={buttonStyleForState(primaryButtonStyle, !thesisReady, 'primary')}
-            disabled={!thesisReady}
-            onClick={() => onUseCandidate(syntheticCandidate)}
-          >
-            {locale === 'zh-CN' ? '保存因子定义' : 'Save factor definition'}
-          </button>
-          <button
-            type="button"
-            style={buttonStyleForState(primaryButtonStyle, !strategyReady || !onAddStrategySignal, 'primary')}
-            disabled={!strategyReady || !onAddStrategySignal}
-            onClick={handleAddStrategySignal}
-          >
-            {locale === 'zh-CN' ? '送入观察草稿' : 'Draft observation'}
+            {locale === 'zh-CN' ? '打开原始数据' : 'Open raw data'}
           </button>
         </div>
       }
     >
       <div style={columnStyle}>
-        <div style={panelBlockStyle}>
-          <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '系统归因与下一步' : 'System attribution and next step'}</div>
-          <div style={fieldValueStyle}>{attributionSummary}</div>
+        <div style={factorLaunchPanelStyle}>
+          <div style={cardHeaderStyle}>
+            <div style={titleBlockStyle}>
+              <div style={inlineMetaStyle}>
+                <span style={statusBadgeStyle(decision.tone)}>{decision.label}</span>
+                <span style={statusBadgeStyle(strategyGatePassed ? 'validated' : 'pending_validation')}>
+                  {strategyGatePassed
+                    ? locale === 'zh-CN' ? '可送策略观察' : 'Strategy-ready'
+                    : locale === 'zh-CN' ? '先复盘' : 'Replay first'}
+                </span>
+              </div>
+              <div style={cardTitleStyle}>
+                {locale === 'zh-CN' ? '这就是当前因子定义' : 'Current factor definition'}
+              </div>
+              <div style={fieldValueStyle}>{attributionSummary}</div>
+            </div>
+          </div>
+          <div style={factorDefinitionGridStyle}>
+            {definitionRows.map(row => (
+              <div key={row.label} style={fieldBoxStyle}>
+                <div style={fieldLabelStyle}>{row.label}</div>
+                <div style={fieldValueStyle}>{row.value}</div>
+              </div>
+            ))}
+          </div>
+          <div style={factorPrimaryActionRowStyle}>
+            <FactorActionButton
+              actionKey="validate"
+              label={replayLabel}
+              factor={candidate}
+              onOpenRecord={onOpenRecord}
+              onRunAction={onRunAction}
+              onActionStart={onActionStart}
+              onActionResult={onActionResult}
+              onActionError={onActionError}
+              payloadOverrides={replayPayload}
+              tone="primary"
+              disabled={!onRunAction}
+              runningActionKey={runningActionKey}
+            />
+            <button
+              type="button"
+              style={buttonStyleForState(primaryButtonStyle, strategyButtonDisabled, 'primary')}
+              disabled={strategyButtonDisabled}
+              onClick={handleAddStrategySignal}
+            >
+              {locale === 'zh-CN' ? '加入策略观察模块' : 'Add to strategy observation'}
+            </button>
+          </div>
           <div style={{ ...fieldValueStyle, color: palette.ink, fontWeight: 700 }}>{nextTask}</div>
         </div>
-        <div style={inlineMetaStyle}>
-          <span style={statusBadgeStyle(candidate.research_mode)}>
-            {researchModeLabel(candidate.research_mode, locale)}
-          </span>
-          <span style={statusBadgeStyle(technicalCandidateAdvice(candidate, locale).tone)}>
-            {technicalCandidateAdvice(candidate, locale).label}
-          </span>
-          <span style={chromeStyles.monoMeta}>{candidate.factor_id}</span>
-        </div>
-        <div style={discoveryStepGridStyle}>
-          {steps.map((step, index) => {
-            const complete = index === 0 || (index === 1 && attributionReady) || (index === 2 && evidenceReady) || (index === 3 && thesisReady)
-            return (
-              <div key={step} style={discoveryStepStyle(complete)}>
-                <div style={stepNumberStyle}>{String(index + 1).padStart(2, '0')}</div>
-                <div style={stepLabelStyle}>{step}</div>
-              </div>
-            )
-          })}
-        </div>
-        <div style={discoveryWorkbenchGridStyle}>
-          <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '系统归因结果（可改）' : 'System attribution result'}
-            value={values.industry_attribution}
-            placeholder={locale === 'zh-CN' ? '系统会自动填板块/概念/产业链；你只在明显错的时候改。' : 'System fills board/concept/chain; edit only when it is clearly wrong.'}
-            onChange={value => onValueChange('industry_attribution', value)}
-          />
-          <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '系统生成的信号定义' : 'System signal definition'}
-            value={values.beta_alpha_judgement}
-            placeholder={locale === 'zh-CN' ? '例：收盘后出现同主题 gap/daily/strong_resonance，按信号强度排序' : 'Example: postmarket same-theme gap/daily/strong_resonance, ranked by signal strength'}
-            onChange={value => onValueChange('beta_alpha_judgement', value)}
-          />
-          <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '系统生成的预测力假设' : 'System predictive thesis'}
-            value={values.supporting_evidence}
-            placeholder={locale === 'zh-CN' ? '写交易逻辑：资金扩散、同链条确认、强者恒强、还是风险释放后的修复' : 'Write the trading logic: diffusion, chain confirmation, momentum, or post-risk repair'}
-            onChange={value => onValueChange('supporting_evidence', value)}
-          />
-          <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '系统生成的失效条件' : 'System invalidation rule'}
-            value={values.counter_evidence}
-            placeholder={locale === 'zh-CN' ? '例：链主不确认、放量回落、分位收益不扩散、成本后收益为负' : 'Example: leader fails, volume fades, spread negative, cost-adjusted return negative'}
-            onChange={value => onValueChange('counter_evidence', value)}
-          />
-          <TechnicalReviewTextArea
-            label={locale === 'zh-CN' ? '系统生成的复盘规则' : 'System replay rule'}
-            value={values.research_thesis}
-            placeholder={locale === 'zh-CN' ? '例：按 factor_value 分组，看 Rank IC、分位收益、T+5/T+20 forward return，再看成本后收益和回撤' : 'Example: bucket by factor_value, inspect Rank IC, quantile spread, T+5/T+20 returns, then cost and drawdown'}
-            onChange={value => onValueChange('research_thesis', value)}
-            wide
-          />
-        </div>
+
+        <details style={advancedDetailsStyle}>
+          <summary style={detailsSummaryStyle}>
+            {locale === 'zh-CN' ? '高级：检查或修改系统生成字段' : 'Advanced: inspect or edit generated fields'}
+          </summary>
+          <div style={{ ...discoveryStepGridStyle, marginTop: 8 }}>
+            {steps.map((step, index) => {
+              const complete = index === 0 || (index === 1 && attributionReady) || (index === 2 && evidenceReady) || (index === 3 && thesisReady)
+              return (
+                <div key={step} style={discoveryStepStyle(complete)}>
+                  <div style={stepNumberStyle}>{String(index + 1).padStart(2, '0')}</div>
+                  <div style={stepLabelStyle}>{step}</div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ ...discoveryWorkbenchGridStyle, marginTop: 8 }}>
+            <TechnicalReviewTextArea
+              label={locale === 'zh-CN' ? '系统归因结果（可改）' : 'System attribution result'}
+              value={values.industry_attribution}
+              placeholder={locale === 'zh-CN' ? '系统会自动填板块/概念/产业链；你只在明显错的时候改。' : 'System fills board/concept/chain; edit only when it is clearly wrong.'}
+              onChange={value => onValueChange('industry_attribution', value)}
+            />
+            <TechnicalReviewTextArea
+              label={locale === 'zh-CN' ? '系统生成的信号定义' : 'System signal definition'}
+              value={values.beta_alpha_judgement}
+              placeholder={locale === 'zh-CN' ? '例：收盘后出现同主题 gap/daily/strong_resonance，按信号强度排序' : 'Example: postmarket same-theme gap/daily/strong_resonance, ranked by signal strength'}
+              onChange={value => onValueChange('beta_alpha_judgement', value)}
+            />
+            <TechnicalReviewTextArea
+              label={locale === 'zh-CN' ? '系统生成的预测力假设' : 'System predictive thesis'}
+              value={values.supporting_evidence}
+              placeholder={locale === 'zh-CN' ? '写交易逻辑：资金扩散、同链条确认、强者恒强、还是风险释放后的修复' : 'Write the trading logic: diffusion, chain confirmation, momentum, or post-risk repair'}
+              onChange={value => onValueChange('supporting_evidence', value)}
+            />
+            <TechnicalReviewTextArea
+              label={locale === 'zh-CN' ? '系统生成的失效条件' : 'System invalidation rule'}
+              value={values.counter_evidence}
+              placeholder={locale === 'zh-CN' ? '例：链主不确认、放量回落、分位收益不扩散、成本后收益为负' : 'Example: leader fails, volume fades, spread negative, cost-adjusted return negative'}
+              onChange={value => onValueChange('counter_evidence', value)}
+            />
+            <TechnicalReviewTextArea
+              label={locale === 'zh-CN' ? '系统生成的复盘规则' : 'System replay rule'}
+              value={values.research_thesis}
+              placeholder={locale === 'zh-CN' ? '例：按 factor_value 分组，看 Rank IC、分位收益、T+5/T+20 forward return，再看成本后收益和回撤' : 'Example: bucket by factor_value, inspect Rank IC, quantile spread, T+5/T+20 returns, then cost and drawdown'}
+              onChange={value => onValueChange('research_thesis', value)}
+              wide
+            />
+          </div>
+          <div style={{ ...factorPrimaryActionRowStyle, marginTop: 8 }}>
+            <button
+              type="button"
+              style={buttonStyleForState(secondaryButtonStyle, !thesisReady, 'secondary')}
+              disabled={!thesisReady}
+              onClick={() => onUseCandidate(syntheticCandidate)}
+            >
+              {locale === 'zh-CN' ? '转成投研假设' : 'Convert to research thesis'}
+            </button>
+          </div>
+        </details>
       </div>
     </Section>
   )
