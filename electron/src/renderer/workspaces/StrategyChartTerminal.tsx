@@ -2996,7 +2996,8 @@ function activeProviderProblems(providerHealth: Record<string, unknown>[]): Reco
 function cacheRefreshSeconds(cacheStatus: StrategyDashboard['cache_status']): number {
   if (!cacheStatus.available) return 10
   const runStatus = compactText(recordValue(cacheStatus.postmarket_backfill.run).status).toLowerCase()
-  if (['running', 'partial', 'stale'].includes(runStatus)) return 10
+  const criticalStatus = compactText(recordValue(cacheStatus.postmarket_backfill.summary).critical_status).toLowerCase()
+  if (['running', 'partial', 'stale'].includes(runStatus) && criticalStatus !== 'ok') return 10
   const freshness = numberValue(recordValue(cacheStatus.live_low_latency.summary).freshness_seconds_max)
   return freshness !== undefined && freshness <= 60 * 60 ? 10 : 60
 }
@@ -4470,19 +4471,18 @@ function initialTargetFrom(
   dashboard: StrategyDashboard,
 ): ChartTarget {
   const shellTarget = shell?.default_target
-  const chartContext = dashboard.chart_context
-  const buyCandidate = dashboard.buy_candidates[0]
-  const inferredKind = shellTarget?.label
-    ? 'index'
-    : (chartContext?.symbol ? 'stock' : (buyCandidate?.symbol ? 'stock' : 'index'))
+  void dashboard
+  if (!shellTarget?.label) {
+    return {
+      label: '上证指数',
+      kind: 'index',
+      freq: DEFAULT_TERMINAL_FREQ,
+    }
+  }
   return {
-    label:
-      shellTarget?.label ??
-      chartContext?.symbol ??
-      buyCandidate?.symbol ??
-      '上证指数',
-    kind: shellTarget?.kind ?? inferredKind,
-    freq: DEFAULT_TERMINAL_FREQ,
+    label: shellTarget.label,
+    kind: shellTarget.kind ?? 'index',
+    freq: shellTarget.freq ?? DEFAULT_TERMINAL_FREQ,
   }
 }
 
@@ -6015,9 +6015,7 @@ export function StrategyChartTerminal({
     }
   }, [groupedWatchlistRows, optimisticDeletedManualClueKeys])
 
-  const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab].length > 0
-    ? displayWatchlistGroups[activeWatchlistTab]
-    : (activeWatchlistTab === 'macro_indices' || activeWatchlistTab === 'sector_boards' ? displayWatchlistGroups.legacy : [])
+  const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab]
   const activeWatchlistRows = useMemo(
     () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
     [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
@@ -8248,21 +8246,36 @@ function CacheMonitorStrip({
   const boardShardTotal = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).total_groups) ?? 0), 0)
   const boardShardDone = boardShardTasks.filter(item => compactText(item.status) === 'ok').length
   const boardShardProcessed = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).processed) ?? 0), 0)
-  const postPct = percentValue(postSummary.progress_pct)
-  const postStatus = compactText(postRun.status, compactText(postSummary.status, 'pending'))
+  const postPct = percentValue(postSummary.critical_progress_pct ?? postSummary.progress_pct)
+  const postRawStatus = compactText(postRun.status, compactText(postSummary.status, 'pending'))
+  const postStatus = compactText(postSummary.critical_status, postRawStatus)
   const postEta = compactDuration(postSummary.eta_seconds, locale)
+  const optionalStatusCounts = recordValue(postSummary.optional_status_counts)
+  const optionalTotal = numberValue(postSummary.optional_task_count) ?? 0
+  const optionalDone = numberValue(postSummary.optional_completed) ?? 0
+  const optionalRunning = numberValue(optionalStatusCounts.running) ?? 0
+  const optionalPending = numberValue(optionalStatusCounts.pending) ?? 0
+  const optionalTailLine = optionalTotal
+    ? (locale === 'zh-CN'
+      ? `HK后台 ${countText(optionalDone)}/${countText(optionalTotal)} · 运行 ${countText(optionalRunning)} · 待 ${countText(optionalPending)}`
+      : `HK tail ${countText(optionalDone)}/${countText(optionalTotal)} · running ${countText(optionalRunning)} · pending ${countText(optionalPending)}`)
+    : ''
   const stockDailyLine = stockShardTasks.length
     ? `${countText(stockShardDone)}/${countText(stockShardTasks.length)} shard · ${countText(stockShardProcessed)}/${countText(stockShardTotal)}`
     : `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText(stockDailySummary.latest_symbol)}`
   const boardCursorLine = boardShardTasks.length
     ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard · ${countText(boardShardProcessed)}/${countText(boardShardTotal)}`
     : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
-  const postDetail = locale === 'zh-CN'
-    ? `阶段 ${compactText(postRun.phase, '等待')} · ${postEta || 'ETA 计算中'}`
-    : `phase ${compactText(postRun.phase, 'pending')} · ${postEta || 'ETA pending'}`
+  const postDetail = postStatus === 'ok' && postRawStatus === 'running' && optionalTailLine
+    ? (locale === 'zh-CN'
+      ? `主链完成 · ${optionalTailLine}`
+      : `critical path done · ${optionalTailLine}`)
+    : (locale === 'zh-CN'
+      ? `阶段 ${compactText(postRun.phase, '等待')} · ${postEta || 'ETA 计算中'}`
+      : `phase ${compactText(postRun.phase, 'pending')} · ${postEta || 'ETA pending'}`)
   const postSubdetail = locale === 'zh-CN'
-    ? `日线 ${stockDailyLine} · 板块 ${boardCursorLine}`
-    : `daily ${stockDailyLine} · boards ${boardCursorLine}`
+    ? `日线 ${stockDailyLine} · 板块 ${boardCursorLine}${optionalTailLine ? ` · ${optionalTailLine}` : ''}`
+    : `daily ${stockDailyLine} · boards ${boardCursorLine}${optionalTailLine ? ` · ${optionalTailLine}` : ''}`
 
   const dailyCache = firstRecord(freqs, 'freq', '日线')
   const dailySymbols = numberValue(dailyCache.symbols) ?? 0

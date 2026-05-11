@@ -1513,6 +1513,10 @@ function normalizeCandidateFactorIdeas(
     }))
 }
 
+function trimTrailingSlash(value?: string): string {
+  return (value ?? '').replace(/\/+$/, '')
+}
+
 function hasFactorPayload(record: Record<string, unknown>): boolean {
   return Boolean(
     textValue(record.factor_id ?? record.id ?? record.idea_id) ||
@@ -3968,13 +3972,36 @@ export function AIFactorFactoryWorkspace({
   onRunAction,
   onAddStrategySignal,
 }: AIFactorFactoryWorkspaceProps) {
+  const [remoteFactory, setRemoteFactory] = React.useState<Record<string, unknown> | null>(null)
+  React.useEffect(() => {
+    const baseUrl = trimTrailingSlash(signalsWebBaseUrl)
+    if (!baseUrl) return undefined
+    const controller = new AbortController()
+    setRemoteFactory(null)
+    void fetch(`${baseUrl}/api/strategy/ai-factor-factory`, { signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(value => {
+        if (!controller.signal.aborted && value && typeof value === 'object' && !Array.isArray(value)) {
+          setRemoteFactory(value as Record<string, unknown>)
+        }
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [signalsWebBaseUrl])
+
+  const dashboardWithFactory = React.useMemo(
+    () => (remoteFactory
+      ? ({ ...(dashboard ?? {}), ai_factor_factory: remoteFactory } as SignalsDashboard)
+      : dashboard),
+    [dashboard, remoteFactory],
+  )
   const dashboardFactors = React.useMemo(
-    () => normalizeFactoryFactors(dashboard, signalsWebBaseUrl),
-    [dashboard, signalsWebBaseUrl],
+    () => normalizeFactoryFactors(dashboardWithFactory, signalsWebBaseUrl),
+    [dashboardWithFactory, signalsWebBaseUrl],
   )
   const candidateIdeas = React.useMemo(
-    () => normalizeCandidateFactorIdeas(dashboard, signalsWebBaseUrl),
-    [dashboard, signalsWebBaseUrl],
+    () => normalizeCandidateFactorIdeas(dashboardWithFactory, signalsWebBaseUrl),
+    [dashboardWithFactory, signalsWebBaseUrl],
   )
   const [factorOverrides, setFactorOverrides] = React.useState<Record<string, AIFactorRecord>>({})
   const factors = React.useMemo(

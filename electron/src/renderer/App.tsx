@@ -70,7 +70,8 @@ function signalsDashboardPollingMs(page: Page, dashboard: LongclawPackDashboard 
   if (!dashboard || dashboard.pack_id !== 'signals') return 10_000
   const cache = dashboard.cache_status
   const runStatus = String(cache?.postmarket_backfill?.run?.status ?? '').toLowerCase()
-  const postmarketActive = ['running', 'partial', 'stale'].includes(runStatus)
+  const criticalStatus = String(cache?.postmarket_backfill?.summary?.critical_status ?? '').toLowerCase()
+  const postmarketActive = ['running', 'partial', 'stale'].includes(runStatus) && criticalStatus !== 'ok'
   const freshness = Number(cache?.live_low_latency?.summary?.freshness_seconds_max ?? Number.POSITIVE_INFINITY)
   const liveActive = Number.isFinite(freshness) && freshness <= 60 * 60
   return postmarketActive || liveActive ? 10_000 : 60_000
