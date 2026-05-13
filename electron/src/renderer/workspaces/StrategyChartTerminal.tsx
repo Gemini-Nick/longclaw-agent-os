@@ -367,6 +367,16 @@ type ApiError = Error & {
   payload?: Record<string, unknown>
 }
 
+export type SignalCalloutItem = {
+  label: string
+  side: 'buy' | 'sell' | 'neutral'
+  color: string
+  freq?: string
+  scope?: string
+  sourceLabel?: string
+  details?: string
+}
+
 type SignalOverlayData = {
   label: string
   side: 'buy' | 'sell' | 'neutral'
@@ -377,6 +387,15 @@ type SignalOverlayData = {
   lane?: number
   sourceLabel?: string
   details?: string
+  items?: SignalCalloutItem[]
+  itemCount?: number
+}
+
+export type SignalChartCallout = SignalOverlayData & {
+  timestamp: number
+  price: number
+  items: SignalCalloutItem[]
+  itemCount: number
 }
 
 type DivergenceOverlayData = {
@@ -448,6 +467,7 @@ const MAX_CHART_DIVERGENCE_OVERLAYS = 3
 const MAX_CHART_LEVEL_OVERLAYS = 4
 const MAX_EVIDENCE_SIGNAL_ROWS = 6
 const CHART_SIGNAL_LOOKBACK_BARS = 140
+const SIGNAL_CALLOUT_BAR_WINDOW = 3
 const MA_COLORS = [
   tradingDeskTheme.chart.orange,
   tradingDeskTheme.chart.line,
@@ -3010,6 +3030,76 @@ function activeProviderProblems(providerHealth: Record<string, unknown>[]): Reco
   return providerHealth.filter(item => isActiveProviderProblem(item) && !providerHasHealthyPeer(item, providerHealth))
 }
 
+export function sourceMonitorSummary(
+  providerHealthInput: unknown[],
+  blockersInput: unknown[],
+  locale: LongclawLocale,
+  cacheAvailable = true,
+) {
+  const providerHealth = providerHealthInput.map(item => recordValue(item))
+  const providerProblems = activeProviderProblems(providerHealth)
+  const sourceProblemCount = providerProblems.length
+  const sourceTotalCount = providerHealth.length
+  const taskBlockerCount = blockersInput.length
+  const firstProviderProblem = providerProblems[0] ?? {}
+
+  if (!cacheAvailable) {
+    return {
+      providerCount: sourceTotalCount,
+      problemCount: sourceProblemCount,
+      value: 'OFF',
+      progress: 0,
+      status: 'degraded',
+      statusLabel: 'OFF',
+      detail: locale === 'zh-CN' ? '缓存不可用' : 'cache unavailable',
+      subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type)),
+    }
+  }
+
+  if (sourceProblemCount > 0) {
+    return {
+      providerCount: sourceTotalCount,
+      problemCount: sourceProblemCount,
+      value: sourceTotalCount > 0
+        ? `${countText(sourceProblemCount)}/${countText(sourceTotalCount)}`
+        : countText(sourceProblemCount),
+      progress: sourceTotalCount > 0 ? ((sourceTotalCount - sourceProblemCount) / sourceTotalCount) * 100 : 0,
+      status: 'error',
+      statusLabel: 'BLOCKED',
+      detail: `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`,
+      subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看 provider_health 定位数据源' : 'check provider_health for source detail')),
+    }
+  }
+
+  if (sourceTotalCount === 0) {
+    return {
+      providerCount: 0,
+      problemCount: 0,
+      value: '0',
+      progress: 0,
+      status: 'partial',
+      statusLabel: locale === 'zh-CN' ? '未加载' : 'NO DATA',
+      detail: locale === 'zh-CN' ? 'provider_health 未加载' : 'provider_health not loaded',
+      subdetail: locale === 'zh-CN'
+        ? `${countText(taskBlockerCount)} 个任务阻塞在补数区展示`
+        : `${countText(taskBlockerCount)} task blockers shown in data tasks`,
+    }
+  }
+
+  return {
+    providerCount: sourceTotalCount,
+    problemCount: 0,
+    value: countText(sourceTotalCount),
+    progress: 100,
+    status: 'ok',
+    statusLabel: 'OK',
+    detail: locale === 'zh-CN' ? '无阻塞源' : 'no blocking source',
+    subdetail: locale === 'zh-CN'
+      ? `${countText(sourceTotalCount)} 个 provider 记录 · ${countText(taskBlockerCount)} 个任务阻塞在补数区展示`
+      : `${countText(sourceTotalCount)} provider records · ${countText(taskBlockerCount)} task blockers shown in data tasks`,
+  }
+}
+
 function cacheRefreshSeconds(cacheStatus: StrategyDashboard['cache_status']): number {
   if (!cacheStatus.available) return 10
   const runStatus = compactText(recordValue(cacheStatus.postmarket_backfill.run).status).toLowerCase()
@@ -3471,36 +3561,70 @@ function ensureSignalOverlay() {
     needDefaultPointFigure: false,
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
-    createPointFigures: ({ overlay, coordinates }: OverlayCreateFiguresCallbackParams) => {
+    createPointFigures: ({ overlay, coordinates, bounding }: OverlayCreateFiguresCallbackParams) => {
       const point = coordinates[0]
       if (!point) return []
       const data = recordValue(overlay.extendData) as SignalOverlayData
       const label = data.label || 'SIG'
       const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
       const color = data.color || signalOverlayColor(side)
-      const text = label
-      const freqLabel = data.freq ? `${data.freq} ` : ''
-      const displayText = `${freqLabel}${text}`
-      const width = Math.max(42, Math.min(78, displayText.length * 7 + 18))
-      const height = 18
-      const gap = 8
+      const rawItems = Array.isArray(data.items) ? data.items : []
+      const items = rawItems.length > 0
+        ? rawItems.map(item => {
+          const record = recordValue(item)
+          const itemSide = record.side === 'sell' ? 'sell' : record.side === 'neutral' ? 'neutral' : 'buy'
+          return {
+            label: compactText(record.label, label),
+            side: itemSide,
+            color: compactText(record.color, signalOverlayColor(itemSide)),
+            freq: compactText(record.freq),
+            scope: compactText(record.scope),
+            sourceLabel: compactText(record.sourceLabel),
+            details: compactText(record.details),
+          } satisfies SignalCalloutItem
+        }).filter(item => item.label)
+        : [{
+          label,
+          side,
+          color,
+          freq: data.freq,
+          scope: data.scope,
+          sourceLabel: data.sourceLabel,
+          details: data.details,
+        }]
+      const badge = signalCalloutBadgeSummary(items, data.itemCount, label, data.freq)
+      const totalItems = badge.totalItems
+      const displayText = badge.title
+      const subText = badge.subtitle
+      const width = Math.max(totalItems > 1 ? 82 : 58, Math.min(128, Math.max(displayText.length, subText.length) * 7 + 24))
+      const height = subText ? 30 : 20
+      const gap = 10
       const lane = Math.max(0, Math.min(5, Math.floor(numberValue(data.lane) ?? 0)))
-      const laneOffset = lane * (height + 5)
-      const rectX = point.x - width / 2
-      const rectY = side === 'buy' ? point.y + gap + laneOffset : point.y - gap - height - laneOffset
-      const stemEndY = side === 'buy' ? rectY : rectY + height
-      const tipY = side === 'buy' ? point.y + 5 : point.y - 5
-      const fillColor = 'rgba(15, 23, 42, 0.88)'
+      const chartWidth = bounding?.width ?? point.x + width + 96
+      const chartHeight = bounding?.height ?? point.y + height + 32
+      const maxX = Math.max(2, chartWidth - width - 86)
+      const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, Math.max(min, max)))
+      const preferLeft = point.x > chartWidth * 0.6
+      const rectX = clamp(preferLeft ? point.x - width - gap : point.x + gap, 2, maxX)
+      const laneStep = height + 6
+      const placeBelow = point.y < chartHeight * 0.48
+      const topRailY = 48 + lane * laneStep
+      const bottomRailY = chartHeight - height - 10 - lane * laneStep
+      const rectY = clamp(placeBelow ? bottomRailY : topRailY, 28, chartHeight - height - 2)
+      const connectorX = clamp(point.x, rectX + 8, rectX + width - 8)
+      const connectorY = point.y < rectY ? rectY : rectY + height
+      const fillColor = 'rgba(15, 23, 42, 0.94)'
+      const headerFillColor = data.isCustom ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.18)'
       const borderSize = 1
-      const labelY = rectY + height / 2
 
-      return [
+      const figures = [
         {
           type: 'line',
           attrs: {
             coordinates: [
-              { x: point.x, y: tipY },
-              { x: point.x, y: stemEndY },
+              { x: point.x, y: point.y },
+              { x: point.x, y: connectorY },
+              { x: connectorX, y: connectorY },
             ],
           },
           styles: { color, size: 1, style: 'dashed', dashedValue: [3, 3] },
@@ -3510,9 +3634,9 @@ function ensureSignalOverlay() {
           type: 'polygon',
           attrs: {
             coordinates: [
-              { x: point.x, y: tipY },
+              { x: point.x, y: point.y - 5 },
               { x: point.x - 4, y: point.y },
-              { x: point.x, y: side === 'buy' ? point.y - 4 : point.y + 4 },
+              { x: point.x, y: point.y + 5 },
               { x: point.x + 4, y: point.y },
             ],
           },
@@ -3526,13 +3650,23 @@ function ensureSignalOverlay() {
             color: fillColor,
             borderColor: color,
             borderSize,
-            borderRadius: 3,
+            borderRadius: 4,
           },
           ignoreEvent: true,
         },
         {
           type: 'rect',
-          attrs: { x: rectX + 4, y: rectY + 4, width: 3, height: height - 8 },
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color: headerFillColor,
+            borderColor: headerFillColor,
+            borderRadius: 4,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX + 5, y: rectY + 5, width: 4, height: height - 10 },
           styles: {
             color,
             borderColor: color,
@@ -3544,8 +3678,8 @@ function ensureSignalOverlay() {
           type: 'text',
           attrs: {
             x: rectX + 12,
-            y: labelY,
-            text: displayText.slice(0, 10),
+            y: rectY + (subText ? 10 : height / 2),
+            text: displayText.slice(0, 12),
             align: 'left',
             baseline: 'middle',
           },
@@ -3558,6 +3692,69 @@ function ensureSignalOverlay() {
           ignoreEvent: true,
         },
       ]
+
+      if (subText) {
+        figures.push(
+          {
+            type: 'text',
+            attrs: {
+              x: rectX + 12,
+              y: rectY + 23,
+              text: subText.slice(0, 14),
+              align: 'left',
+              baseline: 'middle',
+            },
+            styles: {
+              color: terminalTheme.textMuted,
+              size: 9,
+              weight: 720,
+              family: 'IBM Plex Mono, Menlo, monospace',
+            },
+            ignoreEvent: true,
+          },
+        )
+      }
+
+      items.slice(0, 4).forEach((item, index) => {
+        const itemColor = item.color || signalOverlayColor(item.side)
+        figures.push({
+          type: 'rect',
+          attrs: {
+            x: rectX + width - 8 - index * 8,
+            y: rectY + height - 6,
+            width: 4,
+            height: 4,
+          },
+          styles: {
+            color: itemColor,
+            borderColor: itemColor,
+            borderRadius: 2,
+          },
+          ignoreEvent: true,
+        })
+      })
+
+      if (totalItems > 4) {
+        figures.push({
+          type: 'text',
+          attrs: {
+            x: rectX + width - 8,
+            y: rectY + height - 4,
+            text: '+',
+            align: 'right',
+            baseline: 'middle',
+          },
+          styles: {
+            color: terminalTheme.textMuted,
+            size: 9,
+            weight: 720,
+            family: 'IBM Plex Mono, Menlo, monospace',
+          },
+          ignoreEvent: true,
+        })
+      }
+
+      return figures
     },
   })
   signalOverlayRegistered = true
@@ -4523,6 +4720,136 @@ export function displaySignalsForChart(data: KLineData[], signals: StrategySigna
     .map(item => item.signal)
 }
 
+function signalCalloutItem(signal: StrategySignal, currentFreq?: string): SignalCalloutItem {
+  const side = signalSideForOverlay(signal)
+  const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+  const sourceLabel = [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · ')
+  return {
+    label: signalOverlayLabel(signal),
+    side,
+    color: isCustomUserSignal(signal) ? (side === 'sell' ? '#fb7185' : '#38bdf8') : signalOverlayColor(side),
+    freq: compactScopeLabel(signal, currentFreq),
+    scope: scopeLabel,
+    sourceLabel,
+    details: signalEvidenceDetails(signal),
+  }
+}
+
+export function signalCalloutBadgeSummary(
+  items: SignalCalloutItem[],
+  itemCount?: number,
+  label = 'SIG',
+  freq?: string,
+): { title: string; subtitle: string; totalItems: number } {
+  const totalItems = Math.max(itemCount ?? items.length, items.length)
+  if (totalItems > 1) {
+    return {
+      title: `多周期 ${totalItems}`,
+      subtitle: uniqueCompact(items.map(item => item.freq)).slice(0, 3).join('/'),
+      totalItems,
+    }
+  }
+  return {
+    title: `${freq ? `${freq} ` : ''}${label}`,
+    subtitle: '',
+    totalItems,
+  }
+}
+
+type SignalCalloutCandidate = {
+  signal: StrategySignal
+  timestamp: number
+  alignedTimestamp: number
+  price: number
+  barIndex: number
+  priority: number
+  custom: boolean
+  item: SignalCalloutItem
+}
+
+function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): SignalChartCallout[] {
+  const clusters: Array<{ minIndex: number; maxIndex: number; candidates: SignalCalloutCandidate[] }> = []
+  candidates.forEach(candidate => {
+    const cluster = clusters.find(item => candidate.barIndex <= item.maxIndex + SIGNAL_CALLOUT_BAR_WINDOW)
+    if (!cluster) {
+      clusters.push({ minIndex: candidate.barIndex, maxIndex: candidate.barIndex, candidates: [candidate] })
+      return
+    }
+    cluster.minIndex = Math.min(cluster.minIndex, candidate.barIndex)
+    cluster.maxIndex = Math.max(cluster.maxIndex, candidate.barIndex)
+    cluster.candidates.push(candidate)
+  })
+
+  const laneCounts = new Map<string, number>()
+  return clusters.map(cluster => {
+    const ranked = [...cluster.candidates].sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+    const anchor = ranked[0]
+    const dedupedItems: SignalCalloutItem[] = []
+    const seenItems = new Set<string>()
+    ranked.forEach(candidate => {
+      const key = `${candidate.item.freq}:${candidate.item.label}:${candidate.item.sourceLabel}`
+      if (seenItems.has(key)) return
+      seenItems.add(key)
+      dedupedItems.push(candidate.item)
+    })
+    const side = anchor.item.side
+    const laneKey = `${Math.floor(anchor.barIndex / Math.max(1, SIGNAL_CALLOUT_BAR_WINDOW + 1))}:${side}`
+    const lane = laneCounts.get(laneKey) ?? 0
+    laneCounts.set(laneKey, lane + 1)
+    return {
+      timestamp: anchor.alignedTimestamp,
+      price: anchor.price,
+      label: dedupedItems.length > 1 ? '多周期证据' : (dedupedItems[0]?.label ?? '信号'),
+      side,
+      color: anchor.item.color,
+      isCustom: ranked.some(candidate => candidate.custom),
+      freq: anchor.item.freq,
+      scope: anchor.item.scope,
+      lane,
+      sourceLabel: anchor.item.sourceLabel,
+      details: uniqueCompact(ranked.map(candidate => candidate.item.details)).slice(0, 2).join(' · '),
+      items: dedupedItems,
+      itemCount: dedupedItems.length,
+    } satisfies SignalChartCallout
+  })
+}
+
+export function signalEvidenceCalloutsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): SignalChartCallout[] {
+  if (data.length === 0 || signals.length === 0) return []
+  const candidates = displaySignalsForChart(data, signals, currentFreq)
+    .map(signal => {
+      const timestamp = signalTimestamp(signal)
+      if (timestamp === undefined) return null
+      const bar = nearestChartBarForTimestamp(data, timestamp)
+      const alignedTimestamp = bar?.timestamp ?? timestamp
+      const price = signalOverlayPrice(signal, bar)
+      if (price === undefined) return null
+      const barIndex = data.findIndex(item => item.timestamp === alignedTimestamp)
+      if (barIndex < 0) return null
+      return {
+        signal,
+        timestamp,
+        alignedTimestamp,
+        price,
+        barIndex,
+        priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
+        custom: isCustomUserSignal(signal),
+        item: signalCalloutItem(signal, currentFreq),
+      } satisfies SignalCalloutCandidate
+    })
+    .filter((item): item is SignalCalloutCandidate => item !== null)
+    .sort((left, right) => {
+      if (left.barIndex !== right.barIndex) return left.barIndex - right.barIndex
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return left.timestamp - right.timestamp
+    })
+
+  return signalCalloutsFromCandidates(candidates)
+}
+
 function displayVolumeSignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
   if (data.length === 0 || signals.length === 0) return []
   const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
@@ -4573,37 +4900,13 @@ function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] 
 
 function createSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
-  const laneCounts = new Map<string, number>()
-  displaySignalsForChart(data, signals, currentFreq).forEach(signal => {
-    const timestamp = signalTimestamp(signal)
-    if (!timestamp) return
-    const bar = nearestChartBarForTimestamp(data, timestamp)
-    const alignedTimestamp = bar?.timestamp ?? timestamp
-    const price = signalOverlayPrice(signal, bar)
-    if (price === undefined) return
-    const label = signalOverlayLabel(signal)
-    const side = signalSideForOverlay(signal)
-    const custom = isCustomUserSignal(signal)
-    const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
-    const laneKey = `${alignedTimestamp}:${side}`
-    const lane = laneCounts.get(laneKey) ?? 0
-    laneCounts.set(laneKey, lane + 1)
+  signalEvidenceCalloutsForChart(data, signals, currentFreq).forEach(callout => {
     chart.createOverlay({
       name: SIGNAL_OVERLAY_NAME,
       groupId: SIGNAL_OVERLAY_GROUP,
       lock: true,
-      points: [{ timestamp: alignedTimestamp, value: price }],
-      extendData: {
-        label,
-        side,
-        color: custom ? (side === 'sell' ? '#fb7185' : '#38bdf8') : signalOverlayColor(side),
-        isCustom: custom,
-        freq: compactScopeLabel(signal, currentFreq),
-        scope: scopeLabel,
-        lane,
-        sourceLabel: [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · '),
-        details: signalEvidenceDetails(signal),
-      } satisfies SignalOverlayData,
+      points: [{ timestamp: callout.timestamp, value: callout.price }],
+      extendData: callout satisfies SignalOverlayData,
     })
   })
 }
@@ -8604,22 +8907,14 @@ function CacheMonitorStrip({
         ? 'partial'
         : 'ok'
 
-  const providerProblems = activeProviderProblems(providerHealth)
-  const firstProviderProblem = providerProblems[0] ?? {}
-  const sourceProblemCount = providerProblems.length
-  const taskBlockerCount = blockers.length
-  const blockerPct = cacheStatus.available && sourceProblemCount === 0 && liveStatus === 'ok' ? 100 : 0
-  const blockerDetail = sourceProblemCount
-    ? `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`
-    : (locale === 'zh-CN' ? '无阻塞源' : 'no blocking source')
-  const blockerSubdetail = sourceProblemCount
-    ? compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看 provider_health 定位数据源' : 'check provider_health for source detail'))
-    : (locale === 'zh-CN'
-      ? `${countText(providerHealth.length)} 个 provider 记录 · ${countText(taskBlockerCount)} 个任务阻塞在补数区展示`
-      : `${countText(providerHealth.length)} provider records · ${countText(taskBlockerCount)} task blockers shown in data tasks`)
+  const sourceSummary = sourceMonitorSummary(providerHealth, blockers, locale, cacheStatus.available)
   const refreshSeconds = cacheRefreshSeconds(cacheStatus)
   const updatedAt = compactClock(cacheStatus.updated_at, locale)
-  const monitorStatus = cacheStatus.available && liveStatus === 'ok' && sourceProblemCount === 0 ? 'ok' : liveStatus
+  const monitorStatus = sourceSummary.status === 'error' || sourceSummary.status === 'degraded' || liveStatus === 'degraded'
+    ? 'degraded'
+    : sourceSummary.status === 'partial' || liveStatus === 'partial'
+      ? 'partial'
+      : 'ok'
   const monitorColor = monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error
   const toggleLabel = compact
     ? (locale === 'zh-CN' ? '展开' : 'Expand')
@@ -8627,8 +8922,8 @@ function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? `盘中 ${liveStatusLabel} · 盘后 ${cacheStatusLabel(postStatus, 'pending')} · Mongo ${countText(dailyToday)}/${countText(dailySymbols)} · 网络源 ${sourceProblemCount ? 'BLOCKED' : 'OK'}`
-      : `live ${liveStatusLabel} · post ${cacheStatusLabel(postStatus, 'pending')} · mongo ${countText(dailyToday)}/${countText(dailySymbols)} · sources ${sourceProblemCount ? 'BLOCKED' : 'OK'}`
+      ? `盘中 ${liveStatusLabel} · 盘后 ${cacheStatusLabel(postStatus, 'pending')} · Mongo ${countText(dailyToday)}/${countText(dailySymbols)} · 网络源 ${sourceSummary.statusLabel}`
+      : `live ${liveStatusLabel} · post ${cacheStatusLabel(postStatus, 'pending')} · mongo ${countText(dailyToday)}/${countText(dailySymbols)} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
         <div style={cacheMonitorToolbarStyle}>
@@ -8695,12 +8990,12 @@ function CacheMonitorStrip({
         />
         <CacheMonitorCell
           title={locale === 'zh-CN' ? '网络源' : 'Sources'}
-          value={String(sourceProblemCount)}
-          progress={blockerPct}
-          status={sourceProblemCount ? 'error' : 'ok'}
-          statusLabel={sourceProblemCount ? 'BLOCKED' : 'OK'}
-          detail={blockerDetail}
-          subdetail={blockerSubdetail}
+          value={sourceSummary.value}
+          progress={sourceSummary.progress}
+          status={sourceSummary.status}
+          statusLabel={sourceSummary.statusLabel}
+          detail={sourceSummary.detail}
+          subdetail={sourceSummary.subdetail}
         />
       </div>
     </div>

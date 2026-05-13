@@ -16719,6 +16719,38 @@ var panelBlockStyle = {
   flexDirection: "column",
   gap: 8
 };
+var factorLaunchPanelStyle = {
+  ...surfaceStyles.section,
+  borderColor: "rgba(89, 217, 142, 0.26)",
+  background: "rgba(89, 217, 142, 0.055)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 12
+};
+var factorDefinitionGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+  gap: 8
+};
+var factorPrimaryActionRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  alignItems: "center"
+};
+var advancedDetailsStyle = {
+  ...surfaceStyles.mutedSection,
+  borderRadius: 8,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8
+};
+var detailsSummaryStyle = {
+  color: palette.ink,
+  fontSize: 13,
+  fontWeight: 750,
+  cursor: "pointer"
+};
 var draftEditorWideBlockStyle = {
   ...panelBlockStyle,
   gridColumn: "1 / -1"
@@ -17427,10 +17459,10 @@ function factorAction(actionKey, label, factor, payloadOverrides = {}) {
       factor_id: factor.factor_id,
       idea: factor.thesis,
       label,
-      ...payloadOverrides,
       ...actionKey === "validate" ? { demo_mode: true, mode: "demo" } : {},
       ...actionKey === "rhythm" ? { mode: "demo" } : {},
-      ...actionKey === "publish" ? { live_enabled: true } : {}
+      ...actionKey === "publish" ? { live_enabled: true } : {},
+      ...payloadOverrides
     },
     metadata: {
       workspace: "ai_factor_factory",
@@ -17471,7 +17503,7 @@ function normalizeFactor(raw, index) {
   const factorExposures = asRecord(raw.factor_exposures);
   return {
     ...raw,
-    factor_id: textValue(raw.factor_id ?? raw.id ?? raw.idea_id, `ai-factor-${index + 1}`),
+    factor_id: textValue(raw.factor_id ?? raw.id ?? raw.idea_id ?? raw.environment_id, `ai-factor-${index + 1}`),
     title: textValue(raw.title ?? raw.name ?? raw.summary, fallbackFactor.title),
     thesis: textValue(raw.thesis ?? raw.hypothesis ?? raw.description ?? raw.idea, fallbackFactor.thesis),
     status: textValue(raw.status ?? raw.state, "idea"),
@@ -17553,7 +17585,8 @@ function normalizeFactoryFactors(dashboard, signalsWebBaseUrl) {
 function normalizeCandidateFactorIdeas(dashboard, signalsWebBaseUrl) {
   const rawFactoryValue = dashboard?.ai_factor_factory;
   const rawFactory = asRecord(rawFactoryValue);
-  const rawCandidates = [
+  const rawEnvironments = asRecordArray(rawFactory.rl_environments);
+  const rawCandidates = rawEnvironments.length > 0 ? rawEnvironments : [
     ...asRecordArray(rawFactory.candidate_factor_ideas),
     ...asRecordArray(rawFactory.factor_idea_queue)
   ];
@@ -17566,6 +17599,9 @@ function normalizeCandidateFactorIdeas(dashboard, signalsWebBaseUrl) {
     ...factor,
     signals_web_base_url: signalsWebBaseUrl ?? ""
   }));
+}
+function trimTrailingSlash(value) {
+  return (value ?? "").replace(/\/+$/, "");
 }
 function hasFactorPayload(record) {
   return Boolean(
@@ -17717,14 +17753,247 @@ function researchSteps(locale) {
 }
 function researchModeLabel(mode, locale) {
   if (mode === "signal_first") {
-    return locale === "zh-CN" ? "\u6280\u672F\u53D1\u73B0\u56E0\u5B50" : "Signal-first";
+    return locale === "zh-CN" ? "\u76D8\u9762\u7EBF\u7D22\u56E0\u5B50" : "Market-signal factor";
   }
   if (mode === "research_first") {
     return locale === "zh-CN" ? "\u6295\u7814\u53D1\u73B0\u56E0\u5B50" : "Research-first";
   }
   return humanizeTokenLocale(locale, mode || "unknown");
 }
+function rewardRecord(factor) {
+  return asRecord(asRecord(factor.evaluation).reward);
+}
+function factorEvaluationRecord(factor) {
+  return asRecord(asRecord(factor.evaluation).factor_evaluation);
+}
+function portfolioEvaluationRecord(factor) {
+  return asRecord(asRecord(factor.evaluation).portfolio_evaluation);
+}
+function environmentMetricsRecord(factor) {
+  return asRecord(factor.environment_metrics);
+}
+function splitKeysRecord(factor) {
+  return asRecord(factor.split_keys);
+}
+function signalFirstTheme(candidate, locale) {
+  const splitKeys = splitKeysRecord(candidate);
+  const attribution = asRecord(candidate.attribution);
+  const theme = textValue(attribution.primary_theme ?? splitKeys.theme ?? candidate.factor_exposures.theme);
+  if (!theme || theme === "\u6280\u672F\u7ED3\u6784\u5171\u632F") {
+    return locale === "zh-CN" ? "\u6280\u672F\u7ED3\u6784\u5171\u632F" : "Technical resonance";
+  }
+  return theme;
+}
+function factorResearchQuestion(candidate, locale) {
+  const splitKeys = splitKeysRecord(candidate);
+  const theme = signalFirstTheme(candidate, locale);
+  const signalType = humanizeTokenLocale(locale, textValue(splitKeys.signal_type_family, "technical"));
+  const freq = humanizeTokenLocale(locale, textValue(splitKeys.freq_bucket, "daily"));
+  const scope = humanizeTokenLocale(locale, textValue(splitKeys.scan_scope, "postmarket"));
+  if (locale !== "zh-CN") {
+    return `Does ${theme} ${scope}/${freq}/${signalType} predict forward returns?`;
+  }
+  return `${theme}\u7684${scope}/${freq}/${signalType}\uFF0C\u662F\u5426\u6709\u672A\u6765\u6536\u76CA\u9884\u6D4B\u529B\uFF1F`;
+}
+function themeQualityText(candidate, locale) {
+  const splitKeys = splitKeysRecord(candidate);
+  const attribution = asRecord(candidate.attribution);
+  const theme = textValue(attribution.primary_theme ?? splitKeys.theme ?? candidate.factor_exposures.theme);
+  const attributionStatus = textValue(attribution.status);
+  const metrics = environmentMetricsRecord(candidate);
+  const cleanliness = numberValue(metrics.cluster_cleanliness, 0);
+  const reward = rewardRecord(candidate);
+  const gates = stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates);
+  if (gates.some((gate) => gate.includes("overbroad"))) {
+    return locale === "zh-CN" ? "\u8FC7\u5BBD" : "Broad";
+  }
+  if (attributionStatus === "auto_attributed") {
+    const confidence = numberValue(attribution.confidence, 0);
+    if (confidence >= 0.58) return locale === "zh-CN" ? "\u5DF2\u5F52\u56E0" : "Attributed";
+    return locale === "zh-CN" ? "\u5F31\u5F52\u56E0" : "Weak attribution";
+  }
+  if (!theme || theme === "\u6280\u672F\u7ED3\u6784\u5171\u632F" || cleanliness <= 0.65) {
+    return locale === "zh-CN" ? "\u6280\u672F\u5F52\u56E0" : "Technical";
+  }
+  if (cleanliness >= 0.9) {
+    return locale === "zh-CN" ? "\u96C6\u4E2D" : "Focused";
+  }
+  return locale === "zh-CN" ? "\u5F85\u786E\u8BA4" : "Review";
+}
+function signalFirstDecision(candidate, locale) {
+  if (!candidate) {
+    return {
+      label: locale === "zh-CN" ? "\u5148\u9009\u62E9\u4E00\u4E2A\u56E0\u5B50\u95EE\u9898" : "Select a factor question",
+      detail: locale === "zh-CN" ? "\u5DE6\u4FA7\u9009\u4E2D\u4E00\u4E2A\u95EE\u9898\u540E\uFF0C\u518D\u5B9A\u4E49\u80A1\u7968\u6C60\u3001\u4FE1\u53F7\u548C\u590D\u76D8\u89C4\u5219\u3002" : "Pick a question first, then define universe, signal, and replay rule.",
+      tone: "pending"
+    };
+  }
+  const reward = rewardRecord(candidate);
+  const status = textValue(reward.status ?? candidate.status ?? candidate.validation_status, "pending_validation");
+  const gates = stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates);
+  if (status === "validated") {
+    return {
+      label: locale === "zh-CN" ? "\u53EF\u8FDB\u5165\u89C2\u5BDF" : "Ready for observation",
+      detail: locale === "zh-CN" ? "\u9884\u6D4B\u529B\u548C\u7EC4\u5408\u627F\u63A5\u90FD\u901A\u8FC7\u540E\uFF0C\u624D\u5141\u8BB8\u8FDB\u5165\u89C2\u5BDF\u8349\u7A3F\u3002" : "Predictive power and portfolio fit passed.",
+      tone: "validated"
+    };
+  }
+  if (status === "observation_only") {
+    return {
+      label: locale === "zh-CN" ? "\u53EA\u80FD\u89C2\u5BDF" : "Observation only",
+      detail: locale === "zh-CN" ? "\u76D8\u4E2D\u8FB9\u754C\u6216\u6837\u672C\u4E0D\u8DB3\u65F6\uFF0C\u53EA\u4FDD\u7559\u4E3A\u7814\u7A76\u7EBF\u7D22\uFF0C\u4E0D\u53D1\u5E03\u4E3A\u7B56\u7565\u3002" : "Intraday boundary or weak sample support keeps this as research context.",
+      tone: "observation_only"
+    };
+  }
+  if (status === "not_evaluable") {
+    return {
+      label: locale === "zh-CN" ? "\u6682\u4E0D\u53EF\u8BC4\u4F30" : "Not evaluable",
+      detail: gates.length > 0 ? `${locale === "zh-CN" ? "\u963B\u585E\uFF1A" : "Blocked by: "}${gates.map((gate) => humanizeTokenLocale(locale, gate)).join(" / ")}` : locale === "zh-CN" ? "\u4E3B\u9898\u8FC7\u5BBD\u3001\u6837\u672C\u4E0D\u8DB3\u6216\u6570\u636E\u8FB9\u754C\u4E0D\u6E05\u3002" : "Theme is too broad, samples are insufficient, or data boundary is unclear.",
+      tone: "not_evaluable"
+    };
+  }
+  if (status === "rejected") {
+    return {
+      label: locale === "zh-CN" ? "\u6DD8\u6C70\u6216\u91CD\u5199" : "Reject or rewrite",
+      detail: locale === "zh-CN" ? "\u9884\u6D4B\u529B\u3001\u5206\u4F4D\u6269\u6563\u6216\u7EC4\u5408\u627F\u63A5\u6CA1\u6709\u901A\u8FC7\u3002" : "Predictive power, quantile spread, or portfolio fit failed.",
+      tone: "rejected"
+    };
+  }
+  return {
+    label: locale === "zh-CN" ? "\u5148\u8DD1\u9884\u6D4B\u529B\u590D\u76D8" : "Replay predictive power first",
+    detail: locale === "zh-CN" ? "\u4E0D\u8981\u770B\u6280\u672F\u6307\u6807\u672C\u8EAB\uFF0C\u5148\u9A8C\u8BC1\u5B83\u5BF9 T+5/T+20 forward return \u662F\u5426\u6709\u6392\u5E8F\u80FD\u529B\u3002" : "Do not judge the indicator itself; first test whether it ranks T+5/T+20 forward returns.",
+    tone: "pending_validation"
+  };
+}
+function attributionSummaryText(candidate, locale) {
+  const attribution = asRecord(candidate.attribution);
+  const theme = signalFirstTheme(candidate, locale);
+  const status = textValue(attribution.status);
+  const supportCount = numberValue(attribution.support_count, 0);
+  const confidence = numberValue(attribution.confidence, 0);
+  if (status === "auto_attributed") {
+    if (locale !== "zh-CN") {
+      return `System attributed this cluster to ${theme}; ${supportCount} source names overlap, confidence ${percentText(confidence)}. You can edit it, but you do not need to start from scratch.`;
+    }
+    return `\u7CFB\u7EDF\u5DF2\u81EA\u52A8\u5F52\u56E0\u4E3A\u300C${theme}\u300D\uFF1B${supportCount} \u4E2A\u6765\u6E90\u6807\u7684\u91CD\u5408\uFF0C\u7F6E\u4FE1\u5EA6 ${percentText(confidence)}\u3002\u4F60\u53EF\u4EE5\u6539\uFF0C\u4F46\u4E0D\u9700\u8981\u4ECE\u96F6\u5F52\u56E0\u3002`;
+  }
+  if (locale !== "zh-CN") {
+    return `System did not find a strong board/concept overlap, so it keeps the attribution as ${theme}. Continue by replaying predictive power; attribution is not a manual prerequisite.`;
+  }
+  return `\u7CFB\u7EDF\u6682\u672A\u627E\u5230\u5F3A\u677F\u5757/\u6982\u5FF5\u91CD\u5408\uFF0C\u5148\u6309\u300C${theme}\u300D\u5904\u7406\u3002\u4E0B\u4E00\u6B65\u4ECD\u7136\u662F\u8DD1\u9884\u6D4B\u529B\u590D\u76D8\uFF0C\u4E0D\u662F\u8BA9\u4F60\u624B\u5DE5\u8865\u5B57\u6BB5\u3002`;
+}
+function nextTaskText(candidate, locale) {
+  const reward = rewardRecord(candidate);
+  const status = textValue(reward.status ?? candidate.status ?? candidate.validation_status, "pending_validation");
+  const scanScope = textValue(splitKeysRecord(candidate).scan_scope);
+  if (status === "validated") {
+    return locale === "zh-CN" ? "\u4E0B\u4E00\u6B65\uFF1A\u9001\u5165\u89C2\u5BDF\u8349\u7A3F\uFF0C\u518D\u7531\u7B56\u7565\u9875\u51B3\u5B9A\u662F\u5426\u8FDB\u5165 live \u89C2\u5BDF\u3002" : "Next: draft observation, then let the strategy page decide live observation.";
+  }
+  if (status === "observation_only" || scanScope.includes("intraday")) {
+    return locale === "zh-CN" ? "\u4E0B\u4E00\u6B65\uFF1A\u5148\u4FDD\u7559\u4E3A\u76D8\u4E2D\u89C2\u5BDF\u7EBF\u7D22\uFF1B\u7B49\u6536\u76D8\u4FE1\u53F7\u548C forward return \u6837\u672C\u9F50\u4E86\u518D\u590D\u76D8\u3002" : "Next: keep it as intraday context until postmarket samples are available.";
+  }
+  if (status === "not_evaluable") {
+    return locale === "zh-CN" ? "\u4E0B\u4E00\u6B65\uFF1A\u8DF3\u8FC7\u8FD9\u4E2A\u95EE\u9898\uFF0C\u9009\u66F4\u7A84\u7684\u4E3B\u9898\u6216\u66F4\u591A\u6837\u672C\uFF1B\u4E0D\u8981\u53D1\u5E03\u3002" : "Next: skip this question and choose a narrower theme or more samples.";
+  }
+  return locale === "zh-CN" ? "\u4E0B\u4E00\u6B65\uFF1A\u70B9\u201C\u8DD1\u9884\u6D4B\u529B\u590D\u76D8\u201D\u3002\u7CFB\u7EDF\u4F1A\u81EA\u52A8\u751F\u6210 forward-return observations\uFF0C\u770B Rank IC\u3001\u5206\u4F4D\u6269\u6563\u548C\u7EC4\u5408 gate\u3002" : "Next: click Replay predictive power. The system will generate forward-return observations and evaluate Rank IC, spread, and portfolio gates.";
+}
+function signalFirstRewardItems(candidate, locale) {
+  if (!candidate) return [];
+  const reward = rewardRecord(candidate);
+  const factorEval = factorEvaluationRecord(candidate);
+  const portfolioEval = portfolioEvaluationRecord(candidate);
+  const scoreText = (value) => {
+    const score = numberValue(value, 0);
+    return score > 0 ? score.toFixed(1) : locale === "zh-CN" ? "\u5F85\u590D\u76D8" : "Pending";
+  };
+  const returnText = (value) => {
+    const score = numberValue(value, 0);
+    return score !== 0 ? signedPercentText(score) : locale === "zh-CN" ? "\u5F85\u590D\u76D8" : "Pending";
+  };
+  return [
+    {
+      label: locale === "zh-CN" ? "\u9884\u6D4B\u529B\u5206" : "Factor score",
+      value: scoreText(reward.factor_score)
+    },
+    {
+      label: locale === "zh-CN" ? "Rank IC" : "Rank IC",
+      value: numberValue(factorEval.rank_ic, 0) !== 0 ? numberValue(factorEval.rank_ic, 0).toFixed(3) : locale === "zh-CN" ? "\u5F85\u590D\u76D8" : "Pending"
+    },
+    {
+      label: locale === "zh-CN" ? "\u5206\u4F4D\u6269\u6563" : "Quantile spread",
+      value: returnText(factorEval.quantile_spread)
+    },
+    {
+      label: locale === "zh-CN" ? "\u7EC4\u5408\u627F\u63A5" : "Portfolio score",
+      value: scoreText(reward.portfolio_score ?? portfolioEval.portfolio_score)
+    }
+  ];
+}
+function technicalCandidateAdvice(candidate, locale) {
+  const splitKeys = asRecord(candidate.split_keys);
+  const reward = rewardRecord(candidate);
+  const blockingGates = stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates);
+  const status = textValue(reward.status ?? candidate.status ?? candidate.validation_status);
+  const scanScope = textValue(splitKeys.scan_scope ?? candidate.scan_scope);
+  const resonanceGrade = textValue(splitKeys.resonance_grade ?? candidate.resonance_grade);
+  const isIntraday = scanScope.includes("intraday");
+  const isOverbroad = blockingGates.some((gate) => gate.includes("overbroad")) || status === "not_evaluable";
+  if (isOverbroad) {
+    return {
+      label: locale === "zh-CN" ? "\u5148\u8865\u4E3B\u9898\u5F52\u56E0" : "Attribute first",
+      tone: "not_evaluable"
+    };
+  }
+  if (isIntraday || status === "observation_only") {
+    return {
+      label: locale === "zh-CN" ? "\u76D8\u4E2D\u53EA\u89C2\u5BDF" : "Intraday observe",
+      tone: "observation_only"
+    };
+  }
+  if (resonanceGrade.includes("conflict")) {
+    return {
+      label: locale === "zh-CN" ? "\u5148\u5199\u5931\u6548\u6761\u4EF6" : "Define invalidation",
+      tone: "warning"
+    };
+  }
+  if (resonanceGrade.includes("strong_resonance") || resonanceGrade.includes("multi_period")) {
+    return {
+      label: locale === "zh-CN" ? "\u8FDB\u5165\u9884\u6D4B\u529B\u590D\u76D8" : "Replay predictive power",
+      tone: "validated"
+    };
+  }
+  return {
+    label: locale === "zh-CN" ? "\u5B9A\u4E49\u540E\u590D\u76D8" : "Define then replay",
+    tone: status || "pending_validation"
+  };
+}
 function factorScoreItems(factor, locale) {
+  const environmentMetrics = environmentMetricsRecord(factor);
+  if (factor.research_mode === "signal_first" && Object.keys(environmentMetrics).length > 0) {
+    const sourceSignals = asRecordArray(factor.source_signals);
+    const sourceSignalCount = numberValue(
+      environmentMetrics.source_signal_count ?? environmentMetrics.signal_count,
+      sourceSignals.length
+    );
+    const uniqueSymbolCount = numberValue(
+      environmentMetrics.unique_symbol_count ?? environmentMetrics.symbol_count,
+      technicalSourceSymbols(factor).length
+    );
+    return [
+      {
+        label: locale === "zh-CN" ? "\u7EBF\u7D22\u6570" : "Clues",
+        value: sourceSignalCount > 0 ? String(sourceSignalCount) : locale === "zh-CN" ? "\u5F85\u626B\u63CF" : "Pending"
+      },
+      {
+        label: locale === "zh-CN" ? "\u6807\u7684\u6570" : "Symbols",
+        value: uniqueSymbolCount > 0 ? String(uniqueSymbolCount) : locale === "zh-CN" ? "\u5F85\u626B\u63CF" : "Pending"
+      },
+      {
+        label: locale === "zh-CN" ? "\u4E3B\u9898\u8D28\u91CF" : "Theme quality",
+        value: themeQualityText(factor, locale)
+      }
+    ];
+  }
   const assessment = asRecord(factor.beta_alpha_assessment);
   const breakdown = asRecord(factor.factor_score_breakdown);
   const technical = asRecord(factor.technical_confirmation);
@@ -17804,27 +18073,37 @@ function technicalSignalLines(candidate) {
     return [symbol, signalType, freq].filter(Boolean).join(" \xB7 ");
   });
 }
+function technicalSourceSymbols(candidate) {
+  const seen = /* @__PURE__ */ new Set();
+  return asRecordArray(candidate.source_signals).map((signal) => textValue(signal.symbol ?? signal.raw_code ?? signal.code)).filter((symbol) => {
+    const key = symbol.trim().toUpperCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 function technicalReviewValuesFromCandidate(candidate, locale) {
   const groups = stringArrayValue(candidate.factor_exposures.groups);
   const betaLabel = textValue(candidate.industry_beta.label ?? candidate.industry_beta.name, candidate.title);
   const alphaLabel = textValue(candidate.expectation_alpha.label ?? candidate.expectation_alpha.name, candidate.title);
   const evidenceLines = technicalSignalLines(candidate);
-  const exposureText = groups.length > 0 ? groups.join(" / ") : candidate.title;
+  const inferredTheme = signalFirstTheme(candidate, locale);
+  const exposureText = inferredTheme || (groups.length > 0 ? groups.join(" / ") : candidate.title);
   if (locale !== "zh-CN") {
     return {
       industry_attribution: exposureText,
-      beta_alpha_judgement: `First classify whether this is broad beta (${betaLabel}) or expectation alpha (${alphaLabel}); do not treat it as a tradable factor until the attribution is explained.`,
+      beta_alpha_judgement: `Trigger: same-theme signal appears after close; classify whether it is broad beta (${betaLabel}) or expectation alpha (${alphaLabel}).`,
       supporting_evidence: evidenceLines.length > 0 ? evidenceLines.join("\n") : candidate.thesis,
-      counter_evidence: "Reject if signals are isolated, the chain leader does not confirm, or the move is only a range bounce after overextension.",
-      research_thesis: candidate.thesis
+      counter_evidence: "Invalidate if signals are isolated, the leader does not confirm, quantile spread is not positive, or cost-adjusted return is negative.",
+      research_thesis: `Replay rule: rank by signal strength, test Rank IC, quantile spread, T+5/T+20 returns, then gate with cost-adjusted return, drawdown, and turnover.`
     };
   }
   return {
     industry_attribution: exposureText,
-    beta_alpha_judgement: `\u5148\u5224\u65AD\u8FD9\u662F\u540C\u4EA7\u4E1A\u94FE\u540C\u6B65\u53D8\u5F3A\u7684\u884C\u4E1A beta\uFF08${betaLabel}\uFF09\uFF0C\u8FD8\u662F\u5C11\u6570\u9AD8\u66B4\u9732\u6807\u7684\u5148\u8D70\u5F3A\u7684\u9884\u671F alpha\uFF08${alphaLabel}\uFF09\uFF1B\u672A\u5B8C\u6210\u5F52\u56E0\u524D\u4E0D\u80FD\u5F53\u6210\u53EF\u7528\u56E0\u5B50\u3002`,
+    beta_alpha_judgement: `\u89E6\u53D1\u5B9A\u4E49\uFF1A\u6536\u76D8\u540E\u51FA\u73B0\u540C\u4E3B\u9898\u6280\u672F\u7EBF\u7D22\uFF1B\u5148\u5224\u65AD\u8FD9\u662F\u884C\u4E1A beta\uFF08${betaLabel}\uFF09\uFF0C\u8FD8\u662F\u5C11\u6570\u9AD8\u66B4\u9732\u6807\u7684\u5148\u8D70\u5F3A\u7684\u9884\u671F alpha\uFF08${alphaLabel}\uFF09\u3002`,
     supporting_evidence: evidenceLines.length > 0 ? evidenceLines.join("\n") : candidate.thesis,
-    counter_evidence: "\u5982\u679C\u53EA\u662F\u5355\u7968\u5B64\u7ACB\u62C9\u5347\u3001\u94FE\u4E3B\u4E0D\u786E\u8BA4\u3001\u653E\u91CF\u540E\u56DE\u843D\u3001\u6216\u4ECD\u5728\u9707\u8361\u7BB1\u4F53\u5185\u53CD\u62BD\uFF0C\u5C31\u4E0D\u8F6C\u6210\u6295\u7814\u56E0\u5B50\u3002",
-    research_thesis: candidate.thesis
+    counter_evidence: "\u5982\u679C\u53EA\u662F\u5355\u7968\u5B64\u7ACB\u62C9\u5347\u3001\u94FE\u4E3B\u4E0D\u786E\u8BA4\u3001\u5206\u4F4D\u6536\u76CA\u4E0D\u6269\u6563\u3001\u6210\u672C\u540E\u6536\u76CA\u4E3A\u8D1F\uFF0C\u5C31\u4E0D\u8FDB\u5165\u89C2\u5BDF\u3002",
+    research_thesis: "\u590D\u76D8\u89C4\u5219\uFF1A\u6309\u4FE1\u53F7\u5F3A\u5EA6\u6392\u5E8F\uFF0C\u5148\u770B Rank IC\u3001\u5206\u4F4D\u6536\u76CA\u3001T+5/T+20 forward return\uFF0C\u518D\u7528\u6210\u672C\u540E\u6536\u76CA\u3001\u56DE\u64A4\u548C\u6362\u624B\u505A\u7EC4\u5408 gate\u3002"
   };
 }
 function strategySignalFromTechnicalCandidate(candidate, values) {
@@ -17842,6 +18121,7 @@ function strategySignalFromTechnicalCandidate(candidate, values) {
     betaAlphaJudgement: values.beta_alpha_judgement.trim(),
     supportingEvidence: values.supporting_evidence.trim(),
     counterEvidence: values.counter_evidence.trim(),
+    sourceSymbols: technicalSourceSymbols(candidate),
     factorExposure: groups.length > 0 ? groups : [candidate.title],
     riskOverlayFlags: candidate.risk_overlay_flags.length > 0 ? candidate.risk_overlay_flags : ["isolated_move", "leader_not_confirmed", "range_rebound"],
     strategyRole: outputs.length > 0 ? outputs.join(" / ") : "candidate_sorting / watch_pool / risk_review",
@@ -18335,11 +18615,11 @@ function WorkbenchModeSwitch({
   onChange
 }) {
   const items = locale === "zh-CN" ? [
-    { mode: "research_first", title: "\u4ECE\u884C\u4E1A\u5047\u8BBE\u51FA\u53D1", detail: "\u5148\u5B9A AI \u786C\u4EF6\u8FD9\u7C7B\u884C\u4E1A\u56E0\u5B50\uFF0C\u518D\u7528\u91CF\u4EF7\u7ED3\u6784\u786E\u8BA4\u627F\u63A5\u3002" },
-    { mode: "signal_first", title: "\u4ECE\u76D8\u9762\u5F02\u52A8\u51FA\u53D1", detail: "\u5148\u770B\u5168\u5E02\u573A\u6280\u672F\u5F02\u52A8\uFF0C\u518D\u53CD\u63A8\u53EF\u80FD\u7684\u884C\u4E1A beta \u6216\u9884\u671F alpha\u3002" }
+    { mode: "research_first", title: "\u5DF2\u6709\u884C\u4E1A\u5047\u8BBE", detail: "\u5148\u5199\u4EA7\u4E1A\u94FE\u903B\u8F91\uFF0C\u518D\u9A8C\u8BC1\u91CF\u4EF7\u627F\u63A5\u548C\u7EC4\u5408\u98CE\u9669\u3002" },
+    { mode: "signal_first", title: "\u4ECE\u76D8\u9762\u7EBF\u7D22\u627E\u56E0\u5B50", detail: "\u5148\u5F62\u6210\u53EF\u9A8C\u8BC1\u95EE\u9898\uFF0C\u518D\u8DD1\u9884\u6D4B\u529B\u548C\u7EC4\u5408\u627F\u63A5\u3002" }
   ] : [
-    { mode: "research_first", title: "Start from thesis", detail: "Define an industry factor first, then confirm acceptance in price and volume." },
-    { mode: "signal_first", title: "Start from market action", detail: "Cluster technical action first, then infer possible beta or alpha." }
+    { mode: "research_first", title: "Existing industry thesis", detail: "Write the chain logic first, then validate price acceptance and risk." },
+    { mode: "signal_first", title: "Find factors from market clues", detail: "Define a testable question, then replay predictive power and portfolio fit." }
   ];
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: modeSwitchStyle, children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
     "button",
@@ -18631,11 +18911,12 @@ function TechnicalDiscoveryQueue({
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
     Section,
     {
-      title: locale === "zh-CN" ? "\u6280\u672F\u4FE1\u53F7\u6C60" : "Technical signal pool",
-      subtitle: locale === "zh-CN" ? "\u5148\u9009\u4E00\u7EC4\u5F02\u52A8\uFF0C\u518D\u505A\u884C\u4E1A\u5F52\u56E0\uFF1B\u8FD9\u91CC\u4E0D\u662F\u56E0\u5B50\u6210\u54C1\u5217\u8868\u3002" : "Select a cluster first, then attribute it; this is not a finished factor list.",
+      title: locale === "zh-CN" ? "1 \u9009\u62E9\u56E0\u5B50\u95EE\u9898" : "1 Select factor question",
+      subtitle: locale === "zh-CN" ? "\u8FD9\u91CC\u4E0D\u662F\u6307\u6807\u6E05\u5355\uFF0C\u53EA\u9009\u4E00\u4E2A\u8981\u9A8C\u8BC1\u7684\u95EE\u9898\uFF1A\u5B83\u662F\u5426\u80FD\u9884\u6D4B\u672A\u6765\u6536\u76CA\u3002" : "This is not an indicator list. Pick one question: does it predict future returns?",
       children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: technicalQueueListStyle, children: candidates.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: panelBlockStyle, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: locale === "zh-CN" ? "\u6682\u65E0\u6280\u672F\u53D1\u73B0\u5019\u9009\u3002\u7B49\u5F85\u5168\u5E02\u573A\u6280\u672F\u626B\u63CF\u5199\u5165 terminal_technical_signals\u3002" : "No market-action discoveries yet. Waiting for the technical signal scan." }) }) : candidates.map((candidate) => {
         const signalLines = technicalSignalLines(candidate);
         const scoreItems = factorScoreItems(candidate, locale);
+        const advice = technicalCandidateAdvice(candidate, locale);
         const active = candidate.factor_id === selectedCandidateId;
         return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
           "button",
@@ -18647,10 +18928,13 @@ function TechnicalDiscoveryQueue({
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: cardHeaderStyle, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: titleBlockStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: inlineMetaStyle, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(candidate.research_mode), children: researchModeLabel(candidate.research_mode, locale) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(candidate.factor_origin), children: humanizeTokenLocale(locale, candidate.factor_origin) })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(advice.tone), children: advice.label })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: cardTitleStyle, children: candidate.title }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: chromeStyles.quietMeta, children: candidate.thesis })
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: cardTitleStyle, children: factorResearchQuestion(candidate, locale) }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: chromeStyles.quietMeta, children: [
+                  locale === "zh-CN" ? "\u6765\u6E90\u7EBF\u7D22\uFF1A" : "Source clues: ",
+                  candidate.title
+                ] })
               ] }) }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: compactScoreRowStyle, children: scoreItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: compactScoreCellStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { ...metricValueStyle, fontSize: 14 }, children: item.value }),
@@ -18669,6 +18953,7 @@ function TechnicalReviewTextArea({
   label,
   value,
   onChange,
+  placeholder,
   wide
 }) {
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { style: wide ? discoveryWideBlockStyle : panelBlockStyle, children: [
@@ -18677,6 +18962,7 @@ function TechnicalReviewTextArea({
       "textarea",
       {
         value,
+        placeholder,
         onChange: (event) => onChange(event.target.value),
         style: compactTextAreaStyle
       }
@@ -18689,123 +18975,207 @@ function TechnicalFactorResearchPanel({
   values,
   onValueChange,
   onOpenRecord,
+  onRunAction,
+  onActionStart,
+  onActionResult,
+  onActionError,
   onUseCandidate,
-  onAddStrategySignal
+  onAddStrategySignal,
+  runningActionKey
 }) {
   if (!candidate || !values) {
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       Section,
       {
-        title: locale === "zh-CN" ? "\u5F02\u52A8\u5F52\u56E0\u5DE5\u4F5C\u53F0" : "Discovery attribution desk",
+        title: locale === "zh-CN" ? "2 \u5B9A\u4E49\u56E0\u5B50" : "2 Define factor",
         subtitle: locale === "zh-CN" ? "\u7B49\u5F85\u6280\u672F\u4FE1\u53F7\u6C60\u51FA\u73B0\u5019\u9009\u3002" : "Waiting for discovery candidates.",
         children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: locale === "zh-CN" ? "\u6CA1\u6709\u5019\u9009\u65F6\u4E0D\u80FD\u751F\u6210\u56E0\u5B50\u5047\u8BBE\u3002" : "No candidate can be converted yet." })
       }
     );
   }
-  const steps = locale === "zh-CN" ? ["\u9009\u6280\u672F\u805A\u7C7B", "\u505A\u884C\u4E1A\u5F52\u56E0", "\u5199\u6295\u7814\u5047\u8BBE", "\u8FDB\u5165\u6837\u672C\u590D\u76D8"] : ["Select cluster", "Attribute industry", "Write thesis", "Replay samples"];
+  const steps = locale === "zh-CN" ? ["\u80A1\u7968\u6C60", "\u4FE1\u53F7\u5B9A\u4E49", "\u9884\u6D4B\u529B\u5047\u8BBE", "\u590D\u76D8\u9A8C\u8BC1"] : ["Universe", "Signal", "Edge", "Replay"];
   const thesisReady = values.research_thesis.trim().length > 0;
   const evidenceReady = values.supporting_evidence.trim().length > 0;
   const attributionReady = values.industry_attribution.trim().length > 0;
   const strategyReady = thesisReady && evidenceReady && attributionReady;
+  const environmentId = textValue(candidate.environment_id ?? candidate.factor_id);
+  const replayLabel = locale === "zh-CN" ? "\u5B9A\u4E49\u56E0\u5B50\u5E76\u8DD1\u5386\u53F2\u590D\u76D8" : "Define factor and replay history";
+  const replayPayload = {
+    mode: "signal_first",
+    environment_id: environmentId,
+    persist: true,
+    demo_mode: false,
+    idea: values.research_thesis.trim() || candidate.thesis,
+    research_review: values
+  };
   const syntheticCandidate = {
     ...candidate,
     thesis: values.research_thesis.trim() || candidate.thesis,
     research_review: values
   };
+  const attributionSummary = attributionSummaryText(candidate, locale);
+  const nextTask = nextTaskText(candidate, locale);
+  const decision = signalFirstDecision(candidate, locale);
+  const reward = rewardRecord(candidate);
+  const rewardStatus = textValue(reward.status ?? candidate.status ?? candidate.validation_status, "pending_validation");
+  const strategyGatePassed = rewardStatus === "validated";
+  const strategyButtonDisabled = !strategyReady || !strategyGatePassed || !onAddStrategySignal;
+  const definitionRows = [
+    {
+      label: locale === "zh-CN" ? "\u56E0\u5B50\u95EE\u9898" : "Factor question",
+      value: factorResearchQuestion(candidate, locale)
+    },
+    {
+      label: locale === "zh-CN" ? "\u80A1\u7968\u6C60/\u4E3B\u9898" : "Universe/theme",
+      value: values.industry_attribution || signalFirstTheme(candidate, locale)
+    },
+    {
+      label: locale === "zh-CN" ? "\u89E6\u53D1\u4FE1\u53F7" : "Trigger",
+      value: values.beta_alpha_judgement
+    },
+    {
+      label: locale === "zh-CN" ? "\u6392\u5E8F\u65B9\u5F0F" : "Ranking",
+      value: locale === "zh-CN" ? "\u540C\u4E00\u73AF\u5883\u5185\u6309\u4FE1\u53F7\u5F3A\u5EA6 / factor_value \u505A\u6A2A\u622A\u9762\u6392\u5E8F" : "Rank same-environment names by signal strength / factor_value"
+    },
+    {
+      label: locale === "zh-CN" ? "\u9A8C\u8BC1\u7A97\u53E3" : "Forward window",
+      value: "T+5 / T+20 forward return"
+    },
+    {
+      label: locale === "zh-CN" ? "\u8FDB\u5165\u7B56\u7565\u6761\u4EF6" : "Strategy gate",
+      value: locale === "zh-CN" ? "Rank IC > 0\u3001\u5206\u4F4D\u6269\u6563\u4E3A\u6B63\u3001\u6210\u672C\u540E\u6536\u76CA\u548C\u56DE\u64A4\u901A\u8FC7" : "Rank IC > 0, positive spread, cost-adjusted return and drawdown pass"
+    }
+  ];
   const handleAddStrategySignal = () => {
+    if (strategyButtonDisabled) return;
     onAddStrategySignal?.(strategySignalFromTechnicalCandidate(syntheticCandidate, values));
   };
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
     Section,
     {
-      title: locale === "zh-CN" ? "\u5F02\u52A8\u5F52\u56E0\u5DE5\u4F5C\u53F0" : "Discovery attribution desk",
-      subtitle: locale === "zh-CN" ? "\u628A\u6280\u672F\u5F02\u52A8\u7FFB\u8BD1\u6210\u53EF\u590D\u76D8\u7684\u884C\u4E1A\u5047\u8BBE\uFF1A\u5148\u5F52\u56E0\uFF0C\u518D\u8F6C\u5165\u56E0\u5B50\u7814\u53D1\u3002" : "Translate technical action into a replayable industry thesis before factor research.",
-      actions: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: actionRowStyle, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            type: "button",
-            style: secondaryButtonStyle,
-            onClick: () => onOpenRecord(candidate.title, { ...candidate, research_review: values }),
-            children: locale === "zh-CN" ? "\u6253\u5F00\u590D\u6838" : "Open review"
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            type: "button",
-            style: buttonStyleForState(primaryButtonStyle, !thesisReady, "primary"),
-            disabled: !thesisReady,
-            onClick: () => onUseCandidate(syntheticCandidate),
-            children: locale === "zh-CN" ? "\u5199\u5165\u56E0\u5B50\u5047\u8BBE" : "Write thesis"
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            type: "button",
-            style: buttonStyleForState(primaryButtonStyle, !strategyReady || !onAddStrategySignal, "primary"),
-            disabled: !strategyReady || !onAddStrategySignal,
-            onClick: handleAddStrategySignal,
-            children: locale === "zh-CN" ? "\u52A0\u5165\u7B56\u7565\u89C2\u5BDF" : "Add to strategy"
-          }
-        )
-      ] }),
+      title: locale === "zh-CN" ? "2 \u751F\u6210\u53EF\u590D\u76D8\u56E0\u5B50" : "2 Generate replayable factor",
+      subtitle: locale === "zh-CN" ? "\u7CFB\u7EDF\u5148\u7ED9\u51FA\u56E0\u5B50\u5B9A\u4E49\uFF1B\u4F60\u53EA\u8DD1\u590D\u76D8\uFF0C\u8FC7 gate \u540E\u9001\u7B56\u7565\u89C2\u5BDF\u3002" : "The system drafts the factor definition; replay it first, then send it to strategy observation after gates pass.",
+      actions: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: actionRowStyle, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          style: secondaryButtonStyle,
+          onClick: () => onOpenRecord(candidate.title, { ...candidate, research_review: values }),
+          children: locale === "zh-CN" ? "\u6253\u5F00\u539F\u59CB\u6570\u636E" : "Open raw data"
+        }
+      ) }),
       children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: columnStyle, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: inlineMetaStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(candidate.research_mode), children: researchModeLabel(candidate.research_mode, locale) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(candidate.factor_origin), children: humanizeTokenLocale(locale, candidate.factor_origin) }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: chromeStyles.monoMeta, children: candidate.factor_id })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: factorLaunchPanelStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: cardHeaderStyle, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: titleBlockStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: inlineMetaStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(decision.tone), children: decision.label }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(strategyGatePassed ? "validated" : "pending_validation"), children: strategyGatePassed ? locale === "zh-CN" ? "\u53EF\u9001\u7B56\u7565\u89C2\u5BDF" : "Strategy-ready" : locale === "zh-CN" ? "\u5148\u590D\u76D8" : "Replay first" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: cardTitleStyle, children: locale === "zh-CN" ? "\u8FD9\u5C31\u662F\u5F53\u524D\u56E0\u5B50\u5B9A\u4E49" : "Current factor definition" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: attributionSummary })
+          ] }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: factorDefinitionGridStyle, children: definitionRows.map((row) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: fieldBoxStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldLabelStyle, children: row.label }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: row.value })
+          ] }, row.label)) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: factorPrimaryActionRowStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              FactorActionButton,
+              {
+                actionKey: "validate",
+                label: replayLabel,
+                factor: candidate,
+                onOpenRecord,
+                onRunAction,
+                onActionStart,
+                onActionResult,
+                onActionError,
+                payloadOverrides: replayPayload,
+                tone: "primary",
+                disabled: !onRunAction,
+                runningActionKey
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              "button",
+              {
+                type: "button",
+                style: buttonStyleForState(primaryButtonStyle, strategyButtonDisabled, "primary"),
+                disabled: strategyButtonDisabled,
+                onClick: handleAddStrategySignal,
+                children: locale === "zh-CN" ? "\u52A0\u5165\u7B56\u7565\u89C2\u5BDF\u6A21\u5757" : "Add to strategy observation"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { ...fieldValueStyle, color: palette.ink, fontWeight: 700 }, children: nextTask })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: discoveryStepGridStyle, children: steps.map((step, index) => {
-          const complete = index === 0 || index === 1 && attributionReady || index === 2 && thesisReady || index === 3 && evidenceReady && thesisReady;
-          return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: discoveryStepStyle(complete), children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: stepNumberStyle, children: String(index + 1).padStart(2, "0") }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: stepLabelStyle, children: step })
-          ] }, step);
-        }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: discoveryWorkbenchGridStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            TechnicalReviewTextArea,
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("details", { style: advancedDetailsStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("summary", { style: detailsSummaryStyle, children: locale === "zh-CN" ? "\u9AD8\u7EA7\uFF1A\u68C0\u67E5\u6216\u4FEE\u6539\u7CFB\u7EDF\u751F\u6210\u5B57\u6BB5" : "Advanced: inspect or edit generated fields" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { ...discoveryStepGridStyle, marginTop: 8 }, children: steps.map((step, index) => {
+            const complete = index === 0 || index === 1 && attributionReady || index === 2 && evidenceReady || index === 3 && thesisReady;
+            return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: discoveryStepStyle(complete), children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: stepNumberStyle, children: String(index + 1).padStart(2, "0") }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: stepLabelStyle, children: step })
+            ] }, step);
+          }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { ...discoveryWorkbenchGridStyle, marginTop: 8 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              TechnicalReviewTextArea,
+              {
+                label: locale === "zh-CN" ? "\u7CFB\u7EDF\u5F52\u56E0\u7ED3\u679C\uFF08\u53EF\u6539\uFF09" : "System attribution result",
+                value: values.industry_attribution,
+                placeholder: locale === "zh-CN" ? "\u7CFB\u7EDF\u4F1A\u81EA\u52A8\u586B\u677F\u5757/\u6982\u5FF5/\u4EA7\u4E1A\u94FE\uFF1B\u4F60\u53EA\u5728\u660E\u663E\u9519\u7684\u65F6\u5019\u6539\u3002" : "System fills board/concept/chain; edit only when it is clearly wrong.",
+                onChange: (value) => onValueChange("industry_attribution", value)
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              TechnicalReviewTextArea,
+              {
+                label: locale === "zh-CN" ? "\u7CFB\u7EDF\u751F\u6210\u7684\u4FE1\u53F7\u5B9A\u4E49" : "System signal definition",
+                value: values.beta_alpha_judgement,
+                placeholder: locale === "zh-CN" ? "\u4F8B\uFF1A\u6536\u76D8\u540E\u51FA\u73B0\u540C\u4E3B\u9898 gap/daily/strong_resonance\uFF0C\u6309\u4FE1\u53F7\u5F3A\u5EA6\u6392\u5E8F" : "Example: postmarket same-theme gap/daily/strong_resonance, ranked by signal strength",
+                onChange: (value) => onValueChange("beta_alpha_judgement", value)
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              TechnicalReviewTextArea,
+              {
+                label: locale === "zh-CN" ? "\u7CFB\u7EDF\u751F\u6210\u7684\u9884\u6D4B\u529B\u5047\u8BBE" : "System predictive thesis",
+                value: values.supporting_evidence,
+                placeholder: locale === "zh-CN" ? "\u5199\u4EA4\u6613\u903B\u8F91\uFF1A\u8D44\u91D1\u6269\u6563\u3001\u540C\u94FE\u6761\u786E\u8BA4\u3001\u5F3A\u8005\u6052\u5F3A\u3001\u8FD8\u662F\u98CE\u9669\u91CA\u653E\u540E\u7684\u4FEE\u590D" : "Write the trading logic: diffusion, chain confirmation, momentum, or post-risk repair",
+                onChange: (value) => onValueChange("supporting_evidence", value)
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              TechnicalReviewTextArea,
+              {
+                label: locale === "zh-CN" ? "\u7CFB\u7EDF\u751F\u6210\u7684\u5931\u6548\u6761\u4EF6" : "System invalidation rule",
+                value: values.counter_evidence,
+                placeholder: locale === "zh-CN" ? "\u4F8B\uFF1A\u94FE\u4E3B\u4E0D\u786E\u8BA4\u3001\u653E\u91CF\u56DE\u843D\u3001\u5206\u4F4D\u6536\u76CA\u4E0D\u6269\u6563\u3001\u6210\u672C\u540E\u6536\u76CA\u4E3A\u8D1F" : "Example: leader fails, volume fades, spread negative, cost-adjusted return negative",
+                onChange: (value) => onValueChange("counter_evidence", value)
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              TechnicalReviewTextArea,
+              {
+                label: locale === "zh-CN" ? "\u7CFB\u7EDF\u751F\u6210\u7684\u590D\u76D8\u89C4\u5219" : "System replay rule",
+                value: values.research_thesis,
+                placeholder: locale === "zh-CN" ? "\u4F8B\uFF1A\u6309 factor_value \u5206\u7EC4\uFF0C\u770B Rank IC\u3001\u5206\u4F4D\u6536\u76CA\u3001T+5/T+20 forward return\uFF0C\u518D\u770B\u6210\u672C\u540E\u6536\u76CA\u548C\u56DE\u64A4" : "Example: bucket by factor_value, inspect Rank IC, quantile spread, T+5/T+20 returns, then cost and drawdown",
+                onChange: (value) => onValueChange("research_thesis", value),
+                wide: true
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { ...factorPrimaryActionRowStyle, marginTop: 8 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
             {
-              label: locale === "zh-CN" ? "\u884C\u4E1A/\u6982\u5FF5\u5F52\u56E0" : "Industry attribution",
-              value: values.industry_attribution,
-              onChange: (value) => onValueChange("industry_attribution", value)
+              type: "button",
+              style: buttonStyleForState(secondaryButtonStyle, !thesisReady, "secondary"),
+              disabled: !thesisReady,
+              onClick: () => onUseCandidate(syntheticCandidate),
+              children: locale === "zh-CN" ? "\u8F6C\u6210\u6295\u7814\u5047\u8BBE" : "Convert to research thesis"
             }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            TechnicalReviewTextArea,
-            {
-              label: locale === "zh-CN" ? "beta / alpha \u5224\u65AD" : "Beta / alpha call",
-              value: values.beta_alpha_judgement,
-              onChange: (value) => onValueChange("beta_alpha_judgement", value)
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            TechnicalReviewTextArea,
-            {
-              label: locale === "zh-CN" ? "\u652F\u6491\u8BC1\u636E" : "Supporting evidence",
-              value: values.supporting_evidence,
-              onChange: (value) => onValueChange("supporting_evidence", value)
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            TechnicalReviewTextArea,
-            {
-              label: locale === "zh-CN" ? "\u53CD\u8BC1/\u56DE\u907F" : "Counter evidence",
-              value: values.counter_evidence,
-              onChange: (value) => onValueChange("counter_evidence", value)
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            TechnicalReviewTextArea,
-            {
-              label: locale === "zh-CN" ? "\u8F6C\u5165\u6295\u7814\u5047\u8BBE" : "Research thesis to write",
-              value: values.research_thesis,
-              onChange: (value) => onValueChange("research_thesis", value),
-              wide: true
-            }
-          )
+          ) })
         ] })
       ] })
     }
@@ -18820,37 +19190,74 @@ function TechnicalResearchProgressPanel({
   const exposureGroups = candidate ? stringArrayValue(candidate.factor_exposures.groups) : [];
   const hasThesis = Boolean(values?.research_thesis.trim());
   const hasAttribution = Boolean(values?.industry_attribution.trim());
+  const hasEvidence = Boolean(values?.supporting_evidence.trim());
+  const hasSignalDefinition = Boolean(values?.beta_alpha_judgement.trim());
+  const reward = candidate ? rewardRecord(candidate) : {};
+  const rewardStatus = candidate ? textValue(reward.status ?? candidate.status ?? candidate.validation_status, "pending_validation") : "";
+  const blockingGates = candidate ? stringArrayValue(reward.blocking_gates ?? candidate.blocking_gates) : [];
+  const decision = signalFirstDecision(candidate, locale);
+  const rewardItems = signalFirstRewardItems(candidate, locale);
+  const replayDone = Boolean(candidate && rewardStatus !== "pending_validation");
   return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: columnStyle, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
       Section,
       {
-        title: locale === "zh-CN" ? "\u7814\u53D1\u8FDB\u5EA6" : "Research progress",
-        subtitle: locale === "zh-CN" ? "\u5148\u505A\u5F02\u52A8\u5F52\u56E0\uFF1B\u5F52\u56E0\u548C\u8BC1\u636E\u5199\u6E05\u695A\u540E\uFF0C\u53EF\u4EE5\u9001\u5165\u7B56\u7565\u89C2\u5BDF\u3002" : "Attribute the move first; once evidence is clear, send it to strategy observation.",
-        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(Boolean(candidate)) }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u5DF2\u9009\u6280\u672F\u5F02\u52A8\u805A\u7C7B" : "Technical cluster selected" })
+        title: locale === "zh-CN" ? "3 \u7814\u53D1\u5224\u5B9A" : "3 Research decision",
+        subtitle: locale === "zh-CN" ? "\u5148\u5224\u9884\u6D4B\u529B\uFF0C\u518D\u5224\u7EC4\u5408\u627F\u63A5\uFF1B\u6CA1\u6709\u901A\u8FC7 gate \u5C31\u4E0D\u80FD\u53D1\u5E03\u3002" : "Judge predictive power first, then portfolio fit; no publish without gates.",
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: panelBlockStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: inlineMetaStyle, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(decision.tone), children: decision.label }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: decision.detail })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(hasAttribution) }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u884C\u4E1A/\u6982\u5FF5\u5F52\u56E0\u5DF2\u5199\u6E05" : "Attribution written" })
+          rewardItems.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { ...compactScoreRowStyle, marginTop: 8, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }, children: rewardItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: compactScoreCellStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { ...metricValueStyle, fontSize: 14 }, children: item.value }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: chromeStyles.quietMeta, children: item.label })
+          ] }, item.label)) }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(Boolean(candidate)) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u9009\u4E86\u4E00\u4E2A\u53EF\u9A8C\u8BC1\u56E0\u5B50\u95EE\u9898" : "Testable factor question selected" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(hasAttribution) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u80A1\u7968\u6C60/\u4E3B\u9898\u5F52\u56E0\u5DF2\u5B9A\u4E49" : "Universe/theme defined" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(hasSignalDefinition) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u4FE1\u53F7\u89E6\u53D1\u5DF2\u5B9A\u4E49" : "Signal trigger defined" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(hasEvidence) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u9884\u6D4B\u529B\u5047\u8BBE\u5DF2\u5199\u6E05" : "Predictive thesis written" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(hasThesis) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u590D\u76D8\u89C4\u5219\u5DF2\u5B9A\u4E49" : "Replay rule defined" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(replayDone) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u5DF2\u8DD1\u9884\u6D4B\u529B\u590D\u76D8" : "Predictive replay run" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(rewardStatus === "validated") }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u7EC4\u5408\u627F\u63A5 gate \u901A\u8FC7" : "Portfolio gate passed" })
+            ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(hasThesis) }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u5DF2\u5F62\u6210\u6295\u7814\u5047\u8BBE\u8349\u7A3F" : "Research thesis drafted" })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: checklistRowStyle, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: checkDotStyle(false) }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: locale === "zh-CN" ? "\u8F6C\u5165\u6837\u672C\u590D\u76D8\u540E\u624D\u5224\u65AD\u80FD\u5426\u89C2\u5BDF" : "Replay samples before observation" })
-          ] })
-        ] })
+          candidate ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { ...panelBlockStyle, marginTop: 10 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldLabelStyle, children: locale === "zh-CN" ? "\u963B\u585E gate" : "Blocking gates" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: inlineMetaStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle(rewardStatus), children: humanizeTokenLocale(locale, rewardStatus) }),
+              (blockingGates.length > 0 ? blockingGates : ["none"]).slice(0, 3).map((gate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: statusBadgeStyle("warning"), children: gate === "none" ? locale === "zh-CN" ? "\u6682\u65E0" : "None" : humanizeTokenLocale(locale, gate) }, gate))
+            ] })
+          ] }) : null
+        ]
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       Section,
       {
-        title: locale === "zh-CN" ? "\u76D8\u9762\u8BC1\u636E" : "Market evidence",
-        subtitle: locale === "zh-CN" ? "\u4FDD\u7559\u6765\u6E90\u4FE1\u53F7\uFF0C\u907F\u514D\u51ED\u4E3B\u9898\u60F3\u8C61\u5F52\u56E0\u3002" : "Keep source signals to avoid narrative-only attribution.",
+        title: locale === "zh-CN" ? "\u539F\u59CB\u76D8\u9762\u7EBF\u7D22" : "Raw market clues",
+        subtitle: locale === "zh-CN" ? "\u8FD9\u91CC\u53EA\u662F\u8BC1\u636E\u6765\u6E90\uFF0C\u4E0D\u662F\u4EA4\u6613\u7ED3\u8BBA\u3002" : "These are evidence sources, not trading conclusions.",
         children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: columnStyle, children: [
           sourceSignals.length > 0 ? sourceSignals.slice(0, 6).map((line2) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: line2 }, line2)) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: fieldValueStyle, children: locale === "zh-CN" ? "\u6682\u65E0\u6765\u6E90\u4FE1\u53F7\u3002" : "No source signals." }),
           exposureGroups.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: panelBlockStyle, children: [
@@ -18870,13 +19277,30 @@ function AIFactorFactoryWorkspace({
   onRunAction,
   onAddStrategySignal
 }) {
+  const [remoteFactory, setRemoteFactory] = import_react.default.useState(null);
+  import_react.default.useEffect(() => {
+    const baseUrl = trimTrailingSlash(signalsWebBaseUrl);
+    if (!baseUrl) return void 0;
+    const controller = new AbortController();
+    setRemoteFactory(null);
+    void fetch(`${baseUrl}/api/strategy/ai-factor-factory`, { signal: controller.signal }).then((response) => response.ok ? response.json() : null).then((value) => {
+      if (!controller.signal.aborted && value && typeof value === "object" && !Array.isArray(value)) {
+        setRemoteFactory(value);
+      }
+    }).catch(() => void 0);
+    return () => controller.abort();
+  }, [signalsWebBaseUrl]);
+  const dashboardWithFactory = import_react.default.useMemo(
+    () => remoteFactory ? { ...dashboard ?? {}, ai_factor_factory: remoteFactory } : dashboard,
+    [dashboard, remoteFactory]
+  );
   const dashboardFactors = import_react.default.useMemo(
-    () => normalizeFactoryFactors(dashboard, signalsWebBaseUrl),
-    [dashboard, signalsWebBaseUrl]
+    () => normalizeFactoryFactors(dashboardWithFactory, signalsWebBaseUrl),
+    [dashboardWithFactory, signalsWebBaseUrl]
   );
   const candidateIdeas = import_react.default.useMemo(
-    () => normalizeCandidateFactorIdeas(dashboard, signalsWebBaseUrl),
-    [dashboard, signalsWebBaseUrl]
+    () => normalizeCandidateFactorIdeas(dashboardWithFactory, signalsWebBaseUrl),
+    [dashboardWithFactory, signalsWebBaseUrl]
   );
   const [factorOverrides, setFactorOverrides] = import_react.default.useState({});
   const factors = import_react.default.useMemo(
@@ -18888,7 +19312,7 @@ function AIFactorFactoryWorkspace({
   const labels = actionLabels(locale);
   const [ideaText, setIdeaText] = import_react.default.useState(() => selectedFactor?.thesis ?? fallbackFactor.thesis);
   const [activeWorkflowStage, setActiveWorkflowStage] = import_react.default.useState("idea");
-  const [workbenchMode, setWorkbenchMode] = import_react.default.useState("research_first");
+  const [workbenchMode, setWorkbenchMode] = import_react.default.useState("signal_first");
   const [runningActionKey, setRunningActionKey] = import_react.default.useState("");
   const [actionRunState, setActionRunState] = import_react.default.useState(null);
   const [pendingIdeaSource, setPendingIdeaSource] = import_react.default.useState(null);
@@ -19070,8 +19494,13 @@ function AIFactorFactoryWorkspace({
           values: technicalReviewValues,
           onValueChange: handleTechnicalReviewValueChange,
           onOpenRecord,
+          onRunAction,
+          onActionStart: handleActionStart,
+          onActionResult: handleActionResult,
+          onActionError: handleActionError,
           onUseCandidate: handleUseCandidate,
-          onAddStrategySignal
+          onAddStrategySignal,
+          runningActionKey
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -31279,7 +31708,7 @@ function buttonStyle(active = false, disabled = false) {
     whiteSpace: "nowrap"
   };
 }
-function trimTrailingSlash(value) {
+function trimTrailingSlash2(value) {
   return value?.trim().replace(/\/+$/, "") ?? "";
 }
 function recordValue2(value) {
@@ -31488,7 +31917,7 @@ function BacktestWorkbench({
   onOpenRun,
   onOpenRecord
 }) {
-  const baseUrl = trimTrailingSlash(signalsWebBaseUrl);
+  const baseUrl = trimTrailingSlash2(signalsWebBaseUrl);
   const chartContainerRef = (0, import_react2.useRef)(null);
   const chartRef = (0, import_react2.useRef)(null);
   const resizeObserverRef = (0, import_react2.useRef)(null);
@@ -34362,10 +34791,65 @@ function providerHasHealthyPeer(item, rows) {
 function activeProviderProblems(providerHealth) {
   return providerHealth.filter((item) => isActiveProviderProblem(item) && !providerHasHealthyPeer(item, providerHealth));
 }
+function sourceMonitorSummary(providerHealthInput, blockersInput, locale, cacheAvailable = true) {
+  const providerHealth = providerHealthInput.map((item) => recordValue4(item));
+  const providerProblems = activeProviderProblems(providerHealth);
+  const sourceProblemCount = providerProblems.length;
+  const sourceTotalCount = providerHealth.length;
+  const taskBlockerCount = blockersInput.length;
+  const firstProviderProblem = providerProblems[0] ?? {};
+  if (!cacheAvailable) {
+    return {
+      providerCount: sourceTotalCount,
+      problemCount: sourceProblemCount,
+      value: "OFF",
+      progress: 0,
+      status: "degraded",
+      statusLabel: "OFF",
+      detail: locale === "zh-CN" ? "\u7F13\u5B58\u4E0D\u53EF\u7528" : "cache unavailable",
+      subdetail: compactText2(firstProviderProblem.last_error_type, compactText2(firstProviderProblem.cooldown_hit_type))
+    };
+  }
+  if (sourceProblemCount > 0) {
+    return {
+      providerCount: sourceTotalCount,
+      problemCount: sourceProblemCount,
+      value: sourceTotalCount > 0 ? `${countText(sourceProblemCount)}/${countText(sourceTotalCount)}` : countText(sourceProblemCount),
+      progress: sourceTotalCount > 0 ? (sourceTotalCount - sourceProblemCount) / sourceTotalCount * 100 : 0,
+      status: "error",
+      statusLabel: "BLOCKED",
+      detail: `${compactText2(firstProviderProblem.provider, "provider")} \xB7 ${compactText2(firstProviderProblem.endpoint, compactText2(firstProviderProblem.status, "blocked"))}`,
+      subdetail: compactText2(firstProviderProblem.last_error_type, compactText2(firstProviderProblem.cooldown_hit_type, locale === "zh-CN" ? "\u67E5\u770B provider_health \u5B9A\u4F4D\u6570\u636E\u6E90" : "check provider_health for source detail"))
+    };
+  }
+  if (sourceTotalCount === 0) {
+    return {
+      providerCount: 0,
+      problemCount: 0,
+      value: "0",
+      progress: 0,
+      status: "partial",
+      statusLabel: locale === "zh-CN" ? "\u672A\u52A0\u8F7D" : "NO DATA",
+      detail: locale === "zh-CN" ? "provider_health \u672A\u52A0\u8F7D" : "provider_health not loaded",
+      subdetail: locale === "zh-CN" ? `${countText(taskBlockerCount)} \u4E2A\u4EFB\u52A1\u963B\u585E\u5728\u8865\u6570\u533A\u5C55\u793A` : `${countText(taskBlockerCount)} task blockers shown in data tasks`
+    };
+  }
+  return {
+    providerCount: sourceTotalCount,
+    problemCount: 0,
+    value: countText(sourceTotalCount),
+    progress: 100,
+    status: "ok",
+    statusLabel: "OK",
+    detail: locale === "zh-CN" ? "\u65E0\u963B\u585E\u6E90" : "no blocking source",
+    subdetail: locale === "zh-CN" ? `${countText(sourceTotalCount)} \u4E2A provider \u8BB0\u5F55 \xB7 ${countText(taskBlockerCount)} \u4E2A\u4EFB\u52A1\u963B\u585E\u5728\u8865\u6570\u533A\u5C55\u793A` : `${countText(sourceTotalCount)} provider records \xB7 ${countText(taskBlockerCount)} task blockers shown in data tasks`
+  };
+}
 function cacheRefreshSeconds(cacheStatus) {
   if (!cacheStatus.available) return 10;
   const runStatus = compactText2(recordValue4(cacheStatus.postmarket_backfill.run).status).toLowerCase();
-  if (["running", "partial", "stale"].includes(runStatus)) return 10;
+  const criticalStatus = compactText2(recordValue4(cacheStatus.postmarket_backfill.summary).critical_status).toLowerCase();
+  if (["running", "partial", "stale"].includes(runStatus) && criticalStatus !== "ok") return 10;
   const freshness = numberValue3(recordValue4(cacheStatus.live_low_latency.summary).freshness_seconds_max);
   return freshness !== void 0 && freshness <= 60 * 60 ? 10 : 60;
 }
@@ -34435,13 +34919,13 @@ function chartCacheNotReadyMessage(symbolData, locale) {
     hitLine ? `cached ${hitLine}` : ""
   ].filter(Boolean).join(" \xB7 ");
 }
-function trimTrailingSlash2(value) {
+function trimTrailingSlash3(value) {
   return value?.trim().replace(/\/+$/, "") ?? "";
 }
 var DEFAULT_SIGNALS_WEB_BASE_URL = "http://127.0.0.1:8011";
 function urlFromDashboard(dashboard) {
   const terminalLink = dashboard.deep_links.find((link) => link.link_id === "signals-terminal");
-  return trimTrailingSlash2(terminalLink?.url);
+  return trimTrailingSlash3(terminalLink?.url);
 }
 function normalizeTimestamp(value) {
   const raw = numberValue3(value);
@@ -35008,10 +35492,31 @@ function signalsFromSymbolData(symbolData) {
   const chartSignals = symbolData.chart?.signals;
   return Array.isArray(chartSignals) ? chartSignals : [];
 }
-function aiFactorStrategySignalsForChart(signals = [], data, currentFreq) {
+function securityMatchKeys(value) {
+  const raw = compactText2(value).trim().toUpperCase();
+  if (!raw) return [];
+  const compact = raw.replace(/[^A-Z0-9]/g, "");
+  const digits = raw.match(/\d{6}/)?.[0] ?? "";
+  return Array.from(new Set([raw, compact, digits].filter(Boolean)));
+}
+function aiFactorSignalMatchesTarget(signal, symbolData, target) {
+  const sourceSymbols = signal.sourceSymbols ?? [];
+  if (sourceSymbols.length === 0) return false;
+  const targetKeys = new Set(
+    [
+      target.label,
+      symbolData?.target?.label,
+      symbolData?.target?.symbol,
+      symbolData?.analysis_target
+    ].flatMap(securityMatchKeys)
+  );
+  if (targetKeys.size === 0) return false;
+  return sourceSymbols.flatMap(securityMatchKeys).some((key) => targetKeys.has(key));
+}
+function aiFactorStrategySignalsForChart(signals = [], data, currentFreq, symbolData, target) {
   if (signals.length === 0) return [];
   const latestBar = data[data.length - 1];
-  return signals.map((signal) => ({
+  return signals.filter((signal) => aiFactorSignalMatchesTarget(signal, symbolData, target)).map((signal) => ({
     timestamp: latestBar?.timestamp ?? Date.parse(signal.createdAt),
     date_str: latestBar?.timestamp ? new Date(latestBar.timestamp).toISOString().slice(0, 10) : signal.createdAt.slice(0, 10),
     type: "AI\u56E0\u5B50\u89C2\u5BDF",
@@ -35271,6 +35776,7 @@ function nearestChartBarForTimestamp(data, timestamp) {
   return data.find((item) => item.timestamp >= timestamp) ?? last;
 }
 function signalSideForOverlay(signal) {
+  if (isMaAcceptanceOverlaySignal(signal)) return "buy";
   if (signal.signal_side === "sell") return "sell";
   if (signal.signal_side === "buy") return "buy";
   return signalOverlaySide(signal.type ?? signal.signal_type);
@@ -35343,6 +35849,172 @@ function displayFreqLabel(value) {
   if (normalized === "weekly") return "\u5468";
   return compactText2(value);
 }
+function booleanValue2(value) {
+  if (value === true || value === 1) return true;
+  if (typeof value !== "string") return false;
+  return ["true", "1", "yes", "y"].includes(value.trim().toLowerCase());
+}
+function maPeriodNumbers(value) {
+  const rawValues = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,\s/]+/) : [value];
+  const seen = /* @__PURE__ */ new Set();
+  rawValues.forEach((item) => {
+    const period = numberValue3(item);
+    if (period === void 0 || period <= 0) return;
+    seen.add(Math.round(period));
+  });
+  return Array.from(seen).sort((left, right) => left - right);
+}
+function maAcceptanceFromRecord(value) {
+  const record = recordValue4(value);
+  if (Object.keys(record).length === 0) return null;
+  const items = Array.isArray(record.items) ? record.items.map((item) => recordValue4(item)).filter((item) => Object.keys(item).length > 0) : [];
+  const directPrimary = recordValue4(record.primary);
+  const primary = Object.keys(directPrimary).length > 0 ? directPrimary : items[0] ?? {};
+  const periods = maPeriodNumbers(record.periods ?? record.fib_accept_periods);
+  const inferredPeriod = numberValue3(primary.period);
+  if (periods.length === 0 && inferredPeriod !== void 0) periods.push(Math.round(inferredPeriod));
+  const summary = compactText2(record.summary) || compactText2(record.fib_array_summary) || (periods.length > 0 ? periods.map((period) => `MA${period}`).join("/") + "\u56DE\u8E29\u627F\u63A5" : "");
+  const detail = compactText2(record.detail);
+  const hasPrimaryMetric = [
+    primary.value,
+    primary.touch_distance_pct,
+    primary.low_distance_pct,
+    primary.distance_pct,
+    primary.acceptance_score
+  ].some((item) => numberValue3(item) !== void 0);
+  if (!summary && periods.length === 0 && !detail && !hasPrimaryMetric) return null;
+  return {
+    summary,
+    periods,
+    primary,
+    items,
+    detail,
+    state: compactText2(record.state),
+    score: numberValue3(record.score),
+    source_collection: compactText2(record.source_collection),
+    signal_type: compactText2(record.signal_type),
+    freq: "daily",
+    as_of: compactText2(record.as_of),
+    event_dt: compactText2(record.event_dt)
+  };
+}
+function maAcceptanceFromAlignment(value) {
+  const alignment = recordValue4(value);
+  if (Object.keys(alignment).length === 0) return null;
+  const periods = maPeriodNumbers(alignment.fib_accept_periods);
+  const maArray = Array.isArray(alignment.fib_ma_array) ? alignment.fib_ma_array.map((item) => recordValue4(item)).filter((item) => Object.keys(item).length > 0) : [];
+  const accepted = maArray.filter((item) => {
+    const period = numberValue3(item.period);
+    return booleanValue2(item.pullback_acceptance) || period !== void 0 && periods.includes(Math.round(period));
+  });
+  const primary = accepted[0] ?? {};
+  const summary = compactText2(alignment.fib_array_summary) || (periods.length > 0 ? periods.map((period) => `MA${period}`).join("/") + "\u56DE\u8E29\u627F\u63A5" : "");
+  if (!summary && periods.length === 0 && accepted.length === 0) return null;
+  return {
+    summary,
+    periods,
+    primary,
+    items: accepted,
+    detail: compactText2(alignment.detail),
+    state: compactText2(alignment.fib_ma_array_state),
+    score: numberValue3(primary.acceptance_score),
+    freq: "daily"
+  };
+}
+function maAcceptanceWithSignalContext(acceptance, signal) {
+  if (!acceptance) return null;
+  return {
+    ...acceptance,
+    freq: acceptance.freq || "daily",
+    signal_type: acceptance.signal_type || compactText2(signal.signal_type ?? signal.type),
+    event_dt: acceptance.event_dt || compactText2(signal.signal_date ?? signal.date_str)
+  };
+}
+function maAcceptanceFromSignal(signal) {
+  return maAcceptanceWithSignalContext(maAcceptanceFromRecord(signal.ma_acceptance), signal) ?? maAcceptanceWithSignalContext(maAcceptanceFromAlignment(signal.ma_alignment), signal);
+}
+function maAcceptanceFromSignals(signals) {
+  const ranked = signals.map((signal) => ({
+    acceptance: maAcceptanceFromSignal(signal),
+    timestamp: signalTimestamp(signal) ?? 0,
+    priority: signalOverlayPriority(signal)
+  })).filter((item) => Boolean(item.acceptance)).sort((left, right) => {
+    if (right.priority !== left.priority) return right.priority - left.priority;
+    return right.timestamp - left.timestamp;
+  });
+  return ranked[0]?.acceptance ?? null;
+}
+function maAcceptanceFromSymbolData(symbolData) {
+  if (!symbolData) return null;
+  const fromSummary = maAcceptanceFromRecord(symbolData.summary?.ma_acceptance) ?? maAcceptanceFromAlignment(symbolData.summary?.ma_alignment);
+  if (fromSummary) return fromSummary;
+  const chartSignals = symbolData.chart?.signals;
+  const allSignals = [
+    ...Array.isArray(symbolData.signals) ? symbolData.signals : [],
+    ...Array.isArray(chartSignals) ? chartSignals : []
+  ];
+  return maAcceptanceFromSignals(allSignals);
+}
+function maAcceptanceRecord(acceptance) {
+  return {
+    summary: acceptance.summary,
+    periods: acceptance.periods,
+    primary: acceptance.primary,
+    items: acceptance.items,
+    detail: acceptance.detail,
+    state: acceptance.state,
+    score: acceptance.score,
+    source_collection: acceptance.source_collection,
+    signal_type: acceptance.signal_type,
+    freq: "daily",
+    as_of: acceptance.as_of,
+    event_dt: acceptance.event_dt
+  };
+}
+function dailyMaAcceptanceSignalForChart(data, acceptance, currentFreq) {
+  if (!acceptance || normalizeSignalFreq(currentFreq) !== "daily" || data.length === 0) return null;
+  const eventTimestamp = marketDateTimestamp(acceptance.event_dt ?? acceptance.as_of);
+  const bar = eventTimestamp ? nearestChartBarForTimestamp(data, eventTimestamp) : data[data.length - 1];
+  const targetBar = bar ?? data[data.length - 1];
+  if (!targetBar) return null;
+  return {
+    timestamp: targetBar.timestamp,
+    date_str: new Date(targetBar.timestamp).toISOString().slice(0, 10),
+    type: "MA\u627F\u63A5",
+    signal_type: acceptance.summary || shortMaAcceptanceLabel(acceptance),
+    price: numberValue3(acceptance.primary.value) ?? targetBar.low,
+    confidence: numberValue3(acceptance.score),
+    freq: "daily",
+    details: acceptance.detail,
+    source: acceptance.source_collection || "terminal_ma_acceptance",
+    pool_status: acceptance.state,
+    chart_aligned: true,
+    display_scope: "current_timeframe",
+    signal_side: "buy",
+    signal_family: "ma_acceptance",
+    ma_acceptance: maAcceptanceRecord(acceptance)
+  };
+}
+function shortMaAcceptanceLabel(acceptance) {
+  if (!acceptance) return "";
+  const primaryPeriod = numberValue3(acceptance.primary.period);
+  const period = acceptance.periods[0] ?? (primaryPeriod === void 0 ? void 0 : Math.round(primaryPeriod));
+  if (period !== void 0) return `MA${period}\u627F\u63A5`;
+  const summary = compactText2(acceptance.summary).replace(/回踩承接/g, "\u627F\u63A5");
+  return summary ? summary.slice(0, 8) : "\u5747\u7EBF\u627F\u63A5";
+}
+function signalOverlayLabel(signal) {
+  const maAcceptance = isMaAcceptanceOverlaySignal(signal) ? maAcceptanceFromSignal(signal) : null;
+  if (maAcceptance) return shortMaAcceptanceLabel(maAcceptance);
+  return shortSignalLabel(signal.type ?? signal.signal_type);
+}
+function signalEvidenceDetails(signal) {
+  const maAcceptance = isMaAcceptanceOverlaySignal(signal) ? maAcceptanceFromSignal(signal) : null;
+  return uniqueCompact([signal.details, maAcceptance?.detail]).join(" \xB7 ");
+}
+function isMaAcceptanceOverlaySignal(signal) {
+  return compactText2(signal.signal_family) === "ma_acceptance" && Boolean(maAcceptanceFromSignal(signal));
+}
 function signalOverlaySide(value) {
   const normalized = String(value ?? "").toLowerCase();
   if (isSellSignal(value) || normalized.includes("\u9876\u80CC\u79BB")) return "sell";
@@ -35363,7 +36035,8 @@ function signalOverlayPriority(signal) {
   const normalized = String(signal.type ?? "").toLowerCase();
   const side = signalSideForOverlay(signal);
   let priority = 35;
-  if (isAiFactorStrategySignal(signal)) priority = 88;
+  if (isMaAcceptanceOverlaySignal(signal)) priority = 140;
+  else if (isAiFactorStrategySignal(signal)) priority = 88;
   else if (side === "sell" || normalized.includes("\u9876\u80CC\u79BB")) priority = 90;
   else if (side === "buy" || normalized.includes("\u5E95\u80CC\u79BB") || normalized.includes("\u80CC\u9A70\u4E70")) priority = 85;
   else if (normalized.includes("break") || normalized.includes("brea") || normalized.includes("\u7A81\u7834")) priority = 70;
@@ -35408,22 +36081,40 @@ function signalSourceLabel(signal) {
 function displaySignalsForChart(data, signals, currentFreq) {
   if (data.length === 0 || signals.length === 0) return [];
   const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp;
-  const valid = signals.map((signal) => ({
-    signal,
-    timestamp: signalTimestamp(signal),
-    priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq)
-  })).filter(
-    (item) => item.timestamp !== void 0 && !isVolumeSignal(item.signal)
+  const valid = signals.map((signal) => {
+    const timestamp = signalTimestamp(signal);
+    const bar = timestamp === void 0 ? void 0 : nearestChartBarForTimestamp(data, timestamp);
+    return {
+      signal,
+      timestamp,
+      alignedTimestamp: bar?.timestamp ?? timestamp,
+      side: signalSideForOverlay(signal),
+      priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq)
+    };
+  }).filter(
+    (item) => item.timestamp !== void 0 && item.alignedTimestamp !== void 0 && !isVolumeSignal(item.signal)
   );
   const recent = valid.filter((item) => item.timestamp >= cutoff);
   const source = recent.length > 0 ? recent : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS);
-  const bestBySignal = /* @__PURE__ */ new Map();
+  const bestByLane = /* @__PURE__ */ new Map();
   source.forEach((item) => {
-    const key = `${item.timestamp}:${normalizeSignalFreq(item.signal.freq)}:${item.signal.type ?? item.signal.signal_type ?? ""}:${item.signal.source ?? ""}`;
-    const existing = bestBySignal.get(key);
-    if (!existing || item.priority > existing.priority) bestBySignal.set(key, item);
+    const scopeLabel = signalScopeLabel(item.signal, normalizeSignalFreq(currentFreq));
+    const key = `${item.alignedTimestamp}:${item.side}:${scopeLabel}`;
+    const existing = bestByLane.get(key);
+    if (!existing || item.priority > existing.priority) bestByLane.set(key, item);
   });
-  return Array.from(bestBySignal.values()).sort((left, right) => {
+  const maAcceptance = source.filter((item) => isMaAcceptanceOverlaySignal(item.signal)).sort((left, right) => {
+    if (right.priority !== left.priority) return right.priority - left.priority;
+    return right.timestamp - left.timestamp;
+  })[0];
+  const selectedByKey = /* @__PURE__ */ new Map();
+  [maAcceptance, ...Array.from(bestByLane.values())].forEach((item) => {
+    if (!item) return;
+    const key = isMaAcceptanceOverlaySignal(item.signal) ? "ma_acceptance" : `${item.timestamp}:${normalizeSignalFreq(item.signal.freq)}:${item.signal.type ?? item.signal.signal_type ?? ""}:${item.signal.source ?? ""}`;
+    const existing = selectedByKey.get(key);
+    if (!existing || item.priority > existing.priority) selectedByKey.set(key, item);
+  });
+  return Array.from(selectedByKey.values()).sort((left, right) => {
     if (right.priority !== left.priority) return right.priority - left.priority;
     return right.timestamp - left.timestamp;
   }).slice(0, MAX_MAIN_CHART_SIGNAL_OVERLAYS).sort((left, right) => left.timestamp - right.timestamp).map((item) => item.signal);
@@ -35446,9 +36137,10 @@ function displayVolumeSignalsForChart(data, signals, currentFreq) {
 }
 function displaySignalsForEvidence(signals) {
   if (signals.length === 0) return [];
-  const ranked = signals.map((signal) => ({ signal, timestamp: signalTimestamp(signal) ?? 0 })).sort((left, right) => {
+  const ranked = signals.map((signal) => ({ signal, timestamp: signalTimestamp(signal) ?? 0, priority: signalOverlayPriority(signal) })).sort((left, right) => {
     const customDelta = Number(isCustomUserSignal(right.signal)) - Number(isCustomUserSignal(left.signal));
     if (customDelta !== 0) return customDelta;
+    if (right.priority !== left.priority) return right.priority - left.priority;
     return right.timestamp - left.timestamp;
   });
   const output = [];
@@ -35472,7 +36164,7 @@ function createSignalOverlays2(chart, data, signals, currentFreq) {
     const alignedTimestamp = bar?.timestamp ?? timestamp;
     const price = signalOverlayPrice(signal, bar);
     if (price === void 0) return;
-    const label = shortSignalLabel(signal.type ?? signal.signal_type);
+    const label = signalOverlayLabel(signal);
     const side = signalSideForOverlay(signal);
     const custom = isCustomUserSignal(signal);
     const scopeLabel = signalScopeLabel(signal, normalizeSignalFreq(currentFreq));
@@ -35493,7 +36185,7 @@ function createSignalOverlays2(chart, data, signals, currentFreq) {
         scope: scopeLabel,
         lane,
         sourceLabel: [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(" \xB7 "),
-        details: signal.details
+        details: signalEvidenceDetails(signal)
       }
     });
   });
@@ -35596,13 +36288,18 @@ function createDivergenceOverlays(chart, divergences) {
 }
 function initialTargetFrom(shell, dashboard) {
   const shellTarget = shell?.default_target;
-  const chartContext = dashboard.chart_context;
-  const buyCandidate = dashboard.buy_candidates[0];
-  const inferredKind = shellTarget?.label ? "index" : chartContext?.symbol ? "stock" : buyCandidate?.symbol ? "stock" : "index";
+  void dashboard;
+  if (!shellTarget?.label) {
+    return {
+      label: "\u4E0A\u8BC1\u6307\u6570",
+      kind: "index",
+      freq: DEFAULT_TERMINAL_FREQ
+    };
+  }
   return {
-    label: shellTarget?.label ?? chartContext?.symbol ?? buyCandidate?.symbol ?? "\u4E0A\u8BC1\u6307\u6570",
-    kind: shellTarget?.kind ?? inferredKind,
-    freq: DEFAULT_TERMINAL_FREQ
+    label: shellTarget.label,
+    kind: shellTarget.kind ?? "index",
+    freq: shellTarget.freq ?? DEFAULT_TERMINAL_FREQ
   };
 }
 function availableFreqs(symbolData) {
@@ -35639,6 +36336,17 @@ function formatPercent2(value) {
   const number = typeof value === "string" ? numberValue3(value.replace("%", "").replace("+", "").trim()) : numberValue3(value);
   if (number === void 0) return "N/A";
   return `${number > 0 ? "+" : ""}${number.toFixed(2)}%`;
+}
+function maAcceptanceMetricChips(acceptance) {
+  const primary = acceptance.primary;
+  const periodLabel = acceptance.periods.length > 0 ? acceptance.periods.map((period) => `MA${period}`).join("/") : shortMaAcceptanceLabel(acceptance);
+  return [
+    periodLabel,
+    numberValue3(primary.value) !== void 0 ? `\u5747\u7EBF ${formatNumber2(primary.value)}` : "",
+    numberValue3(primary.touch_distance_pct) !== void 0 ? `\u89E6\u7EBF ${formatPercent2(primary.touch_distance_pct)}` : "",
+    numberValue3(primary.low_distance_pct) !== void 0 ? `\u4F4E\u70B9 ${formatPercent2(primary.low_distance_pct)}` : "",
+    numberValue3(primary.distance_pct) !== void 0 ? `\u73B0\u4EF7 ${formatPercent2(primary.distance_pct)}` : ""
+  ].filter(Boolean);
 }
 function percentTone(value) {
   if (value.startsWith("+")) return { color: tradingDeskTheme.market.up };
@@ -36071,8 +36779,8 @@ function targetMatchesSearchValue(row, value) {
   return candidates.some((candidate) => candidate === value || candidate.toLowerCase() === normalized);
 }
 function looksLikeIndexValue(value) {
-  const normalized = value.toLowerCase();
-  return value.endsWith("\u6307") || value.includes("\u6307\u6570") || value.includes("300") || value.includes("500") || value.includes("1000") || /^s[hz](000|399)\d{3}$/.test(normalized) || ["\u521B\u4E1A\u677F\u6307", "\u6CAA\u6DF1300", "\u6DF1\u8BC1\u6210\u6307", "\u4E0A\u8BC1\u6307\u6570", "\u4E2D\u8BC1500", "\u4E2D\u8BC11000"].includes(value);
+  const normalized = value.trim().toLowerCase().replace(/[\s._-]+/g, "");
+  return value.trim().endsWith("\u6307") || value.includes("\u6307\u6570") || ["300", "500", "1000", "000300", "000905", "000852", "399001", "399006"].includes(normalized) || /^s[hz](000|399)\d{3}$/.test(normalized) || ["\u521B\u4E1A\u677F\u6307", "\u6CAA\u6DF1300", "\u6DF1\u8BC1\u6210\u6307", "\u4E0A\u8BC1\u6307\u6570", "\u4E2D\u8BC1500", "\u4E2D\u8BC11000"].includes(value.trim());
 }
 function kindForTarget(row, fallback = "auto") {
   return stringValue3(row.kind) ?? (stringValue3(row.symbol) ? "stock" : fallback);
@@ -36313,13 +37021,8 @@ function manualClueMatchesDeleteKeys(row, keys) {
   if (!rowIsManualClue(row) || keys.size === 0) return false;
   return manualClueDeleteKeys(row).some((key) => keys.has(key));
 }
-function stockRowsContainSearchValue(rows, value) {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return false;
-  return rows.some((row) => {
-    if (row.kind !== "stock" && row.targetKind !== "stock") return false;
-    return [row.label, row.name, row.code, row.targetLabel, compactText2(row.raw.raw_code), compactText2(row.raw.symbol)].filter(Boolean).some((candidate) => candidate === value || candidate.toLowerCase() === normalized);
-  });
+function shouldAddManualClueForSearch(value, isIndex) {
+  return Boolean(value.trim()) && !isIndex;
 }
 var candidateGroupOrder = ["upstream", "leaders", "weighted", "elastic", "downstream", "source_leaders", "constituents"];
 function candidateGroupLabel(key, locale) {
@@ -36516,7 +37219,7 @@ function StrategyChartTerminal({
   aiFactorStrategySignals = [],
   onOpenRecord
 }) {
-  const baseUrl = trimTrailingSlash2(signalsWebBaseUrl) || urlFromDashboard(dashboard) || DEFAULT_SIGNALS_WEB_BASE_URL;
+  const baseUrl = trimTrailingSlash3(signalsWebBaseUrl) || urlFromDashboard(dashboard) || DEFAULT_SIGNALS_WEB_BASE_URL;
   const chartContainerRef = (0, import_react3.useRef)(null);
   const chartRef = (0, import_react3.useRef)(null);
   const resizeObserverRef = (0, import_react3.useRef)(null);
@@ -36568,12 +37271,23 @@ function StrategyChartTerminal({
   const referenceChartSignals = (0, import_react3.useMemo)(() => referenceSignalsForIndexChart(symbolData), [symbolData]);
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq;
   const aiFactorChartSignals = (0, import_react3.useMemo)(
-    () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq),
-    [aiFactorStrategySignals, currentFreq, klineData]
+    () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq, symbolData, target),
+    [aiFactorStrategySignals, currentFreq, klineData, symbolData, target]
   );
-  const chartSignals = (0, import_react3.useMemo)(
+  const baseChartSignals = (0, import_react3.useMemo)(
     () => [...signals, ...referenceChartSignals, ...aiFactorChartSignals],
     [aiFactorChartSignals, referenceChartSignals, signals]
+  );
+  const maAcceptance = (0, import_react3.useMemo)(
+    () => maAcceptanceFromSymbolData(symbolData) ?? maAcceptanceFromSignals(baseChartSignals),
+    [baseChartSignals, symbolData]
+  );
+  const chartSignals = (0, import_react3.useMemo)(
+    () => {
+      const dailyMaSignal = dailyMaAcceptanceSignalForChart(klineData, maAcceptance, currentFreq);
+      return dailyMaSignal ? [...baseChartSignals, dailyMaSignal] : baseChartSignals;
+    },
+    [baseChartSignals, currentFreq, klineData, maAcceptance]
   );
   const visibleCustomSignals = (0, import_react3.useMemo)(() => signals.filter(isCustomUserSignal), [signals]);
   const customSignalCount = (0, import_react3.useMemo)(
@@ -36598,6 +37312,10 @@ function StrategyChartTerminal({
   );
   const chartVisibleSignals = (0, import_react3.useMemo)(() => displaySignalsForChart(klineData, chartSignals, currentFreq), [chartSignals, currentFreq, klineData]);
   const evidenceSignals = (0, import_react3.useMemo)(() => displaySignalsForEvidence(chartSignals), [chartSignals]);
+  const maAcceptanceChips = (0, import_react3.useMemo)(
+    () => maAcceptance ? maAcceptanceMetricChips(maAcceptance) : [],
+    [maAcceptance]
+  );
   const currentVisibleSignals = (0, import_react3.useMemo)(
     () => chartVisibleSignals.filter((signal) => signalScopeLabel(signal, normalizeSignalFreq(currentFreq)) === "\u672C\u5468\u671F"),
     [chartVisibleSignals, currentFreq]
@@ -36743,7 +37461,7 @@ function StrategyChartTerminal({
       setOptimisticDeletedManualClueKeys(/* @__PURE__ */ new Set());
     }
   }, [groupedWatchlistRows, optimisticDeletedManualClueKeys]);
-  const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab].length > 0 ? displayWatchlistGroups[activeWatchlistTab] : activeWatchlistTab === "macro_indices" || activeWatchlistTab === "sector_boards" ? displayWatchlistGroups.legacy : [];
+  const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab];
   const activeWatchlistRows = (0, import_react3.useMemo)(
     () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
     [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax]
@@ -37260,7 +37978,7 @@ function StrategyChartTerminal({
       const value = searchDraft.trim();
       if (!value) return;
       const isIndex = indexTargets.some((row) => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value);
-      const shouldAddManualClue = !isIndex && !stockRowsContainSearchValue(allStockWatchlistRows, value);
+      const shouldAddManualClue = shouldAddManualClueForSearch(value, isIndex);
       selectTarget(
         { label: value, kind: isIndex ? "index" : "auto", freq: target.freq || DEFAULT_TERMINAL_FREQ },
         "strategy.search.submit"
@@ -37269,7 +37987,7 @@ function StrategyChartTerminal({
         void addManualClueFromSearch(value, target.freq || DEFAULT_TERMINAL_FREQ);
       }
     },
-    [addManualClueFromSearch, allStockWatchlistRows, indexTargets, searchDraft, selectTarget, target.freq]
+    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget, target.freq]
   );
   const refreshNow = (0, import_react3.useCallback)(() => {
     if (!target.label) return;
@@ -37890,9 +38608,34 @@ function StrategyChartTerminal({
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
           Panel2,
           {
-            title: locale === "zh-CN" ? "\u4FE1\u53F7\u4E0E\u5173\u952E\u4F4D" : "Signals and levels",
+            title: locale === "zh-CN" ? "\u4EA4\u6613\u8BC1\u636E" : "Trade evidence",
             meta: customSignalCount > 0 ? `${customSignalCount}\u81EA\u5B9A\u4E49` : String(signals.length + chartKeyLevels.length + divergences.length),
-            children: signals.length === 0 && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u6807\u7684\u6682\u65E0\u81EA\u5B9A\u4E49\u4FE1\u53F7\u3001\u80CC\u79BB\u6216\u5173\u952E\u5747\u7EBF\u4F4D\u3002" : "No custom signals, divergences, or key levels." }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
+            children: signals.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u6807\u7684\u6682\u65E0\u81EA\u5B9A\u4E49\u4FE1\u53F7\u3001\u80CC\u79BB\u6216\u5173\u952E\u5747\u7EBF\u4F4D\u3002" : "No custom signals, divergences, or key levels." }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
+              maAcceptance ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { ...signalBlockStyle, borderTop: 0, paddingTop: 0 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u5747\u7EBF\u6590\u6CE2\u90A3\u5951\u627F\u63A5" : "Fibonacci MA acceptance" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: shortMaAcceptanceLabel(maAcceptance) })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "div",
+                  {
+                    style: {
+                      ...signalRowStyle,
+                      border: `1px solid ${tradingDeskTheme.chart.orange}`,
+                      background: "rgba(245, 158, 11, 0.10)"
+                    },
+                    children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 5, flex: 1, minWidth: 0 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: statusBadgeStyle("success"), children: maAcceptance.summary || shortMaAcceptanceLabel(maAcceptance) }),
+                        maAcceptance.freq ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: monoTextStyle, children: displayFreqLabel(maAcceptance.freq) }) : null,
+                        maAcceptance.event_dt ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: monoTextStyle, children: maAcceptance.event_dt }) : null
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: signalBadgeRowStyle, children: maAcceptanceChips.slice(0, 5).map((chip) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: miniSignalBadgeStyle, children: chip }, `ma-acceptance-${chip}`)) }),
+                      maAcceptance.detail ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: maAcceptance.detail }) : null
+                    ] })
+                  }
+                )
+              ] }) : null,
               referenceCandidateSignalRows.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: signalBlockStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u53C2\u8003\u4E2A\u80A1\u5468\u671F\u4E70\u5356\u70B9" : "Reference stock timeframes" }),
@@ -38284,13 +39027,20 @@ function CacheMonitorStrip({
   const boardShardTotal = boardShardTasks.reduce((sum, item) => sum + (numberValue3(recordValue4(item.result_summary).total_groups) ?? 0), 0);
   const boardShardDone = boardShardTasks.filter((item) => compactText2(item.status) === "ok").length;
   const boardShardProcessed = boardShardTasks.reduce((sum, item) => sum + (numberValue3(recordValue4(item.result_summary).processed) ?? 0), 0);
-  const postPct = percentValue(postSummary.progress_pct);
-  const postStatus = compactText2(postRun.status, compactText2(postSummary.status, "pending"));
+  const postPct = percentValue(postSummary.critical_progress_pct ?? postSummary.progress_pct);
+  const postRawStatus = compactText2(postRun.status, compactText2(postSummary.status, "pending"));
+  const postStatus = compactText2(postSummary.critical_status, postRawStatus);
   const postEta = compactDuration(postSummary.eta_seconds, locale);
+  const optionalStatusCounts = recordValue4(postSummary.optional_status_counts);
+  const optionalTotal = numberValue3(postSummary.optional_task_count) ?? 0;
+  const optionalDone = numberValue3(postSummary.optional_completed) ?? 0;
+  const optionalRunning = numberValue3(optionalStatusCounts.running) ?? 0;
+  const optionalPending = numberValue3(optionalStatusCounts.pending) ?? 0;
+  const optionalTailLine = optionalTotal ? locale === "zh-CN" ? `HK\u540E\u53F0 ${countText(optionalDone)}/${countText(optionalTotal)} \xB7 \u8FD0\u884C ${countText(optionalRunning)} \xB7 \u5F85 ${countText(optionalPending)}` : `HK tail ${countText(optionalDone)}/${countText(optionalTotal)} \xB7 running ${countText(optionalRunning)} \xB7 pending ${countText(optionalPending)}` : "";
   const stockDailyLine = stockShardTasks.length ? `${countText(stockShardDone)}/${countText(stockShardTasks.length)} shard \xB7 ${countText(stockShardProcessed)}/${countText(stockShardTotal)}` : `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText2(stockDailySummary.latest_symbol)}`;
   const boardCursorLine = boardShardTasks.length ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard \xB7 ${countText(boardShardProcessed)}/${countText(boardShardTotal)}` : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`;
-  const postDetail = locale === "zh-CN" ? `\u9636\u6BB5 ${compactText2(postRun.phase, "\u7B49\u5F85")} \xB7 ${postEta || "ETA \u8BA1\u7B97\u4E2D"}` : `phase ${compactText2(postRun.phase, "pending")} \xB7 ${postEta || "ETA pending"}`;
-  const postSubdetail = locale === "zh-CN" ? `\u65E5\u7EBF ${stockDailyLine} \xB7 \u677F\u5757 ${boardCursorLine}` : `daily ${stockDailyLine} \xB7 boards ${boardCursorLine}`;
+  const postDetail = postStatus === "ok" && postRawStatus === "running" && optionalTailLine ? locale === "zh-CN" ? `\u4E3B\u94FE\u5B8C\u6210 \xB7 ${optionalTailLine}` : `critical path done \xB7 ${optionalTailLine}` : locale === "zh-CN" ? `\u9636\u6BB5 ${compactText2(postRun.phase, "\u7B49\u5F85")} \xB7 ${postEta || "ETA \u8BA1\u7B97\u4E2D"}` : `phase ${compactText2(postRun.phase, "pending")} \xB7 ${postEta || "ETA pending"}`;
+  const postSubdetail = locale === "zh-CN" ? `\u65E5\u7EBF ${stockDailyLine} \xB7 \u677F\u5757 ${boardCursorLine}${optionalTailLine ? ` \xB7 ${optionalTailLine}` : ""}` : `daily ${stockDailyLine} \xB7 boards ${boardCursorLine}${optionalTailLine ? ` \xB7 ${optionalTailLine}` : ""}`;
   const dailyCache = firstRecord(freqs, "freq", "\u65E5\u7EBF");
   const dailySymbols = numberValue3(dailyCache.symbols) ?? 0;
   const dailyToday = numberValue3(dailyCache.today_symbols) ?? 0;
@@ -38303,20 +39053,14 @@ function CacheMonitorStrip({
   const mongoDetail = locale === "zh-CN" ? `\u4ECA\u65E5\u65E5\u7EBF ${countText(dailyToday)}/${countText(dailySymbols)}` : `today daily ${countText(dailyToday)}/${countText(dailySymbols)}`;
   const mongoSubdetail = locale === "zh-CN" ? minuteUniverseTotal ? `\u5206\u949F\u5019\u9009 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} \xB7 \u5F85 ${countText(minuteUniversePending)} \xB7 \u5931\u8D25 ${countText(minuteUniverseError)}` : `\u5206\u949F\u8986\u76D6\uFF1A${minuteFreqs || "0"}` : minuteUniverseTotal ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} \xB7 pending ${countText(minuteUniversePending)} \xB7 failed ${countText(minuteUniverseError)}` : `minute coverage: ${minuteFreqs || "0"}`;
   const mongoStatus = !cacheStatus.available ? "degraded" : minuteUniverseError > 0 ? "degraded" : minuteUniversePending > 0 || dailySymbols > 0 && dailyToday < dailySymbols ? "partial" : "ok";
-  const providerProblems = activeProviderProblems(providerHealth);
-  const firstProviderProblem = providerProblems[0] ?? {};
-  const sourceProblemCount = providerProblems.length;
-  const taskBlockerCount = blockers.length;
-  const blockerPct = cacheStatus.available && sourceProblemCount === 0 && liveStatus === "ok" ? 100 : 0;
-  const blockerDetail = sourceProblemCount ? `${compactText2(firstProviderProblem.provider, "provider")} \xB7 ${compactText2(firstProviderProblem.endpoint, compactText2(firstProviderProblem.status, "blocked"))}` : locale === "zh-CN" ? "\u65E0\u963B\u585E\u6E90" : "no blocking source";
-  const blockerSubdetail = sourceProblemCount ? compactText2(firstProviderProblem.last_error_type, compactText2(firstProviderProblem.cooldown_hit_type, locale === "zh-CN" ? "\u67E5\u770B provider_health \u5B9A\u4F4D\u6570\u636E\u6E90" : "check provider_health for source detail")) : locale === "zh-CN" ? `${countText(providerHealth.length)} \u4E2A provider \u8BB0\u5F55 \xB7 ${countText(taskBlockerCount)} \u4E2A\u4EFB\u52A1\u963B\u585E\u5728\u8865\u6570\u533A\u5C55\u793A` : `${countText(providerHealth.length)} provider records \xB7 ${countText(taskBlockerCount)} task blockers shown in data tasks`;
+  const sourceSummary = sourceMonitorSummary(providerHealth, blockers, locale, cacheStatus.available);
   const refreshSeconds = cacheRefreshSeconds(cacheStatus);
   const updatedAt = compactClock(cacheStatus.updated_at, locale);
-  const monitorStatus = cacheStatus.available && liveStatus === "ok" && sourceProblemCount === 0 ? "ok" : liveStatus;
+  const monitorStatus = sourceSummary.status === "error" || sourceSummary.status === "degraded" || liveStatus === "degraded" ? "degraded" : sourceSummary.status === "partial" || liveStatus === "partial" ? "partial" : "ok";
   const monitorColor = monitorStatus === "ok" ? palette.success : monitorStatus === "partial" ? tradingDeskTheme.colors.auroraGold : palette.error;
   const toggleLabel = compact ? locale === "zh-CN" ? "\u5C55\u5F00" : "Expand" : locale === "zh-CN" ? "\u6536\u8D77" : "Collapse";
   if (compact) {
-    const summaryLine = locale === "zh-CN" ? `\u76D8\u4E2D ${liveStatusLabel} \xB7 \u76D8\u540E ${cacheStatusLabel(postStatus, "pending")} \xB7 Mongo ${countText(dailyToday)}/${countText(dailySymbols)} \xB7 \u7F51\u7EDC\u6E90 ${sourceProblemCount ? "BLOCKED" : "OK"}` : `live ${liveStatusLabel} \xB7 post ${cacheStatusLabel(postStatus, "pending")} \xB7 mongo ${countText(dailyToday)}/${countText(dailySymbols)} \xB7 sources ${sourceProblemCount ? "BLOCKED" : "OK"}`;
+    const summaryLine = locale === "zh-CN" ? `\u76D8\u4E2D ${liveStatusLabel} \xB7 \u76D8\u540E ${cacheStatusLabel(postStatus, "pending")} \xB7 Mongo ${countText(dailyToday)}/${countText(dailySymbols)} \xB7 \u7F51\u7EDC\u6E90 ${sourceSummary.statusLabel}` : `live ${liveStatusLabel} \xB7 post ${cacheStatusLabel(postStatus, "pending")} \xB7 mongo ${countText(dailyToday)}/${countText(dailySymbols)} \xB7 sources ${sourceSummary.statusLabel}`;
     return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: cacheMonitorStripStyle, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: cacheMonitorToolbarStyle, children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: cacheMonitorToolbarTitleStyle, children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: cacheStatusDotStyle(monitorColor) }),
@@ -38376,12 +39120,12 @@ function CacheMonitorStrip({
         CacheMonitorCell,
         {
           title: locale === "zh-CN" ? "\u7F51\u7EDC\u6E90" : "Sources",
-          value: String(sourceProblemCount),
-          progress: blockerPct,
-          status: sourceProblemCount ? "error" : "ok",
-          statusLabel: sourceProblemCount ? "BLOCKED" : "OK",
-          detail: blockerDetail,
-          subdetail: blockerSubdetail
+          value: sourceSummary.value,
+          progress: sourceSummary.progress,
+          status: sourceSummary.status,
+          statusLabel: sourceSummary.statusLabel,
+          detail: sourceSummary.detail,
+          subdetail: sourceSummary.subdetail
         }
       )
     ] })
@@ -43052,7 +43796,8 @@ function signalsDashboardPollingMs(page, dashboard) {
   if (!dashboard || dashboard.pack_id !== "signals") return 1e4;
   const cache = dashboard.cache_status;
   const runStatus = String(cache?.postmarket_backfill?.run?.status ?? "").toLowerCase();
-  const postmarketActive = ["running", "partial", "stale"].includes(runStatus);
+  const criticalStatus = String(cache?.postmarket_backfill?.summary?.critical_status ?? "").toLowerCase();
+  const postmarketActive = ["running", "partial", "stale"].includes(runStatus) && criticalStatus !== "ok";
   const freshness = Number(cache?.live_low_latency?.summary?.freshness_seconds_max ?? Number.POSITIVE_INFINITY);
   const liveActive = Number.isFinite(freshness) && freshness <= 60 * 60;
   return postmarketActive || liveActive ? 1e4 : 6e4;

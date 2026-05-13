@@ -5,9 +5,12 @@ import {
   displaySignalsForChart,
   looksLikeIndexValue,
   maAcceptanceFromSymbolData,
+  signalCalloutBadgeSummary,
+  signalEvidenceCalloutsForChart,
   signalOverlayPriority,
   signalsFromSymbolData,
   shouldAddManualClueForSearch,
+  sourceMonitorSummary,
 } from './StrategyChartTerminal.js'
 
 describe('StrategyChartTerminal search clues', () => {
@@ -25,6 +28,28 @@ describe('StrategyChartTerminal search clues', () => {
     expect(looksLikeIndexValue('SZ.300394')).toBe(false)
     expect(looksLikeIndexValue('SH.000300')).toBe(true)
     expect(looksLikeIndexValue('沪深300')).toBe(true)
+  })
+})
+
+describe('StrategyChartTerminal source monitor', () => {
+  it('shows loaded provider records instead of zero when sources are healthy', () => {
+    const summary = sourceMonitorSummary([
+      { provider: 'eastmoney', endpoint: 'fullmarket_spot_snapshot', domain: 'market_data', status: 'ok', last_success_at: '2026-05-13T09:44:00' },
+      { provider: 'sina', endpoint: 'stock_minute', domain: 'minute', status: 'ok', last_success_at: '2026-05-13T09:43:00' },
+    ], [], 'zh-CN')
+
+    expect(summary.value).toBe('2')
+    expect(summary.statusLabel).toBe('OK')
+    expect(summary.detail).toBe('无阻塞源')
+  })
+
+  it('marks provider health as not loaded when no source records arrive', () => {
+    const summary = sourceMonitorSummary([], [{ scope: 'postmarket_backfill' }], 'zh-CN')
+
+    expect(summary.value).toBe('0')
+    expect(summary.status).toBe('partial')
+    expect(summary.statusLabel).toBe('未加载')
+    expect(summary.detail).toBe('provider_health 未加载')
   })
 })
 
@@ -204,5 +229,90 @@ describe('StrategyChartTerminal index multi-timeframe signals', () => {
       'higher_timeframe_context',
       'lower_timeframe_context',
     ]))
+  })
+})
+
+describe('StrategyChartTerminal signal callouts', () => {
+  const bars = [
+    { timestamp: Date.UTC(2026, 4, 12, 1, 30), open: 36, high: 38, low: 35, close: 37, volume: 1200 },
+    { timestamp: Date.UTC(2026, 4, 12, 2, 0), open: 37, high: 39, low: 36, close: 38, volume: 1800 },
+    { timestamp: Date.UTC(2026, 4, 12, 2, 30), open: 38, high: 40, low: 37, close: 39, volume: 2200 },
+    { timestamp: Date.UTC(2026, 4, 12, 3, 0), open: 39, high: 41, low: 38, close: 40, volume: 2100 },
+    { timestamp: Date.UTC(2026, 4, 12, 3, 30), open: 40, high: 42, low: 39, close: 41, volume: 2400 },
+  ]
+
+  it('wraps adjacent multi-timeframe markers into one guided evidence box', () => {
+    const callouts = signalEvidenceCalloutsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[3].timestamp / 1000,
+          type: '二买',
+          freq: '30min',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[4].timestamp / 1000,
+          type: '多头上行',
+          freq: 'daily',
+          display_scope: 'higher_timeframe_context',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[4].timestamp / 1000,
+          type: '一卖',
+          freq: '15min',
+          display_scope: 'lower_timeframe_context',
+          signal_side: 'sell',
+          source: 'signals.index_report',
+        },
+      ] as any,
+      '30min',
+    )
+
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0].label).toBe('多周期证据')
+    expect(callouts[0].itemCount).toBe(3)
+    expect(callouts[0].items.map(item => item.freq)).toEqual(expect.arrayContaining(['30m', '日↧', '15m↥']))
+  })
+
+  it('renders main chart aggregation as a compact badge summary', () => {
+    const summary = signalCalloutBadgeSummary([
+      { label: '二买', side: 'buy', color: '#f59e0b', freq: '30m' },
+      { label: '多头上行', side: 'buy', color: '#f59e0b', freq: '日↧' },
+      { label: '一卖', side: 'sell', color: '#ef4444', freq: '15m↥' },
+      { label: 'MA承接', side: 'buy', color: '#f59e0b', freq: '周↧' },
+    ], 4, '多周期证据')
+
+    expect(summary.title).toBe('多周期 4')
+    expect(summary.subtitle).toBe('30m/日↧/15m↥')
+  })
+
+  it('keeps volume and price-volume markers out of main chart callouts', () => {
+    const signals = [
+      {
+        dt: bars[4].timestamp / 1000,
+        type: '量价背离',
+        freq: '30min',
+        source: 'terminal_volume_signals',
+      },
+      {
+        dt: bars[4].timestamp / 1000,
+        type: '二买',
+        freq: '30min',
+        display_scope: 'current_timeframe',
+        signal_side: 'buy',
+        source: 'signals.stock_report',
+      },
+    ] as any
+
+    expect(displaySignalsForChart(bars as any, signals, '30min').map(signal => signal.type)).toEqual(['二买'])
+    const callouts = signalEvidenceCalloutsForChart(bars as any, signals, '30min')
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0].items).toHaveLength(1)
+    expect(callouts[0].items[0].label).not.toContain('量')
   })
 })
