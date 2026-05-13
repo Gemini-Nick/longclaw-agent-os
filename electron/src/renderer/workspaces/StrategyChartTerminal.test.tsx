@@ -11,6 +11,7 @@ import {
   signalsFromSymbolData,
   shouldAddManualClueForSearch,
   sourceMonitorSummary,
+  withSignalCalloutIds,
 } from './StrategyChartTerminal.js'
 
 describe('StrategyChartTerminal search clues', () => {
@@ -287,8 +288,42 @@ describe('StrategyChartTerminal signal callouts', () => {
       { label: 'MA承接', side: 'buy', color: '#f59e0b', freq: '周↧' },
     ], 4, '多周期证据')
 
-    expect(summary.title).toBe('多周期 4')
-    expect(summary.subtitle).toBe('30m/日↧/15m↥')
+    expect(summary.title).toBe('共振 4')
+    expect(summary.subtitle).toBe('二买/多头上行')
+  })
+
+  it('adds stable chart ids for right-rail callout details', () => {
+    const callouts = withSignalCalloutIds(signalEvidenceCalloutsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[3].timestamp / 1000,
+          type: '二买',
+          freq: '30min',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[4].timestamp / 1000,
+          type: 'MACD金叉',
+          freq: 'daily',
+          display_scope: 'higher_timeframe_context',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+      ] as any,
+      '30min',
+    ))
+
+    expect(callouts[0].calloutId).toBe('G1')
+    expect(signalCalloutBadgeSummary(
+      callouts[0].items,
+      callouts[0].itemCount,
+      callouts[0].label,
+      callouts[0].freq,
+      callouts[0].calloutId,
+    ).title).toBe('G1 共振 2')
   })
 
   it('keeps volume and price-volume markers out of main chart callouts', () => {

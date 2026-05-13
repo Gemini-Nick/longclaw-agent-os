@@ -10,6 +10,7 @@ import {
   type IndicatorStyle,
   type KLineData,
   type OverlayCreateFiguresCallbackParams,
+  type OverlayEvent,
   type Styles,
 } from 'klinecharts'
 
@@ -378,9 +379,11 @@ export type SignalCalloutItem = {
 }
 
 type SignalOverlayData = {
+  calloutId?: string
   label: string
   side: 'buy' | 'sell' | 'neutral'
   color: string
+  selected?: boolean
   isCustom?: boolean
   freq?: string
   scope?: string
@@ -2188,6 +2191,84 @@ const customSignalBadgeStyle: React.CSSProperties = {
   color: tradingDeskTheme.chart.line,
 }
 
+const chartCalloutSelectorStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))',
+  gap: 4,
+  minWidth: 0,
+}
+
+function chartCalloutButtonStyle(active: boolean, color: string): React.CSSProperties {
+  return {
+    border: `1px solid ${active ? terminalTheme.textStrong : color}`,
+    borderRadius: 5,
+    background: active ? `${color}26` : terminalTheme.panelInset,
+    color: terminalTheme.text,
+    padding: '4px 6px',
+    cursor: 'pointer',
+    appearance: 'none',
+    textAlign: 'left',
+    minWidth: 0,
+    boxShadow: active ? `inset 3px 0 0 ${color}` : `inset 2px 0 0 ${color}`,
+  }
+}
+
+const chartCalloutButtonTitleStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  minWidth: 0,
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 900,
+  lineHeight: 1.15,
+}
+
+const chartCalloutButtonSubStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  marginTop: 2,
+  fontSize: 9,
+}
+
+function chartCalloutIdBadgeStyle(color: string): React.CSSProperties {
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: `${color}1f`,
+    color,
+    padding: '1px 4px',
+    fontFamily: fontStacks.mono,
+    fontSize: 9,
+    fontWeight: 900,
+    lineHeight: 1.1,
+    flexShrink: 0,
+  }
+}
+
+const chartCalloutDetailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 5,
+  minWidth: 0,
+}
+
+function chartCalloutItemStyle(color: string): React.CSSProperties {
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    borderLeft: `3px solid ${color}`,
+    background: terminalTheme.panelSoft,
+    padding: '4px 6px',
+    minWidth: 0,
+  }
+}
+
 const aiFactorStrategyStripStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'stretch',
@@ -3557,7 +3638,7 @@ function ensureSignalOverlay() {
   registerOverlay({
     name: SIGNAL_OVERLAY_NAME,
     totalStep: 2,
-    lock: true,
+    lock: false,
     needDefaultPointFigure: false,
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
@@ -3566,6 +3647,8 @@ function ensureSignalOverlay() {
       if (!point) return []
       const data = recordValue(overlay.extendData) as SignalOverlayData
       const label = data.label || 'SIG'
+      const calloutId = compactText(data.calloutId)
+      const selected = Boolean(data.selected)
       const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
       const color = data.color || signalOverlayColor(side)
       const rawItems = Array.isArray(data.items) ? data.items : []
@@ -3592,12 +3675,12 @@ function ensureSignalOverlay() {
           sourceLabel: data.sourceLabel,
           details: data.details,
         }]
-      const badge = signalCalloutBadgeSummary(items, data.itemCount, label, data.freq)
+      const badge = signalCalloutBadgeSummary(items, data.itemCount, label, data.freq, calloutId)
       const totalItems = badge.totalItems
       const displayText = badge.title
       const subText = badge.subtitle
-      const width = Math.max(totalItems > 1 ? 82 : 58, Math.min(128, Math.max(displayText.length, subText.length) * 7 + 24))
-      const height = subText ? 30 : 20
+      const width = Math.max(totalItems > 1 ? 104 : 72, Math.min(174, Math.max(displayText.length * 7.2, subText.length * 6.4) + 28))
+      const height = subText ? 34 : 22
       const gap = 10
       const lane = Math.max(0, Math.min(5, Math.floor(numberValue(data.lane) ?? 0)))
       const chartWidth = bounding?.width ?? point.x + width + 96
@@ -3613,9 +3696,11 @@ function ensureSignalOverlay() {
       const rectY = clamp(placeBelow ? bottomRailY : topRailY, 28, chartHeight - height - 2)
       const connectorX = clamp(point.x, rectX + 8, rectX + width - 8)
       const connectorY = point.y < rectY ? rectY : rectY + height
-      const fillColor = 'rgba(15, 23, 42, 0.94)'
-      const headerFillColor = data.isCustom ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.18)'
-      const borderSize = 1
+      const fillColor = selected ? 'rgba(15, 23, 42, 0.98)' : 'rgba(15, 23, 42, 0.94)'
+      const headerFillColor = selected
+        ? `${color}30`
+        : data.isCustom ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.18)'
+      const borderSize = selected ? 2 : 1
 
       const figures = [
         {
@@ -3644,6 +3729,7 @@ function ensureSignalOverlay() {
           ignoreEvent: true,
         },
         {
+          key: 'callout-body',
           type: 'rect',
           attrs: { x: rectX, y: rectY, width, height },
           styles: {
@@ -3652,9 +3738,9 @@ function ensureSignalOverlay() {
             borderSize,
             borderRadius: 4,
           },
-          ignoreEvent: true,
         },
         {
+          key: 'callout-header',
           type: 'rect',
           attrs: { x: rectX, y: rectY, width, height },
           styles: {
@@ -3662,9 +3748,9 @@ function ensureSignalOverlay() {
             borderColor: headerFillColor,
             borderRadius: 4,
           },
-          ignoreEvent: true,
         },
         {
+          key: 'callout-stripe',
           type: 'rect',
           attrs: { x: rectX + 5, y: rectY + 5, width: 4, height: height - 10 },
           styles: {
@@ -3672,14 +3758,14 @@ function ensureSignalOverlay() {
             borderColor: color,
             borderRadius: 2,
           },
-          ignoreEvent: true,
         },
         {
+          key: 'callout-title',
           type: 'text',
           attrs: {
             x: rectX + 12,
             y: rectY + (subText ? 10 : height / 2),
-            text: displayText.slice(0, 12),
+            text: displayText.slice(0, 15),
             align: 'left',
             baseline: 'middle',
           },
@@ -3689,18 +3775,18 @@ function ensureSignalOverlay() {
             weight: 800,
             family: 'IBM Plex Mono, Menlo, monospace',
           },
-          ignoreEvent: true,
         },
       ]
 
       if (subText) {
         figures.push(
           {
+            key: 'callout-subtitle',
             type: 'text',
             attrs: {
               x: rectX + 12,
-              y: rectY + 23,
-              text: subText.slice(0, 14),
+              y: rectY + 25,
+              text: subText.slice(0, 18),
               align: 'left',
               baseline: 'middle',
             },
@@ -3710,7 +3796,6 @@ function ensureSignalOverlay() {
               weight: 720,
               family: 'IBM Plex Mono, Menlo, monospace',
             },
-            ignoreEvent: true,
           },
         )
       }
@@ -4740,20 +4825,32 @@ export function signalCalloutBadgeSummary(
   itemCount?: number,
   label = 'SIG',
   freq?: string,
+  calloutId?: string,
 ): { title: string; subtitle: string; totalItems: number } {
   const totalItems = Math.max(itemCount ?? items.length, items.length)
+  const idPrefix = calloutId ? `${calloutId} ` : ''
+  const primaryLabels = uniqueCompact(items.map(item => item.label)).slice(0, totalItems > 1 ? 2 : 1)
+  const primarySummary = primaryLabels.join('/')
+  const freqSummary = uniqueCompact(items.map(item => item.freq)).slice(0, 3).join('/')
   if (totalItems > 1) {
     return {
-      title: `多周期 ${totalItems}`,
-      subtitle: uniqueCompact(items.map(item => item.freq)).slice(0, 3).join('/'),
+      title: `${idPrefix}共振 ${totalItems}`,
+      subtitle: primarySummary || freqSummary,
       totalItems,
     }
   }
   return {
-    title: `${freq ? `${freq} ` : ''}${label}`,
-    subtitle: '',
+    title: `${idPrefix}${freq ? `${freq} ` : ''}${primarySummary || label}`,
+    subtitle: primarySummary && primarySummary !== label ? label : '',
     totalItems,
   }
+}
+
+export function withSignalCalloutIds(callouts: SignalChartCallout[]): SignalChartCallout[] {
+  return callouts.map((callout, index) => ({
+    ...callout,
+    calloutId: `G${index + 1}`,
+  }))
 }
 
 type SignalCalloutCandidate = {
@@ -4898,15 +4995,28 @@ function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] 
   return output
 }
 
-function createSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string) {
+function createSignalOverlays(
+  chart: Chart,
+  callouts: SignalChartCallout[],
+  selectedCalloutId?: string,
+  onSelectCallout?: (calloutId: string) => void,
+) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
-  signalEvidenceCalloutsForChart(data, signals, currentFreq).forEach(callout => {
+  callouts.forEach(callout => {
     chart.createOverlay({
       name: SIGNAL_OVERLAY_NAME,
       groupId: SIGNAL_OVERLAY_GROUP,
-      lock: true,
+      lock: false,
       points: [{ timestamp: callout.timestamp, value: callout.price }],
-      extendData: callout satisfies SignalOverlayData,
+      extendData: {
+        ...callout,
+        selected: Boolean(callout.calloutId && callout.calloutId === selectedCalloutId),
+      } satisfies SignalOverlayData,
+      onClick: (event: OverlayEvent) => {
+        const id = compactText(recordValue(event.overlay.extendData).calloutId)
+        if (id) onSelectCallout?.(id)
+        return true
+      },
     })
   })
 }
@@ -6353,6 +6463,7 @@ export function StrategyChartTerminal({
   const [pendingListUpdate, setPendingListUpdate] = useState(false)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [selectedChartCalloutId, setSelectedChartCalloutId] = useState('')
   const [optimisticDeletedManualClueKeys, setOptimisticDeletedManualClueKeys] = useState<Set<string>>(() => new Set())
   const [aiRanking, setAiRanking] = useState<AiRankingResult | null>(null)
   const [aiReviewsByKey, setAiReviewsByKey] = useState<Record<string, AiCandidateReview>>({})
@@ -6391,6 +6502,29 @@ export function StrategyChartTerminal({
     },
     [baseChartSignals, currentFreq, klineData, maAcceptance],
   )
+  const chartCallouts = useMemo(
+    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq)),
+    [chartSignals, currentFreq, klineData],
+  )
+  const selectedChartCallout = useMemo(
+    () => chartCallouts.find(callout => callout.calloutId === selectedChartCalloutId) ?? chartCallouts[0] ?? null,
+    [chartCallouts, selectedChartCalloutId],
+  )
+  const selectChartCallout = useCallback((calloutId: string) => {
+    if (!calloutId) return
+    setSelectedChartCalloutId(calloutId)
+    setRightCollapsed(false)
+    recordObservationEvent('strategy.chart-callout.select', { callout_id: calloutId, target })
+  }, [target])
+  useEffect(() => {
+    if (chartCallouts.length === 0) {
+      if (selectedChartCalloutId) setSelectedChartCalloutId('')
+      return
+    }
+    if (!selectedChartCalloutId || !chartCallouts.some(callout => callout.calloutId === selectedChartCalloutId)) {
+      setSelectedChartCalloutId(chartCallouts[0]?.calloutId ?? '')
+    }
+  }, [chartCallouts, selectedChartCalloutId])
   const visibleCustomSignals = useMemo(() => signals.filter(isCustomUserSignal), [signals])
   const customSignalCount = useMemo(
     () => numberValue(symbolData?.custom_signal_count) ?? visibleCustomSignals.length,
@@ -7028,7 +7162,7 @@ export function StrategyChartTerminal({
       return
     }
     chart.applyNewData(chartDisplayData)
-    createSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq)
+    createSignalOverlays(chart, chartCallouts, selectedChartCallout?.calloutId, selectChartCallout)
     createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq)
     createLevelOverlays(chart, chartDisplayData, chartKeyLevels)
     createDivergenceOverlays(chart, divergences)
@@ -7036,7 +7170,7 @@ export function StrategyChartTerminal({
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences])
+  }, [chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences, selectChartCallout, selectedChartCallout?.calloutId])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
@@ -7846,6 +7980,14 @@ export function StrategyChartTerminal({
           </div>
         ) : (
         <div style={terminalSideStyle}>
+          <ChartCalloutDetailsPanel
+            locale={locale}
+            callouts={chartCallouts}
+            selectedCallout={selectedChartCallout}
+            chartTimezone={chartTimezone}
+            onSelect={selectChartCallout}
+          />
+
           <ChainContextRail
             locale={locale}
             context={chainContext}
@@ -7877,7 +8019,7 @@ export function StrategyChartTerminal({
             title={locale === 'zh-CN' ? '交易证据' : 'Trade evidence'}
             meta={customSignalCount > 0 ? `${customSignalCount}自定义` : String(signals.length + chartKeyLevels.length + divergences.length)}
           >
-            {signals.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? (
+            {signals.length === 0 && chartCallouts.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? (
               <div style={emptyStateDarkStyle}>
                 {locale === 'zh-CN' ? '当前标的暂无自定义信号、背离或关键均线位。' : 'No custom signals, divergences, or key levels.'}
               </div>
@@ -8241,6 +8383,86 @@ function Panel({
       </div>
       {children}
     </div>
+  )
+}
+
+function ChartCalloutDetailsPanel({
+  locale,
+  callouts,
+  selectedCallout,
+  chartTimezone,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  callouts: SignalChartCallout[]
+  selectedCallout: SignalChartCallout | null
+  chartTimezone?: string
+  onSelect: (calloutId: string) => void
+}) {
+  if (callouts.length === 0) return null
+  const activeCallout = selectedCallout ?? callouts[0] ?? null
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '图上标注详情' : 'Chart callouts'}
+      meta={activeCallout?.calloutId ?? String(callouts.length)}
+    >
+      <div style={compactListStyle}>
+        <div style={chartCalloutSelectorStyle}>
+          {callouts.slice(0, 6).map(callout => {
+            const active = callout.calloutId === activeCallout?.calloutId
+            const badge = signalCalloutBadgeSummary(callout.items, callout.itemCount, callout.label, callout.freq, callout.calloutId)
+            const shortTitle = badge.title.replace(`${callout.calloutId ?? ''} `, '')
+            const subline = badge.subtitle || uniqueCompact(callout.items.map(item => item.freq)).slice(0, 3).join('/')
+            return (
+              <button
+                key={`${callout.calloutId}-${callout.timestamp}-${callout.price}`}
+                type="button"
+                style={chartCalloutButtonStyle(active, callout.color)}
+                title={[badge.title, subline, formatNumber(callout.price)].filter(Boolean).join(' · ')}
+                onClick={() => onSelect(callout.calloutId ?? '')}
+              >
+                <div style={chartCalloutButtonTitleStyle}>
+                  <span style={chartCalloutIdBadgeStyle(callout.color)}>{callout.calloutId}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortTitle}</span>
+                </div>
+                {subline ? <div style={chartCalloutButtonSubStyle}>{subline}</div> : null}
+              </button>
+            )
+          })}
+        </div>
+        {activeCallout ? (
+          <div style={chartCalloutDetailStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+              <div style={rowTitleStyle}>
+                {signalCalloutBadgeSummary(activeCallout.items, activeCallout.itemCount, activeCallout.label, activeCallout.freq, activeCallout.calloutId).title}
+              </div>
+              <div style={monoTextStyle}>{formatNumber(activeCallout.price)}</div>
+            </div>
+            <div style={mutedLineStyle}>
+              {[
+                readableTime(new Date(activeCallout.timestamp), locale, chartTimezone),
+                activeCallout.scope,
+                activeCallout.sourceLabel,
+              ].filter(Boolean).join(' · ')}
+            </div>
+            {activeCallout.items.map((item, index) => (
+              <div key={`${activeCallout.calloutId}-${item.freq}-${item.label}-${index}`} style={chartCalloutItemStyle(item.color || activeCallout.color)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                  <span style={item.side === 'sell' ? miniSellSignalBadgeStyle : item.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}>
+                    {item.freq || '--'}
+                  </span>
+                  <span style={rowTitleStyle}>{item.label}</span>
+                </div>
+                <div style={mutedLineStyle}>
+                  {[item.scope, item.sourceLabel].filter(Boolean).join(' · ')}
+                </div>
+                {item.details ? <div style={mutedTwoLineStyle}>{item.details}</div> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </Panel>
   )
 }
 
