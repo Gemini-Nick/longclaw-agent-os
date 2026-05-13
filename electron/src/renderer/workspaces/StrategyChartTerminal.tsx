@@ -189,6 +189,23 @@ type StrategySignal = {
   name?: string
   relation?: string
   target_kind?: string
+  ma_alignment?: Record<string, unknown>
+  ma_acceptance?: Record<string, unknown>
+}
+
+type MaAcceptanceSummary = {
+  summary: string
+  periods: number[]
+  primary: Record<string, unknown>
+  items: Record<string, unknown>[]
+  detail?: string
+  state?: string
+  score?: number
+  source_collection?: string
+  signal_type?: string
+  freq?: string
+  as_of?: string
+  event_dt?: string
 }
 
 type StrategyKeyLevel = {
@@ -3730,7 +3747,7 @@ function toWanHandChartData(data: KLineData[], enabled: boolean): KLineData[] {
   }))
 }
 
-function signalsFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
+export function signalsFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
   if (!symbolData) return []
   if (Array.isArray(symbolData.signals)) return symbolData.signals
   const chartSignals = symbolData.chart?.signals
@@ -4091,6 +4108,7 @@ function nearestChartBarForTimestamp(data: KLineData[], timestamp: number): KLin
 }
 
 function signalSideForOverlay(signal: StrategySignal): SignalOverlayData['side'] {
+  if (isMaAcceptanceOverlaySignal(signal)) return 'buy'
   if (signal.signal_side === 'sell') return 'sell'
   if (signal.signal_side === 'buy') return 'buy'
   return signalOverlaySide(signal.type ?? signal.signal_type)
@@ -4168,6 +4186,209 @@ function displayFreqLabel(value?: string): string {
   return compactText(value)
 }
 
+function booleanValue(value: unknown): boolean {
+  if (value === true || value === 1) return true
+  if (typeof value !== 'string') return false
+  return ['true', '1', 'yes', 'y'].includes(value.trim().toLowerCase())
+}
+
+function maPeriodNumbers(value: unknown): number[] {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,\s/]+/)
+      : [value]
+  const seen = new Set<number>()
+  rawValues.forEach(item => {
+    const period = numberValue(item)
+    if (period === undefined || period <= 0) return
+    seen.add(Math.round(period))
+  })
+  return Array.from(seen).sort((left, right) => left - right)
+}
+
+function maAcceptanceFromRecord(value: unknown): MaAcceptanceSummary | null {
+  const record = recordValue(value)
+  if (Object.keys(record).length === 0) return null
+  const items = Array.isArray(record.items)
+    ? record.items.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const directPrimary = recordValue(record.primary)
+  const primary = Object.keys(directPrimary).length > 0 ? directPrimary : (items[0] ?? {})
+  const periods = maPeriodNumbers(record.periods ?? record.fib_accept_periods)
+  const inferredPeriod = numberValue(primary.period)
+  if (periods.length === 0 && inferredPeriod !== undefined) periods.push(Math.round(inferredPeriod))
+  const summary =
+    compactText(record.summary) ||
+    compactText(record.fib_array_summary) ||
+    (periods.length > 0 ? periods.map(period => `MA${period}`).join('/') + '回踩承接' : '')
+  const detail = compactText(record.detail)
+  const hasPrimaryMetric = [
+    primary.value,
+    primary.touch_distance_pct,
+    primary.low_distance_pct,
+    primary.distance_pct,
+    primary.acceptance_score,
+  ].some(item => numberValue(item) !== undefined)
+  if (!summary && periods.length === 0 && !detail && !hasPrimaryMetric) return null
+  return {
+    summary,
+    periods,
+    primary,
+    items,
+    detail,
+    state: compactText(record.state),
+    score: numberValue(record.score),
+    source_collection: compactText(record.source_collection),
+    signal_type: compactText(record.signal_type),
+    freq: 'daily',
+    as_of: compactText(record.as_of),
+    event_dt: compactText(record.event_dt),
+  }
+}
+
+function maAcceptanceFromAlignment(value: unknown): MaAcceptanceSummary | null {
+  const alignment = recordValue(value)
+  if (Object.keys(alignment).length === 0) return null
+  const periods = maPeriodNumbers(alignment.fib_accept_periods)
+  const maArray = Array.isArray(alignment.fib_ma_array)
+    ? alignment.fib_ma_array.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const accepted = maArray.filter(item => {
+    const period = numberValue(item.period)
+    return booleanValue(item.pullback_acceptance) || (period !== undefined && periods.includes(Math.round(period)))
+  })
+  const primary = accepted[0] ?? {}
+  const summary =
+    compactText(alignment.fib_array_summary) ||
+    (periods.length > 0 ? periods.map(period => `MA${period}`).join('/') + '回踩承接' : '')
+  if (!summary && periods.length === 0 && accepted.length === 0) return null
+  return {
+    summary,
+    periods,
+    primary,
+    items: accepted,
+    detail: compactText(alignment.detail),
+    state: compactText(alignment.fib_ma_array_state),
+    score: numberValue(primary.acceptance_score),
+    freq: 'daily',
+  }
+}
+
+function maAcceptanceWithSignalContext(acceptance: MaAcceptanceSummary | null, signal: StrategySignal): MaAcceptanceSummary | null {
+  if (!acceptance) return null
+  return {
+    ...acceptance,
+    freq: acceptance.freq || 'daily',
+    signal_type: acceptance.signal_type || compactText(signal.signal_type ?? signal.type),
+    event_dt: acceptance.event_dt || compactText(signal.signal_date ?? signal.date_str),
+  }
+}
+
+function maAcceptanceFromSignal(signal: StrategySignal): MaAcceptanceSummary | null {
+  return (
+    maAcceptanceWithSignalContext(maAcceptanceFromRecord(signal.ma_acceptance), signal) ??
+    maAcceptanceWithSignalContext(maAcceptanceFromAlignment(signal.ma_alignment), signal)
+  )
+}
+
+function maAcceptanceFromSignals(signals: StrategySignal[]): MaAcceptanceSummary | null {
+  const ranked = signals
+    .map(signal => ({
+      acceptance: maAcceptanceFromSignal(signal),
+      timestamp: signalTimestamp(signal) ?? 0,
+      priority: signalOverlayPriority(signal),
+    }))
+    .filter((item): item is { acceptance: MaAcceptanceSummary; timestamp: number; priority: number } => Boolean(item.acceptance))
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+  return ranked[0]?.acceptance ?? null
+}
+
+export function maAcceptanceFromSymbolData(symbolData: WorkbenchSymbolData | null): MaAcceptanceSummary | null {
+  if (!symbolData) return null
+  const fromSummary = maAcceptanceFromRecord(symbolData.summary?.ma_acceptance) ?? maAcceptanceFromAlignment(symbolData.summary?.ma_alignment)
+  if (fromSummary) return fromSummary
+  const chartSignals = symbolData.chart?.signals
+  const allSignals = [
+    ...(Array.isArray(symbolData.signals) ? symbolData.signals : []),
+    ...(Array.isArray(chartSignals) ? (chartSignals as StrategySignal[]) : []),
+  ]
+  return maAcceptanceFromSignals(allSignals)
+}
+
+function maAcceptanceRecord(acceptance: MaAcceptanceSummary): Record<string, unknown> {
+  return {
+    summary: acceptance.summary,
+    periods: acceptance.periods,
+    primary: acceptance.primary,
+    items: acceptance.items,
+    detail: acceptance.detail,
+    state: acceptance.state,
+    score: acceptance.score,
+    source_collection: acceptance.source_collection,
+    signal_type: acceptance.signal_type,
+    freq: 'daily',
+    as_of: acceptance.as_of,
+    event_dt: acceptance.event_dt,
+  }
+}
+
+export function dailyMaAcceptanceSignalForChart(
+  data: KLineData[],
+  acceptance: MaAcceptanceSummary | null,
+  currentFreq?: string,
+): StrategySignal | null {
+  if (!acceptance || normalizeSignalFreq(currentFreq) !== 'daily' || data.length === 0) return null
+  const eventTimestamp = marketDateTimestamp(acceptance.event_dt ?? acceptance.as_of)
+  const bar = eventTimestamp ? nearestChartBarForTimestamp(data, eventTimestamp) : data[data.length - 1]
+  const targetBar = bar ?? data[data.length - 1]
+  if (!targetBar) return null
+  return {
+    timestamp: targetBar.timestamp,
+    date_str: new Date(targetBar.timestamp).toISOString().slice(0, 10),
+    type: 'MA承接',
+    signal_type: acceptance.summary || shortMaAcceptanceLabel(acceptance),
+    price: numberValue(acceptance.primary.value) ?? targetBar.low,
+    confidence: numberValue(acceptance.score),
+    freq: 'daily',
+    details: acceptance.detail,
+    source: acceptance.source_collection || 'terminal_ma_acceptance',
+    pool_status: acceptance.state,
+    chart_aligned: true,
+    display_scope: 'current_timeframe',
+    signal_side: 'buy',
+    signal_family: 'ma_acceptance',
+    ma_acceptance: maAcceptanceRecord(acceptance),
+  }
+}
+
+function shortMaAcceptanceLabel(acceptance: MaAcceptanceSummary | null): string {
+  if (!acceptance) return ''
+  const primaryPeriod = numberValue(acceptance.primary.period)
+  const period = acceptance.periods[0] ?? (primaryPeriod === undefined ? undefined : Math.round(primaryPeriod))
+  if (period !== undefined) return `MA${period}承接`
+  const summary = compactText(acceptance.summary).replace(/回踩承接/g, '承接')
+  return summary ? summary.slice(0, 8) : '均线承接'
+}
+
+function signalOverlayLabel(signal: StrategySignal): string {
+  const maAcceptance = isMaAcceptanceOverlaySignal(signal) ? maAcceptanceFromSignal(signal) : null
+  if (maAcceptance) return shortMaAcceptanceLabel(maAcceptance)
+  return shortSignalLabel(signal.type ?? signal.signal_type)
+}
+
+function signalEvidenceDetails(signal: StrategySignal): string {
+  const maAcceptance = isMaAcceptanceOverlaySignal(signal) ? maAcceptanceFromSignal(signal) : null
+  return uniqueCompact([signal.details, maAcceptance?.detail]).join(' · ')
+}
+
+function isMaAcceptanceOverlaySignal(signal: StrategySignal): boolean {
+  return compactText(signal.signal_family) === 'ma_acceptance' && Boolean(maAcceptanceFromSignal(signal))
+}
+
 function signalOverlaySide(value?: string): SignalOverlayData['side'] {
   const normalized = String(value ?? '').toLowerCase()
   if (isSellSignal(value) || normalized.includes('顶背离')) return 'sell'
@@ -4196,11 +4417,12 @@ function isVolumeSignal(signal: StrategySignal): boolean {
   )
 }
 
-function signalOverlayPriority(signal: StrategySignal): number {
+export function signalOverlayPriority(signal: StrategySignal): number {
   const normalized = String(signal.type ?? '').toLowerCase()
   const side = signalSideForOverlay(signal)
   let priority = 35
-  if (isAiFactorStrategySignal(signal)) priority = 88
+  if (isMaAcceptanceOverlaySignal(signal)) priority = 140
+  else if (isAiFactorStrategySignal(signal)) priority = 88
   else if (side === 'sell' || normalized.includes('顶背离')) priority = 90
   else if (side === 'buy' || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
   else if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) priority = 70
@@ -4247,28 +4469,51 @@ function signalSourceLabel(signal: StrategySignal): string {
   return ''
 }
 
-function displaySignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
+export function displaySignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
   if (data.length === 0 || signals.length === 0) return []
   const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
   const valid = signals
-    .map(signal => ({
-      signal,
-      timestamp: signalTimestamp(signal),
-      priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
-    }))
-    .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } =>
+    .map(signal => {
+      const timestamp = signalTimestamp(signal)
+      const bar = timestamp === undefined ? undefined : nearestChartBarForTimestamp(data, timestamp)
+      return {
+        signal,
+        timestamp,
+        alignedTimestamp: bar?.timestamp ?? timestamp,
+        side: signalSideForOverlay(signal),
+        priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
+      }
+    })
+    .filter((item): item is { signal: StrategySignal; timestamp: number; alignedTimestamp: number; side: SignalOverlayData['side']; priority: number } =>
       item.timestamp !== undefined &&
+      item.alignedTimestamp !== undefined &&
       !isVolumeSignal(item.signal),
     )
   const recent = valid.filter(item => item.timestamp >= cutoff)
   const source = recent.length > 0 ? recent : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
-  const bestBySignal = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
+  const bestByLane = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
   source.forEach(item => {
-    const key = `${item.timestamp}:${normalizeSignalFreq(item.signal.freq)}:${item.signal.type ?? item.signal.signal_type ?? ''}:${item.signal.source ?? ''}`
-    const existing = bestBySignal.get(key)
-    if (!existing || item.priority > existing.priority) bestBySignal.set(key, item)
+    const scopeLabel = signalScopeLabel(item.signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+    const key = `${item.alignedTimestamp}:${item.side}:${scopeLabel}`
+    const existing = bestByLane.get(key)
+    if (!existing || item.priority > existing.priority) bestByLane.set(key, item)
   })
-  return Array.from(bestBySignal.values())
+  const maAcceptance = source
+    .filter(item => isMaAcceptanceOverlaySignal(item.signal))
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })[0]
+  const selectedByKey = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
+  ;[maAcceptance, ...Array.from(bestByLane.values())].forEach(item => {
+    if (!item) return
+    const key = isMaAcceptanceOverlaySignal(item.signal)
+      ? 'ma_acceptance'
+      : `${item.timestamp}:${normalizeSignalFreq(item.signal.freq)}:${item.signal.type ?? item.signal.signal_type ?? ''}:${item.signal.source ?? ''}`
+    const existing = selectedByKey.get(key)
+    if (!existing || item.priority > existing.priority) selectedByKey.set(key, item)
+  })
+  return Array.from(selectedByKey.values())
     .sort((left, right) => {
       if (right.priority !== left.priority) return right.priority - left.priority
       return right.timestamp - left.timestamp
@@ -4307,10 +4552,11 @@ function displayVolumeSignalsForChart(data: KLineData[], signals: StrategySignal
 function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] {
   if (signals.length === 0) return []
   const ranked = signals
-    .map(signal => ({ signal, timestamp: signalTimestamp(signal) ?? 0 }))
+    .map(signal => ({ signal, timestamp: signalTimestamp(signal) ?? 0, priority: signalOverlayPriority(signal) }))
     .sort((left, right) => {
       const customDelta = Number(isCustomUserSignal(right.signal)) - Number(isCustomUserSignal(left.signal))
       if (customDelta !== 0) return customDelta
+      if (right.priority !== left.priority) return right.priority - left.priority
       return right.timestamp - left.timestamp
     })
   const output: StrategySignal[] = []
@@ -4335,7 +4581,7 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
     const alignedTimestamp = bar?.timestamp ?? timestamp
     const price = signalOverlayPrice(signal, bar)
     if (price === undefined) return
-    const label = shortSignalLabel(signal.type ?? signal.signal_type)
+    const label = signalOverlayLabel(signal)
     const side = signalSideForOverlay(signal)
     const custom = isCustomUserSignal(signal)
     const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
@@ -4356,7 +4602,7 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Strategy
         scope: scopeLabel,
         lane,
         sourceLabel: [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · '),
-        details: signal.details,
+        details: signalEvidenceDetails(signal),
       } satisfies SignalOverlayData,
     })
   })
@@ -4528,6 +4774,20 @@ function formatPercent(value: unknown): string {
       : numberValue(value)
   if (number === undefined) return 'N/A'
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
+}
+
+function maAcceptanceMetricChips(acceptance: MaAcceptanceSummary): string[] {
+  const primary = acceptance.primary
+  const periodLabel = acceptance.periods.length > 0
+    ? acceptance.periods.map(period => `MA${period}`).join('/')
+    : shortMaAcceptanceLabel(acceptance)
+  return [
+    periodLabel,
+    numberValue(primary.value) !== undefined ? `均线 ${formatNumber(primary.value)}` : '',
+    numberValue(primary.touch_distance_pct) !== undefined ? `触线 ${formatPercent(primary.touch_distance_pct)}` : '',
+    numberValue(primary.low_distance_pct) !== undefined ? `低点 ${formatPercent(primary.low_distance_pct)}` : '',
+    numberValue(primary.distance_pct) !== undefined ? `现价 ${formatPercent(primary.distance_pct)}` : '',
+  ].filter(Boolean)
 }
 
 function percentTone(value: string): React.CSSProperties {
@@ -5181,16 +5441,14 @@ function targetMatchesSearchValue(row: Record<string, unknown>, value: string): 
   return candidates.some(candidate => candidate === value || candidate.toLowerCase() === normalized)
 }
 
-function looksLikeIndexValue(value: string): boolean {
-  const normalized = value.toLowerCase()
+export function looksLikeIndexValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase().replace(/[\s._-]+/g, '')
   return (
-    value.endsWith('指') ||
+    value.trim().endsWith('指') ||
     value.includes('指数') ||
-    value.includes('300') ||
-    value.includes('500') ||
-    value.includes('1000') ||
+    ['300', '500', '1000', '000300', '000905', '000852', '399001', '399006'].includes(normalized) ||
     /^s[hz](000|399)\d{3}$/.test(normalized) ||
-    ['创业板指', '沪深300', '深证成指', '上证指数', '中证500', '中证1000'].includes(value)
+    ['创业板指', '沪深300', '深证成指', '上证指数', '中证500', '中证1000'].includes(value.trim())
   )
 }
 
@@ -5517,15 +5775,8 @@ function manualClueMatchesDeleteKeys(row: WatchlistRow, keys: Set<string>): bool
   return manualClueDeleteKeys(row).some(key => keys.has(key))
 }
 
-function stockRowsContainSearchValue(rows: WatchlistRow[], value: string): boolean {
-  const normalized = value.trim().toLowerCase()
-  if (!normalized) return false
-  return rows.some(row => {
-    if (row.kind !== 'stock' && row.targetKind !== 'stock') return false
-    return [row.label, row.name, row.code, row.targetLabel, compactText(row.raw.raw_code), compactText(row.raw.symbol)]
-      .filter(Boolean)
-      .some(candidate => candidate === value || candidate.toLowerCase() === normalized)
-  })
+export function shouldAddManualClueForSearch(value: string, isIndex: boolean): boolean {
+  return Boolean(value.trim()) && !isIndex
 }
 
 const candidateGroupOrder = ['upstream', 'leaders', 'weighted', 'elastic', 'downstream', 'source_leaders', 'constituents']
@@ -5822,9 +6073,20 @@ export function StrategyChartTerminal({
     () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq, symbolData, target),
     [aiFactorStrategySignals, currentFreq, klineData, symbolData, target],
   )
-  const chartSignals = useMemo(
+  const baseChartSignals = useMemo(
     () => [...signals, ...referenceChartSignals, ...aiFactorChartSignals],
     [aiFactorChartSignals, referenceChartSignals, signals],
+  )
+  const maAcceptance = useMemo(
+    () => maAcceptanceFromSymbolData(symbolData) ?? maAcceptanceFromSignals(baseChartSignals),
+    [baseChartSignals, symbolData],
+  )
+  const chartSignals = useMemo(
+    () => {
+      const dailyMaSignal = dailyMaAcceptanceSignalForChart(klineData, maAcceptance, currentFreq)
+      return dailyMaSignal ? [...baseChartSignals, dailyMaSignal] : baseChartSignals
+    },
+    [baseChartSignals, currentFreq, klineData, maAcceptance],
   )
   const visibleCustomSignals = useMemo(() => signals.filter(isCustomUserSignal), [signals])
   const customSignalCount = useMemo(
@@ -5851,6 +6113,10 @@ export function StrategyChartTerminal({
   )
   const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, chartSignals, currentFreq), [chartSignals, currentFreq, klineData])
   const evidenceSignals = useMemo(() => displaySignalsForEvidence(chartSignals), [chartSignals])
+  const maAcceptanceChips = useMemo(
+    () => (maAcceptance ? maAcceptanceMetricChips(maAcceptance) : []),
+    [maAcceptance],
+  )
   const currentVisibleSignals = useMemo(
     () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期'),
     [chartVisibleSignals, currentFreq],
@@ -6600,7 +6866,7 @@ export function StrategyChartTerminal({
       const value = searchDraft.trim()
       if (!value) return
       const isIndex = indexTargets.some(row => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value)
-      const shouldAddManualClue = !isIndex && !stockRowsContainSearchValue(allStockWatchlistRows, value)
+      const shouldAddManualClue = shouldAddManualClueForSearch(value, isIndex)
       selectTarget(
         { label: value, kind: isIndex ? 'index' : 'auto', freq: target.freq || DEFAULT_TERMINAL_FREQ },
         'strategy.search.submit',
@@ -6609,7 +6875,7 @@ export function StrategyChartTerminal({
         void addManualClueFromSearch(value, target.freq || DEFAULT_TERMINAL_FREQ)
       }
     },
-    [addManualClueFromSearch, allStockWatchlistRows, indexTargets, searchDraft, selectTarget, target.freq],
+    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget, target.freq],
   )
 
   const refreshNow = useCallback(() => {
@@ -7305,15 +7571,46 @@ export function StrategyChartTerminal({
           />
 
           <Panel
-            title={locale === 'zh-CN' ? '信号与关键位' : 'Signals and levels'}
+            title={locale === 'zh-CN' ? '交易证据' : 'Trade evidence'}
             meta={customSignalCount > 0 ? `${customSignalCount}自定义` : String(signals.length + chartKeyLevels.length + divergences.length)}
           >
-            {signals.length === 0 && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? (
+            {signals.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? (
               <div style={emptyStateDarkStyle}>
                 {locale === 'zh-CN' ? '当前标的暂无自定义信号、背离或关键均线位。' : 'No custom signals, divergences, or key levels.'}
               </div>
             ) : (
                 <div style={compactListStyle}>
+                {maAcceptance ? (
+                  <div style={{ ...signalBlockStyle, borderTop: 0, paddingTop: 0 }}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '均线斐波那契承接' : 'Fibonacci MA acceptance'}</span>
+                      <span>{shortMaAcceptanceLabel(maAcceptance)}</span>
+                    </div>
+                    <div
+                      style={{
+                        ...signalRowStyle,
+                        border: `1px solid ${tradingDeskTheme.chart.orange}`,
+                        background: 'rgba(245, 158, 11, 0.10)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={statusBadgeStyle('success')}>{maAcceptance.summary || shortMaAcceptanceLabel(maAcceptance)}</span>
+                          {maAcceptance.freq ? <span style={monoTextStyle}>{displayFreqLabel(maAcceptance.freq)}</span> : null}
+                          {maAcceptance.event_dt ? <span style={monoTextStyle}>{maAcceptance.event_dt}</span> : null}
+                        </div>
+                        <div style={signalBadgeRowStyle}>
+                          {maAcceptanceChips.slice(0, 5).map(chip => (
+                            <span key={`ma-acceptance-${chip}`} style={miniSignalBadgeStyle}>{chip}</span>
+                          ))}
+                        </div>
+                        {maAcceptance.detail ? (
+                          <div style={mutedTwoLineStyle}>{maAcceptance.detail}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {referenceCandidateSignalRows.length > 0 ? (
                   <div style={signalBlockStyle}>
                     <div style={candidateGroupHeaderStyle}>

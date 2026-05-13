@@ -1,0 +1,208 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  dailyMaAcceptanceSignalForChart,
+  displaySignalsForChart,
+  looksLikeIndexValue,
+  maAcceptanceFromSymbolData,
+  signalOverlayPriority,
+  signalsFromSymbolData,
+  shouldAddManualClueForSearch,
+} from './StrategyChartTerminal.js'
+
+describe('StrategyChartTerminal search clues', () => {
+  it('adds a manual clue for every non-index search', () => {
+    expect(shouldAddManualClueForSearch('SZ.002759', false)).toBe(true)
+    expect(shouldAddManualClueForSearch('天际股份', false)).toBe(true)
+  })
+
+  it('does not add manual clues for blank or index searches', () => {
+    expect(shouldAddManualClueForSearch('', false)).toBe(false)
+    expect(shouldAddManualClueForSearch('沪深300', true)).toBe(false)
+  })
+
+  it('does not confuse prefixed stock codes with indices', () => {
+    expect(looksLikeIndexValue('SZ.300394')).toBe(false)
+    expect(looksLikeIndexValue('SH.000300')).toBe(true)
+    expect(looksLikeIndexValue('沪深300')).toBe(true)
+  })
+})
+
+describe('StrategyChartTerminal MA acceptance evidence', () => {
+  it('reads MA acceptance from the symbol summary', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      summary: {
+        ma_acceptance: {
+          summary: 'MA13回踩承接',
+          periods: [13],
+          primary: {
+            period: 13,
+            value: 56.787,
+            touch_distance_pct: -0.046,
+          },
+          detail: 'MA13 56.79 / 触线 -0.046%',
+        },
+      },
+    } as any)
+
+    expect(acceptance?.summary).toBe('MA13回踩承接')
+    expect(acceptance?.periods).toEqual([13])
+    expect(acceptance?.primary.touch_distance_pct).toBe(-0.046)
+  })
+
+  it('falls back to signal MA alignment fields', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      signals: [
+        {
+          type: '一买',
+          freq: '30min',
+          ma_alignment: {
+            fib_accept_periods: [13],
+            fib_array_summary: 'MA13回踩承接',
+            fib_ma_array: [
+              {
+                period: 13,
+                pullback_acceptance: true,
+                touch_distance_pct: -0.046,
+              },
+            ],
+          },
+        },
+      ],
+    } as any)
+
+    expect(acceptance?.summary).toBe('MA13回踩承接')
+    expect(acceptance?.freq).toBe('daily')
+    expect(acceptance?.primary.period).toBe(13)
+  })
+
+  it('prioritizes the synthetic daily MA acceptance marker over ordinary technical labels', () => {
+    const maPriority = signalOverlayPriority({
+      type: 'MA承接',
+      signal_family: 'ma_acceptance',
+      freq: 'daily',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+        periods: [13],
+      },
+    } as any)
+    const macdPriority = signalOverlayPriority({ type: 'MACD' } as any)
+
+    expect(maPriority).toBeGreaterThan(macdPriority)
+  })
+
+  it('does not promote 30m technical signals into MA acceptance chart markers', () => {
+    const signalPriority = signalOverlayPriority({
+      type: '一买',
+      freq: '30min',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+        periods: [13],
+      },
+    } as any)
+    const maPriority = signalOverlayPriority({
+      type: 'MA承接',
+      signal_family: 'ma_acceptance',
+      freq: 'daily',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+        periods: [13],
+      },
+    } as any)
+
+    expect(signalPriority).toBeLessThan(maPriority)
+  })
+
+  it('creates the MA acceptance marker only on the daily chart', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      summary: {
+        ma_acceptance: {
+          summary: 'MA13回踩承接',
+          periods: [13],
+          primary: {
+            period: 13,
+            value: 56.787,
+          },
+          event_dt: '2026-05-12',
+        },
+      },
+    } as any)
+    const bars = [
+      { timestamp: Date.UTC(2026, 4, 12), open: 59.24, high: 59.8, low: 56.05, close: 58.59, volume: 139 },
+    ]
+
+    expect(dailyMaAcceptanceSignalForChart(bars as any, acceptance, '30min')).toBeNull()
+    const signal = dailyMaAcceptanceSignalForChart(bars as any, acceptance, 'daily')
+    expect(signal?.freq).toBe('daily')
+    expect(signal?.signal_family).toBe('ma_acceptance')
+    expect(signal?.price).toBe(56.787)
+  })
+})
+
+describe('StrategyChartTerminal index multi-timeframe signals', () => {
+  const bars = [
+    { timestamp: Date.UTC(2026, 4, 11, 1, 30), open: 3860, high: 3890, low: 3840, close: 3880, volume: 1200 },
+    { timestamp: Date.UTC(2026, 4, 12, 7, 0), open: 3920, high: 3950, low: 3910, close: 3934, volume: 1800 },
+  ]
+
+  it('reads index chart signals from the Signals payload', () => {
+    const signals = signalsFromSymbolData({
+      target: { kind: 'index', label: '创业板指', effective_freq: '30min' },
+      chart: {
+        signals: [
+          {
+            dt: bars[1].timestamp / 1000,
+            type: '二买',
+            freq: '30min',
+            display_scope: 'current_timeframe',
+            signal_side: 'buy',
+          },
+        ],
+      },
+    } as any)
+
+    expect(signals).toHaveLength(1)
+    expect(signals[0].type).toBe('二买')
+    expect(signals[0].display_scope).toBe('current_timeframe')
+  })
+
+  it('keeps current, higher, and lower timeframe index markers visible on the chart', () => {
+    const visible = displaySignalsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[1].timestamp / 1000,
+          type: '二买',
+          freq: '30min',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[1].timestamp / 1000,
+          type: '多头上行',
+          freq: 'daily',
+          display_scope: 'higher_timeframe_context',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[1].timestamp / 1000,
+          type: '一卖',
+          freq: '15min',
+          display_scope: 'lower_timeframe_context',
+          signal_side: 'sell',
+          source: 'signals.index_report',
+        },
+      ] as any,
+      '30min',
+    )
+
+    expect(visible.map(signal => signal.type)).toEqual(expect.arrayContaining(['二买', '多头上行', '一卖']))
+    expect(visible.map(signal => signal.display_scope)).toEqual(expect.arrayContaining([
+      'current_timeframe',
+      'higher_timeframe_context',
+      'lower_timeframe_context',
+    ]))
+  })
+})
