@@ -5,6 +5,7 @@ import {
   displaySignalsForChart,
   looksLikeIndexValue,
   maAcceptanceFromSymbolData,
+  maPeriodsForChart,
   signalCalloutBadgeSummary,
   signalEvidenceCalloutsForChart,
   signalOverlayPriority,
@@ -230,6 +231,12 @@ describe('StrategyChartTerminal index multi-timeframe signals', () => {
       'higher_timeframe_context',
       'lower_timeframe_context',
     ]))
+  })
+
+  it('uses Fibonacci MA periods for index price charts', () => {
+    expect(maPeriodsForChart('daily', 'index')).toEqual([8, 13, 21, 34, 55, 89])
+    expect(maPeriodsForChart('30min', 'index')).toEqual([8, 13, 21, 34, 55, 89])
+    expect(maPeriodsForChart('daily', 'stock')).toEqual([5, 10, 20, 60])
   })
 })
 

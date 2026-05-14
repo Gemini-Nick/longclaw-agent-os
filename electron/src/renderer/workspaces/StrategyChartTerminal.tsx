@@ -479,6 +479,7 @@ const MA_COLORS = [
   tradingDeskTheme.chart.gold,
   tradingDeskTheme.colors.textStrong,
 ]
+const FIBONACCI_MA_PERIODS = [8, 13, 21, 34, 55, 89]
 const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
 
 let signalOverlayRegistered = false
@@ -3486,7 +3487,8 @@ function chartStyles(): DeepPartial<Styles> {
   }
 }
 
-function maPeriodsForFreq(freq?: string): number[] {
+export function maPeriodsForChart(freq?: string, targetKind?: string): number[] {
+  if (compactText(targetKind).toLowerCase() === 'index') return FIBONACCI_MA_PERIODS
   const normalized = String(freq ?? '').toLowerCase()
   if (normalized.includes('week') || normalized === 'w' || normalized === '1w') {
     return [5, 10, 20, 50]
@@ -3583,8 +3585,8 @@ function ensureMacdZeroIndicator() {
   macdZeroIndicatorRegistered = true
 }
 
-function applyMovingAverageIndicator(chart: Chart, freq?: string) {
-  const periods = maPeriodsForFreq(freq)
+function applyMovingAverageIndicator(chart: Chart, freq?: string, targetKind?: string) {
+  const periods = maPeriodsForChart(freq, targetKind)
   chart.overrideIndicator(
     {
       name: 'MA',
@@ -3595,8 +3597,8 @@ function applyMovingAverageIndicator(chart: Chart, freq?: string) {
   )
 }
 
-function createChartIndicators(chart: Chart, freq?: string) {
-  const periods = maPeriodsForFreq(freq)
+function createChartIndicators(chart: Chart, freq?: string, targetKind?: string) {
+  const periods = maPeriodsForChart(freq, targetKind)
   chart.createIndicator(
     {
       name: 'MA',
@@ -4156,24 +4158,31 @@ function isDailyFreq(freq?: string): boolean {
   return normalizeSignalFreq(freq) === 'daily'
 }
 
-function derivedMaKeyLevels(data: KLineData[], freq?: string): StrategyKeyLevel[] {
+function derivedMaKeyLevels(data: KLineData[], freq?: string, targetKind?: string): StrategyKeyLevel[] {
   const normalized = normalizeSignalFreq(freq)
-  const periods = normalized === 'weekly'
+  const basePeriods = normalized === 'weekly'
     ? [20, 50]
     : normalized === '30min'
       ? [20, 60]
       : normalized === 'daily'
         ? [50, 200]
         : []
+  const periods = Array.from(new Set([
+    ...(compactText(targetKind).toLowerCase() === 'index' ? FIBONACCI_MA_PERIODS : []),
+    ...basePeriods,
+  ]))
   return periods
     .map(period => {
       const value = movingAverageLevel(data, period)
       if (value === undefined) return null
       const close = latestClose(data)
+      const isFibIndexMa = compactText(targetKind).toLowerCase() === 'index' && FIBONACCI_MA_PERIODS.includes(period)
       return {
-        name: `${displayFreqLabel(normalized)}MA${period}`,
+        name: `${displayFreqLabel(normalized)}${isFibIndexMa ? 'Fib MA' : 'MA'}${period}`,
         value,
-        role: normalized === 'daily' && period === 200 ? '长期趋势压力/支撑' : '阶段底部/成本线',
+        role: isFibIndexMa
+          ? '指数Fibonacci均线'
+          : normalized === 'daily' && period === 200 ? '长期趋势压力/支撑' : '阶段底部/成本线',
         position: close !== undefined && close >= value ? '下方' : '上方',
         distance_pct: close !== undefined && value > 0 ? ((value - close) / close) * 100 : null,
         timeframe: normalized,
@@ -6792,6 +6801,8 @@ export function StrategyChartTerminal({
     [displayVolumeInWanHands, klineData],
   )
   const activeChartMode = chartModeFromTarget(target, symbolData)
+  const targetKindForMa = compactText(symbolData?.target?.kind, target.kind)
+  const isIndexPriceChart = targetKindForMa.toLowerCase() === 'index' && chartMeta.is_price_kline !== false
   const symbolChainContext = useMemo(() => chainContextFromSymbolSummary(symbolData), [symbolData])
   const chainContext = selectedChainContext ?? symbolChainContext
   const primaryValueLabel = chartMeta.is_price_kline === false
@@ -6825,11 +6836,11 @@ export function StrategyChartTerminal({
   const updatedTimeLabel =
     compactText(shell?.session?.data_as_of) ||
     (lastUpdated ? readableTime(lastUpdated, locale, chartTimezone) : '')
-  const activeMaPeriods = useMemo(() => maPeriodsForFreq(currentFreq), [currentFreq])
+  const activeMaPeriods = useMemo(() => maPeriodsForChart(currentFreq, targetKindForMa), [currentFreq, targetKindForMa])
   const divergences = useMemo(() => macdDivergences(klineData, currentFreq), [currentFreq, klineData])
   const chartKeyLevels = useMemo(
-    () => mergeKeyLevels(keyLevels, derivedMaKeyLevels(klineData, currentFreq)),
-    [currentFreq, keyLevels, klineData],
+    () => mergeKeyLevels(keyLevels, derivedMaKeyLevels(klineData, currentFreq, targetKindForMa)),
+    [currentFreq, keyLevels, klineData, targetKindForMa],
   )
   const requestedFreq = symbolData?.target?.requested_freq
   const effectiveFreq = symbolData?.target?.effective_freq
@@ -7100,7 +7111,7 @@ export function StrategyChartTerminal({
     chartRef.current = chart
     chart.setBarSpace(chartBarSpaceForMode(layoutMode))
     chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
-    createChartIndicators(chart, target.freq)
+    createChartIndicators(chart, target.freq, target.kind)
     resizeObserverRef.current = new ResizeObserver(() => {
       if (resizeFrameRef.current !== null) {
         window.cancelAnimationFrame(resizeFrameRef.current)
@@ -7140,8 +7151,8 @@ export function StrategyChartTerminal({
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
-    applyMovingAverageIndicator(chart, currentFreq)
-  }, [currentFreq])
+    applyMovingAverageIndicator(chart, currentFreq, targetKindForMa)
+  }, [currentFreq, targetKindForMa])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -7884,7 +7895,7 @@ export function StrategyChartTerminal({
                 {activeMaPeriods.map((period, index) => (
                   <span key={`ma-${period}`} style={indicatorLegendItemStyle}>
                     <span style={{ ...indicatorLegendSwatchStyle, background: MA_COLORS[index % MA_COLORS.length] }} />
-                    {chartMeta.is_price_kline === false ? `热度MA${period}` : `MA${period}`}
+                    {chartMeta.is_price_kline === false ? `热度MA${period}` : isIndexPriceChart ? `Fib MA${period}` : `MA${period}`}
                   </span>
                 ))}
                 <span style={indicatorLegendItemStyle}>

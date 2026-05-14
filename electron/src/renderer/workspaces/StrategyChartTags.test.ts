@@ -40,6 +40,17 @@ describe('StrategyChart watchlist tags', () => {
     expect(tags).toEqual(['custom_signal', '等待5m确认'])
   })
 
+  it('surfaces Fibonacci MA acceptance for index rows', () => {
+    const tags = tagsForWatchlist({
+      kind: 'index',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+      },
+    }, 'index')
+
+    expect(tags).toContain('MA13承接')
+  })
+
   it('formats backend ranking fields without client-side sorting', () => {
     const row = {
       rank: 2,

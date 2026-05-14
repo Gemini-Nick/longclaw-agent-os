@@ -32584,6 +32584,12 @@ function technicalTags(row) {
   if (!hasTechnical) return [];
   return ["\u786C\u6280\u672F", signalType, freq].filter(Boolean);
 }
+function maAcceptanceTags(row) {
+  const acceptance = recordValue3(row.ma_acceptance);
+  const alignment = recordValue3(row.ma_alignment);
+  const summary = compactText(acceptance.summary) || compactText(alignment.fib_array_summary);
+  return summary ? [summary.replace(/回踩承接/g, "\u627F\u63A5")] : [];
+}
 function tagsForWatchlist(row, kind) {
   const mapping = recordValue3(row.mapping_chain);
   const carrier = recordValue3(row.carrier);
@@ -32591,7 +32597,8 @@ function tagsForWatchlist(row, kind) {
   const priorityTags = [
     ...knowledgeTags(row),
     ...resonanceTags(row),
-    ...technicalTags(row)
+    ...technicalTags(row),
+    ...maAcceptanceTags(row)
   ];
   const sourceTags = [
     ...kind === "stock" ? timeframeBadges(row) : [],
@@ -32676,6 +32683,7 @@ var MAX_CHART_DIVERGENCE_OVERLAYS = 3;
 var MAX_CHART_LEVEL_OVERLAYS = 4;
 var MAX_EVIDENCE_SIGNAL_ROWS = 6;
 var CHART_SIGNAL_LOOKBACK_BARS = 140;
+var SIGNAL_CALLOUT_BAR_WINDOW = 3;
 var MA_COLORS = [
   tradingDeskTheme.chart.orange,
   tradingDeskTheme.chart.line,
@@ -32684,6 +32692,7 @@ var MA_COLORS = [
   tradingDeskTheme.chart.gold,
   tradingDeskTheme.colors.textStrong
 ];
+var FIBONACCI_MA_PERIODS = [8, 13, 21, 34, 55, 89];
 var MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange];
 var signalOverlayRegistered = false;
 var volumeSignalOverlayRegistered = false;
@@ -34086,6 +34095,77 @@ var customSignalBadgeStyle = {
   background: "rgba(14, 116, 144, 0.18)",
   color: tradingDeskTheme.chart.line
 };
+var chartCalloutSelectorStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
+  gap: 4,
+  minWidth: 0
+};
+function chartCalloutButtonStyle(active, color) {
+  return {
+    border: `1px solid ${active ? terminalTheme2.textStrong : color}`,
+    borderRadius: 5,
+    background: active ? `${color}26` : terminalTheme2.panelInset,
+    color: terminalTheme2.text,
+    padding: "4px 6px",
+    cursor: "pointer",
+    appearance: "none",
+    textAlign: "left",
+    minWidth: 0,
+    boxShadow: active ? `inset 3px 0 0 ${color}` : `inset 2px 0 0 ${color}`
+  };
+}
+var chartCalloutButtonTitleStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  minWidth: 0,
+  color: terminalTheme2.textStrong,
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 900,
+  lineHeight: 1.15
+};
+var chartCalloutButtonSubStyle = {
+  ...mutedLineStyle,
+  marginTop: 2,
+  fontSize: 9
+};
+function chartCalloutIdBadgeStyle(color) {
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: `${color}1f`,
+    color,
+    padding: "1px 4px",
+    fontFamily: fontStacks.mono,
+    fontSize: 9,
+    fontWeight: 900,
+    lineHeight: 1.1,
+    flexShrink: 0
+  };
+}
+var chartCalloutDetailStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  border: `1px solid ${terminalTheme2.border}`,
+  borderRadius: 5,
+  background: terminalTheme2.panelInset,
+  padding: 5,
+  minWidth: 0
+};
+function chartCalloutItemStyle(color) {
+  return {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    borderLeft: `3px solid ${color}`,
+    background: terminalTheme2.panelSoft,
+    padding: "4px 6px",
+    minWidth: 0
+  };
+}
 var aiFactorStrategyStripStyle = {
   display: "flex",
   alignItems: "stretch",
@@ -35074,7 +35154,8 @@ function chartStyles2() {
     }
   };
 }
-function maPeriodsForFreq(freq) {
+function maPeriodsForChart(freq, targetKind) {
+  if (compactText2(targetKind).toLowerCase() === "index") return FIBONACCI_MA_PERIODS;
   const normalized = String(freq ?? "").toLowerCase();
   if (normalized.includes("week") || normalized === "w" || normalized === "1w") {
     return [5, 10, 20, 50];
@@ -35164,8 +35245,8 @@ function ensureMacdZeroIndicator() {
   });
   macdZeroIndicatorRegistered = true;
 }
-function applyMovingAverageIndicator(chart, freq) {
-  const periods = maPeriodsForFreq(freq);
+function applyMovingAverageIndicator(chart, freq, targetKind) {
+  const periods = maPeriodsForChart(freq, targetKind);
   chart.overrideIndicator(
     {
       name: "MA",
@@ -35175,8 +35256,8 @@ function applyMovingAverageIndicator(chart, freq) {
     CANDLE_PANE_ID
   );
 }
-function createChartIndicators(chart, freq) {
-  const periods = maPeriodsForFreq(freq);
+function createChartIndicators(chart, freq, targetKind) {
+  const periods = maPeriodsForChart(freq, targetKind);
   chart.createIndicator(
     {
       name: "MA",
@@ -35217,39 +35298,73 @@ function ensureSignalOverlay() {
   registerOverlay({
     name: SIGNAL_OVERLAY_NAME,
     totalStep: 2,
-    lock: true,
+    lock: false,
     needDefaultPointFigure: false,
     needDefaultXAxisFigure: false,
     needDefaultYAxisFigure: false,
-    createPointFigures: ({ overlay, coordinates }) => {
+    createPointFigures: ({ overlay, coordinates, bounding }) => {
       const point = coordinates[0];
       if (!point) return [];
       const data = recordValue4(overlay.extendData);
       const label = data.label || "SIG";
+      const calloutId = compactText2(data.calloutId);
+      const selected = Boolean(data.selected);
       const side = data.side === "sell" ? "sell" : data.side === "neutral" ? "neutral" : "buy";
       const color = data.color || signalOverlayColor(side);
-      const text2 = label;
-      const freqLabel = data.freq ? `${data.freq} ` : "";
-      const displayText = `${freqLabel}${text2}`;
-      const width = Math.max(42, Math.min(78, displayText.length * 7 + 18));
-      const height = 18;
-      const gap = 8;
+      const rawItems = Array.isArray(data.items) ? data.items : [];
+      const items = rawItems.length > 0 ? rawItems.map((item) => {
+        const record = recordValue4(item);
+        const itemSide = record.side === "sell" ? "sell" : record.side === "neutral" ? "neutral" : "buy";
+        return {
+          label: compactText2(record.label, label),
+          side: itemSide,
+          color: compactText2(record.color, signalOverlayColor(itemSide)),
+          freq: compactText2(record.freq),
+          scope: compactText2(record.scope),
+          sourceLabel: compactText2(record.sourceLabel),
+          details: compactText2(record.details)
+        };
+      }).filter((item) => item.label) : [{
+        label,
+        side,
+        color,
+        freq: data.freq,
+        scope: data.scope,
+        sourceLabel: data.sourceLabel,
+        details: data.details
+      }];
+      const badge = signalCalloutBadgeSummary(items, data.itemCount, label, data.freq, calloutId);
+      const totalItems = badge.totalItems;
+      const displayText = badge.title;
+      const subText = badge.subtitle;
+      const width = Math.max(totalItems > 1 ? 104 : 72, Math.min(174, Math.max(displayText.length * 7.2, subText.length * 6.4) + 28));
+      const height = subText ? 34 : 22;
+      const gap = 10;
       const lane = Math.max(0, Math.min(5, Math.floor(numberValue3(data.lane) ?? 0)));
-      const laneOffset = lane * (height + 5);
-      const rectX = point.x - width / 2;
-      const rectY = side === "buy" ? point.y + gap + laneOffset : point.y - gap - height - laneOffset;
-      const stemEndY = side === "buy" ? rectY : rectY + height;
-      const tipY = side === "buy" ? point.y + 5 : point.y - 5;
-      const fillColor = "rgba(15, 23, 42, 0.88)";
-      const borderSize = 1;
-      const labelY = rectY + height / 2;
-      return [
+      const chartWidth = bounding?.width ?? point.x + width + 96;
+      const chartHeight = bounding?.height ?? point.y + height + 32;
+      const maxX = Math.max(2, chartWidth - width - 86);
+      const clamp = (value, min, max) => Math.max(min, Math.min(value, Math.max(min, max)));
+      const preferLeft = point.x > chartWidth * 0.6;
+      const rectX = clamp(preferLeft ? point.x - width - gap : point.x + gap, 2, maxX);
+      const laneStep = height + 6;
+      const placeBelow = point.y < chartHeight * 0.48;
+      const topRailY = 48 + lane * laneStep;
+      const bottomRailY = chartHeight - height - 10 - lane * laneStep;
+      const rectY = clamp(placeBelow ? bottomRailY : topRailY, 28, chartHeight - height - 2);
+      const connectorX = clamp(point.x, rectX + 8, rectX + width - 8);
+      const connectorY = point.y < rectY ? rectY : rectY + height;
+      const fillColor = selected ? "rgba(15, 23, 42, 0.98)" : "rgba(15, 23, 42, 0.94)";
+      const headerFillColor = selected ? `${color}30` : data.isCustom ? "rgba(56, 189, 248, 0.18)" : "rgba(37, 99, 235, 0.18)";
+      const borderSize = selected ? 2 : 1;
+      const figures2 = [
         {
           type: "line",
           attrs: {
             coordinates: [
-              { x: point.x, y: tipY },
-              { x: point.x, y: stemEndY }
+              { x: point.x, y: point.y },
+              { x: point.x, y: connectorY },
+              { x: connectorX, y: connectorY }
             ]
           },
           styles: { color, size: 1, style: "dashed", dashedValue: [3, 3] },
@@ -35259,9 +35374,9 @@ function ensureSignalOverlay() {
           type: "polygon",
           attrs: {
             coordinates: [
-              { x: point.x, y: tipY },
+              { x: point.x, y: point.y - 5 },
               { x: point.x - 4, y: point.y },
-              { x: point.x, y: side === "buy" ? point.y - 4 : point.y + 4 },
+              { x: point.x, y: point.y + 5 },
               { x: point.x + 4, y: point.y }
             ]
           },
@@ -35269,32 +35384,43 @@ function ensureSignalOverlay() {
           ignoreEvent: true
         },
         {
+          key: "callout-body",
           type: "rect",
           attrs: { x: rectX, y: rectY, width, height },
           styles: {
             color: fillColor,
             borderColor: color,
             borderSize,
-            borderRadius: 3
-          },
-          ignoreEvent: true
+            borderRadius: 4
+          }
         },
         {
+          key: "callout-header",
           type: "rect",
-          attrs: { x: rectX + 4, y: rectY + 4, width: 3, height: height - 8 },
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color: headerFillColor,
+            borderColor: headerFillColor,
+            borderRadius: 4
+          }
+        },
+        {
+          key: "callout-stripe",
+          type: "rect",
+          attrs: { x: rectX + 5, y: rectY + 5, width: 4, height: height - 10 },
           styles: {
             color,
             borderColor: color,
             borderRadius: 2
-          },
-          ignoreEvent: true
+          }
         },
         {
+          key: "callout-title",
           type: "text",
           attrs: {
             x: rectX + 12,
-            y: labelY,
-            text: displayText.slice(0, 10),
+            y: rectY + (subText ? 10 : height / 2),
+            text: displayText.slice(0, 15),
             align: "left",
             baseline: "middle"
           },
@@ -35303,10 +35429,68 @@ function ensureSignalOverlay() {
             size: 10,
             weight: 800,
             family: "IBM Plex Mono, Menlo, monospace"
-          },
-          ignoreEvent: true
+          }
         }
       ];
+      if (subText) {
+        figures2.push(
+          {
+            key: "callout-subtitle",
+            type: "text",
+            attrs: {
+              x: rectX + 12,
+              y: rectY + 25,
+              text: subText.slice(0, 18),
+              align: "left",
+              baseline: "middle"
+            },
+            styles: {
+              color: terminalTheme2.textMuted,
+              size: 9,
+              weight: 720,
+              family: "IBM Plex Mono, Menlo, monospace"
+            }
+          }
+        );
+      }
+      items.slice(0, 4).forEach((item, index) => {
+        const itemColor = item.color || signalOverlayColor(item.side);
+        figures2.push({
+          type: "rect",
+          attrs: {
+            x: rectX + width - 8 - index * 8,
+            y: rectY + height - 6,
+            width: 4,
+            height: 4
+          },
+          styles: {
+            color: itemColor,
+            borderColor: itemColor,
+            borderRadius: 2
+          },
+          ignoreEvent: true
+        });
+      });
+      if (totalItems > 4) {
+        figures2.push({
+          type: "text",
+          attrs: {
+            x: rectX + width - 8,
+            y: rectY + height - 4,
+            text: "+",
+            align: "right",
+            baseline: "middle"
+          },
+          styles: {
+            color: terminalTheme2.textMuted,
+            size: 9,
+            weight: 720,
+            family: "IBM Plex Mono, Menlo, monospace"
+          },
+          ignoreEvent: true
+        });
+      }
+      return figures2;
     }
   });
   signalOverlayRegistered = true;
@@ -35586,17 +35770,22 @@ function movingAverageLevel(data, period) {
 function isDailyFreq(freq) {
   return normalizeSignalFreq(freq) === "daily";
 }
-function derivedMaKeyLevels(data, freq) {
+function derivedMaKeyLevels(data, freq, targetKind) {
   const normalized = normalizeSignalFreq(freq);
-  const periods = normalized === "weekly" ? [20, 50] : normalized === "30min" ? [20, 60] : normalized === "daily" ? [50, 200] : [];
+  const basePeriods = normalized === "weekly" ? [20, 50] : normalized === "30min" ? [20, 60] : normalized === "daily" ? [50, 200] : [];
+  const periods = Array.from(/* @__PURE__ */ new Set([
+    ...compactText2(targetKind).toLowerCase() === "index" ? FIBONACCI_MA_PERIODS : [],
+    ...basePeriods
+  ]));
   return periods.map((period) => {
     const value = movingAverageLevel(data, period);
     if (value === void 0) return null;
     const close = latestClose(data);
+    const isFibIndexMa = compactText2(targetKind).toLowerCase() === "index" && FIBONACCI_MA_PERIODS.includes(period);
     return {
-      name: `${displayFreqLabel(normalized)}MA${period}`,
+      name: `${displayFreqLabel(normalized)}${isFibIndexMa ? "Fib MA" : "MA"}${period}`,
       value,
-      role: normalized === "daily" && period === 200 ? "\u957F\u671F\u8D8B\u52BF\u538B\u529B/\u652F\u6491" : "\u9636\u6BB5\u5E95\u90E8/\u6210\u672C\u7EBF",
+      role: isFibIndexMa ? "\u6307\u6570Fibonacci\u5747\u7EBF" : normalized === "daily" && period === 200 ? "\u957F\u671F\u8D8B\u52BF\u538B\u529B/\u652F\u6491" : "\u9636\u6BB5\u5E95\u90E8/\u6210\u672C\u7EBF",
       position: close !== void 0 && close >= value ? "\u4E0B\u65B9" : "\u4E0A\u65B9",
       distance_pct: close !== void 0 && value > 0 ? (value - close) / close * 100 : null,
       timeframe: normalized
@@ -36119,6 +36308,121 @@ function displaySignalsForChart(data, signals, currentFreq) {
     return right.timestamp - left.timestamp;
   }).slice(0, MAX_MAIN_CHART_SIGNAL_OVERLAYS).sort((left, right) => left.timestamp - right.timestamp).map((item) => item.signal);
 }
+function signalCalloutItem(signal, currentFreq) {
+  const side = signalSideForOverlay(signal);
+  const scopeLabel = signalScopeLabel(signal, normalizeSignalFreq(currentFreq));
+  const sourceLabel = [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(" \xB7 ");
+  return {
+    label: signalOverlayLabel(signal),
+    side,
+    color: isCustomUserSignal(signal) ? side === "sell" ? "#fb7185" : "#38bdf8" : signalOverlayColor(side),
+    freq: compactScopeLabel(signal, currentFreq),
+    scope: scopeLabel,
+    sourceLabel,
+    details: signalEvidenceDetails(signal)
+  };
+}
+function signalCalloutBadgeSummary(items, itemCount, label = "SIG", freq, calloutId) {
+  const totalItems = Math.max(itemCount ?? items.length, items.length);
+  const idPrefix = calloutId ? `${calloutId} ` : "";
+  const primaryLabels = uniqueCompact(items.map((item) => item.label)).slice(0, totalItems > 1 ? 2 : 1);
+  const primarySummary = primaryLabels.join("/");
+  const freqSummary = uniqueCompact(items.map((item) => item.freq)).slice(0, 3).join("/");
+  if (totalItems > 1) {
+    return {
+      title: `${idPrefix}\u5171\u632F ${totalItems}`,
+      subtitle: primarySummary || freqSummary,
+      totalItems
+    };
+  }
+  return {
+    title: `${idPrefix}${freq ? `${freq} ` : ""}${primarySummary || label}`,
+    subtitle: primarySummary && primarySummary !== label ? label : "",
+    totalItems
+  };
+}
+function withSignalCalloutIds(callouts) {
+  return callouts.map((callout, index) => ({
+    ...callout,
+    calloutId: `G${index + 1}`
+  }));
+}
+function signalCalloutsFromCandidates(candidates) {
+  const clusters = [];
+  candidates.forEach((candidate) => {
+    const cluster = clusters.find((item) => candidate.barIndex <= item.maxIndex + SIGNAL_CALLOUT_BAR_WINDOW);
+    if (!cluster) {
+      clusters.push({ minIndex: candidate.barIndex, maxIndex: candidate.barIndex, candidates: [candidate] });
+      return;
+    }
+    cluster.minIndex = Math.min(cluster.minIndex, candidate.barIndex);
+    cluster.maxIndex = Math.max(cluster.maxIndex, candidate.barIndex);
+    cluster.candidates.push(candidate);
+  });
+  const laneCounts = /* @__PURE__ */ new Map();
+  return clusters.map((cluster) => {
+    const ranked = [...cluster.candidates].sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority;
+      return right.timestamp - left.timestamp;
+    });
+    const anchor = ranked[0];
+    const dedupedItems = [];
+    const seenItems = /* @__PURE__ */ new Set();
+    ranked.forEach((candidate) => {
+      const key = `${candidate.item.freq}:${candidate.item.label}:${candidate.item.sourceLabel}`;
+      if (seenItems.has(key)) return;
+      seenItems.add(key);
+      dedupedItems.push(candidate.item);
+    });
+    const side = anchor.item.side;
+    const laneKey = `${Math.floor(anchor.barIndex / Math.max(1, SIGNAL_CALLOUT_BAR_WINDOW + 1))}:${side}`;
+    const lane = laneCounts.get(laneKey) ?? 0;
+    laneCounts.set(laneKey, lane + 1);
+    return {
+      timestamp: anchor.alignedTimestamp,
+      price: anchor.price,
+      label: dedupedItems.length > 1 ? "\u591A\u5468\u671F\u8BC1\u636E" : dedupedItems[0]?.label ?? "\u4FE1\u53F7",
+      side,
+      color: anchor.item.color,
+      isCustom: ranked.some((candidate) => candidate.custom),
+      freq: anchor.item.freq,
+      scope: anchor.item.scope,
+      lane,
+      sourceLabel: anchor.item.sourceLabel,
+      details: uniqueCompact(ranked.map((candidate) => candidate.item.details)).slice(0, 2).join(" \xB7 "),
+      items: dedupedItems,
+      itemCount: dedupedItems.length
+    };
+  });
+}
+function signalEvidenceCalloutsForChart(data, signals, currentFreq) {
+  if (data.length === 0 || signals.length === 0) return [];
+  const candidates = displaySignalsForChart(data, signals, currentFreq).map((signal) => {
+    const timestamp = signalTimestamp(signal);
+    if (timestamp === void 0) return null;
+    const bar = nearestChartBarForTimestamp(data, timestamp);
+    const alignedTimestamp = bar?.timestamp ?? timestamp;
+    const price = signalOverlayPrice(signal, bar);
+    if (price === void 0) return null;
+    const barIndex = data.findIndex((item) => item.timestamp === alignedTimestamp);
+    if (barIndex < 0) return null;
+    return {
+      signal,
+      timestamp,
+      alignedTimestamp,
+      price,
+      barIndex,
+      priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
+      custom: isCustomUserSignal(signal),
+      item: signalCalloutItem(signal, currentFreq)
+    };
+  }).filter((item) => item !== null).sort((left, right) => {
+    if (left.barIndex !== right.barIndex) return left.barIndex - right.barIndex;
+    if (right.priority !== left.priority) return right.priority - left.priority;
+    return left.timestamp - right.timestamp;
+  });
+  return signalCalloutsFromCandidates(candidates);
+}
 function displayVolumeSignalsForChart(data, signals, currentFreq) {
   if (data.length === 0 || signals.length === 0) return [];
   const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp;
@@ -36154,38 +36458,22 @@ function displaySignalsForEvidence(signals) {
   });
   return output;
 }
-function createSignalOverlays2(chart, data, signals, currentFreq) {
+function createSignalOverlays2(chart, callouts, selectedCalloutId, onSelectCallout) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP });
-  const laneCounts = /* @__PURE__ */ new Map();
-  displaySignalsForChart(data, signals, currentFreq).forEach((signal) => {
-    const timestamp = signalTimestamp(signal);
-    if (!timestamp) return;
-    const bar = nearestChartBarForTimestamp(data, timestamp);
-    const alignedTimestamp = bar?.timestamp ?? timestamp;
-    const price = signalOverlayPrice(signal, bar);
-    if (price === void 0) return;
-    const label = signalOverlayLabel(signal);
-    const side = signalSideForOverlay(signal);
-    const custom = isCustomUserSignal(signal);
-    const scopeLabel = signalScopeLabel(signal, normalizeSignalFreq(currentFreq));
-    const laneKey = `${alignedTimestamp}:${side}`;
-    const lane = laneCounts.get(laneKey) ?? 0;
-    laneCounts.set(laneKey, lane + 1);
+  callouts.forEach((callout) => {
     chart.createOverlay({
       name: SIGNAL_OVERLAY_NAME,
       groupId: SIGNAL_OVERLAY_GROUP,
-      lock: true,
-      points: [{ timestamp: alignedTimestamp, value: price }],
+      lock: false,
+      points: [{ timestamp: callout.timestamp, value: callout.price }],
       extendData: {
-        label,
-        side,
-        color: custom ? side === "sell" ? "#fb7185" : "#38bdf8" : signalOverlayColor(side),
-        isCustom: custom,
-        freq: compactScopeLabel(signal, currentFreq),
-        scope: scopeLabel,
-        lane,
-        sourceLabel: [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(" \xB7 "),
-        details: signalEvidenceDetails(signal)
+        ...callout,
+        selected: Boolean(callout.calloutId && callout.calloutId === selectedCalloutId)
+      },
+      onClick: (event) => {
+        const id = compactText2(recordValue4(event.overlay.extendData).calloutId);
+        if (id) onSelectCallout?.(id);
+        return true;
       }
     });
   });
@@ -37253,6 +37541,7 @@ function StrategyChartTerminal({
   const [pendingListUpdate, setPendingListUpdate] = (0, import_react3.useState)(false);
   const [leftCollapsed, setLeftCollapsed] = (0, import_react3.useState)(false);
   const [rightCollapsed, setRightCollapsed] = (0, import_react3.useState)(false);
+  const [selectedChartCalloutId, setSelectedChartCalloutId] = (0, import_react3.useState)("");
   const [optimisticDeletedManualClueKeys, setOptimisticDeletedManualClueKeys] = (0, import_react3.useState)(() => /* @__PURE__ */ new Set());
   const [aiRanking, setAiRanking] = (0, import_react3.useState)(null);
   const [aiReviewsByKey, setAiReviewsByKey] = (0, import_react3.useState)({});
@@ -37289,6 +37578,29 @@ function StrategyChartTerminal({
     },
     [baseChartSignals, currentFreq, klineData, maAcceptance]
   );
+  const chartCallouts = (0, import_react3.useMemo)(
+    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq)),
+    [chartSignals, currentFreq, klineData]
+  );
+  const selectedChartCallout = (0, import_react3.useMemo)(
+    () => chartCallouts.find((callout) => callout.calloutId === selectedChartCalloutId) ?? chartCallouts[0] ?? null,
+    [chartCallouts, selectedChartCalloutId]
+  );
+  const selectChartCallout = (0, import_react3.useCallback)((calloutId) => {
+    if (!calloutId) return;
+    setSelectedChartCalloutId(calloutId);
+    setRightCollapsed(false);
+    recordObservationEvent("strategy.chart-callout.select", { callout_id: calloutId, target });
+  }, [target]);
+  (0, import_react3.useEffect)(() => {
+    if (chartCallouts.length === 0) {
+      if (selectedChartCalloutId) setSelectedChartCalloutId("");
+      return;
+    }
+    if (!selectedChartCalloutId || !chartCallouts.some((callout) => callout.calloutId === selectedChartCalloutId)) {
+      setSelectedChartCalloutId(chartCallouts[0]?.calloutId ?? "");
+    }
+  }, [chartCallouts, selectedChartCalloutId]);
   const visibleCustomSignals = (0, import_react3.useMemo)(() => signals.filter(isCustomUserSignal), [signals]);
   const customSignalCount = (0, import_react3.useMemo)(
     () => numberValue3(symbolData?.custom_signal_count) ?? visibleCustomSignals.length,
@@ -37512,6 +37824,8 @@ function StrategyChartTerminal({
     [displayVolumeInWanHands, klineData]
   );
   const activeChartMode = chartModeFromTarget(target, symbolData);
+  const targetKindForMa = compactText2(symbolData?.target?.kind, target.kind);
+  const isIndexPriceChart = targetKindForMa.toLowerCase() === "index" && chartMeta.is_price_kline !== false;
   const symbolChainContext = (0, import_react3.useMemo)(() => chainContextFromSymbolSummary(symbolData), [symbolData]);
   const chainContext = selectedChainContext ?? symbolChainContext;
   const primaryValueLabel = chartMeta.is_price_kline === false ? locale === "zh-CN" ? "\u70ED\u5EA6\u6536\u76D8" : "Heat close" : locale === "zh-CN" ? "\u6700\u65B0\u4EF7" : "Last";
@@ -37534,11 +37848,11 @@ function StrategyChartTerminal({
     latestAmountLabel !== "N/A" ? `${amountLabel} ${latestAmountLabel}` : ""
   ].filter(Boolean).join(" \xB7 ") : "";
   const updatedTimeLabel = compactText2(shell?.session?.data_as_of) || (lastUpdated ? readableTime(lastUpdated, locale, chartTimezone) : "");
-  const activeMaPeriods = (0, import_react3.useMemo)(() => maPeriodsForFreq(currentFreq), [currentFreq]);
+  const activeMaPeriods = (0, import_react3.useMemo)(() => maPeriodsForChart(currentFreq, targetKindForMa), [currentFreq, targetKindForMa]);
   const divergences = (0, import_react3.useMemo)(() => macdDivergences(klineData, currentFreq), [currentFreq, klineData]);
   const chartKeyLevels = (0, import_react3.useMemo)(
-    () => mergeKeyLevels(keyLevels, derivedMaKeyLevels(klineData, currentFreq)),
-    [currentFreq, keyLevels, klineData]
+    () => mergeKeyLevels(keyLevels, derivedMaKeyLevels(klineData, currentFreq, targetKindForMa)),
+    [currentFreq, keyLevels, klineData, targetKindForMa]
   );
   const requestedFreq = symbolData?.target?.requested_freq;
   const effectiveFreq = symbolData?.target?.effective_freq;
@@ -37786,7 +38100,7 @@ function StrategyChartTerminal({
     chartRef.current = chart;
     chart.setBarSpace(chartBarSpaceForMode(layoutMode));
     chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode));
-    createChartIndicators(chart, target.freq);
+    createChartIndicators(chart, target.freq, target.kind);
     resizeObserverRef.current = new ResizeObserver(() => {
       if (resizeFrameRef.current !== null) {
         window.cancelAnimationFrame(resizeFrameRef.current);
@@ -37823,8 +38137,8 @@ function StrategyChartTerminal({
   (0, import_react3.useEffect)(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    applyMovingAverageIndicator(chart, currentFreq);
-  }, [currentFreq]);
+    applyMovingAverageIndicator(chart, currentFreq, targetKindForMa);
+  }, [currentFreq, targetKindForMa]);
   (0, import_react3.useEffect)(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -37843,7 +38157,7 @@ function StrategyChartTerminal({
       return;
     }
     chart.applyNewData(chartDisplayData);
-    createSignalOverlays2(chart, chartDisplayData, chartSignals, currentFreq);
+    createSignalOverlays2(chart, chartCallouts, selectedChartCallout?.calloutId, selectChartCallout);
     createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq);
     createLevelOverlays(chart, chartDisplayData, chartKeyLevels);
     createDivergenceOverlays(chart, divergences);
@@ -37851,7 +38165,7 @@ function StrategyChartTerminal({
       chart.scrollToRealTime();
     }
     chart.resize();
-  }, [chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences]);
+  }, [chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences, selectChartCallout, selectedChartCallout?.calloutId]);
   const selectTarget = (0, import_react3.useCallback)(
     (next, source = "strategy.target.select") => {
       recordObservationEvent(source, {
@@ -38514,7 +38828,7 @@ function StrategyChartTerminal({
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: indicatorLegendStyle, children: [
               activeMaPeriods.map((period, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: indicatorLegendItemStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: MA_COLORS[index % MA_COLORS.length] } }),
-                chartMeta.is_price_kline === false ? `\u70ED\u5EA6MA${period}` : `MA${period}`
+                chartMeta.is_price_kline === false ? `\u70ED\u5EA6MA${period}` : isIndexPriceChart ? `Fib MA${period}` : `MA${period}`
               ] }, `ma-${period}`)),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: indicatorLegendItemStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up } }),
@@ -38573,6 +38887,16 @@ function StrategyChartTerminal({
         }
       ) }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: terminalSideStyle, children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          ChartCalloutDetailsPanel,
+          {
+            locale,
+            callouts: chartCallouts,
+            selectedCallout: selectedChartCallout,
+            chartTimezone,
+            onSelect: selectChartCallout
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
           ChainContextRail,
           {
             locale,
@@ -38610,7 +38934,7 @@ function StrategyChartTerminal({
           {
             title: locale === "zh-CN" ? "\u4EA4\u6613\u8BC1\u636E" : "Trade evidence",
             meta: customSignalCount > 0 ? `${customSignalCount}\u81EA\u5B9A\u4E49` : String(signals.length + chartKeyLevels.length + divergences.length),
-            children: signals.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u6807\u7684\u6682\u65E0\u81EA\u5B9A\u4E49\u4FE1\u53F7\u3001\u80CC\u79BB\u6216\u5173\u952E\u5747\u7EBF\u4F4D\u3002" : "No custom signals, divergences, or key levels." }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
+            children: signals.length === 0 && chartCallouts.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u6807\u7684\u6682\u65E0\u81EA\u5B9A\u4E49\u4FE1\u53F7\u3001\u80CC\u79BB\u6216\u5173\u952E\u5747\u7EBF\u4F4D\u3002" : "No custom signals, divergences, or key levels." }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
               maAcceptance ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { ...signalBlockStyle, borderTop: 0, paddingTop: 0 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u5747\u7EBF\u6590\u6CE2\u90A3\u5951\u627F\u63A5" : "Fibonacci MA acceptance" }),
@@ -38864,6 +39188,67 @@ function Panel2({
     ] }),
     children
   ] });
+}
+function ChartCalloutDetailsPanel({
+  locale,
+  callouts,
+  selectedCallout,
+  chartTimezone,
+  onSelect
+}) {
+  if (callouts.length === 0) return null;
+  const activeCallout = selectedCallout ?? callouts[0] ?? null;
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    Panel2,
+    {
+      title: locale === "zh-CN" ? "\u56FE\u4E0A\u6807\u6CE8\u8BE6\u60C5" : "Chart callouts",
+      meta: activeCallout?.calloutId ?? String(callouts.length),
+      children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: chartCalloutSelectorStyle, children: callouts.slice(0, 6).map((callout) => {
+          const active = callout.calloutId === activeCallout?.calloutId;
+          const badge = signalCalloutBadgeSummary(callout.items, callout.itemCount, callout.label, callout.freq, callout.calloutId);
+          const shortTitle = badge.title.replace(`${callout.calloutId ?? ""} `, "");
+          const subline = badge.subtitle || uniqueCompact(callout.items.map((item) => item.freq)).slice(0, 3).join("/");
+          return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+            "button",
+            {
+              type: "button",
+              style: chartCalloutButtonStyle(active, callout.color),
+              title: [badge.title, subline, formatNumber2(callout.price)].filter(Boolean).join(" \xB7 "),
+              onClick: () => onSelect(callout.calloutId ?? ""),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: chartCalloutButtonTitleStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: chartCalloutIdBadgeStyle(callout.color), children: callout.calloutId }),
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: shortTitle })
+                ] }),
+                subline ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: chartCalloutButtonSubStyle, children: subline }) : null
+              ]
+            },
+            `${callout.calloutId}-${callout.timestamp}-${callout.price}`
+          );
+        }) }),
+        activeCallout ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: chartCalloutDetailStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: signalCalloutBadgeSummary(activeCallout.items, activeCallout.itemCount, activeCallout.label, activeCallout.freq, activeCallout.calloutId).title }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: monoTextStyle, children: formatNumber2(activeCallout.price) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [
+            readableTime(new Date(activeCallout.timestamp), locale, chartTimezone),
+            activeCallout.scope,
+            activeCallout.sourceLabel
+          ].filter(Boolean).join(" \xB7 ") }),
+          activeCallout.items.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: chartCalloutItemStyle(item.color || activeCallout.color), children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: item.side === "sell" ? miniSellSignalBadgeStyle : item.side === "buy" ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle, children: item.freq || "--" }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: rowTitleStyle, children: item.label })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [item.scope, item.sourceLabel].filter(Boolean).join(" \xB7 ") }),
+            item.details ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: item.details }) : null
+          ] }, `${activeCallout.calloutId}-${item.freq}-${item.label}-${index}`))
+        ] }) : null
+      ] })
+    }
+  );
 }
 function strategyAiStatusLabel(status, locale) {
   if (status === "running") return locale === "zh-CN" ? "\u56E0\u5B50\u5237\u65B0\u4E2D" : "Factor running";

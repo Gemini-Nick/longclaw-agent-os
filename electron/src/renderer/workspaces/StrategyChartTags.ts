@@ -94,6 +94,13 @@ function technicalTags(row: Record<string, unknown>): string[] {
   return ['硬技术', signalType, freq].filter(Boolean)
 }
 
+function maAcceptanceTags(row: Record<string, unknown>): string[] {
+  const acceptance = recordValue(row.ma_acceptance)
+  const alignment = recordValue(row.ma_alignment)
+  const summary = compactText(acceptance.summary) || compactText(alignment.fib_array_summary)
+  return summary ? [summary.replace(/回踩承接/g, '承接')] : []
+}
+
 export function tagsForWatchlist(row: Record<string, unknown>, kind: string): string[] {
   const mapping = recordValue(row.mapping_chain)
   const carrier = recordValue(row.carrier)
@@ -102,6 +109,7 @@ export function tagsForWatchlist(row: Record<string, unknown>, kind: string): st
     ...knowledgeTags(row),
     ...resonanceTags(row),
     ...technicalTags(row),
+    ...maAcceptanceTags(row),
   ]
   const sourceTags = [
     ...(kind === 'stock' ? timeframeBadges(row) : []),
