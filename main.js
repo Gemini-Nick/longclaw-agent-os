@@ -36096,6 +36096,7 @@ function maAcceptanceFromAlignment(value) {
     const period = numberValue3(item.period);
     return booleanValue2(item.pullback_acceptance) || period !== void 0 && periods.includes(Math.round(period));
   });
+  if (periods.length === 0 && accepted.length === 0) return null;
   const primary = accepted[0] ?? {};
   const summary = compactText2(alignment.fib_array_summary) || (periods.length > 0 ? periods.map((period) => `MA${period}`).join("/") + "\u56DE\u8E29\u627F\u63A5" : "");
   if (!summary && periods.length === 0 && accepted.length === 0) return null;

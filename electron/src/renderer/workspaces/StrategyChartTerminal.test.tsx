@@ -103,6 +103,34 @@ describe('StrategyChartTerminal MA acceptance evidence', () => {
     expect(acceptance?.primary.period).toBe(13)
   })
 
+  it('does not promote touch-only MA alignment into acceptance evidence', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      summary: {
+        ma_alignment: {
+          fib_accept_periods: [],
+          fib_touch_periods: [21, 89],
+          fib_breakdown_periods: [21],
+          fib_array_summary: 'MA21跌破待修复 / MA89触碰待确认',
+          fib_ma_array: [
+            {
+              period: 21,
+              pullback_touch: true,
+              pullback_acceptance: false,
+              pullback_breakdown: true,
+            },
+            {
+              period: 89,
+              pullback_touch: true,
+              pullback_acceptance: false,
+            },
+          ],
+        },
+      },
+    } as any)
+
+    expect(acceptance).toBeNull()
+  })
+
   it('prioritizes the synthetic daily MA acceptance marker over ordinary technical labels', () => {
     const maPriority = signalOverlayPriority({
       type: 'MA承接',

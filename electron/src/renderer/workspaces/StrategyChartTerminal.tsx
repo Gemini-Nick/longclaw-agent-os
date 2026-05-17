@@ -4549,6 +4549,7 @@ function maAcceptanceFromAlignment(value: unknown): MaAcceptanceSummary | null {
     const period = numberValue(item.period)
     return booleanValue(item.pullback_acceptance) || (period !== undefined && periods.includes(Math.round(period)))
   })
+  if (periods.length === 0 && accepted.length === 0) return null
   const primary = accepted[0] ?? {}
   const summary =
     compactText(alignment.fib_array_summary) ||
