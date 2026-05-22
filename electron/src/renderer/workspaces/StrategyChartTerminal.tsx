@@ -3016,6 +3016,10 @@ function normalizeCacheStatus(value: StrategyDashboard['cache_status'] | undefin
     mode: compactText(cacheStatus.mode, 'unavailable'),
     updated_at: compactText(cacheStatus.updated_at),
     trade_date: compactText(cacheStatus.trade_date),
+    recovery_state: compactText(cacheStatus.recovery_state),
+    critical_blocker: recordValue(cacheStatus.critical_blocker),
+    daily_coverage_date: compactText(cacheStatus.daily_coverage_date),
+    terminal_ready_date: compactText(cacheStatus.terminal_ready_date),
     error: compactText(cacheStatus.error),
     live_low_latency: {
       modules: Array.isArray(recordValue(cacheStatus.live_low_latency).modules)
@@ -3200,6 +3204,79 @@ function cacheStatusLabel(value: unknown, fallback: string): string {
   if (text === 'partial') return 'PARTIAL'
   if (text === 'pending') return 'PENDING'
   return text.toUpperCase()
+}
+
+function recoveryStateLabel(value: unknown, locale: LongclawLocale): string {
+  const state = compactText(value).toLowerCase()
+  if (state === 'waiting_for_source' || state === 'source_blocked' || state === 'partial/source_blocked') {
+    return locale === 'zh-CN' ? '源阻塞' : 'SOURCE'
+  }
+  if (state === 'old_cache_readable') return locale === 'zh-CN' ? '旧缓存可读' : 'OLD CACHE'
+  if (state === 'postmarket_running') return locale === 'zh-CN' ? '恢复中' : 'RUNNING'
+  if (state === 'terminal_ready') return locale === 'zh-CN' ? '终端池已刷新' : 'TERMINAL READY'
+  return ''
+}
+
+export function mongoCoverageState(
+  cacheStatusInput: StrategyDashboard['cache_status'],
+  locale: LongclawLocale,
+) {
+  const cacheStatus = normalizeCacheStatus(cacheStatusInput)
+  const freqs = cacheStatus.mongo_stock_cache.freqs.map(item => recordValue(item))
+  const mongoSummary = recordValue(cacheStatus.mongo_stock_cache.summary)
+  const dailyCache = firstRecord(freqs, 'freq', '日线')
+  const dailySymbols = numberValue(dailyCache.symbols) ?? 0
+  const dailyToday = numberValue(dailyCache.today_symbols) ?? 0
+  const coverageDate =
+    compactText(recordValue(cacheStatus).daily_coverage_date)
+    || compactText(mongoSummary.daily_coverage_date)
+    || compactText(dailyCache.coverage_date)
+  const tradeDate = compactText(cacheStatus.trade_date)
+  const isCurrent = Boolean(!tradeDate || !coverageDate || coverageDate === tradeDate)
+  const progress = dailySymbols ? (dailyToday / dailySymbols) * 100 : 0
+  const minuteFreqs = freqs
+    .filter(row => ['5分钟', '15分钟', '30分钟', '60分钟'].includes(compactText(row.freq)))
+    .map(row => `${compactText(row.freq)} ${countText(row.today_symbols)}`)
+    .join(' · ')
+  const minuteUniverseTotal = numberValue(mongoSummary.minute_universe_total) ?? 0
+  const minuteUniverseCached = numberValue(mongoSummary.minute_universe_cached) ?? 0
+  const minuteUniversePending = numberValue(mongoSummary.minute_universe_pending) ?? 0
+  const minuteUniverseError = numberValue(mongoSummary.minute_universe_error) ?? 0
+  const detail = locale === 'zh-CN'
+    ? (isCurrent
+      ? `当日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
+      : `旧缓存可读 ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
+    : (isCurrent
+      ? `current daily ${countText(dailyToday)}/${countText(dailySymbols)}`
+      : `old cache readable ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
+  const subdetail = locale === 'zh-CN'
+    ? (minuteUniverseTotal
+      ? `分钟候选 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · 待 ${countText(minuteUniversePending)} · 失败 ${countText(minuteUniverseError)}`
+      : `分钟覆盖：${minuteFreqs || '0'}`)
+    : (minuteUniverseTotal
+      ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · pending ${countText(minuteUniversePending)} · failed ${countText(minuteUniverseError)}`
+      : `minute coverage: ${minuteFreqs || '0'}`)
+  const status = !cacheStatus.available
+    ? 'degraded'
+    : minuteUniverseError > 0
+      ? 'degraded'
+      : !isCurrent || minuteUniversePending > 0 || (dailySymbols > 0 && dailyToday < dailySymbols)
+        ? 'partial'
+        : 'ok'
+  const datePrefix = coverageDate ? `${coverageDate} ` : ''
+  return {
+    coverageDate,
+    tradeDate,
+    isCurrent,
+    dailySymbols,
+    dailyToday,
+    progress,
+    status,
+    statusLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    compactLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    detail,
+    subdetail,
+  }
 }
 
 function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
@@ -9025,8 +9102,6 @@ function CacheMonitorStrip({
   const postSummary = recordValue(cacheStatus.postmarket_backfill.summary)
   const postRun = recordValue(cacheStatus.postmarket_backfill.run)
   const tasks = cacheStatus.postmarket_backfill.tasks.map(item => recordValue(item))
-  const freqs = cacheStatus.mongo_stock_cache.freqs.map(item => recordValue(item))
-  const mongoSummary = recordValue(cacheStatus.mongo_stock_cache.summary)
   const blockers = cacheStatus.blockers.map(item => recordValue(item))
   const providerHealth = (Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : []).map(item => recordValue(item))
 
@@ -9103,6 +9178,18 @@ function CacheMonitorStrip({
   const postPct = percentValue(postSummary.critical_progress_pct ?? postSummary.progress_pct)
   const postRawStatus = compactText(postRun.status, compactText(postSummary.status, 'pending'))
   const postStatus = compactText(postSummary.critical_status, postRawStatus)
+  const recoveryState = compactText(recordValue(cacheStatus).recovery_state)
+    || compactText(postSummary.recovery_state)
+    || compactText(postRun.recovery_state)
+  const cacheCriticalBlocker = recordValue(recordValue(cacheStatus).critical_blocker)
+  const criticalBlocker = Object.keys(cacheCriticalBlocker).length > 0
+    ? cacheCriticalBlocker
+    : Object.keys(recordValue(postSummary.critical_blocker)).length > 0
+      ? recordValue(postSummary.critical_blocker)
+      : recordValue(postRun.critical_blocker)
+  const recoveryLabel = recoveryStateLabel(recoveryState, locale)
+  const sourceBlocked = ['waiting_for_source', 'source_blocked', 'partial/source_blocked'].includes(recoveryState)
+  const postCellStatus = sourceBlocked ? 'degraded' : postStatus
   const postEta = compactDuration(postSummary.eta_seconds, locale)
   const optionalStatusCounts = recordValue(postSummary.optional_status_counts)
   const optionalTotal = numberValue(postSummary.optional_task_count) ?? 0
@@ -9120,7 +9207,10 @@ function CacheMonitorStrip({
   const boardCursorLine = boardShardTasks.length
     ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard · ${countText(boardShardProcessed)}/${countText(boardShardTotal)}`
     : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
-  const postDetail = postStatus === 'ok' && postRawStatus === 'running' && optionalTailLine
+  const blockerDetail = `${compactText(criticalBlocker.provider, 'eastmoney')} · ${compactText(criticalBlocker.endpoint, compactText(criticalBlocker.module, 'fullmarket_spot_snapshot'))}`
+  const postDetail = sourceBlocked && Object.keys(criticalBlocker).length > 0
+    ? blockerDetail
+    : postStatus === 'ok' && postRawStatus === 'running' && optionalTailLine
     ? (locale === 'zh-CN'
       ? `主链完成 · ${optionalTailLine}`
       : `critical path done · ${optionalTailLine}`)
@@ -9131,42 +9221,15 @@ function CacheMonitorStrip({
     ? `日线 ${stockDailyLine} · 板块 ${boardCursorLine}${optionalTailLine ? ` · ${optionalTailLine}` : ''}`
     : `daily ${stockDailyLine} · boards ${boardCursorLine}${optionalTailLine ? ` · ${optionalTailLine}` : ''}`
 
-  const dailyCache = firstRecord(freqs, 'freq', '日线')
-  const dailySymbols = numberValue(dailyCache.symbols) ?? 0
-  const dailyToday = numberValue(dailyCache.today_symbols) ?? 0
-  const mongoPct = dailySymbols ? (dailyToday / dailySymbols) * 100 : 0
-  const minuteFreqs = freqs
-    .filter(row => ['5分钟', '15分钟', '30分钟', '60分钟'].includes(compactText(row.freq)))
-    .map(row => `${compactText(row.freq)} ${countText(row.today_symbols)}`)
-    .join(' · ')
-  const minuteUniverseTotal = numberValue(mongoSummary.minute_universe_total) ?? 0
-  const minuteUniverseCached = numberValue(mongoSummary.minute_universe_cached) ?? 0
-  const minuteUniversePending = numberValue(mongoSummary.minute_universe_pending) ?? 0
-  const minuteUniverseError = numberValue(mongoSummary.minute_universe_error) ?? 0
-  const mongoDetail = locale === 'zh-CN'
-    ? `今日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
-    : `today daily ${countText(dailyToday)}/${countText(dailySymbols)}`
-  const mongoSubdetail = locale === 'zh-CN'
-    ? (minuteUniverseTotal
-      ? `分钟候选 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · 待 ${countText(minuteUniversePending)} · 失败 ${countText(minuteUniverseError)}`
-      : `分钟覆盖：${minuteFreqs || '0'}`)
-    : (minuteUniverseTotal
-      ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · pending ${countText(minuteUniversePending)} · failed ${countText(minuteUniverseError)}`
-      : `minute coverage: ${minuteFreqs || '0'}`)
-  const mongoStatus = !cacheStatus.available
-    ? 'degraded'
-    : minuteUniverseError > 0
-      ? 'degraded'
-      : minuteUniversePending > 0 || (dailySymbols > 0 && dailyToday < dailySymbols)
-        ? 'partial'
-        : 'ok'
+  const mongoCoverage = mongoCoverageState(cacheStatus, locale)
+  const mongoStatus = mongoCoverage.status
 
   const sourceSummary = sourceMonitorSummary(providerHealth, blockers, locale, cacheStatus.available)
   const refreshSeconds = cacheRefreshSeconds(cacheStatus)
   const updatedAt = compactClock(cacheStatus.updated_at, locale)
-  const monitorStatus = sourceSummary.status === 'error' || sourceSummary.status === 'degraded' || liveStatus === 'degraded'
+  const monitorStatus = sourceSummary.status === 'error' || sourceSummary.status === 'degraded' || liveStatus === 'degraded' || mongoStatus === 'degraded' || postCellStatus === 'degraded'
     ? 'degraded'
-    : sourceSummary.status === 'partial' || liveStatus === 'partial'
+    : sourceSummary.status === 'partial' || liveStatus === 'partial' || mongoStatus === 'partial'
       ? 'partial'
       : 'ok'
   const monitorColor = monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error
@@ -9176,8 +9239,8 @@ function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? `盘中 ${liveStatusLabel} · 盘后 ${cacheStatusLabel(postStatus, 'pending')} · Mongo ${countText(dailyToday)}/${countText(dailySymbols)} · 网络源 ${sourceSummary.statusLabel}`
-      : `live ${liveStatusLabel} · post ${cacheStatusLabel(postStatus, 'pending')} · mongo ${countText(dailyToday)}/${countText(dailySymbols)} · sources ${sourceSummary.statusLabel}`
+      ? `盘中 ${liveStatusLabel} · 盘后 ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · Mongo ${mongoCoverage.compactLabel} · 网络源 ${sourceSummary.statusLabel}`
+      : `live ${liveStatusLabel} · post ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
         <div style={cacheMonitorToolbarStyle}>
@@ -9228,19 +9291,19 @@ function CacheMonitorStrip({
           title={locale === 'zh-CN' ? '盘后全量' : 'Postmarket'}
           value={`${Math.round(postPct)}%`}
           progress={postPct}
-          status={postStatus}
-          statusLabel={cacheStatusLabel(postStatus, 'pending')}
+          status={postCellStatus}
+          statusLabel={recoveryLabel || cacheStatusLabel(postStatus, 'pending')}
           detail={postDetail}
           subdetail={postSubdetail}
         />
         <CacheMonitorCell
           title={locale === 'zh-CN' ? 'Mongo 覆盖' : 'Mongo coverage'}
-          value={`${Math.round(mongoPct)}%`}
-          progress={mongoPct}
+          value={`${Math.round(mongoCoverage.progress)}%`}
+          progress={mongoCoverage.progress}
           status={mongoStatus}
-          statusLabel={`${countText(dailyToday)}/${countText(dailySymbols)}`}
-          detail={mongoDetail}
-          subdetail={mongoSubdetail}
+          statusLabel={mongoCoverage.statusLabel}
+          detail={mongoCoverage.detail}
+          subdetail={mongoCoverage.subdetail}
         />
         <CacheMonitorCell
           title={locale === 'zh-CN' ? '网络源' : 'Sources'}

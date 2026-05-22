@@ -6,6 +6,7 @@ import {
   looksLikeIndexValue,
   maAcceptanceFromSymbolData,
   maPeriodsForChart,
+  mongoCoverageState,
   signalCalloutBadgeSummary,
   signalEvidenceCalloutsForChart,
   signalOverlayPriority,
@@ -52,6 +53,77 @@ describe('StrategyChartTerminal source monitor', () => {
     expect(summary.status).toBe('partial')
     expect(summary.statusLabel).toBe('未加载')
     expect(summary.detail).toBe('provider_health 未加载')
+  })
+
+  it('shows the concrete provider endpoint when fullmarket is blocked', () => {
+    const summary = sourceMonitorSummary([
+      {
+        provider: 'eastmoney',
+        endpoint: 'fullmarket_spot_snapshot',
+        domain: 'market_data',
+        status: 'degraded',
+        last_error_type: 'SSLError',
+        updated_at: '2026-05-13T09:44:00',
+      },
+    ], [], 'zh-CN')
+
+    expect(summary.statusLabel).toBe('BLOCKED')
+    expect(summary.detail).toBe('eastmoney · fullmarket_spot_snapshot')
+    expect(summary.subdetail).toBe('SSLError')
+  })
+
+  it('drops stale blocker state after the fullmarket provider recovers', () => {
+    const summary = sourceMonitorSummary([
+      {
+        provider: 'eastmoney',
+        endpoint: 'fullmarket_spot_snapshot',
+        domain: 'market_data',
+        status: 'ok',
+        last_success_at: '2026-05-13T09:45:00',
+        last_error_type: 'old SSLError',
+        updated_at: '2026-05-13T09:45:00',
+      },
+    ], [{ scope: 'postmarket_backfill', module: 'fullmarket_spot_snapshot', status: 'degraded' }], 'zh-CN')
+
+    expect(summary.status).toBe('ok')
+    expect(summary.statusLabel).toBe('OK')
+    expect(summary.detail).toBe('无阻塞源')
+  })
+})
+
+describe('StrategyChartTerminal mongo coverage', () => {
+  it('labels old daily coverage as partial instead of ok', () => {
+    const summary = mongoCoverageState({
+      available: true,
+      mode: 'mongo',
+      updated_at: '2026-05-13T09:45:00',
+      trade_date: '2026-05-13',
+      daily_coverage_date: '2026-05-12',
+      live_low_latency: { modules: [], summary: {} },
+      postmarket_backfill: { run: null, tasks: [], summary: {} },
+      mongo_stock_cache: {
+        freqs: [
+          {
+            freq: '日线',
+            symbols: 5498,
+            today_symbols: 5498,
+            coverage_date: '2026-05-12',
+          },
+        ],
+        summary: {
+          daily_coverage_date: '2026-05-12',
+          minute_universe_total: 0,
+        },
+      },
+      terminal_outputs: [],
+      provider_health: [],
+      blockers: [],
+    } as any, 'zh-CN')
+
+    expect(summary.status).toBe('partial')
+    expect(summary.isCurrent).toBe(false)
+    expect(summary.compactLabel).toBe('2026-05-12 5,498/5,498')
+    expect(summary.detail).toContain('旧缓存可读')
   })
 })
 
