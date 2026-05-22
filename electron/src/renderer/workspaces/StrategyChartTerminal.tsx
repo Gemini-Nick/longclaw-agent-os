@@ -118,6 +118,8 @@ type WorkbenchShell = {
   buy_candidates?: Record<string, unknown>[]
   watchlist?: Record<string, unknown>[]
   watchlist_groups?: {
+    major_indices?: Record<string, unknown>[]
+    industry_etfs?: Record<string, unknown>[]
     macro_indices?: Record<string, unknown>[]
     sector_boards?: Record<string, unknown>[]
     buy_candidates?: Record<string, unknown>[]
@@ -334,7 +336,7 @@ type WatchlistRow = {
   raw: Record<string, unknown>
 }
 
-type WatchlistTabKey = 'ai_focus' | 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
+type WatchlistTabKey = 'ai_focus' | 'major_indices' | 'industry_etfs' | 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
 type TradeRoleKey = 'all' | 'left_attack' | 'right_attack' | 'watch' | 'clue' | 'risk_first' | 'mainline_attack' | 'climax_risk' | 'chain_watch' | 'defensive_weight' | 'second_wave' | 'risk_review' | 'ordinary_watch'
@@ -351,7 +353,7 @@ type TradeMapItem = {
   source?: string
 }
 
-const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['macro_indices', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['major_indices', 'industry_etfs', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
 const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
@@ -2776,7 +2778,7 @@ function rawDecisionStage(row: Record<string, unknown>, stageHint?: WatchlistTab
     return 'watch_preheat'
   }
   if (stageHint === 'buy_candidates') return 'strategy_candidate'
-  if (stageHint === 'macro_indices' || stageHint === 'sector_boards') return 'context'
+  if (stageHint === 'major_indices' || stageHint === 'industry_etfs' || stageHint === 'macro_indices' || stageHint === 'sector_boards') return 'context'
   return compactText(row.symbol) || compactText(row.code) ? 'strategy_candidate' : 'context'
 }
 
@@ -6061,7 +6063,7 @@ function toWatchlistRow(
     label,
     name,
     code,
-    typeLabel: watchlistTypeLabel(kind),
+    typeLabel: compactText(row.display_type_label) || watchlistTypeLabel(kind),
     latest: latestValueForWatchlist(row),
     dayChange,
     rangeValues,
@@ -6651,6 +6653,20 @@ export function StrategyChartTerminal({
     const macroRows = Array.isArray(groups.macro_indices) && groups.macro_indices.length > 0
       ? groups.macro_indices
       : indexTargets
+    const macroRowGroup = (row: Record<string, unknown>) => compactText(recordValue(row).macro_group)
+    const macroRowKind = (row: Record<string, unknown>) => compactText(recordValue(row).target_kind) || kindForTarget(recordValue(row), 'index')
+    const majorRows = Array.isArray(groups.major_indices)
+      ? groups.major_indices
+      : macroRows.filter(row => {
+        const group = macroRowGroup(row)
+        return group === 'major_indices' || (!group && macroRowKind(row) !== 'stock')
+      })
+    const industryEtfRows = Array.isArray(groups.industry_etfs)
+      ? groups.industry_etfs
+      : macroRows.filter(row => {
+        const group = macroRowGroup(row)
+        return group === 'industry_etfs' || (!group && macroRowKind(row) === 'stock')
+      })
     const sectorRows = Array.isArray(groups.sector_boards) && groups.sector_boards.length > 0
       ? groups.sector_boards
       : clusterRows
@@ -6668,6 +6684,8 @@ export function StrategyChartTerminal({
       rangeColumns: visibleRangeColumns,
     })
     return {
+      major_indices: buildRowsForGroup(majorRows, 'index', visibleRangeColumns, 'major_indices'),
+      industry_etfs: buildRowsForGroup(industryEtfRows, 'stock', visibleRangeColumns, 'industry_etfs'),
       macro_indices: buildRowsForGroup(macroRows, 'index', visibleRangeColumns, 'macro_indices'),
       sector_boards: buildRowsForGroup(sectorRows, 'industry', visibleRangeColumns, 'sector_boards'),
       buy_candidates: buildRowsForGroup(candidateRows, 'stock', visibleRangeColumns, 'buy_candidates'),
@@ -6680,6 +6698,8 @@ export function StrategyChartTerminal({
   const visibleGroupedWatchlistRows = useMemo(() => {
     if (optimisticDeletedManualClueKeys.size === 0) return groupedWatchlistRows
     return {
+      major_indices: groupedWatchlistRows.major_indices,
+      industry_etfs: groupedWatchlistRows.industry_etfs,
       macro_indices: groupedWatchlistRows.macro_indices,
       sector_boards: groupedWatchlistRows.sector_boards,
       buy_candidates: groupedWatchlistRows.buy_candidates.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
@@ -9277,6 +9297,8 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
   const zh = locale === 'zh-CN'
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
     ai_focus: ['approved_factors + terminal_stock_pool', '已批准因子观察：从候选池降噪排序，右侧逐票复核', '日涨幅=实时快照涨跌幅', 'approved_factors + terminal_stock_pool', 'approved factor watch: rank and review candidates', 'Day=realtime quote change'],
+    major_indices: ['index_bars', '大盘指数：核心宽基和市场方向锚点', '日涨幅=指数当日涨跌幅', 'index_bars', 'major indices: broad-market anchors', 'Day=latest index change'],
+    industry_etfs: ['bars + quote_snapshots', '行业ETF：主题和跨市场风险偏好观察', '日涨幅=实时快照涨跌幅', 'bars + quote_snapshots', 'industry ETFs: thematic and cross-market risk appetite', 'Day=realtime quote change'],
     macro_indices: ['index_bars', '宏观方向/指数关键位', '日涨幅=指数当日涨跌幅', 'index_bars', 'market direction/key levels', 'Day=latest index change'],
     sector_boards: ['chain_heat_snapshots', '产业链异动雷达：源板块 -> 语义路由 -> 链主确认', '驱动涨幅=源行业/概念涨跌幅；确认=链主/弹性是否跟随', 'chain_heat_snapshots', 'chain event radar: source board -> semantic route -> representative confirmation', 'Driver=source board/concept change; confirmation=representative follow-through'],
     focus_stocks: ['terminal_stock_pool.focus_stocks', '买点池：低吸进攻/右侧进攻，必须有买点质量和均线确认', '日涨幅=实时快照涨跌幅', 'terminal_stock_pool.focus_stocks', 'entry pool: left/right attack with setup quality and MA confirmation', 'Day=realtime quote change'],
@@ -9330,6 +9352,8 @@ function WatchlistTabbedTable({
   groupMeta: Record<string, unknown>
   groups: {
     ai_focus: WatchlistRow[]
+    major_indices: WatchlistRow[]
+    industry_etfs: WatchlistRow[]
     macro_indices: WatchlistRow[]
     sector_boards: WatchlistRow[]
     buy_candidates: WatchlistRow[]
@@ -9354,7 +9378,8 @@ function WatchlistTabbedTable({
   onDeleteManualClue: (row: WatchlistRow) => void
 }) {
   const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
-    { key: 'macro_indices', label: locale === 'zh-CN' ? '指数' : 'Index', count: groups.macro_indices.length },
+    { key: 'major_indices', label: locale === 'zh-CN' ? '大盘指数' : 'Major', count: groups.major_indices.length },
+    { key: 'industry_etfs', label: locale === 'zh-CN' ? '行业ETF' : 'ETF', count: groups.industry_etfs.length },
     { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
   ]
   const panelMeta = watchlistPanelMeta(activeTab, locale)
@@ -9572,6 +9597,22 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
       locale === 'zh-CN' ? '最新' : 'Last',
       locale === 'zh-CN' ? '日涨幅' : 'Day',
       locale === 'zh-CN' ? '背景' : 'Context',
+    ]
+  }
+  if (activeTab === 'major_indices') {
+    return [
+      locale === 'zh-CN' ? '大盘指数' : 'Major index',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '信号' : 'Signal',
+    ]
+  }
+  if (activeTab === 'industry_etfs') {
+    return [
+      locale === 'zh-CN' ? '行业ETF' : 'Industry ETF',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '信号' : 'Signal',
     ]
   }
   return [
