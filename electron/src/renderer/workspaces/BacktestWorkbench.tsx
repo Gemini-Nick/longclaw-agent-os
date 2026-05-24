@@ -503,6 +503,14 @@ function multiChartsGridStyle(density: MultiReportDensity, count: number): React
     }
   }
   if (density === 'wide') {
+    if (count < 4) {
+      return {
+        display: 'grid',
+        gridTemplateColumns: `repeat(${Math.max(1, count)}, minmax(320px, 420px))`,
+        justifyContent: 'start',
+        gap: 10,
+      }
+    }
     return {
       display: 'grid',
       gridTemplateColumns: `repeat(${Math.max(1, Math.min(count, 5))}, minmax(0, 1fr))`,
@@ -511,7 +519,8 @@ function multiChartsGridStyle(density: MultiReportDensity, count: number): React
   }
   return {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 420px))',
+    justifyContent: 'start',
     gap: 10,
   }
 }
@@ -529,6 +538,14 @@ function scriptGridStyle(density: MultiReportDensity, count: number): React.CSSP
     }
   }
   if (density === 'wide') {
+    if (count < 4) {
+      return {
+        display: 'grid',
+        gridTemplateColumns: `repeat(${Math.max(1, count)}, minmax(280px, 380px))`,
+        justifyContent: 'start',
+        gap: 10,
+      }
+    }
     return {
       display: 'grid',
       gridTemplateColumns: `repeat(${Math.max(1, Math.min(count, 5))}, minmax(0, 1fr))`,
@@ -543,11 +560,21 @@ function scriptGridStyle(density: MultiReportDensity, count: number): React.CSSP
 }
 
 function reportTableWrapStyle(kind: 'ranking' | 'overview', density: MultiReportDensity): React.CSSProperties {
+  const compactHeight = kind === 'ranking' ? 212 : 202
   return {
     ...tableWrapStyle,
+    flex: density === 'compact' ? `0 0 ${compactHeight}px` : '0 0 auto',
     flexShrink: 0,
-    height: density === 'compact' ? (kind === 'ranking' ? 178 : 168) : undefined,
-    maxHeight: density === 'compact' ? (kind === 'ranking' ? 214 : 188) : 246,
+    minHeight: density === 'compact' ? compactHeight : 0,
+    height: density === 'compact' ? compactHeight : undefined,
+    maxHeight: density === 'compact' ? compactHeight : 246,
+  }
+}
+
+function multiPanelStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    flexShrink: 0,
+    overflow: density === 'compact' ? 'visible' : 'hidden',
   }
 }
 
@@ -653,6 +680,15 @@ function normalizeSymbolCode(value: string): string {
   const withoutPrefix = trimmed.replace(/^(SZ|SH|HK|US)\./i, '')
   const suffixMatch = withoutPrefix.match(/^([A-Za-z0-9]+)\.(SZ|SH|HK|US)$/i)
   return (suffixMatch?.[1] ?? withoutPrefix).toUpperCase()
+}
+
+function extractSymbolCandidates(value: string): string[] {
+  const normalized = normalizeSymbolCode(value)
+  if (!normalized) return []
+  if (/^\d{5,6}$/.test(normalized) || /^[A-Z]{1,6}$/.test(normalized)) return [normalized]
+  const aShareCodes = normalized.match(/\d{6}/g) ?? []
+  if (aShareCodes.length) return aShareCodes
+  return normalized.match(/\d{5}/g) ?? []
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -785,7 +821,7 @@ function parseCodeList(value: string): string[] {
   const seen = new Set<string>()
   return value
     .split(/[\s,，、;；]+/)
-    .map(item => normalizeSymbolCode(item))
+    .flatMap(item => extractSymbolCandidates(item))
     .filter(Boolean)
     .filter(item => {
       const key = item.toUpperCase()
@@ -858,6 +894,21 @@ function sameCodeSet(left: string[], right: string[]): boolean {
   if (left.length !== right.length) return false
   const keys = new Set(left.map(item => item.toUpperCase()))
   return right.every(item => keys.has(item.toUpperCase()))
+}
+
+function compactApiError(rawError: ApiError, locale: LongclawLocale, fallback: string): string {
+  const payload = recordValue(rawError.payload)
+  const rawMessage = stringValue(payload.last_upstream_error) ??
+    stringValue(payload.error) ??
+    stringValue(payload.detail) ??
+    rawError.message
+  if (!rawMessage) return fallback
+  if (/traceback|File\s+["'].*\.py["']|^\s*at\s+/i.test(rawMessage)) {
+    return locale === 'zh-CN'
+      ? '回测服务返回了内部错误。请确认输入的是股票代码，或从已选池勾选后重试。'
+      : 'Backtest service returned an internal error. Check the symbol code or pick from the pool.'
+  }
+  return rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage
 }
 
 function useElementSize<T extends HTMLElement>(): [React.RefObject<T | null>, ElementSize] {
@@ -1200,6 +1251,12 @@ export function BacktestWorkbench({
   const runAnalyze = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
     const codeList = parseCodeList(code)
+    if (codeList.length === 0) {
+      setError(locale === 'zh-CN' ? '没有识别到有效代码。请输入 6 位代码，或从已选池勾选标的。' : 'No valid symbol code found. Type a code or pick symbols from the pool.')
+      return
+    }
+    const normalizedCodeText = selectedSymbolText(codeList)
+    if (normalizedCodeText !== code.trim()) setCode(normalizedCodeText)
     const multiMode = codeList.length > 1
     const hadResult = Boolean(result || batchResult)
     recordObservationEvent('backtest.analyze.submit', {
@@ -1242,7 +1299,7 @@ export function BacktestWorkbench({
         })
         return
       }
-      const params = buildParams(code.trim(), freq, signalType, simParams)
+      const params = buildParams(codeList[0] ?? code.trim(), freq, signalType, simParams)
       const data = await fetchJson<BacktestResult>(baseUrl, `/api/backtest/analyze?${params.toString()}`)
       setResult(data)
       setBatchResult(null)
@@ -1269,7 +1326,7 @@ export function BacktestWorkbench({
       })
     } catch (rawError) {
       const apiError = rawError as ApiError
-      setError(apiError.message || (locale === 'zh-CN' ? '回测分析失败。' : 'Backtest analysis failed.'))
+      setError(compactApiError(apiError, locale, locale === 'zh-CN' ? '回测分析失败。' : 'Backtest analysis failed.'))
       recordObservationEvent('backtest.analyze.error', {
         code: code.trim(),
         freq,
@@ -1287,8 +1344,13 @@ export function BacktestWorkbench({
 
   const runScan = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
+    const codeList = parseCodeList(code)
+    if (codeList.length === 0) {
+      setError(locale === 'zh-CN' ? '没有识别到有效代码。请输入 6 位代码，或从已选池勾选标的。' : 'No valid symbol code found. Type a code or pick a symbol from the pool.')
+      return
+    }
     recordObservationEvent('backtest.scan.submit', {
-      code: code.trim(),
+      code: codeList[0] ?? code.trim(),
       freq,
       signal_type: signalType,
       scan_params: scanParams,
@@ -1296,7 +1358,7 @@ export function BacktestWorkbench({
     setScanLoading(true)
     setError(null)
     try {
-      const params = buildParams(code.trim(), freq, signalType, simParams)
+      const params = buildParams(codeList[0] ?? code.trim(), freq, signalType, simParams)
       Object.entries(scanParams).forEach(([key, value]) => {
         if (value.trim()) params.set(key, value)
       })
@@ -1313,7 +1375,7 @@ export function BacktestWorkbench({
       })
     } catch (rawError) {
       const apiError = rawError as ApiError
-      setError(apiError.message || (locale === 'zh-CN' ? '参数扫描失败。' : 'Parameter scan failed.'))
+      setError(compactApiError(apiError, locale, locale === 'zh-CN' ? '参数扫描失败。' : 'Parameter scan failed.'))
       recordObservationEvent('backtest.scan.error', {
         code: code.trim(),
         freq,
@@ -1329,7 +1391,9 @@ export function BacktestWorkbench({
 
   const exportCsv = useCallback(() => {
     if (!baseUrl || !code.trim()) return
-    const params = buildParams(code.trim(), freq, signalType, simParams)
+    const codeList = parseCodeList(code)
+    if (!codeList.length) return
+    const params = buildParams(codeList[0] ?? code.trim(), freq, signalType, simParams)
     window.open(`${baseUrl}/api/backtest/export?${params.toString()}`, '_blank', 'noopener,noreferrer')
   }, [baseUrl, code, freq, signalType, simParams])
 
@@ -1532,7 +1596,7 @@ export function BacktestWorkbench({
         <button type="submit" style={buttonStyle(true, loading)} disabled={loading}>
           {loading ? (locale === 'zh-CN' ? '分析中' : 'Running') : (locale === 'zh-CN' ? '运行回测' : 'Run')}
         </button>
-        <div style={mutedStyle}>
+        <div style={{ ...mutedStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={error ?? undefined}>
           {error ??
             (batchResult
               ? locale === 'zh-CN'
@@ -1749,6 +1813,7 @@ function SymbolBasketBar({
 }) {
   const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
   const optionByCode = new Map(options.map(option => [symbolOptionKey(option), option]))
+  const availableOptions = options.filter(option => !selectedSet.has(option.code.toUpperCase()))
   return (
     <div style={basketBarStyle}>
       <div style={labelStyle}>{locale === 'zh-CN' ? '板块组合' : 'Baskets'}</div>
@@ -1769,7 +1834,7 @@ function SymbolBasketBar({
           )
         })}
       </div>
-      <div style={labelStyle}>{locale === 'zh-CN' ? '多标的' : 'Symbols'}</div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '已选池' : 'Selected'}</div>
       <div style={chipRowStyle}>
         {selectedCodes.length ? selectedCodes.map(item => {
           const option = optionByCode.get(item.toUpperCase())
@@ -1789,7 +1854,7 @@ function SymbolBasketBar({
             {locale === 'zh-CN' ? '选择一个板块组合，或勾选右侧标的。' : 'Pick a basket or toggle symbols.'}
           </div>
         )}
-        {options.map(option => {
+        {availableOptions.map(option => {
           const active = selectedSet.has(option.code.toUpperCase())
           return (
             <button
@@ -1819,7 +1884,19 @@ function MultiBacktestReport({
   onSelectCode: (code: string) => void
 }) {
   const [reportRef, reportSize] = useElementSize<HTMLDivElement>()
+  const [expandedKline, setExpandedKline] = useState<Record<string, unknown> | null>(null)
   const density = multiReportDensity(reportSize.width, reportSize.height)
+  useEffect(() => {
+    setExpandedKline(null)
+  }, [terminal])
+  useEffect(() => {
+    if (!expandedKline) return undefined
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpandedKline(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [expandedKline])
   if (!terminal) {
     return <div ref={reportRef} style={{ ...multiReportStyle(density), justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
   }
@@ -1861,19 +1938,24 @@ function MultiBacktestReport({
       </div>
 
       <div style={multiBandStyle(density)}>
-        <Panel title={locale === 'zh-CN' ? '排名与锐评' : 'Ranking'}>
+        <Panel title={locale === 'zh-CN' ? '排名与锐评' : 'Ranking'} style={multiPanelStyle(density)}>
           <MultiRankingTable rows={rankingRows} density={density} onSelectCode={onSelectCode} />
         </Panel>
-        <Panel title={locale === 'zh-CN' ? '原始区间概览' : 'Interval overview'}>
+        <Panel title={locale === 'zh-CN' ? '原始区间概览' : 'Interval overview'} style={multiPanelStyle(density)}>
           <IntervalOverviewTable rows={overviewRows} density={density} />
         </Panel>
       </div>
 
-      <Panel title={locale === 'zh-CN' ? '多股票 K线复盘' : 'Multi-symbol candles'}>
+      <Panel title={locale === 'zh-CN' ? '多股票 K线复盘' : 'Multi-symbol candles'} style={multiPanelStyle(density)}>
         {chartItems.length ? (
           <div style={multiChartsGridStyle(density, chartItems.length)}>
             {chartItems.map((item, index) => (
-              <MiniKlineCard key={`${String(item.code ?? index)}-${index}`} item={item} density={density} />
+              <MiniKlineCard
+                key={`${String(item.code ?? index)}-${index}`}
+                item={item}
+                density={density}
+                onExpand={() => setExpandedKline(item)}
+              />
             ))}
           </div>
         ) : (
@@ -1881,7 +1963,7 @@ function MultiBacktestReport({
         )}
       </Panel>
 
-      <Panel title={locale === 'zh-CN' ? '视频脚本 / 交易员结论' : 'Script cards'}>
+      <Panel title={locale === 'zh-CN' ? '视频脚本 / 交易员结论' : 'Script cards'} style={multiPanelStyle(density)}>
         {scriptCards.length ? (
           <div style={scriptGridStyle(density, scriptCards.length)}>
             {scriptCards.map((card, index) => (
@@ -1892,6 +1974,13 @@ function MultiBacktestReport({
           <div style={emptyStyle}>暂无锐评卡片。</div>
         )}
       </Panel>
+      {expandedKline ? (
+        <ExpandedKlineOverlay
+          item={expandedKline}
+          density={density}
+          onClose={() => setExpandedKline(null)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -2005,11 +2094,37 @@ function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, u
   )
 }
 
-function MiniKlineCard({ item, density }: { item: Record<string, unknown>; density: MultiReportDensity }) {
+function MiniKlineCard({
+  item,
+  density,
+  onExpand,
+}: {
+  item: Record<string, unknown>
+  density: MultiReportDensity
+  onExpand?: () => void
+}) {
   const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv as Record<string, unknown>[] : [])
   const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue) : []
   return (
-    <div style={{ ...metricCardStyle, padding: density === 'compact' ? 8 : 10, display: 'flex', flexDirection: 'column', gap: density === 'compact' ? 6 : 8 }}>
+    <button
+      type="button"
+      style={{
+        ...metricCardStyle,
+        padding: density === 'compact' ? 8 : 10,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: density === 'compact' ? 6 : 8,
+        width: '100%',
+        appearance: 'none',
+        fontFamily: fontStacks.ui,
+        color: terminalTheme.text,
+        cursor: 'zoom-in',
+        textAlign: 'left',
+      }}
+      onClick={onExpand}
+      aria-label={`放大K线 ${String(item.name ?? item.code ?? '')}`}
+      title="点击放大K线"
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2022,7 +2137,7 @@ function MiniKlineCard({ item, density }: { item: Record<string, unknown>; densi
         </div>
       </div>
       <MiniKlineSvg rows={rows} regimes={regimes} density={density} />
-    </div>
+    </button>
   )
 }
 
@@ -2030,13 +2145,15 @@ function MiniKlineSvg({
   rows,
   regimes,
   density,
+  variant = 'mini',
 }: {
   rows: KLineData[]
   regimes: Array<Record<string, unknown>>
   density: MultiReportDensity
+  variant?: 'mini' | 'expanded'
 }) {
-  const width = 320
-  const height = density === 'compact' ? 126 : 150
+  const width = variant === 'expanded' ? 980 : 320
+  const height = variant === 'expanded' ? (density === 'compact' ? 360 : 430) : (density === 'compact' ? 126 : 150)
   if (rows.length === 0) {
     return <div style={emptyStyle}>暂无K线。</div>
   }
@@ -2052,7 +2169,7 @@ function MiniKlineSvg({
   const firstDate = new Date(rows[0].timestamp).toISOString().slice(5, 10)
   const lastDate = new Date(rows[rows.length - 1].timestamp).toISOString().slice(5, 10)
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', aspectRatio: `${width} / ${height}`, display: 'block' }} role="img" aria-label="mini kline">
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', aspectRatio: `${width} / ${height}`, display: 'block' }} role="img" aria-label={variant === 'expanded' ? 'expanded kline' : 'mini kline'}>
       <rect x="0" y="0" width={width} height={height} fill={terminalTheme.chartPanel} />
       {[0, 1, 2, 3].map(item => (
         <line
@@ -2081,11 +2198,11 @@ function MiniKlineSvg({
               fill={tone === 'down' ? tradingDeskTheme.market.down : tradingDeskTheme.market.up}
               fillOpacity="0.08"
             />
-            <text x={x + 4} y="13" fill={terminalTheme.mutedStrong} fontSize="9">{String(regime.label ?? '')}</text>
+            <text x={x + 4} y={variant === 'expanded' ? 22 : 13} fill={terminalTheme.mutedStrong} fontSize={variant === 'expanded' ? 16 : 9}>{String(regime.label ?? '')}</text>
           </g>
         )
       })}
-      <polyline points={points} fill="none" stroke={tradingDeskTheme.chart.line} strokeWidth="1.1" opacity="0.55" />
+      <polyline points={points} fill="none" stroke={tradingDeskTheme.chart.line} strokeWidth={variant === 'expanded' ? 1.8 : 1.1} opacity="0.55" />
       {rows.map((row, index) => {
         const x = index * xStep
         const openY = yFor(row.open)
@@ -2096,7 +2213,7 @@ function MiniKlineSvg({
         const color = up ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
         return (
           <g key={`${row.timestamp}-${index}`}>
-            <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1" />
+            <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth={variant === 'expanded' ? 1.4 : 1} />
             <rect
               x={x - candleWidth / 2}
               y={Math.min(openY, closeY)}
@@ -2108,9 +2225,77 @@ function MiniKlineSvg({
           </g>
         )
       })}
-      <text x="0" y={height - 3} fill={terminalTheme.muted} fontSize="9">{firstDate}</text>
-      <text x={width} y={height - 3} fill={terminalTheme.muted} fontSize="9" textAnchor="end">{lastDate}</text>
+      <text x="0" y={height - 3} fill={terminalTheme.muted} fontSize={variant === 'expanded' ? 14 : 9}>{firstDate}</text>
+      <text x={width} y={height - 3} fill={terminalTheme.muted} fontSize={variant === 'expanded' ? 14 : 9} textAnchor="end">{lastDate}</text>
     </svg>
+  )
+}
+
+function ExpandedKlineOverlay({
+  item,
+  density,
+  onClose,
+}: {
+  item: Record<string, unknown>
+  density: MultiReportDensity
+  onClose: () => void
+}) {
+  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv as Record<string, unknown>[] : [])
+  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue) : []
+  const stats = [
+    ['区间收益', 'range_return_pct'],
+    ['最大回撤', 'max_drawdown_pct'],
+    ['最大浮盈', 'max_runup_pct'],
+    ['波动率', 'volatility_pct'],
+    ['上涨K占比', 'up_bar_ratio_pct'],
+    ['K线数', 'bar_count'],
+  ] as const
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 50,
+        background: tradingDeskTheme.alpha.overlay,
+        display: 'grid',
+        placeItems: 'center',
+        padding: density === 'compact' ? 12 : 24,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="放大K线"
+        style={{
+          ...panelStyle,
+          width: 'min(1480px, 96vw)',
+          maxHeight: '92vh',
+          overflow: 'auto',
+          boxShadow: tradingDeskTheme.shadows.island,
+          border: `1px solid ${terminalTheme.borderStrong}`,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={labelStyle}>放大K线 · ESC</div>
+            <div style={chartTitleStyle}>{String(item.name ?? item.code ?? 'Symbol')}</div>
+            <div style={monoStyle}>{String(item.code ?? item.symbol ?? '')}</div>
+          </div>
+          <button type="button" aria-label="关闭放大K线" style={buttonStyle(false)} onClick={onClose}>×</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(86px, 1fr))', gap: 6 }}>
+          {stats.map(([label, key]) => (
+            <div key={key} style={metricCardStyle}>
+              <div style={labelStyle}>{label}</div>
+              <div style={{ color: cellToneColor(key, item[key]), fontWeight: 800 }}>
+                {key === 'bar_count' ? formatNumber(item[key] ?? rows.length, 0) : formatReportCell(key, item[key])}
+              </div>
+            </div>
+          ))}
+        </div>
+        <MiniKlineSvg rows={rows} regimes={regimes} density={density} variant="expanded" />
+      </div>
+    </div>
   )
 }
 
@@ -2182,14 +2367,16 @@ function cellToneColor(key: string, value: unknown): string {
 function Panel({
   title,
   meta,
+  style,
   children,
 }: {
   title: string
   meta?: string
+  style?: React.CSSProperties
   children: React.ReactNode
 }) {
   return (
-    <div style={panelStyle}>
+    <div style={{ ...panelStyle, ...style }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
         <div style={{ color: terminalTheme.textStrong, fontSize: 13, fontWeight: 800 }}>{title}</div>
         {meta ? <div style={mutedStyle}>{meta}</div> : null}
