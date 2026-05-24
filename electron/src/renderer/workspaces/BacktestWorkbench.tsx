@@ -96,6 +96,7 @@ type BacktestTerminalMetric = {
 
 type BacktestTerminal = {
   version?: string
+  mode?: string
   target?: Record<string, unknown>
   market_snapshot?: Record<string, unknown>
   trade_assumptions?: Record<string, unknown>
@@ -107,6 +108,7 @@ type BacktestTerminal = {
     trade_markers?: Array<Record<string, unknown>>
     entry_exit_markers?: Array<Record<string, unknown>>
     risk_bands?: Array<Record<string, unknown>>
+    multi_charts?: Array<Record<string, unknown>>
   }
   panels?: {
     perf?: Record<string, unknown>
@@ -115,6 +117,10 @@ type BacktestTerminal = {
     scan?: Record<string, unknown>
     risk?: Record<string, unknown>
     config?: Record<string, unknown>
+    ranking?: { rows?: Array<Record<string, unknown>>; columns?: string[] }
+    interval_overview?: { rows?: Array<Record<string, unknown>> }
+    multi_charts?: { items?: Array<Record<string, unknown>> }
+    scripts?: { cards?: Array<Record<string, unknown>> }
   }
 }
 
@@ -147,6 +153,14 @@ type ScanResult = {
   best_params?: Record<string, unknown>
   scan_results?: Array<Record<string, unknown>>
   heatmap?: Record<string, unknown>
+  error?: string
+  terminal?: BacktestTerminal
+}
+
+type BatchBacktestResult = {
+  summary?: Record<string, unknown>
+  stocks?: Array<Record<string, unknown>>
+  warnings?: string[]
   error?: string
   terminal?: BacktestTerminal
 }
@@ -349,6 +363,42 @@ const warningStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
+const multiReportStyle: React.CSSProperties = {
+  minHeight: 0,
+  overflow: 'auto',
+  background: terminalTheme.root,
+  padding: 10,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+}
+
+const multiBandStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 0.62fr)',
+  gap: 10,
+  minHeight: 0,
+}
+
+const multiChartsGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+  gap: 10,
+}
+
+const scriptGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+  gap: 10,
+}
+
+const reportTableStyle: React.CSSProperties = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  fontSize: 12,
+  tableLayout: 'fixed',
+}
+
 function backtestDataSourceLabel(result: BacktestResult | null, locale: LongclawLocale): string {
   const target = terminalTarget(result)
   const dataSource = stringValue(target.data_source) ?? result?.data_source
@@ -545,11 +595,69 @@ function toKLineData(rawRows: Record<string, unknown>[] | undefined): KLineData[
     .sort((left, right) => left.timestamp - right.timestamp)
 }
 
-async function fetchJson<T>(baseUrl: string, path: string, timeoutMs = 120_000): Promise<T> {
+async function fetchJson<T>(
+  baseUrl: string,
+  path: string,
+  timeoutMs = 120_000,
+  init?: {
+    method?: string
+    headers?: HeadersInit
+    body?: BodyInit | null
+  },
+): Promise<T> {
   return observedFetchJson<T>(baseUrl, path, {
     timeoutMs,
     source: 'backtest.api',
+    ...init,
   })
+}
+
+function parseCodeList(value: string): string[] {
+  const seen = new Set<string>()
+  return value
+    .split(/[\s,，、;；]+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => item.replace(/^(SZ|SH|HK|US)\./i, ''))
+    .filter(item => {
+      const key = item.toUpperCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function buildBatchBody(
+  codes: string[],
+  freq: string,
+  signalType: SignalType,
+  simParams: Record<string, string>,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { codes, freq, lookback: 999 }
+  if (signalType === 'all' || signalType === 'macd' || signalType === 'czsc') {
+    body.signal_group = signalType
+  } else {
+    body.signal_group = 'all'
+    body.factor = signalType
+  }
+  const numericKeys = [
+    'stop_loss',
+    'trail_stop',
+    'max_hold',
+    'slippage',
+    'take_profit',
+    'ma_exit_period',
+    'profit_drawdown',
+    'atr_exit_period',
+    'atr_exit_mult',
+  ]
+  numericKeys.forEach(key => {
+    const value = simParams[key]
+    if (!value?.trim()) return
+    const parsed = Number(value)
+    body[key] = Number.isFinite(parsed) ? parsed : value
+  })
+  return body
 }
 
 function chartStyles(): DeepPartial<Styles> {
@@ -763,6 +871,7 @@ export function BacktestWorkbench({
   const [signalType, setSignalType] = useState<SignalType>('all')
   const [tab, setTab] = useState<BacktestTab>('perf')
   const [result, setResult] = useState<BacktestResult | null>(null)
+  const [batchResult, setBatchResult] = useState<BatchBacktestResult | null>(null)
   const [scan, setScan] = useState<ScanResult | null>(null)
   const [selectedSignalIndex, setSelectedSignalIndex] = useState<number | null>(null)
   const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null)
@@ -789,6 +898,7 @@ export function BacktestWorkbench({
   })
 
   const terminalPanelData = terminalPanels(result)
+  const isMultiMode = batchResult?.terminal?.version === 'backtest-terminal.v1' && batchResult.terminal.mode === 'multi'
   const terminalChartData = terminalChart(result)
   const klineData = useMemo(() => toKLineData(terminalChartData?.ohlcv ?? result?.ohlcv), [result, terminalChartData])
   const signals = terminalPanelData?.signals?.rows ?? result?.signals ?? []
@@ -814,19 +924,53 @@ export function BacktestWorkbench({
 
   const runAnalyze = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
-    const hadResult = Boolean(result)
+    const codeList = parseCodeList(code)
+    const multiMode = codeList.length > 1
+    const hadResult = Boolean(result || batchResult)
     recordObservationEvent('backtest.analyze.submit', {
       code: code.trim(),
+      codes: codeList,
       freq,
       signal_type: signalType,
       had_result: hadResult,
+      mode: multiMode ? 'multi' : 'single',
     })
     setLoading(true)
     setError(null)
     try {
+      if (multiMode) {
+        const data = await fetchJson<BatchBacktestResult>(
+          baseUrl,
+          '/api/backtest/batch',
+          300_000,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildBatchBody(codeList, freq, signalType, simParams)),
+          },
+        )
+        setBatchResult(data)
+        setResult(null)
+        setScan(null)
+        setSelectedSignalIndex(null)
+        setSelectedTradeIndex(null)
+        setTab('perf')
+        const summary = recordValue(data.summary)
+        recordObservationEvent('backtest.batch.success', {
+          code_count: codeList.length,
+          total_stocks: summary.total_stocks,
+          ok_stocks: summary.ok_stocks,
+          total_signals: summary.total_signals,
+          total_trades: summary.total_trades,
+          terminal_version: data.terminal?.version,
+          terminal_mode: data.terminal?.mode,
+        })
+        return
+      }
       const params = buildParams(code.trim(), freq, signalType, simParams)
       const data = await fetchJson<BacktestResult>(baseUrl, `/api/backtest/analyze?${params.toString()}`)
       setResult(data)
+      setBatchResult(null)
       setScan(null)
       setSelectedSignalIndex(null)
       setSelectedTradeIndex(null)
@@ -864,7 +1008,7 @@ export function BacktestWorkbench({
     } finally {
       setLoading(false)
     }
-  }, [baseUrl, code, freq, locale, result, signalType, simParams])
+  }, [baseUrl, batchResult, code, freq, locale, result, signalType, simParams])
 
   const runScan = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
@@ -982,6 +1126,7 @@ export function BacktestWorkbench({
   }, [code, freq, runAnalyze])
 
   useEffect(() => {
+    if (isMultiMode) return
     if (!chartContainerRef.current) return
     ensureMarkerOverlay()
     const chart = init(chartContainerRef.current, {
@@ -1016,9 +1161,10 @@ export function BacktestWorkbench({
       chartRef.current = null
       dispose(chart)
     }
-  }, [locale])
+  }, [isMultiMode, locale])
 
   useEffect(() => {
+    if (isMultiMode) return
     const chart = chartRef.current
     if (!chart) return
     chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
@@ -1030,7 +1176,7 @@ export function BacktestWorkbench({
     createSignalOverlays(chart, klineData, signals, tradeMarkers, handleMarkerSelect)
     chart.scrollToRealTime()
     chart.resize()
-  }, [handleMarkerSelect, klineData, signals, tradeMarkers])
+  }, [handleMarkerSelect, isMultiMode, klineData, signals, tradeMarkers])
 
   if (!baseUrl) {
     return (
@@ -1065,7 +1211,7 @@ export function BacktestWorkbench({
           aria-label={locale === 'zh-CN' ? '股票代码' : 'Symbol'}
           style={inputStyle}
           value={code}
-          placeholder="002759 / 600519 / 09988…"
+          placeholder="002759 / 688041,688521…"
           onChange={event => setCode(event.target.value)}
         />
         <select
@@ -1113,18 +1259,30 @@ export function BacktestWorkbench({
         </button>
         <div style={mutedStyle}>
           {error ??
-            (result
+            (batchResult
+              ? `${numberValue(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0} symbols · ${numberValue(batchResult.summary?.total_signals) ?? 0} signals · ${numberValue(batchResult.summary?.total_trades) ?? 0} trades`
+              : result
               ? `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length} signals · ${numberValue(metrics.filled_trades) ?? filledTrades.length} trades`
                 + (dataSourceLabel ? ` · ${dataSourceLabel}` : '')
               : locale === 'zh-CN'
-                ? '输入代码后运行增强回测'
-                : 'Enter a symbol to run enhanced backtest')}
+                ? '输入一个代码跑单票，输入多个代码跑多标的复盘'
+                : 'Enter one symbol for single backtest, multiple symbols for portfolio review')}
         </div>
-        <button type="button" style={buttonStyle(false, !result)} disabled={!result} onClick={exportCsv}>
+        <button type="button" style={buttonStyle(false, !result || Boolean(batchResult))} disabled={!result || Boolean(batchResult)} onClick={exportCsv}>
           CSV
         </button>
       </form>
 
+      {isMultiMode ? (
+        <MultiBacktestReport
+          locale={locale}
+          terminal={batchResult?.terminal}
+          onSelectCode={nextCode => {
+            setCode(nextCode)
+            setBatchResult(null)
+          }}
+        />
+      ) : (
       <div style={mainGridStyle}>
         <div style={sideStyle}>
           <Panel title={locale === 'zh-CN' ? '模拟参数' : 'Simulation'}>
@@ -1279,8 +1437,361 @@ export function BacktestWorkbench({
           )}
         </div>
       </div>
+      )}
     </div>
   )
+}
+
+function MultiBacktestReport({
+  locale,
+  terminal,
+  onSelectCode,
+}: {
+  locale: LongclawLocale
+  terminal?: BacktestTerminal
+  onSelectCode: (code: string) => void
+}) {
+  if (!terminal) {
+    return <div style={{ ...multiReportStyle, justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
+  }
+  const panels = terminal.panels ?? {}
+  const rankingRows = panels.ranking?.rows ?? []
+  const overviewRows = panels.interval_overview?.rows ?? []
+  const chartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? []
+  const scriptCards = panels.scripts?.cards ?? []
+  const metrics = recordValue(terminal.metrics)
+  const target = recordValue(terminal.target)
+  const kpiItems = [
+    { label: 'Symbols', value: rankingRows.length, tone: 'neutral' },
+    { label: 'Signals', value: formatNumber(metrics.signal_count, 0), tone: 'neutral' },
+    { label: 'Trades', value: formatNumber(metrics.filled_trades, 0), tone: 'neutral' },
+    { label: 'WinRate', value: formatPercent(metrics.win_rate), tone: (numberValue(metrics.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
+    { label: 'Avg Ret', value: formatPercent(metrics.total_return_pct), tone: (numberValue(metrics.total_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct), tone: 'down' },
+  ]
+  return (
+    <div style={multiReportStyle}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) auto', gap: 10, alignItems: 'end' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={labelStyle}>{locale === 'zh-CN' ? '多标的复盘' : 'Multi-symbol review'}</div>
+          <div style={chartTitleStyle}>{String(target.name ?? 'Signals Batch')}</div>
+          <div style={mutedStyle}>
+            {[target.freq, target.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${target.as_of}` : '', target.freshness].filter(Boolean).join(' · ')}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(86px, 1fr))', gap: 6, minWidth: 560 }}>
+          {kpiItems.map(item => (
+            <div key={item.label} style={metricCardStyle}>
+              <div style={labelStyle}>{item.label}</div>
+              <div style={{ color: toneColor(item.tone), fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {String(item.value)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={multiBandStyle}>
+        <Panel title={locale === 'zh-CN' ? '排名与锐评' : 'Ranking'}>
+          <MultiRankingTable rows={rankingRows} onSelectCode={onSelectCode} />
+        </Panel>
+        <Panel title={locale === 'zh-CN' ? '原始区间概览' : 'Interval overview'}>
+          <IntervalOverviewTable rows={overviewRows} />
+        </Panel>
+      </div>
+
+      <Panel title={locale === 'zh-CN' ? '多股票 K线复盘' : 'Multi-symbol candles'}>
+        {chartItems.length ? (
+          <div style={multiChartsGridStyle}>
+            {chartItems.map((item, index) => (
+              <MiniKlineCard key={`${String(item.code ?? index)}-${index}`} item={item} />
+            ))}
+          </div>
+        ) : (
+          <div style={emptyStyle}>暂无多标的图表。</div>
+        )}
+      </Panel>
+
+      <Panel title={locale === 'zh-CN' ? '视频脚本 / 交易员结论' : 'Script cards'}>
+        {scriptCards.length ? (
+          <div style={scriptGridStyle}>
+            {scriptCards.map((card, index) => (
+              <ReviewScriptCard key={`${String(card.code ?? index)}-${index}`} card={card} />
+            ))}
+          </div>
+        ) : (
+          <div style={emptyStyle}>暂无锐评卡片。</div>
+        )}
+      </Panel>
+    </div>
+  )
+}
+
+function MultiRankingTable({
+  rows,
+  onSelectCode,
+}: {
+  rows: Array<Record<string, unknown>>
+  onSelectCode: (code: string) => void
+}) {
+  if (rows.length === 0) return <div style={emptyStyle}>暂无排名结果。</div>
+  const headers = [
+    ['rank', '排名'],
+    ['code', '代码'],
+    ['name', '股票'],
+    ['benchmark_symbol', '对标指数'],
+    ['strength_grade', '强弱'],
+    ['range_return_pct', '区间收益'],
+    ['max_drawdown_pct', '最大回撤'],
+    ['up_bar_ratio_pct', '上涨K占比'],
+    ['relative_excess_pct', '相对超额'],
+    ['current_character', '当前性质'],
+    ['trade_difficulty', '交易难度'],
+    ['review_level', '锐评档位'],
+    ['review_conclusion', '锐评结论'],
+  ] as const
+  return (
+    <div style={tableWrapStyle}>
+      <table style={reportTableStyle}>
+        <thead>
+          <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
+            {headers.map(([key, label]) => (
+              <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, width: key === 'review_conclusion' ? 210 : undefined }}>
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const code = String(row.code ?? '')
+            return (
+              <tr
+                key={`${code}-${index}`}
+                style={{ borderTop: `1px solid ${terminalTheme.border}`, cursor: code ? 'pointer' : 'default' }}
+                onClick={() => {
+                  if (code) onSelectCode(code)
+                }}
+              >
+                {headers.map(([key]) => (
+                  <td key={key} style={{ padding: 7, color: cellToneColor(key, row[key]), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {formatReportCell(key, row[key])}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function IntervalOverviewTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+  if (rows.length === 0) return <div style={emptyStyle}>暂无区间概览。</div>
+  const headers = [
+    ['code', '代码'],
+    ['name', '股票'],
+    ['bar_count', 'K线数'],
+    ['range_return_pct', '区间收益'],
+    ['max_drawdown_pct', '最大回撤'],
+    ['max_runup_pct', '最大浮盈'],
+    ['volatility_pct', '波动率'],
+    ['up_bar_ratio_pct', '上涨K占比'],
+  ] as const
+  return (
+    <div style={tableWrapStyle}>
+      <table style={reportTableStyle}>
+        <thead>
+          <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
+            {headers.map(([key, label]) => <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}` }}>{label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${String(row.code ?? index)}-${index}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
+              {headers.map(([key]) => (
+                <td key={key} style={{ padding: 7, color: cellToneColor(key, row[key]), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formatReportCell(key, row[key])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function MiniKlineCard({ item }: { item: Record<string, unknown> }) {
+  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv as Record<string, unknown>[] : [])
+  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue) : []
+  return (
+    <div style={{ ...metricCardStyle, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {String(item.name ?? item.code ?? 'Symbol')}
+          </div>
+          <div style={monoStyle}>{String(item.code ?? item.symbol ?? '')}</div>
+        </div>
+        <div style={{ color: toneColor((numberValue(item.range_return_pct) ?? 0) >= 0 ? 'up' : 'down'), fontWeight: 800 }}>
+          {formatPercent(item.range_return_pct)}
+        </div>
+      </div>
+      <MiniKlineSvg rows={rows} regimes={regimes} />
+    </div>
+  )
+}
+
+function MiniKlineSvg({
+  rows,
+  regimes,
+}: {
+  rows: KLineData[]
+  regimes: Array<Record<string, unknown>>
+}) {
+  const width = 320
+  const height = 150
+  if (rows.length === 0) {
+    return <div style={emptyStyle}>暂无K线。</div>
+  }
+  const highs = rows.map(row => row.high)
+  const lows = rows.map(row => row.low)
+  const maxPrice = Math.max(...highs)
+  const minPrice = Math.min(...lows)
+  const priceSpan = Math.max(maxPrice - minPrice, 0.0001)
+  const xStep = width / Math.max(rows.length - 1, 1)
+  const candleWidth = Math.max(2, Math.min(7, xStep * 0.56))
+  const yFor = (price: number) => 12 + (maxPrice - price) / priceSpan * (height - 30)
+  const points = rows.map((row, index) => `${index * xStep},${yFor(row.close)}`).join(' ')
+  const firstDate = new Date(rows[0].timestamp).toISOString().slice(5, 10)
+  const lastDate = new Date(rows[rows.length - 1].timestamp).toISOString().slice(5, 10)
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', aspectRatio: '16 / 7.5', display: 'block' }} role="img" aria-label="mini kline">
+      <rect x="0" y="0" width={width} height={height} fill={terminalTheme.chartPanel} />
+      {[0, 1, 2, 3].map(item => (
+        <line
+          key={item}
+          x1="0"
+          x2={width}
+          y1={14 + item * ((height - 34) / 3)}
+          y2={14 + item * ((height - 34) / 3)}
+          stroke={tradingDeskTheme.chart.gridHorizontal}
+          strokeWidth="1"
+        />
+      ))}
+      {regimes.map((regime, index) => {
+        const start = numberValue(regime.start_index) ?? 0
+        const end = numberValue(regime.end_index) ?? start
+        const tone = String(regime.tone ?? '')
+        const x = Math.max(0, start * xStep)
+        const rectWidth = Math.max(8, (end - start + 1) * xStep)
+        return (
+          <g key={`${String(regime.label ?? index)}-${index}`}>
+            <rect
+              x={x}
+              y="0"
+              width={Math.min(rectWidth, width - x)}
+              height={height - 18}
+              fill={tone === 'down' ? tradingDeskTheme.market.down : tradingDeskTheme.market.up}
+              fillOpacity="0.08"
+            />
+            <text x={x + 4} y="13" fill={terminalTheme.mutedStrong} fontSize="9">{String(regime.label ?? '')}</text>
+          </g>
+        )
+      })}
+      <polyline points={points} fill="none" stroke={tradingDeskTheme.chart.line} strokeWidth="1.1" opacity="0.55" />
+      {rows.map((row, index) => {
+        const x = index * xStep
+        const openY = yFor(row.open)
+        const closeY = yFor(row.close)
+        const highY = yFor(row.high)
+        const lowY = yFor(row.low)
+        const up = row.close >= row.open
+        const color = up ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
+        return (
+          <g key={`${row.timestamp}-${index}`}>
+            <line x1={x} x2={x} y1={highY} y2={lowY} stroke={color} strokeWidth="1" />
+            <rect
+              x={x - candleWidth / 2}
+              y={Math.min(openY, closeY)}
+              width={candleWidth}
+              height={Math.max(1, Math.abs(openY - closeY))}
+              fill={color}
+              rx="0.8"
+            />
+          </g>
+        )
+      })}
+      <text x="0" y={height - 3} fill={terminalTheme.muted} fontSize="9">{firstDate}</text>
+      <text x={width} y={height - 3} fill={terminalTheme.muted} fontSize="9" textAnchor="end">{lastDate}</text>
+    </svg>
+  )
+}
+
+function ReviewScriptCard({ card }: { card: Record<string, unknown> }) {
+  const stats = Array.isArray(card.stats) ? card.stats.map(recordValue) : []
+  const tone = String(card.tone ?? '') === 'down' ? 'down' : 'up'
+  return (
+    <div style={{
+      ...metricCardStyle,
+      borderColor: tone === 'down' ? tradingDeskTheme.alpha.errorBorder : tradingDeskTheme.alpha.infoBorder,
+      boxShadow: `inset 3px 0 ${tone === 'down' ? tradingDeskTheme.market.down : tradingDeskTheme.market.up}`,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 9,
+      padding: 12,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <div>
+          <div style={labelStyle}>视频脚本</div>
+          <div style={{ color: terminalTheme.textStrong, fontSize: 18, fontWeight: 900 }}>{String(card.name ?? card.code ?? '')}</div>
+        </div>
+        <div style={monoStyle}>{String(card.code ?? '')}</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+        {stats.slice(0, 4).map((item, index) => (
+          <div key={`${String(item.label ?? index)}-${index}`} style={{ ...metricCardStyle, padding: 7 }}>
+            <div style={mutedStyle}>{String(item.label ?? '')}</div>
+            <div style={{ color: cellToneColor(String(item.label ?? ''), item.value), fontWeight: 800 }}>
+              {String(item.unit) === '%' ? formatPercent(item.value) : String(item.value ?? 'N/A')}
+            </div>
+          </div>
+        ))}
+      </div>
+      <ScriptLine title="定位" text={String(card.positioning ?? '')} />
+      <ScriptLine title="交易难度" text={String(card.difficulty ?? '')} />
+      <ScriptLine title="一句话" text={String(card.one_liner ?? '')} strong />
+    </div>
+  )
+}
+
+function ScriptLine({ title, text, strong = false }: { title: string; text: string; strong?: boolean }) {
+  return (
+    <div style={{ borderTop: `1px solid ${terminalTheme.border}`, paddingTop: 8 }}>
+      <div style={labelStyle}>{title}</div>
+      <div style={{ color: strong ? terminalTheme.textStrong : terminalTheme.text, fontSize: 13, lineHeight: 1.55, fontWeight: strong ? 800 : 500 }}>
+        {text || 'N/A'}
+      </div>
+    </div>
+  )
+}
+
+function formatReportCell(key: string, value: unknown): string {
+  if (key.includes('pct') || key.includes('return') || key.includes('drawdown') || key.includes('ratio')) return formatPercent(value)
+  if (key === 'rank' || key === 'bar_count') return formatNumber(value, 0)
+  if (key === 'sharpe') return formatNumber(value, 2)
+  return String(value ?? 'N/A')
+}
+
+function cellToneColor(key: string, value: unknown): string {
+  const numeric = numberValue(value)
+  if (key.includes('drawdown')) return tradingDeskTheme.market.down
+  if (numeric !== undefined && (key.includes('return') || key.includes('excess') || key.includes('pct'))) {
+    return numeric >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
+  }
+  return terminalTheme.textStrong
 }
 
 function Panel({
