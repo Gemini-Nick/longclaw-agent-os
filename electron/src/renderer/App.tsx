@@ -18,6 +18,7 @@ import type {
   WeChatBindingStatus,
   WeChatRouteReceipt,
 } from '../runtime/wechatPluginDev.js'
+import type { WeChatClusterState } from '../runtime/wechatCluster.js'
 import {
   buttonStyleForState,
   chromeStyles,
@@ -478,6 +479,8 @@ declare global {
     }
     longclawWechat: {
       getBindingStatus: () => Promise<WeChatBindingStatus>
+      getClusterStatus: () => Promise<WeChatClusterState>
+      probeClusterNodes: () => Promise<WeChatClusterState>
       createBindingSession: () => Promise<WeChatBindingStatus>
       createLocalBindingSession: () => Promise<WeChatBindingStatus>
       completeBindingSession: () => Promise<WeChatBindingStatus>
@@ -1830,6 +1833,8 @@ export default function App() {
     useState<WeclawSessionSourceStatus | null>(null)
   const [wechatBindingStatus, setWechatBindingStatus] =
     useState<WeChatBindingStatus | null>(null)
+  const [wechatClusterStatus, setWechatClusterStatus] =
+    useState<WeChatClusterState | null>(null)
   const [wechatRouteReceipts, setWechatRouteReceipts] = useState<WeChatRouteReceipt[]>([])
   const [pluginDevIssues, setPluginDevIssues] = useState<PluginDevIssue[]>([])
   const [locale, setLocale] = useState<LongclawLocale>(() => {
@@ -2025,12 +2030,14 @@ export default function App() {
   }, [])
 
   const loadWechatRuntime = useCallback(async () => {
-    const [bindingResult, receiptResult, issueResult] = await Promise.allSettled([
+    const [bindingResult, clusterResult, receiptResult, issueResult] = await Promise.allSettled([
       window.longclawWechat.getBindingStatus(),
+      window.longclawWechat.getClusterStatus(),
       window.longclawPluginDev.listReceipts(),
       window.longclawPluginDev.listIssues(),
     ])
     if (bindingResult.status === 'fulfilled') setWechatBindingStatus(bindingResult.value)
+    if (clusterResult.status === 'fulfilled') setWechatClusterStatus(clusterResult.value)
     if (receiptResult.status === 'fulfilled') setWechatRouteReceipts(receiptResult.value)
     if (issueResult.status === 'fulfilled') setPluginDevIssues(issueResult.value)
   }, [])
@@ -3521,6 +3528,14 @@ export default function App() {
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [locale])
+  const refreshWechatCluster = useCallback(async () => {
+    try {
+      setWechatClusterStatus(await window.longclawWechat.probeClusterNodes())
+      setActionMessage(locale === 'zh-CN' ? '已刷新微信集群节点。' : 'WeChat cluster nodes refreshed.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [locale])
   const createLocalWechatBindingSession = useCallback(async () => {
     try {
       setWechatBindingStatus(await window.longclawWechat.createLocalBindingSession())
@@ -4147,6 +4162,7 @@ export default function App() {
                   sessions={weclawSessions}
                   sourceStatus={weclawSessionSourceStatus}
                   bindingStatus={wechatBindingStatus}
+                  clusterStatus={wechatClusterStatus}
                   routeReceipts={wechatRouteReceipts}
                   pluginDevIssues={pluginDevIssues}
                   search={wechatSearch}
@@ -4184,6 +4200,7 @@ export default function App() {
                   onOpenLinkedWorkItem={openWeclawLinkedWorkItem}
                   onOpenAttachment={openArtifact}
                   onCreateBindingSession={createWechatBindingSession}
+                  onRefreshCluster={refreshWechatCluster}
                   onCreateLocalBindingSession={createLocalWechatBindingSession}
                   onCompleteBindingSession={completeWechatBindingSession}
                   onRevokeBinding={revokeWechatBinding}

@@ -45,6 +45,14 @@ import {
   startPluginDevImplementation,
   updateWeChatBindingScanStatus,
 } from './runtime/wechatPluginDev.js'
+import {
+  completeWeChatClusterBindingSession,
+  createWeChatClusterBindingSession,
+  markWeChatClusterNodeHealth,
+  readWeChatClusterState,
+  type WeChatClusterBinding,
+  type WeChatClusterNodeSeed,
+} from './runtime/wechatCluster.js'
 import { createLongclawControlPlaneClientFromEnv } from '../../src/services/longclawControlPlane/client.js'
 import {
   LongclawCapabilitySubstrateSummarySchema,
@@ -388,6 +396,83 @@ function saveIlinkCredentials(creds: Required<Pick<IlinkQrStatusResponse, 'bot_t
   return accountPath
 }
 
+function findWeChatClusterBindingBySession(sessionId: string): WeChatClusterBinding | undefined {
+  return getWeChatClusterStatus().bindings.find(binding => binding.binding_session_id === sessionId)
+}
+
+function writeIlinkCredentialsToRemoteNode(
+  nodeId: string,
+  creds: Required<Pick<IlinkQrStatusResponse, 'bot_token' | 'ilink_bot_id'>> & IlinkQrStatusResponse,
+): string {
+  const node = getWeChatClusterStatus().nodes.find(item => item.node_id === nodeId)
+  if (!node) throw new Error(`WeChat cluster node not found: ${nodeId}`)
+  const accountFile = `${normalizeIlinkAccountId(creds.ilink_bot_id)}.json`
+  const remotePath = `~/.weclaw/accounts/${accountFile}`
+  const payload = `${JSON.stringify(
+    {
+      bot_token: creds.bot_token,
+      ilink_bot_id: creds.ilink_bot_id,
+      baseurl: creds.baseurl ?? wechatIlinkBaseUrl(),
+      ilink_user_id: creds.ilink_user_id,
+    },
+    null,
+    2,
+  )}\n`
+  execFileSync(
+    'ssh',
+    [
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'ConnectTimeout=8',
+      node.ssh_host,
+      `umask 077; mkdir -p "$HOME/.weclaw/accounts" "$HOME/.weclaw/workspace"; cat > "$HOME/.weclaw/accounts/${accountFile}"; chmod 600 "$HOME/.weclaw/accounts/${accountFile}"`,
+    ],
+    {
+      encoding: 'utf-8',
+      input: payload,
+      timeout: 15_000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    },
+  )
+  return remotePath
+}
+
+function startRemoteWeclawBridge(nodeId: string) {
+  const node = getWeChatClusterStatus().nodes.find(item => item.node_id === nodeId)
+  if (!node) throw new Error(`WeChat cluster node not found: ${nodeId}`)
+  const output = execFileSync(
+    'ssh',
+    [
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'ConnectTimeout=8',
+      node.ssh_host,
+      [
+        'set -e',
+        'mkdir -p "$HOME/.weclaw"',
+        'if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ":18011 "; then echo already-running; exit 0; fi',
+        'if [ ! -x "$HOME/.weclaw/bin/weclaw-real" ]; then echo missing-weclaw-real >&2; exit 2; fi',
+        'nohup "$HOME/.weclaw/bin/weclaw-real" start -f > "$HOME/.weclaw/weclaw.log" 2>&1 &',
+        'echo $! > "$HOME/.weclaw/weclaw.pid"',
+        'sleep 2',
+        'if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ":18011 "; then echo listener=18011; else echo listener=missing; fi',
+      ].join('; '),
+    ],
+    { encoding: 'utf-8', timeout: 18_000 },
+  )
+  markWeChatClusterNodeHealth(WECHAT_CLUSTER_STATE_PATH, {
+    nodeId,
+    status: output.includes('listener=18011') || output.includes('already-running') ? 'online' : 'degraded',
+    lastError:
+      output.includes('listener=18011') || output.includes('already-running')
+        ? undefined
+        : 'Remote WeClaw started but listener 18011 was not detected.',
+    defaultNodes: getConfiguredWeChatClusterNodes(),
+  })
+}
+
 function kickstartWeclawBridgeAfterBinding(accountPath: string) {
   const target = `gui/${os.userInfo().uid}/${WECLAW_BRIDGE_LAUNCHD_LABEL}`
   try {
@@ -513,6 +598,24 @@ async function pollWechatIlinkBinding(
         ilink_user_id: payload.ilink_user_id,
         status: payload.status,
       })
+      let remoteAccountPath: string | undefined
+      const clusterBinding = findWeChatClusterBindingBySession(poller.sessionId)
+      if (clusterBinding) {
+        remoteAccountPath = writeIlinkCredentialsToRemoteNode(clusterBinding.node_id, {
+          bot_token: payload.bot_token,
+          ilink_bot_id: payload.ilink_bot_id,
+          baseurl: payload.baseurl ?? wechatIlinkBaseUrl(),
+          ilink_user_id: payload.ilink_user_id,
+          status: payload.status,
+        })
+        completeWeChatClusterBindingSession(WECHAT_CLUSTER_STATE_PATH, {
+          bindingId: clusterBinding.binding_id,
+          accountId: payload.ilink_user_id,
+          displayName: `iLink ${payload.ilink_user_id}`,
+          remoteAccountPath,
+          defaultNodes: getConfiguredWeChatClusterNodes(),
+        })
+      }
       const bound = completeWeChatBindingSession(WECHAT_BINDING_STATE_PATH, {
         bindingSessionId: poller.sessionId,
         provider: 'ilink_service_account',
@@ -532,7 +635,16 @@ async function pollWechatIlinkBinding(
         account_saved: Boolean(bound.account_path),
         bound_at: bound.bound_at,
       })
-      kickstartWeclawBridgeAfterBinding(accountPath)
+      if (clusterBinding) {
+        startRemoteWeclawBridge(clusterBinding.node_id)
+        log('wechat cluster remote binding completed', {
+          session_id: bound.binding_session_id,
+          node_id: clusterBinding.node_id,
+          remote_account_saved: Boolean(remoteAccountPath),
+        })
+      } else {
+        kickstartWeclawBridgeAfterBinding(accountPath)
+      }
       return
     }
   }
@@ -548,6 +660,18 @@ async function createIlinkWeChatBindingSession() {
     identityNote: 'iLink QR issued; scan with WeChat and confirm on phone.',
     expiresInMs: 2 * 60 * 1000,
   })
+  if (status.binding_session_id) {
+    const cluster = createClusterBindingSessionWithProbe({
+      bindingSessionId: status.binding_session_id,
+      qrUrl: status.qr_url,
+      expiresInMs: 2 * 60 * 1000,
+    })
+    log('wechat cluster qr assigned', {
+      session_id: status.binding_session_id,
+      node_id: cluster.binding.node_id,
+      selection_reason: cluster.selection_reason,
+    })
+  }
   log('wechat ilink qr created', {
     session_id: status.binding_session_id,
     expires_at: status.expires_at,
@@ -732,6 +856,7 @@ const WECLAW_SESSION_UI_STATE_PATH = path.join(
   'weclaw-session-state.json',
 )
 const WECHAT_BINDING_STATE_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'wechat-binding.json')
+const WECHAT_CLUSTER_STATE_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'wechat-cluster.json')
 const PLUGIN_DEV_STATE_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'plugin-dev.json')
 const WECHAT_BINDING_CALLBACK_PORT = Number(process.env.LONGCLAW_WECHAT_BIND_PORT ?? 18744)
 const WECLAW_CONFIG_PATH = path.join(os.homedir(), '.weclaw', 'config.json')
@@ -1868,6 +1993,102 @@ function getWeChatBindingStatus() {
   return readWeChatBindingStatus(WECHAT_BINDING_STATE_PATH)
 }
 
+function getConfiguredWeChatClusterNodes(): WeChatClusterNodeSeed[] {
+  const raw = process.env.LONGCLAW_WECHAT_CLUSTER_NODES ?? 'dimit,vircs'
+  return raw
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => {
+      const [nodeIdPart, sshHostPart] = item.split('@')
+      const nodeId = nodeIdPart?.trim()
+      const [sshHost, capacityRaw] = (sshHostPart ?? nodeId ?? '').split('#')
+      const capacity = Number(capacityRaw)
+      return {
+        node_id: nodeId || sshHost,
+        ssh_host: sshHost || nodeId,
+        capacity: Number.isFinite(capacity) && capacity > 0 ? capacity : 2,
+      }
+    })
+    .filter(node => Boolean(node.node_id))
+}
+
+function getWeChatClusterStatus() {
+  return readWeChatClusterState(WECHAT_CLUSTER_STATE_PATH, {
+    defaultNodes: getConfiguredWeChatClusterNodes(),
+  })
+}
+
+function createClusterBindingSessionWithProbe(input: {
+  bindingSessionId: string
+  qrUrl?: string
+  expiresInMs: number
+}) {
+  const defaultNodes = getConfiguredWeChatClusterNodes()
+  try {
+    return createWeChatClusterBindingSession(WECHAT_CLUSTER_STATE_PATH, {
+      bindingSessionId: input.bindingSessionId,
+      provider: 'ilink_service_account',
+      qrUrl: input.qrUrl,
+      expiresInMs: input.expiresInMs,
+      defaultNodes,
+    })
+  } catch (error) {
+    if (!(error instanceof Error) || !/No eligible WeChat cluster node/i.test(error.message)) {
+      throw error
+    }
+    probeWeChatClusterNodes()
+    return createWeChatClusterBindingSession(WECHAT_CLUSTER_STATE_PATH, {
+      bindingSessionId: input.bindingSessionId,
+      provider: 'ilink_service_account',
+      qrUrl: input.qrUrl,
+      expiresInMs: input.expiresInMs,
+      defaultNodes,
+    })
+  }
+}
+
+function probeWeChatClusterNodes() {
+  const defaultNodes = getConfiguredWeChatClusterNodes()
+  const state = readWeChatClusterState(WECHAT_CLUSTER_STATE_PATH, { defaultNodes })
+  for (const node of state.nodes) {
+    try {
+      const output = execFileSync(
+        'ssh',
+        [
+          '-o',
+          'BatchMode=yes',
+          '-o',
+          'ConnectTimeout=6',
+          node.ssh_host,
+          [
+            'set -e',
+            'printf "hostname=%s\\n" "$(hostname)"',
+            'if command -v codex >/dev/null 2>&1; then printf "codex=%s\\n" "$(codex --version 2>/dev/null | head -n 1)"; else echo "codex=missing"; fi',
+            'if command -v weclaw >/dev/null 2>&1; then echo "weclaw=present"; elif [ -x "$HOME/.weclaw/bin/weclaw-real" ]; then echo "weclaw=weclaw-real"; else echo "weclaw=missing"; fi',
+            'if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ":18011 "; then echo "listener=18011"; else echo "listener=missing"; fi',
+          ].join('; '),
+        ],
+        { encoding: 'utf-8', timeout: 9000 },
+      )
+      markWeChatClusterNodeHealth(WECHAT_CLUSTER_STATE_PATH, {
+        nodeId: node.node_id,
+        status: output.includes('listener=18011') ? 'online' : 'degraded',
+        lastError: output.includes('listener=18011') ? undefined : 'WeClaw listener 18011 not detected.',
+        defaultNodes,
+      })
+    } catch (error) {
+      markWeChatClusterNodeHealth(WECHAT_CLUSTER_STATE_PATH, {
+        nodeId: node.node_id,
+        status: 'offline',
+        lastError: error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240),
+        defaultNodes,
+      })
+    }
+  }
+  return getWeChatClusterStatus()
+}
+
 function getPluginDevIssues() {
   return readPluginDevState(PLUGIN_DEV_STATE_PATH).issues
 }
@@ -2942,6 +3163,8 @@ app.whenReady().then(() => {
   ipcMain.handle('weclaw:get-session', (_event, sessionId: string) => getWeclawSession(sessionId))
   ipcMain.handle('weclaw:get-source-status', () => getWeclawSessionSourceStatus())
   ipcMain.handle('wechat:get-binding-status', () => getWeChatBindingStatus())
+  ipcMain.handle('wechat:get-cluster-status', () => getWeChatClusterStatus())
+  ipcMain.handle('wechat:probe-cluster-nodes', () => probeWeChatClusterNodes())
   ipcMain.handle('wechat:create-binding-session', async () => {
     try {
       return await createIlinkWeChatBindingSession()

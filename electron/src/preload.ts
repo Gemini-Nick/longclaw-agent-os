@@ -81,6 +81,8 @@ contextBridge.exposeInMainWorld('weclawSessions', {
 
 contextBridge.exposeInMainWorld('longclawWechat', {
   getBindingStatus: () => ipcRenderer.invoke('wechat:get-binding-status'),
+  getClusterStatus: () => ipcRenderer.invoke('wechat:get-cluster-status'),
+  probeClusterNodes: () => ipcRenderer.invoke('wechat:probe-cluster-nodes'),
   createBindingSession: () => ipcRenderer.invoke('wechat:create-binding-session'),
   createLocalBindingSession: () => ipcRenderer.invoke('wechat:create-local-binding-session'),
   completeBindingSession: () => ipcRenderer.invoke('wechat:complete-binding-session'),

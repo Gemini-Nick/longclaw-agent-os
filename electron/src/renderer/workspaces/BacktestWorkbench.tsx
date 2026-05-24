@@ -86,6 +86,11 @@ type BacktestTrade = {
   skip_reason?: string | null
 }
 
+type ElementSize = { width: number; height: number }
+type MultiReportDensity = 'compact' | 'desk' | 'wide'
+type SymbolOption = { code: string; name: string; group: string }
+type SymbolBasket = { id: string; label: string; codes: SymbolOption[] }
+
 type BacktestTerminalMetric = {
   key?: string
   label?: string
@@ -183,7 +188,7 @@ const rootStyle: React.CSSProperties = {
   height: '100%',
   minHeight: 0,
   display: 'grid',
-  gridTemplateRows: '40px minmax(0, 1fr)',
+  gridTemplateRows: '40px auto minmax(0, 1fr)',
   background: terminalTheme.root,
   color: terminalTheme.text,
   fontFamily: fontStacks.ui,
@@ -191,13 +196,34 @@ const rootStyle: React.CSSProperties = {
 
 const toolbarStyle: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'auto minmax(160px, 240px) auto auto auto minmax(0, 1fr) auto',
+  gridTemplateColumns: 'auto minmax(210px, 360px) auto auto auto minmax(0, 1fr) auto',
   alignItems: 'center',
   gap: 7,
   padding: '5px 9px',
   borderBottom: `1px solid ${terminalTheme.grid}`,
   background: terminalTheme.panel,
   minWidth: 0,
+}
+
+const basketBarStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'auto minmax(0, 1fr)',
+  alignItems: 'center',
+  gap: '6px 8px',
+  padding: '6px 9px',
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: terminalTheme.panel,
+  minWidth: 0,
+}
+
+const chipRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 0,
+  overflowX: 'auto',
+  overflowY: 'hidden',
+  paddingBottom: 1,
 }
 
 const mainGridStyle: React.CSSProperties = {
@@ -363,7 +389,7 @@ const warningStyle: React.CSSProperties = {
   fontSize: 13,
 }
 
-const multiReportStyle: React.CSSProperties = {
+const multiReportBaseStyle: React.CSSProperties = {
   minHeight: 0,
   overflow: 'auto',
   background: terminalTheme.root,
@@ -373,30 +399,165 @@ const multiReportStyle: React.CSSProperties = {
   gap: 10,
 }
 
-const multiBandStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 0.62fr)',
-  gap: 10,
-  minHeight: 0,
-}
-
-const multiChartsGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-  gap: 10,
-}
-
-const scriptGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-  gap: 10,
-}
-
 const reportTableStyle: React.CSSProperties = {
   width: '100%',
   borderCollapse: 'collapse',
   fontSize: 12,
   tableLayout: 'fixed',
+}
+
+const presetSymbolBaskets: SymbolBasket[] = [
+  {
+    id: 'ai_semis',
+    label: 'AI算力半导体',
+    codes: [
+      { code: '300394', name: '天孚通信', group: 'AI算力半导体' },
+      { code: '688041', name: '海光信息', group: 'AI算力半导体' },
+      { code: '688521', name: '芯原股份', group: 'AI算力半导体' },
+    ],
+  },
+  {
+    id: 'battery_materials',
+    label: '电池材料',
+    codes: [
+      { code: '002709', name: '天赐材料', group: '电池材料' },
+      { code: '300750', name: '宁德时代', group: '电池材料' },
+      { code: '002460', name: '赣锋锂业', group: '电池材料' },
+    ],
+  },
+  {
+    id: 'consumer_core',
+    label: '消费权重',
+    codes: [
+      { code: '600519', name: '贵州茅台', group: '消费权重' },
+      { code: '601888', name: '中国中免', group: '消费权重' },
+      { code: '000858', name: '五粮液', group: '消费权重' },
+    ],
+  },
+  {
+    id: 'review_sample',
+    label: '当前复盘篮子',
+    codes: [
+      { code: '002709', name: '天赐材料', group: '当前复盘篮子' },
+      { code: '688041', name: '海光信息', group: '当前复盘篮子' },
+      { code: '688521', name: '芯原股份', group: '当前复盘篮子' },
+      { code: '600519', name: '贵州茅台', group: '当前复盘篮子' },
+      { code: '601888', name: '中国中免', group: '当前复盘篮子' },
+    ],
+  },
+]
+
+function multiReportDensity(width: number, height: number): MultiReportDensity {
+  if (width >= 1680 && height >= 720) return 'wide'
+  if (width <= 1240 || height <= 760) return 'compact'
+  return 'desk'
+}
+
+function multiReportStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    ...multiReportBaseStyle,
+    padding: density === 'compact' ? 8 : 10,
+    gap: density === 'compact' ? 8 : 10,
+  }
+}
+
+function multiHeaderStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: density === 'compact' ? 'minmax(0, 1fr)' : 'minmax(220px, 1fr) auto',
+    gap: density === 'compact' ? 7 : 10,
+    alignItems: 'end',
+  }
+}
+
+function multiKpiGridStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: density === 'compact'
+      ? 'repeat(6, minmax(70px, 1fr))'
+      : 'repeat(6, minmax(86px, 1fr))',
+    gap: 6,
+    minWidth: 0,
+  }
+}
+
+function multiBandStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: density === 'compact' ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(300px, 0.62fr)',
+    gap: density === 'compact' ? 8 : 10,
+    minHeight: 0,
+  }
+}
+
+function multiChartsGridStyle(density: MultiReportDensity, count: number): React.CSSProperties {
+  if (density === 'compact') {
+    return {
+      display: 'grid',
+      gridAutoFlow: 'column',
+      gridAutoColumns: 'minmax(258px, 32%)',
+      gap: 8,
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      paddingBottom: 2,
+    }
+  }
+  if (density === 'wide') {
+    return {
+      display: 'grid',
+      gridTemplateColumns: `repeat(${Math.max(1, Math.min(count, 5))}, minmax(0, 1fr))`,
+      gap: 10,
+    }
+  }
+  return {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: 10,
+  }
+}
+
+function scriptGridStyle(density: MultiReportDensity, count: number): React.CSSProperties {
+  if (density === 'compact') {
+    return {
+      display: 'grid',
+      gridAutoFlow: 'column',
+      gridAutoColumns: 'minmax(252px, 31%)',
+      gap: 8,
+      overflowX: 'auto',
+      overflowY: 'hidden',
+      paddingBottom: 2,
+    }
+  }
+  if (density === 'wide') {
+    return {
+      display: 'grid',
+      gridTemplateColumns: `repeat(${Math.max(1, Math.min(count, 5))}, minmax(0, 1fr))`,
+      gap: 10,
+    }
+  }
+  return {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: 10,
+  }
+}
+
+function reportTableWrapStyle(kind: 'ranking' | 'overview', density: MultiReportDensity): React.CSSProperties {
+  return {
+    ...tableWrapStyle,
+    flexShrink: 0,
+    height: density === 'compact' ? (kind === 'ranking' ? 178 : 168) : undefined,
+    maxHeight: density === 'compact' ? (kind === 'ranking' ? 214 : 188) : 246,
+  }
+}
+
+function reportTableStyleFor(kind: 'ranking' | 'overview', density: MultiReportDensity): React.CSSProperties {
+  return {
+    ...reportTableStyle,
+    minWidth: kind === 'ranking'
+      ? (density === 'compact' ? 820 : 1180)
+      : (density === 'compact' ? 760 : 820),
+  }
 }
 
 function backtestDataSourceLabel(result: BacktestResult | null, locale: LongclawLocale): string {
@@ -486,6 +647,14 @@ function trimTrailingSlash(value?: string): string {
   return value?.trim().replace(/\/+$/, '') ?? ''
 }
 
+function normalizeSymbolCode(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const withoutPrefix = trimmed.replace(/^(SZ|SH|HK|US)\./i, '')
+  const suffixMatch = withoutPrefix.match(/^([A-Za-z0-9]+)\.(SZ|SH|HK|US)$/i)
+  return (suffixMatch?.[1] ?? withoutPrefix).toUpperCase()
+}
+
 function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -563,12 +732,12 @@ function defaultCodeFromDashboard(dashboard: BacktestDashboard): string {
   const pending = dashboard.pending_backlog_preview[0]
   const candidate = dashboard.buy_candidates[0]
   const chartSymbol = dashboard.chart_context?.symbol
-  return (
+  return normalizeSymbolCode(
     stringValue(chartSymbol) ??
     stringValue(pending?.symbol) ??
     stringValue(candidate?.symbol) ??
-    '002759'
-  ).replace(/^(SZ|SH|HK|US)\./i, '')
+    '002759',
+  )
 }
 
 function toKLineData(rawRows: Record<string, unknown>[] | undefined): KLineData[] {
@@ -616,15 +785,105 @@ function parseCodeList(value: string): string[] {
   const seen = new Set<string>()
   return value
     .split(/[\s,，、;；]+/)
-    .map(item => item.trim())
+    .map(item => normalizeSymbolCode(item))
     .filter(Boolean)
-    .map(item => item.replace(/^(SZ|SH|HK|US)\./i, ''))
     .filter(item => {
       const key = item.toUpperCase()
       if (seen.has(key)) return false
       seen.add(key)
       return true
     })
+}
+
+function symbolOptionKey(option: SymbolOption): string {
+  return option.code.toUpperCase()
+}
+
+function uniqueSymbolOptions(options: SymbolOption[]): SymbolOption[] {
+  const byCode = new Map<string, SymbolOption>()
+  options.forEach(option => {
+    const code = normalizeSymbolCode(option.code)
+    if (!code) return
+    const key = code.toUpperCase()
+    const existing = byCode.get(key)
+    if (existing && existing.name) return
+    byCode.set(key, { ...option, code })
+  })
+  return Array.from(byCode.values())
+}
+
+function dashboardSymbolOptions(dashboard: BacktestDashboard): SymbolOption[] {
+  const options: SymbolOption[] = []
+  dashboard.buy_candidates.slice(0, 12).forEach(candidate => {
+    const code = normalizeSymbolCode(candidate.symbol)
+    if (code) {
+      options.push({
+        code,
+        name: candidate.name || code,
+        group: '观察池',
+      })
+    }
+  })
+  dashboard.pending_backlog_preview.slice(0, 8).forEach(item => {
+    const code = normalizeSymbolCode(item.symbol)
+    if (code) {
+      options.push({
+        code,
+        name: code,
+        group: '待复盘',
+      })
+    }
+  })
+  const chartCode = normalizeSymbolCode(dashboard.chart_context?.symbol ?? '')
+  if (chartCode) {
+    options.push({
+      code: chartCode,
+      name: chartCode,
+      group: '当前图表',
+    })
+  }
+  return uniqueSymbolOptions(options)
+}
+
+function symbolOptionsForPicker(dashboard: BacktestDashboard): SymbolOption[] {
+  const presetOptions = presetSymbolBaskets.flatMap(basket => basket.codes)
+  return uniqueSymbolOptions([...dashboardSymbolOptions(dashboard), ...presetOptions]).slice(0, 24)
+}
+
+function selectedSymbolText(codes: string[]): string {
+  return codes.join(',')
+}
+
+function sameCodeSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const keys = new Set(left.map(item => item.toUpperCase()))
+  return right.every(item => keys.has(item.toUpperCase()))
+}
+
+function useElementSize<T extends HTMLElement>(): [React.RefObject<T | null>, ElementSize] {
+  const ref = useRef<T | null>(null)
+  const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const update = () => {
+      setSize({ width: element.clientWidth, height: element.clientHeight })
+    }
+    update()
+    const observer = new ResizeObserver(entries => {
+      const rect = entries[0]?.contentRect
+      if (!rect) {
+        update()
+        return
+      }
+      setSize({ width: rect.width, height: rect.height })
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  return [ref, size]
 }
 
 function buildBatchBody(
@@ -913,6 +1172,22 @@ export function BacktestWorkbench({
   const displayFreq = stringValue(targetInfo.freq) ?? result?.freq ?? freq
   const dataSourceLabel = backtestDataSourceLabel(result, locale)
   const dataHealthLabel = dataHealthText(result, locale)
+  const selectedCodes = useMemo(() => parseCodeList(code), [code])
+  const symbolOptions = useMemo(() => symbolOptionsForPicker(dashboard), [dashboard])
+
+  const setCodeList = useCallback((codes: string[]) => {
+    setCode(selectedSymbolText(parseCodeList(codes.join(','))))
+  }, [])
+
+  const toggleSymbolCode = useCallback((nextCode: string) => {
+    const normalized = normalizeSymbolCode(nextCode)
+    if (!normalized) return
+    const current = parseCodeList(code)
+    const exists = current.some(item => item.toUpperCase() === normalized.toUpperCase())
+    setCodeList(exists
+      ? current.filter(item => item.toUpperCase() !== normalized.toUpperCase())
+      : [...current, normalized])
+  }, [code, setCodeList])
 
   const updateSimParam = useCallback((key: string, value: string) => {
     setSimParams(previous => ({ ...previous, [key]: value }))
@@ -1180,11 +1455,11 @@ export function BacktestWorkbench({
 
   if (!baseUrl) {
     return (
-      <div style={rootStyle}>
+      <div style={{ ...rootStyle, gridTemplateRows: 'auto minmax(0, 1fr)' }}>
         <div style={{ ...warningStyle, margin: 9 }}>
           {locale === 'zh-CN'
-            ? '信号实时入口未配置，当前显示降级队列。'
-            : 'Signals live endpoint is not configured. Showing the degraded queue.'}
+            ? 'Signals 服务未连接，先查看本地历史回测与待处理任务。'
+            : 'Signals service is not connected. Showing local history and pending backtests.'}
         </div>
         <FallbackBacktest
           locale={locale}
@@ -1205,13 +1480,13 @@ export function BacktestWorkbench({
           void runAnalyze()
         }}
       >
-        <div style={labelStyle}>{locale === 'zh-CN' ? 'Signals 回测' : 'Signals Backtest'}</div>
+        <div style={labelStyle}>{locale === 'zh-CN' ? '标的篮子' : 'Symbol basket'}</div>
         <input
           ref={codeInputRef}
-          aria-label={locale === 'zh-CN' ? '股票代码' : 'Symbol'}
+          aria-label={locale === 'zh-CN' ? '标的代码列表' : 'Symbol list'}
           style={inputStyle}
           value={code}
-          placeholder="002759 / 688041,688521…"
+          placeholder={locale === 'zh-CN' ? '输入代码，逗号分隔' : 'Type symbols, comma separated'}
           onChange={event => setCode(event.target.value)}
         />
         <select
@@ -1255,23 +1530,38 @@ export function BacktestWorkbench({
           <option value="candle_accel">{locale === 'zh-CN' ? '加速K线' : 'Acceleration'}</option>
         </select>
         <button type="submit" style={buttonStyle(true, loading)} disabled={loading}>
-          {loading ? (locale === 'zh-CN' ? '分析中' : 'Running') : (locale === 'zh-CN' ? '运行' : 'Run')}
+          {loading ? (locale === 'zh-CN' ? '分析中' : 'Running') : (locale === 'zh-CN' ? '运行回测' : 'Run')}
         </button>
         <div style={mutedStyle}>
           {error ??
             (batchResult
-              ? `${numberValue(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0} symbols · ${numberValue(batchResult.summary?.total_signals) ?? 0} signals · ${numberValue(batchResult.summary?.total_trades) ?? 0} trades`
+              ? locale === 'zh-CN'
+                ? `${numberValue(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0}标的 · ${numberValue(batchResult.summary?.total_signals) ?? 0}信号 · ${numberValue(batchResult.summary?.total_trades) ?? 0}笔交易`
+                : `${numberValue(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0} symbols · ${numberValue(batchResult.summary?.total_signals) ?? 0} signals · ${numberValue(batchResult.summary?.total_trades) ?? 0} trades`
               : result
-              ? `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length} signals · ${numberValue(metrics.filled_trades) ?? filledTrades.length} trades`
-                + (dataSourceLabel ? ` · ${dataSourceLabel}` : '')
+              ? `${locale === 'zh-CN'
+                ? `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length}信号 · ${numberValue(metrics.filled_trades) ?? filledTrades.length}笔交易`
+                : `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length} signals · ${numberValue(metrics.filled_trades) ?? filledTrades.length} trades`
+              }${dataSourceLabel ? ` · ${dataSourceLabel}` : ''}`
               : locale === 'zh-CN'
-                ? '输入一个代码跑单票，输入多个代码跑多标的复盘'
+                ? '从下方选择板块组合或勾选多只标的'
                 : 'Enter one symbol for single backtest, multiple symbols for portfolio review')}
         </div>
         <button type="button" style={buttonStyle(false, !result || Boolean(batchResult))} disabled={!result || Boolean(batchResult)} onClick={exportCsv}>
           CSV
         </button>
       </form>
+
+      <SymbolBasketBar
+        locale={locale}
+        selectedCodes={selectedCodes}
+        options={symbolOptions}
+        onApplyBasket={codes => setCodeList(codes)}
+        onToggleCode={toggleSymbolCode}
+        onRemoveCode={codeToRemove => {
+          setCodeList(selectedCodes.filter(item => item.toUpperCase() !== codeToRemove.toUpperCase()))
+        }}
+      />
 
       {isMultiMode ? (
         <MultiBacktestReport
@@ -1310,7 +1600,7 @@ export function BacktestWorkbench({
               <div style={emptyStyle}>{locale === 'zh-CN' ? '运行后显示事件标签。' : 'Run to show event presets.'}</div>
             )}
           </Panel>
-          <Panel title={locale === 'zh-CN' ? '降级队列' : 'Fallback queue'}>
+          <Panel title={locale === 'zh-CN' ? '回测记录' : 'Backtest records'}>
             <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
           </Panel>
         </div>
@@ -1442,6 +1732,83 @@ export function BacktestWorkbench({
   )
 }
 
+function SymbolBasketBar({
+  locale,
+  selectedCodes,
+  options,
+  onApplyBasket,
+  onToggleCode,
+  onRemoveCode,
+}: {
+  locale: LongclawLocale
+  selectedCodes: string[]
+  options: SymbolOption[]
+  onApplyBasket: (codes: string[]) => void
+  onToggleCode: (code: string) => void
+  onRemoveCode: (code: string) => void
+}) {
+  const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
+  const optionByCode = new Map(options.map(option => [symbolOptionKey(option), option]))
+  return (
+    <div style={basketBarStyle}>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '板块组合' : 'Baskets'}</div>
+      <div style={chipRowStyle}>
+        {presetSymbolBaskets.map(basket => {
+          const basketCodes = basket.codes.map(item => item.code)
+          const active = sameCodeSet(selectedCodes, basketCodes)
+          return (
+            <button
+              key={basket.id}
+              type="button"
+              aria-pressed={active}
+              style={buttonStyle(active)}
+              onClick={() => onApplyBasket(basketCodes)}
+            >
+              {basket.label}
+            </button>
+          )
+        })}
+      </div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '多标的' : 'Symbols'}</div>
+      <div style={chipRowStyle}>
+        {selectedCodes.length ? selectedCodes.map(item => {
+          const option = optionByCode.get(item.toUpperCase())
+          return (
+            <button
+              key={`selected-${item}`}
+              type="button"
+              style={buttonStyle(true)}
+              onClick={() => onRemoveCode(item)}
+              title={locale === 'zh-CN' ? '点击移除' : 'Click to remove'}
+            >
+              {[item, option?.name].filter(Boolean).join(' ')} ×
+            </button>
+          )
+        }) : (
+          <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
+            {locale === 'zh-CN' ? '选择一个板块组合，或勾选右侧标的。' : 'Pick a basket or toggle symbols.'}
+          </div>
+        )}
+        {options.map(option => {
+          const active = selectedSet.has(option.code.toUpperCase())
+          return (
+            <button
+              key={`${option.group}-${option.code}`}
+              type="button"
+              aria-pressed={active}
+              style={buttonStyle(active)}
+              onClick={() => onToggleCode(option.code)}
+              title={option.group}
+            >
+              {[option.code, option.name].filter(Boolean).join(' ')}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function MultiBacktestReport({
   locale,
   terminal,
@@ -1451,8 +1818,10 @@ function MultiBacktestReport({
   terminal?: BacktestTerminal
   onSelectCode: (code: string) => void
 }) {
+  const [reportRef, reportSize] = useElementSize<HTMLDivElement>()
+  const density = multiReportDensity(reportSize.width, reportSize.height)
   if (!terminal) {
-    return <div style={{ ...multiReportStyle, justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
+    return <div ref={reportRef} style={{ ...multiReportStyle(density), justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
   }
   const panels = terminal.panels ?? {}
   const rankingRows = panels.ranking?.rows ?? []
@@ -1470,8 +1839,8 @@ function MultiBacktestReport({
     { label: 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct), tone: 'down' },
   ]
   return (
-    <div style={multiReportStyle}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) auto', gap: 10, alignItems: 'end' }}>
+    <div ref={reportRef} style={multiReportStyle(density)}>
+      <div style={multiHeaderStyle(density)}>
         <div style={{ minWidth: 0 }}>
           <div style={labelStyle}>{locale === 'zh-CN' ? '多标的复盘' : 'Multi-symbol review'}</div>
           <div style={chartTitleStyle}>{String(target.name ?? 'Signals Batch')}</div>
@@ -1479,7 +1848,7 @@ function MultiBacktestReport({
             {[target.freq, target.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${target.as_of}` : '', target.freshness].filter(Boolean).join(' · ')}
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(86px, 1fr))', gap: 6, minWidth: 560 }}>
+        <div style={multiKpiGridStyle(density)}>
           {kpiItems.map(item => (
             <div key={item.label} style={metricCardStyle}>
               <div style={labelStyle}>{item.label}</div>
@@ -1491,20 +1860,20 @@ function MultiBacktestReport({
         </div>
       </div>
 
-      <div style={multiBandStyle}>
+      <div style={multiBandStyle(density)}>
         <Panel title={locale === 'zh-CN' ? '排名与锐评' : 'Ranking'}>
-          <MultiRankingTable rows={rankingRows} onSelectCode={onSelectCode} />
+          <MultiRankingTable rows={rankingRows} density={density} onSelectCode={onSelectCode} />
         </Panel>
         <Panel title={locale === 'zh-CN' ? '原始区间概览' : 'Interval overview'}>
-          <IntervalOverviewTable rows={overviewRows} />
+          <IntervalOverviewTable rows={overviewRows} density={density} />
         </Panel>
       </div>
 
       <Panel title={locale === 'zh-CN' ? '多股票 K线复盘' : 'Multi-symbol candles'}>
         {chartItems.length ? (
-          <div style={multiChartsGridStyle}>
+          <div style={multiChartsGridStyle(density, chartItems.length)}>
             {chartItems.map((item, index) => (
-              <MiniKlineCard key={`${String(item.code ?? index)}-${index}`} item={item} />
+              <MiniKlineCard key={`${String(item.code ?? index)}-${index}`} item={item} density={density} />
             ))}
           </div>
         ) : (
@@ -1514,9 +1883,9 @@ function MultiBacktestReport({
 
       <Panel title={locale === 'zh-CN' ? '视频脚本 / 交易员结论' : 'Script cards'}>
         {scriptCards.length ? (
-          <div style={scriptGridStyle}>
+          <div style={scriptGridStyle(density, scriptCards.length)}>
             {scriptCards.map((card, index) => (
-              <ReviewScriptCard key={`${String(card.code ?? index)}-${index}`} card={card} />
+              <ReviewScriptCard key={`${String(card.code ?? index)}-${index}`} card={card} density={density} />
             ))}
           </div>
         ) : (
@@ -1529,13 +1898,15 @@ function MultiBacktestReport({
 
 function MultiRankingTable({
   rows,
+  density,
   onSelectCode,
 }: {
   rows: Array<Record<string, unknown>>
+  density: MultiReportDensity
   onSelectCode: (code: string) => void
 }) {
   if (rows.length === 0) return <div style={emptyStyle}>暂无排名结果。</div>
-  const headers = [
+  const fullHeaders = [
     ['rank', '排名'],
     ['code', '代码'],
     ['name', '股票'],
@@ -1550,13 +1921,24 @@ function MultiRankingTable({
     ['review_level', '锐评档位'],
     ['review_conclusion', '锐评结论'],
   ] as const
+  const compactHeaders = fullHeaders.filter(([key]) => [
+    'rank',
+    'code',
+    'name',
+    'range_return_pct',
+    'max_drawdown_pct',
+    'trade_difficulty',
+    'review_level',
+    'review_conclusion',
+  ].includes(key))
+  const headers = density === 'compact' ? compactHeaders : fullHeaders
   return (
-    <div style={tableWrapStyle}>
-      <table style={reportTableStyle}>
+    <div style={reportTableWrapStyle('ranking', density)}>
+      <table style={reportTableStyleFor('ranking', density)}>
         <thead>
           <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
             {headers.map(([key, label]) => (
-              <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, width: key === 'review_conclusion' ? 210 : undefined }}>
+              <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, width: key === 'review_conclusion' ? 210 : undefined, whiteSpace: 'nowrap' }}>
                 {label}
               </th>
             ))}
@@ -1587,7 +1969,7 @@ function MultiRankingTable({
   )
 }
 
-function IntervalOverviewTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, unknown>>; density: MultiReportDensity }) {
   if (rows.length === 0) return <div style={emptyStyle}>暂无区间概览。</div>
   const headers = [
     ['code', '代码'],
@@ -1600,11 +1982,11 @@ function IntervalOverviewTable({ rows }: { rows: Array<Record<string, unknown>> 
     ['up_bar_ratio_pct', '上涨K占比'],
   ] as const
   return (
-    <div style={tableWrapStyle}>
-      <table style={reportTableStyle}>
+    <div style={reportTableWrapStyle('overview', density)}>
+      <table style={reportTableStyleFor('overview', density)}>
         <thead>
           <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
-            {headers.map(([key, label]) => <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}` }}>{label}</th>)}
+            {headers.map(([key, label]) => <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>{label}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -1623,11 +2005,11 @@ function IntervalOverviewTable({ rows }: { rows: Array<Record<string, unknown>> 
   )
 }
 
-function MiniKlineCard({ item }: { item: Record<string, unknown> }) {
+function MiniKlineCard({ item, density }: { item: Record<string, unknown>; density: MultiReportDensity }) {
   const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv as Record<string, unknown>[] : [])
   const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue) : []
   return (
-    <div style={{ ...metricCardStyle, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ ...metricCardStyle, padding: density === 'compact' ? 8 : 10, display: 'flex', flexDirection: 'column', gap: density === 'compact' ? 6 : 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1639,7 +2021,7 @@ function MiniKlineCard({ item }: { item: Record<string, unknown> }) {
           {formatPercent(item.range_return_pct)}
         </div>
       </div>
-      <MiniKlineSvg rows={rows} regimes={regimes} />
+      <MiniKlineSvg rows={rows} regimes={regimes} density={density} />
     </div>
   )
 }
@@ -1647,12 +2029,14 @@ function MiniKlineCard({ item }: { item: Record<string, unknown> }) {
 function MiniKlineSvg({
   rows,
   regimes,
+  density,
 }: {
   rows: KLineData[]
   regimes: Array<Record<string, unknown>>
+  density: MultiReportDensity
 }) {
   const width = 320
-  const height = 150
+  const height = density === 'compact' ? 126 : 150
   if (rows.length === 0) {
     return <div style={emptyStyle}>暂无K线。</div>
   }
@@ -1668,7 +2052,7 @@ function MiniKlineSvg({
   const firstDate = new Date(rows[0].timestamp).toISOString().slice(5, 10)
   const lastDate = new Date(rows[rows.length - 1].timestamp).toISOString().slice(5, 10)
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', aspectRatio: '16 / 7.5', display: 'block' }} role="img" aria-label="mini kline">
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', aspectRatio: `${width} / ${height}`, display: 'block' }} role="img" aria-label="mini kline">
       <rect x="0" y="0" width={width} height={height} fill={terminalTheme.chartPanel} />
       {[0, 1, 2, 3].map(item => (
         <line
@@ -1730,9 +2114,10 @@ function MiniKlineSvg({
   )
 }
 
-function ReviewScriptCard({ card }: { card: Record<string, unknown> }) {
+function ReviewScriptCard({ card, density }: { card: Record<string, unknown>; density: MultiReportDensity }) {
   const stats = Array.isArray(card.stats) ? card.stats.map(recordValue) : []
   const tone = String(card.tone ?? '') === 'down' ? 'down' : 'up'
+  const compact = density === 'compact'
   return (
     <div style={{
       ...metricCardStyle,
@@ -1740,13 +2125,13 @@ function ReviewScriptCard({ card }: { card: Record<string, unknown> }) {
       boxShadow: `inset 3px 0 ${tone === 'down' ? tradingDeskTheme.market.down : tradingDeskTheme.market.up}`,
       display: 'flex',
       flexDirection: 'column',
-      gap: 9,
-      padding: 12,
+      gap: compact ? 7 : 9,
+      padding: compact ? 9 : 12,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
         <div>
           <div style={labelStyle}>视频脚本</div>
-          <div style={{ color: terminalTheme.textStrong, fontSize: 18, fontWeight: 900 }}>{String(card.name ?? card.code ?? '')}</div>
+          <div style={{ color: terminalTheme.textStrong, fontSize: compact ? 16 : 18, fontWeight: 900 }}>{String(card.name ?? card.code ?? '')}</div>
         </div>
         <div style={monoStyle}>{String(card.code ?? '')}</div>
       </div>
@@ -1760,8 +2145,8 @@ function ReviewScriptCard({ card }: { card: Record<string, unknown> }) {
           </div>
         ))}
       </div>
-      <ScriptLine title="定位" text={String(card.positioning ?? '')} />
-      <ScriptLine title="交易难度" text={String(card.difficulty ?? '')} />
+      {compact ? null : <ScriptLine title="定位" text={String(card.positioning ?? '')} />}
+      {compact ? null : <ScriptLine title="交易难度" text={String(card.difficulty ?? '')} />}
       <ScriptLine title="一句话" text={String(card.one_liner ?? '')} strong />
     </div>
   )
@@ -2196,7 +2581,7 @@ function FallbackRows({
   return (
     <div style={compactListStyle}>
       {rows.length === 0 ? (
-        <div style={emptyStyle}>暂无降级队列。</div>
+        <div style={emptyStyle}>暂无待处理回测。</div>
       ) : (
         rows.slice(0, 8).map((row, index) => (
           <button
@@ -2244,7 +2629,7 @@ function FallbackBacktest({
 }) {
   return (
     <div style={{ ...mainGridStyle, gridTemplateColumns: '1fr' }}>
-      <Panel title={locale === 'zh-CN' ? '回测队列' : 'Backtest queue'}>
+      <Panel title={locale === 'zh-CN' ? '回测记录' : 'Backtest records'}>
         <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
       </Panel>
     </div>

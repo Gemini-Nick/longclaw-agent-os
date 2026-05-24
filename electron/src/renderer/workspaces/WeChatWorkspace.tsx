@@ -12,6 +12,7 @@ import type {
   WeChatBindingStatus,
   WeChatRouteReceipt,
 } from '../../runtime/wechatPluginDev.js'
+import type { WeChatClusterState, WeChatClusterNodeStatus } from '../../runtime/wechatCluster.js'
 import {
   fontStacks,
   statusBadgeStyle,
@@ -91,6 +92,7 @@ export type WeChatWorkspaceProps = {
   sessions: WeclawSessionSummary[]
   sourceStatus: WeclawSessionSourceStatus | null
   bindingStatus: WeChatBindingStatus | null
+  clusterStatus: WeChatClusterState | null
   routeReceipts: WeChatRouteReceipt[]
   pluginDevIssues: PluginDevIssue[]
   search: string
@@ -125,6 +127,7 @@ export type WeChatWorkspaceProps = {
   onOpenLinkedWorkItem: (workItem: LongclawWorkItem) => void | Promise<void>
   onOpenAttachment: (uri: string) => void | Promise<void>
   onCreateBindingSession: () => void | Promise<void>
+  onRefreshCluster: () => void | Promise<void>
   onCreateLocalBindingSession: () => void | Promise<void>
   onCompleteBindingSession: () => void | Promise<void>
   onRevokeBinding: () => void | Promise<void>
@@ -475,6 +478,95 @@ function bindingStepTone(
       : status.state === 'qr_pending'
         ? 'running'
         : 'degraded'
+}
+
+function clusterNodeTone(status: WeChatClusterNodeStatus): string {
+  if (status === 'online') return 'open'
+  if (status === 'degraded') return 'running'
+  if (status === 'offline') return 'degraded'
+  return 'info'
+}
+
+function clusterStatusLabel(locale: LongclawLocale, status: WeChatClusterNodeStatus): string {
+  const zh: Record<WeChatClusterNodeStatus, string> = {
+    unknown: '未探测',
+    online: '在线',
+    degraded: '降级',
+    offline: '离线',
+  }
+  if (locale === 'zh-CN') return zh[status]
+  return humanizeTokenLocale(locale, status)
+}
+
+function WeChatClusterPanel({
+  locale,
+  clusterStatus,
+  onRefreshCluster,
+}: {
+  locale: LongclawLocale
+  clusterStatus: WeChatClusterState | null
+  onRefreshCluster: () => void | Promise<void>
+}) {
+  const nodes = clusterStatus?.nodes ?? []
+  const bindings = clusterStatus?.bindings ?? []
+  const boundCount = bindings.filter(binding => binding.state === 'bound').length
+  const pendingCount = bindings.filter(binding => binding.state === 'qr_pending').length
+  return (
+    <WeChatSection
+      title={locale === 'zh-CN' ? '集群' : 'Cluster'}
+      subtitle={
+        locale === 'zh-CN'
+          ? `${nodes.length} 节点 / ${boundCount} 账号 / ${pendingCount} 扫码`
+          : `${nodes.length} nodes / ${boundCount} accounts / ${pendingCount} scans`
+      }
+    >
+      <div style={utilityStyles.stackedList}>
+        {nodes.length === 0 ? (
+          <div style={wechatMutedTextStyle}>
+            {locale === 'zh-CN' ? '还没有配置微信 worker 节点。' : 'No WeChat worker nodes configured.'}
+          </div>
+        ) : (
+          nodes.map(node => (
+            <div key={node.node_id} style={wechatRowStyle}>
+              <div style={queueLeadStyle}>
+                <div style={queueTitleStyle}>{node.node_id}</div>
+                <div style={wechatMutedTextStyle}>
+                  {formatModeMeta([
+                    node.ssh_host,
+                    `${node.active_accounts}/${node.capacity}`,
+                    node.pending_scans > 0
+                      ? locale === 'zh-CN'
+                        ? `${node.pending_scans} 个扫码中`
+                        : `${node.pending_scans} pending scans`
+                      : undefined,
+                    node.draining ? (locale === 'zh-CN' ? 'drain 中' : 'draining') : undefined,
+                  ])}
+                </div>
+                {node.last_error && <div style={wechatMutedTextStyle}>{node.last_error}</div>}
+              </div>
+              <span style={statusBadgeStyle(clusterNodeTone(node.status))}>
+                {clusterStatusLabel(locale, node.status)}
+              </span>
+            </div>
+          ))
+        )}
+        <div style={utilityStyles.buttonCluster}>
+          <button
+            type="button"
+            style={wechatButtonStyle()}
+            onClick={() => {
+              void onRefreshCluster()
+            }}
+          >
+            {locale === 'zh-CN' ? '刷新节点' : 'Refresh nodes'}
+          </button>
+          {clusterStatus?.updated_at && (
+            <span style={statusBadgeStyle('info')}>{formatTime(clusterStatus.updated_at)}</span>
+          )}
+        </div>
+      </div>
+    </WeChatSection>
+  )
 }
 
 function WeChatBindingPanel({
@@ -1342,6 +1434,7 @@ export function WeChatWorkspace({
   sessions,
   sourceStatus,
   bindingStatus,
+  clusterStatus,
   routeReceipts,
   pluginDevIssues,
   search,
@@ -1367,6 +1460,7 @@ export function WeChatWorkspace({
   onOpenLinkedWorkItem,
   onOpenAttachment,
   onCreateBindingSession,
+  onRefreshCluster,
   onCompleteBindingSession,
   onRevokeBinding,
   onRouteMessage,
@@ -1436,6 +1530,11 @@ export function WeChatWorkspace({
   return (
     <div style={workspaceRootStyle(splitDetail)}>
       <div style={listColumnStyle}>
+        <WeChatClusterPanel
+          locale={locale}
+          clusterStatus={clusterStatus}
+          onRefreshCluster={onRefreshCluster}
+        />
         <WeChatBindingPanel
           locale={locale}
           bindingStatus={bindingStatus}

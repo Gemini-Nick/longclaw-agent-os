@@ -237,8 +237,8 @@ describe('Chinese IA surface scoping', () => {
     expect(strategyMarkup).toContain('信号实时入口未配置，当前显示降级摘要。')
     expect(strategyMarkup).toContain('买入候选')
     expect(strategyMarkup).not.toContain('Signals 回测')
-    expect(backtestMarkup).toContain('信号实时入口未配置，当前显示降级队列。')
-    expect(backtestMarkup).toContain('回测队列')
+    expect(backtestMarkup).toContain('Signals 服务未连接，先查看本地历史回测与待处理任务。')
+    expect(backtestMarkup).toContain('回测记录')
     expect(backtestMarkup).not.toContain('买入候选')
   })
 
@@ -286,6 +286,7 @@ describe('Chinese IA surface scoping', () => {
           allowed_routes: ['knowledge_note', 'dev_issue', 'dev_plugin', 'signals', 'backtest'],
           recent_inbound: [],
         },
+        clusterStatus: null,
         routeReceipts: [],
         pluginDevIssues: [],
         search: '',
@@ -332,6 +333,7 @@ describe('Chinese IA surface scoping', () => {
         onOpenLinkedWorkItem: () => undefined,
         onOpenAttachment: () => undefined,
         onCreateBindingSession: () => undefined,
+        onRefreshCluster: () => undefined,
         onCreateLocalBindingSession: () => undefined,
         onCompleteBindingSession: () => undefined,
         onRevokeBinding: () => undefined,
