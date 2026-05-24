@@ -64,10 +64,16 @@ type BacktestSignal = {
   eval?: Record<string, unknown>
 }
 
+type BoardMatch = { name?: string; kind?: string; source?: string; total?: number }
+
 type BoardStocksResponse = {
   board?: string
+  query?: string
+  resolved_board?: string
+  source?: string
   total?: number
   showing?: number
+  matches?: BoardMatch[]
   stocks?: Array<{ symbol?: string; code?: string; name?: string }>
   error?: string
 }
@@ -225,8 +231,8 @@ const basketBarStyle: React.CSSProperties = {
 }
 
 const basketSearchStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(190px, 300px) auto auto auto minmax(0, 1fr)',
+  display: 'flex',
+  flexWrap: 'wrap',
   alignItems: 'center',
   gap: 6,
   minWidth: 0,
@@ -514,9 +520,9 @@ function multiReportStyle(density: MultiReportDensity): React.CSSProperties {
 function multiHeaderStyle(density: MultiReportDensity): React.CSSProperties {
   return {
     display: 'grid',
-    gridTemplateColumns: density === 'compact' ? 'minmax(0, 1fr)' : 'minmax(220px, 1fr) auto',
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: density === 'compact' ? 7 : 10,
-    alignItems: 'end',
+    alignItems: 'start',
   }
 }
 
@@ -524,9 +530,10 @@ function multiKpiGridStyle(density: MultiReportDensity): React.CSSProperties {
   return {
     display: 'grid',
     gridTemplateColumns: density === 'compact'
-      ? 'repeat(auto-fit, minmax(74px, 1fr))'
-      : 'repeat(auto-fit, minmax(86px, 1fr))',
+      ? 'repeat(auto-fit, minmax(82px, 1fr))'
+      : 'repeat(auto-fit, minmax(104px, 1fr))',
     gap: 6,
+    width: '100%',
     minWidth: 0,
   }
 }
@@ -618,6 +625,14 @@ function reportTableWrapStyle(kind: 'ranking' | 'overview', density: MultiReport
     minHeight: density === 'compact' ? compactHeight : 0,
     height: density === 'compact' ? compactHeight : undefined,
     maxHeight: density === 'compact' ? compactHeight : 246,
+  }
+}
+
+function signalBreakdownWrapStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    ...tableWrapStyle,
+    flex: '0 0 auto',
+    maxHeight: density === 'compact' ? 260 : 330,
   }
 }
 
@@ -792,6 +807,12 @@ function formatPercent(value: unknown): string {
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
+function formatUnsignedPercent(value: unknown): string {
+  const number = numberValue(value)
+  if (number === undefined) return 'N/A'
+  return `${number.toFixed(2)}%`
+}
+
 function formatDrawdown(value: unknown): string {
   const number = numberValue(value)
   if (number === undefined) return 'N/A'
@@ -933,7 +954,7 @@ function dashboardSymbolOptions(dashboard: BacktestDashboard): SymbolOption[] {
 
 function symbolOptionsForPicker(dashboard: BacktestDashboard): SymbolOption[] {
   const presetOptions = presetSymbolBaskets.flatMap(basket => basket.codes)
-  return uniqueSymbolOptions([...dashboardSymbolOptions(dashboard), ...presetOptions]).slice(0, 24)
+  return uniqueSymbolOptions([...dashboardSymbolOptions(dashboard), ...presetOptions])
 }
 
 function symbolOptionMatches(option: SymbolOption, query: string): boolean {
@@ -1898,6 +1919,9 @@ function SymbolBasketBar({
   const [query, setQuery] = useState('')
   const [boardOptions, setBoardOptions] = useState<SymbolOption[]>([])
   const [boardLabel, setBoardLabel] = useState('')
+  const [boardMatches, setBoardMatches] = useState<BoardMatch[]>([])
+  const [selectedBoardName, setSelectedBoardName] = useState('')
+  const [selectedCandidateCode, setSelectedCandidateCode] = useState('')
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupMessage, setLookupMessage] = useState('')
   const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
@@ -1905,13 +1929,18 @@ function SymbolBasketBar({
   const optionByCode = new Map(mergedOptions.map(option => [symbolOptionKey(option), option]))
   const normalizedQuery = query.trim().toLowerCase()
   const filteredBaskets = presetSymbolBaskets.filter(basket => basketMatches(basket, normalizedQuery))
-  const availableOptions = mergedOptions
+  const localCandidateOptions = mergedOptions
     .filter(option => !selectedSet.has(option.code.toUpperCase()))
     .filter(option => symbolOptionMatches(option, normalizedQuery))
-    .slice(0, 40)
+    .slice(0, 28)
+  const candidateOptions = boardOptions.length ? boardOptions : localCandidateOptions
   const dynamicCodes = boardOptions.map(option => option.code)
-  const lookupBoard = useCallback(async () => {
-    const board = query.trim()
+  useEffect(() => {
+    if (candidateOptions.some(option => option.code === selectedCandidateCode)) return
+    setSelectedCandidateCode(candidateOptions[0]?.code ?? '')
+  }, [candidateOptions, selectedCandidateCode])
+  const loadBoard = useCallback(async (name?: string) => {
+    const board = (name ?? query).trim()
     if (!board) return
     setLookupLoading(true)
     setLookupMessage('')
@@ -1922,6 +1951,11 @@ function SymbolBasketBar({
         120_000,
       )
       const rows = Array.isArray(data.stocks) ? data.stocks : []
+      const matches = Array.isArray(data.matches) ? data.matches.filter(match => stringValue(match.name)) : []
+      const resolvedBoard = stringValue(data.resolved_board) ?? stringValue(data.board) ?? board
+      const nextSelectedBoard = matches.some(match => stringValue(match.name) === resolvedBoard)
+        ? resolvedBoard
+        : stringValue(matches[0]?.name) ?? resolvedBoard
       const nextOptions = uniqueSymbolOptions(rows.map(row => {
         const code = normalizeSymbolCode(row.code ?? row.symbol ?? '')
         const preset = presetOptionByCode(code)
@@ -1929,27 +1963,38 @@ function SymbolBasketBar({
         return {
           code,
           name: rawName && rawName !== code ? rawName : preset?.name ?? code,
-          group: stringValue(data.board) ?? board,
+          group: resolvedBoard,
         }
       }).filter(option => option.code))
-      setBoardLabel(stringValue(data.board) ?? board)
+      setBoardLabel(resolvedBoard)
+      setBoardMatches(matches)
+      setSelectedBoardName(nextSelectedBoard)
       setBoardOptions(nextOptions.slice(0, 60))
+      setSelectedCandidateCode(nextOptions[0]?.code ?? '')
       if (nextOptions.length === 0) {
-        setLookupMessage(data.error || (locale === 'zh-CN' ? '没有找到成分股，换一个板块名试试。' : 'No constituents found. Try another board name.'))
+        setLookupMessage(data.error || (matches.length
+          ? (locale === 'zh-CN' ? `找到${matches.length}个匹配板块，选择后点“载入”。` : `${matches.length} matching boards. Pick one and load.`)
+          : (locale === 'zh-CN' ? '没有找到成分股，换一个板块名试试。' : 'No constituents found. Try another board name.')))
       } else {
         setLookupMessage(locale === 'zh-CN'
-          ? `${stringValue(data.board) ?? board} · ${numberValue(data.total) ?? nextOptions.length}只`
-          : `${stringValue(data.board) ?? board} · ${numberValue(data.total) ?? nextOptions.length} symbols`)
+          ? `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length}只成分股`
+          : `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length} constituents`)
       }
     } catch (rawError) {
       const apiError = rawError as ApiError
       setBoardOptions([])
       setBoardLabel('')
+      setBoardMatches([])
+      setSelectedBoardName('')
+      setSelectedCandidateCode('')
       setLookupMessage(compactApiError(apiError, locale, locale === 'zh-CN' ? '板块搜索失败。' : 'Board lookup failed.'))
     } finally {
       setLookupLoading(false)
     }
   }, [baseUrl, locale, query])
+  const lookupBoard = useCallback(async () => {
+    await loadBoard(query)
+  }, [loadBoard, query])
   return (
     <div style={basketBarStyle}>
       <div style={labelStyle}>{locale === 'zh-CN' ? '搜索' : 'Search'}</div>
@@ -1959,9 +2004,9 @@ function SymbolBasketBar({
           name="backtest-board-search"
           autoComplete="off"
           spellCheck={false}
-          style={{ ...inputStyle, height: 28, fontFamily: fontStacks.ui }}
+          style={{ ...inputStyle, height: 28, fontFamily: fontStacks.ui, flex: '1 1 230px' }}
           value={query}
-          placeholder={locale === 'zh-CN' ? '半导体设备 / 光模块 / 代码 / 名称…' : 'Board, concept, code, or name…'}
+          placeholder={locale === 'zh-CN' ? '半导体设备 / 白酒 / PCB / 代码 / 名称…' : 'Board, concept, code, or name…'}
           onChange={event => setQuery(event.target.value)}
           onKeyDown={event => {
             if (event.key === 'Enter') {
@@ -1971,7 +2016,30 @@ function SymbolBasketBar({
           }}
         />
         <button type="button" style={buttonStyle(false, lookupLoading || !query.trim())} disabled={lookupLoading || !query.trim()} onClick={() => void lookupBoard()}>
-          {lookupLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜板块' : 'Board')}
+          {lookupLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜索匹配' : 'Search')}
+        </button>
+        <select
+          aria-label={locale === 'zh-CN' ? '匹配板块' : 'Matched board'}
+          style={{ ...selectStyle, height: 28, flex: '1 1 210px' }}
+          disabled={boardMatches.length === 0}
+          value={selectedBoardName}
+          onChange={event => setSelectedBoardName(event.target.value)}
+        >
+          {boardMatches.length === 0 ? (
+            <option value="">{locale === 'zh-CN' ? '先搜索板块' : 'Search a board first'}</option>
+          ) : boardMatches.map(match => {
+            const name = stringValue(match.name) ?? ''
+            return (
+              <option key={`${name}-${String(match.kind ?? '')}`} value={name}>
+                {locale === 'zh-CN'
+                  ? `${name} · ${String(match.kind ?? 'board')} · ${formatNumber(match.total, 0)}只`
+                  : `${name} · ${String(match.kind ?? 'board')} · ${formatNumber(match.total, 0)}`}
+              </option>
+            )
+          })}
+        </select>
+        <button type="button" style={buttonStyle(false, lookupLoading || !selectedBoardName)} disabled={lookupLoading || !selectedBoardName} onClick={() => void loadBoard(selectedBoardName)}>
+          {locale === 'zh-CN' ? '载入' : 'Load'}
         </button>
         <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket([...selectedCodes, ...dynamicCodes])}>
           {locale === 'zh-CN' ? '加入全部' : 'Add all'}
@@ -2026,9 +2094,35 @@ function SymbolBasketBar({
           {locale === 'zh-CN' ? '清空' : 'Clear'}
         </button>
       </div>
-      <div style={labelStyle}>{locale === 'zh-CN' ? '候选' : 'Candidates'}</div>
+      <div style={labelStyle}>{boardOptions.length ? (locale === 'zh-CN' ? '成分股' : 'Constituents') : (locale === 'zh-CN' ? '常用标的' : 'Symbols')}</div>
       <div style={chipRowStyle}>
-        {availableOptions.map(option => {
+        {boardOptions.length ? (
+          <>
+            <select
+              aria-label={locale === 'zh-CN' ? '成分股选择' : 'Constituent picker'}
+              style={{ ...selectStyle, height: 28, flex: '0 1 260px' }}
+              value={selectedCandidateCode}
+              onChange={event => setSelectedCandidateCode(event.target.value)}
+            >
+              {boardOptions.map(option => (
+                <option key={`candidate-option-${option.code}`} value={option.code}>
+                  {[option.code, option.name].filter(Boolean).join(' ')}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              style={buttonStyle(false, !selectedCandidateCode)}
+              disabled={!selectedCandidateCode}
+              onClick={() => onToggleCode(selectedCandidateCode)}
+            >
+              {selectedSet.has(selectedCandidateCode.toUpperCase())
+                ? (locale === 'zh-CN' ? '移出选中' : 'Remove')
+                : (locale === 'zh-CN' ? '加入选中' : 'Add selected')}
+            </button>
+          </>
+        ) : null}
+        {candidateOptions.slice(0, boardOptions.length ? 24 : 28).map(option => {
           const active = selectedSet.has(option.code.toUpperCase())
           return (
             <button
@@ -2043,9 +2137,9 @@ function SymbolBasketBar({
             </button>
           )
         })}
-        {availableOptions.length === 0 ? (
+        {candidateOptions.length === 0 ? (
           <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
-            {locale === 'zh-CN' ? '没有更多候选。可搜索板块或清空已选池。' : 'No more candidates. Search a board or clear selected symbols.'}
+            {locale === 'zh-CN' ? '搜索板块后显示可勾选成分股。' : 'Search a board to show selectable constituents.'}
           </div>
         ) : null}
       </div>
@@ -2284,55 +2378,83 @@ function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, u
 
 function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<string, unknown>>; density: MultiReportDensity }) {
   if (rows.length === 0) return <div style={emptyStyle}>运行“全部信号”后显示各信号类型的 T+5/T+10、MFE/MAE 和成交收益。</div>
-  const fullHeaders = [
-    ['signal_type', '信号'],
-    ['symbol_count', '标的'],
-    ['signal_count', '信号数'],
-    ['evaluated_count', '已评估'],
-    ['trade_count', '成交'],
-    ['win_rate', '信号胜率'],
-    ['avg_t5_pct', 'T+5'],
-    ['avg_t10_pct', 'T+10'],
-    ['avg_mfe_pct', 'MFE'],
-    ['avg_mae_pct', 'MAE'],
-    ['avg_trade_return_pct', '成交均利'],
-    ['best_symbol', '最佳标的'],
-  ] as const
-  const compactHeaders = fullHeaders.filter(([key]) => [
-    'signal_type',
-    'signal_count',
-    'trade_count',
-    'win_rate',
-    'avg_t10_pct',
-    'avg_mfe_pct',
-    'avg_mae_pct',
-    'best_symbol',
-  ].includes(key))
-  const headers = density === 'compact' ? compactHeaders : fullHeaders
+  const topBy = (key: string, direction: 'max' | 'min' = 'max') => rows.reduce<Record<string, unknown> | null>((best, row) => {
+    const value = numberValue(row[key])
+    if (value === undefined) return best
+    if (!best) return row
+    const bestValue = numberValue(best[key])
+    if (bestValue === undefined) return row
+    return direction === 'max'
+      ? (value > bestValue ? row : best)
+      : (value < bestValue ? row : best)
+  }, null)
+  const summaryItems = [
+    { label: '覆盖最广', row: topBy('signal_count'), key: 'signal_count', format: (value: unknown) => formatNumber(value, 0) },
+    { label: 'T+10最强', row: topBy('avg_t10_pct'), key: 'avg_t10_pct', format: formatPercent },
+    { label: '成交均利', row: topBy('avg_trade_return_pct'), key: 'avg_trade_return_pct', format: formatPercent },
+    { label: '回撤压力', row: topBy('avg_mae_pct', 'min'), key: 'avg_mae_pct', format: formatPercent },
+  ]
   return (
-    <div style={reportTableWrapStyle('overview', density)}>
-      <table style={reportTableStyleFor('overview', density)}>
-        <thead>
-          <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
-            {headers.map(([key, label]) => (
-              <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${String(row.signal_type ?? index)}-${index}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
-              {headers.map(([key]) => (
-                <td key={key} style={{ padding: 7, color: cellToneColor(key, row[key]), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {formatReportCell(key, row[key])}
-                </td>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: density === 'compact' ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
+        {summaryItems.map(item => (
+          <div key={item.label} style={{ ...metricCardStyle, padding: '6px 8px' }}>
+            <div style={labelStyle}>{item.label}</div>
+            <div style={{ color: cellToneColor(item.key, item.row?.[item.key]), fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.row ? item.format(item.row[item.key]) : 'N/A'}
+            </div>
+            <div style={{ ...mutedStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {String(item.row?.signal_type ?? 'N/A')}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={signalBreakdownWrapStyle(density)}>
+        <table style={{ ...reportTableStyle, minWidth: density === 'compact' ? 820 : 1060 }}>
+          <thead>
+            <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
+              {['信号类型', '样本', '胜率', '前瞻收益', '浮盈/回撤', '成交', '最佳标的'].map(label => (
+                <th key={label} style={{ padding: 8, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>{label}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => {
+              const signalType = String(row.signal_type ?? 'unknown')
+              return (
+                <tr key={`${signalType}-${index}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
+                  <td style={{ padding: 8, overflow: 'hidden' }}>
+                    <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{signalType}</div>
+                    <div style={mutedStyle}>{formatNumber(row.symbol_count, 0)} 标的</div>
+                  </td>
+                  <td style={{ padding: 8, color: terminalTheme.textStrong, whiteSpace: 'nowrap' }}>
+                    <div>{formatNumber(row.evaluated_count, 0)} / {formatNumber(row.signal_count, 0)}</div>
+                    <div style={mutedStyle}>成交 {formatNumber(row.trade_count, 0)}</div>
+                  </td>
+                  <td style={{ padding: 8, color: cellToneColor('win_rate_pct', row.win_rate), whiteSpace: 'nowrap', fontWeight: 800 }}>
+                    {formatUnsignedPercent(row.win_rate)}
+                  </td>
+                  <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                    <div style={{ color: cellToneColor('avg_t5_pct', row.avg_t5_pct), fontWeight: 800 }}>T+5 {formatPercent(row.avg_t5_pct)}</div>
+                    <div style={{ color: cellToneColor('avg_t10_pct', row.avg_t10_pct) }}>T+10 {formatPercent(row.avg_t10_pct)}</div>
+                  </td>
+                  <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                    <div style={{ color: cellToneColor('avg_mfe_pct', row.avg_mfe_pct), fontWeight: 800 }}>MFE {formatPercent(row.avg_mfe_pct)}</div>
+                    <div style={{ color: cellToneColor('avg_mae_pct', row.avg_mae_pct) }}>MAE {formatPercent(row.avg_mae_pct)}</div>
+                  </td>
+                  <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                    <div style={{ color: cellToneColor('avg_trade_return_pct', row.avg_trade_return_pct), fontWeight: 800 }}>{formatPercent(row.avg_trade_return_pct)}</div>
+                    <div style={mutedStyle}>胜率 {formatUnsignedPercent(row.trade_win_rate)}</div>
+                  </td>
+                  <td style={{ padding: 8, color: terminalTheme.textStrong, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {String(row.best_symbol ?? 'N/A')}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
