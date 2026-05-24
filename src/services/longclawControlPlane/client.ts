@@ -1146,9 +1146,11 @@ export class LongclawControlPlaneClient {
         )
         const backtestAnalysis = backtestAnalysisResult.value
 
+        const backtestTerminal = recordValue(backtestAnalysis?.terminal)
+        const backtestTerminalMetrics = recordValue(backtestTerminal.metrics)
         const backtestSummary = recordValue(backtestAnalysis?.forward_kpi ?? backtestAnalysis?.kpi)
-        const totalSignals = numberValue(backtestSummary.total) ?? 0
-        const evaluatedSignals = numberValue(backtestSummary.evaluated) ?? totalSignals
+        const totalSignals = numberValue(backtestTerminalMetrics.signal_count) ?? numberValue(backtestSummary.total) ?? 0
+        const evaluatedSignals = numberValue(backtestTerminalMetrics.evaluated_count) ?? numberValue(backtestSummary.evaluated) ?? totalSignals
         const pendingSignals = Math.max(totalSignals - evaluatedSignals, 0)
         const pendingBacklogPreview = uniqueBuyCandidates.slice(0, 6).map(item => ({
           symbol: item.symbol,
@@ -1419,12 +1421,13 @@ export class LongclawControlPlaneClient {
                 freq: stringValue(backtestAnalysis.freq) ?? 'daily',
                 summary:
                   stringValue(recordValue(backtestAnalysis.sim_kpi).summary) ??
-                  `Win rate ${numberValue(recordValue(backtestAnalysis.sim_kpi).win_rate) ?? 0}%`,
+                  `Win rate ${numberValue(backtestTerminalMetrics.win_rate) ?? numberValue(recordValue(backtestAnalysis.sim_kpi).win_rate) ?? 0}%`,
                 updated_at: new Date().toISOString(),
                 source: backtestSource || 'web1',
                 metadata: {
                   forward_kpi: recordValue(backtestAnalysis.forward_kpi),
                   sim_kpi: recordValue(backtestAnalysis.sim_kpi),
+                  terminal: backtestTerminal,
                   source: backtestSource,
                 },
               }

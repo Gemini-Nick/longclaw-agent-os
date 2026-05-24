@@ -3356,8 +3356,6 @@ function trimTrailingSlash(value?: string): string {
   return value?.trim().replace(/\/+$/, '') ?? ''
 }
 
-const DEFAULT_SIGNALS_WEB_BASE_URL = 'http://127.0.0.1:8011'
-
 function urlFromDashboard(dashboard: StrategyDashboard): string {
   const terminalLink = dashboard.deep_links.find(link => link.link_id === 'signals-terminal')
   return trimTrailingSlash(terminalLink?.url)
@@ -6517,8 +6515,7 @@ export function StrategyChartTerminal({
 }: StrategyChartTerminalProps) {
   const baseUrl =
     trimTrailingSlash(signalsWebBaseUrl) ||
-    urlFromDashboard(dashboard) ||
-    DEFAULT_SIGNALS_WEB_BASE_URL
+    urlFromDashboard(dashboard)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)

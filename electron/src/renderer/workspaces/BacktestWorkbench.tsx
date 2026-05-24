@@ -6,6 +6,7 @@ import {
   type Chart,
   type DeepPartial,
   type KLineData,
+  type OverlayEvent,
   type OverlayCreateFiguresCallbackParams,
   type Styles,
 } from 'klinecharts'
@@ -14,13 +15,13 @@ import type {
   LongclawRun,
   SignalsDashboard,
 } from '../../../../src/services/longclawControlPlane/models.js'
-import { fontStacks, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
+import { fontStacks, interaction, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
 import type { LongclawLocale } from '../i18n.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
 type BacktestDashboard = Pick<
   SignalsDashboard,
-  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates'
+  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates' | 'chart_context'
 >
 
 type BacktestWorkbenchProps = {
@@ -32,7 +33,7 @@ type BacktestWorkbenchProps = {
 }
 
 type ApiError = Error & { status?: number; payload?: Record<string, unknown> }
-type BacktestTab = 'perf' | 'trades' | 'signals' | 'scan'
+type BacktestTab = 'perf' | 'trades' | 'signals' | 'scan' | 'risk'
 type SignalType =
   | 'all'
   | 'macd'
@@ -45,6 +46,8 @@ type SignalType =
 
 type BacktestSignal = {
   dt?: number
+  time?: number
+  date?: string
   date_str?: string
   type?: string
   group?: string
@@ -52,12 +55,22 @@ type BacktestSignal = {
   confidence?: number
   ma_status?: string
   volume_status?: string
+  return_t5?: number
+  return_t10?: number
+  return_t20?: number
+  mfe_pct?: number
+  mae_pct?: number
+  index?: number
   eval?: Record<string, unknown>
 }
 
 type BacktestTrade = {
+  id?: string
+  index?: number
+  status?: string
   signal_date?: string
   signal_type?: string
+  signal_group?: string
   entry_date?: string
   entry_price?: number | null
   exit_date?: string
@@ -71,6 +84,38 @@ type BacktestTrade = {
   mfe_pct?: number
   mae_pct?: number
   skip_reason?: string | null
+}
+
+type BacktestTerminalMetric = {
+  key?: string
+  label?: string
+  value?: unknown
+  unit?: string
+  tone?: string
+}
+
+type BacktestTerminal = {
+  version?: string
+  target?: Record<string, unknown>
+  market_snapshot?: Record<string, unknown>
+  trade_assumptions?: Record<string, unknown>
+  metrics?: Record<string, unknown>
+  chart?: {
+    ohlcv?: Record<string, unknown>[]
+    date_presets?: Array<{ key?: string; label?: string; date?: string; time?: number }>
+    signal_markers?: Array<Record<string, unknown>>
+    trade_markers?: Array<Record<string, unknown>>
+    entry_exit_markers?: Array<Record<string, unknown>>
+    risk_bands?: Array<Record<string, unknown>>
+  }
+  panels?: {
+    perf?: Record<string, unknown>
+    trades?: { rows?: BacktestTrade[]; filled_count?: number; skipped_count?: number }
+    signals?: { rows?: BacktestSignal[]; count?: number; groups?: string[] }
+    scan?: Record<string, unknown>
+    risk?: Record<string, unknown>
+    config?: Record<string, unknown>
+  }
 }
 
 type BacktestResult = {
@@ -95,6 +140,7 @@ type BacktestResult = {
   sim_skip_reasons?: Record<string, unknown>
   date_presets?: Array<{ key?: string; label?: string; date?: string; time?: number }>
   warnings?: string[]
+  terminal?: BacktestTerminal
 }
 
 type ScanResult = {
@@ -102,12 +148,16 @@ type ScanResult = {
   scan_results?: Array<Record<string, unknown>>
   heatmap?: Record<string, unknown>
   error?: string
+  terminal?: BacktestTerminal
 }
 
 type MarkerData = {
   label: string
   color: string
   side: 'buy' | 'sell'
+  kind?: 'signal' | 'trade'
+  sourceIndex?: number
+  tradeIndex?: number
 }
 
 const BACKTEST_MARKER_OVERLAY = 'longclawBacktestMarker'
@@ -211,6 +261,8 @@ const inputStyle: React.CSSProperties = {
   fontFamily: fontStacks.mono,
   fontSize: 13,
   outline: 'none',
+  transition: interaction.transition,
+  touchAction: interaction.touchAction,
 }
 
 const selectStyle: React.CSSProperties = {
@@ -298,8 +350,11 @@ const warningStyle: React.CSSProperties = {
 }
 
 function backtestDataSourceLabel(result: BacktestResult | null, locale: LongclawLocale): string {
-  if (!result?.data_source) return ''
-  if (result.data_source_detail) return result.data_source_detail
+  const target = terminalTarget(result)
+  const dataSource = stringValue(target.data_source) ?? result?.data_source
+  const dataSourceDetail = stringValue(target.data_source_detail) ?? result?.data_source_detail
+  if (!dataSource) return ''
+  if (dataSourceDetail) return dataSourceDetail
   const labels: Record<string, string> = locale === 'zh-CN'
     ? {
         disk_cache: '磁盘缓存',
@@ -325,10 +380,12 @@ function backtestDataSourceLabel(result: BacktestResult | null, locale: Longclaw
         eastmoney_minute: 'Eastmoney intraday',
         sina: 'Sina',
       }
-  return labels[result.data_source] ?? result.data_source
+  return labels[dataSource] ?? dataSource
 }
 
 function isFallbackDataSource(result: BacktestResult | null): boolean {
+  const target = terminalTarget(result)
+  const dataSource = stringValue(target.data_source) ?? result?.data_source ?? ''
   return [
     'disk_cache',
     'daily_cache_resampled_weekly',
@@ -337,15 +394,19 @@ function isFallbackDataSource(result: BacktestResult | null): boolean {
     'mongodb_bars',
     'mongodb_daily_resampled_weekly',
     'mongodb_daily_resampled_monthly',
-  ].includes(result?.data_source ?? '')
+  ].includes(dataSource)
 }
 
 function dataHealthText(result: BacktestResult | null, locale: LongclawLocale): string {
   if (!result) return ''
+  const target = terminalTarget(result)
+  const asOf = stringValue(target.as_of) ?? result.as_of
+  const barCount = numberValue(target.bar_count) ?? result.bar_count
+  const freshness = stringValue(target.freshness) ?? result.freshness
   const parts = [
-    result.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${result.as_of}` : '',
-    typeof result.bar_count === 'number' ? `${result.bar_count} bars` : '',
-    result.freshness ? result.freshness : '',
+    asOf ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${asOf}` : '',
+    typeof barCount === 'number' ? `${barCount} bars` : '',
+    freshness ? freshness : '',
     result.derived_from ? `${locale === 'zh-CN' ? '聚合自' : 'derived from'} ${result.derived_from}` : '',
     result.partial ? (locale === 'zh-CN' ? 'partial' : 'partial') : '',
   ].filter(Boolean)
@@ -366,6 +427,8 @@ function buttonStyle(active = false, disabled = false): React.CSSProperties {
     fontSize: 13,
     fontWeight: 700,
     whiteSpace: 'nowrap',
+    transition: interaction.transition,
+    touchAction: interaction.touchAction,
   }
 }
 
@@ -392,6 +455,26 @@ function numberValue(value: unknown): number | undefined {
   return undefined
 }
 
+function terminalOf(result: BacktestResult | null | undefined): BacktestTerminal | undefined {
+  return result?.terminal?.version === 'backtest-terminal.v1' ? result.terminal : undefined
+}
+
+function terminalTarget(result: BacktestResult | null | undefined): Record<string, unknown> {
+  return recordValue(terminalOf(result)?.target)
+}
+
+function terminalMetrics(result: BacktestResult | null | undefined): Record<string, unknown> {
+  return recordValue(terminalOf(result)?.metrics)
+}
+
+function terminalPanels(result: BacktestResult | null | undefined): BacktestTerminal['panels'] {
+  return terminalOf(result)?.panels
+}
+
+function terminalChart(result: BacktestResult | null | undefined): BacktestTerminal['chart'] {
+  return terminalOf(result)?.chart
+}
+
 function formatNumber(value: unknown, digits = 2): string {
   const number = numberValue(value)
   if (number === undefined) return 'N/A'
@@ -404,10 +487,34 @@ function formatPercent(value: unknown): string {
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
+function formatDrawdown(value: unknown): string {
+  const number = numberValue(value)
+  if (number === undefined) return 'N/A'
+  return `-${Math.abs(number).toFixed(2)}%`
+}
+
+function formatMetricValue(value: unknown, unit?: string): string {
+  if (unit === '%') return formatPercent(value)
+  if (unit === 'D') return `${formatNumber(value, 1)}D`
+  const number = numberValue(value)
+  if (number === undefined) return String(value ?? 'N/A')
+  if (Number.isInteger(number)) return String(number)
+  return number.toFixed(2)
+}
+
+function toneColor(tone?: string): string {
+  if (tone === 'up') return tradingDeskTheme.market.up
+  if (tone === 'down') return tradingDeskTheme.market.down
+  if (tone === 'warning') return palette.warning
+  return terminalTheme.textStrong
+}
+
 function defaultCodeFromDashboard(dashboard: BacktestDashboard): string {
   const pending = dashboard.pending_backlog_preview[0]
   const candidate = dashboard.buy_candidates[0]
+  const chartSymbol = dashboard.chart_context?.symbol
   return (
+    stringValue(chartSymbol) ??
     stringValue(pending?.symbol) ??
     stringValue(candidate?.symbol) ??
     '002759'
@@ -558,12 +665,18 @@ function signalSide(signal: BacktestSignal): 'buy' | 'sell' {
   return text.includes('卖') || text.includes('sell') || text.includes('exit') ? 'sell' : 'buy'
 }
 
-function createSignalOverlays(chart: Chart, data: KLineData[], signals: BacktestSignal[]) {
+function createSignalOverlays(
+  chart: Chart,
+  data: KLineData[],
+  signals: BacktestSignal[],
+  tradeMarkers: Array<Record<string, unknown>> = [],
+  onSelectMarker?: (marker: MarkerData) => void,
+) {
   chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
   if (data.length === 0) return
   const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
   signals.slice(-80).forEach(signal => {
-    const rawTime = numberValue(signal.dt)
+    const rawTime = numberValue(signal.dt ?? signal.time)
     if (!rawTime) return
     const timestamp = rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime
     const price = numberValue(signal.price) ?? dataByTimestamp.get(timestamp)?.close
@@ -577,7 +690,38 @@ function createSignalOverlays(chart: Chart, data: KLineData[], signals: Backtest
         label: signalLabel(signal),
         color: signalColor(signal),
         side: signalSide(signal),
+        kind: 'signal',
+        sourceIndex: signal.index ?? signals.indexOf(signal),
       } satisfies MarkerData,
+      onClick: (event: OverlayEvent) => {
+        onSelectMarker?.(recordValue(event.overlay.extendData) as MarkerData)
+        return true
+      },
+    })
+  })
+  tradeMarkers.slice(-160).forEach(marker => {
+    const rawTime = numberValue(marker.time)
+    const price = numberValue(marker.price)
+    if (!rawTime || price === undefined) return
+    const timestamp = rawTime < 10_000_000_000 ? rawTime * 1000 : rawTime
+    const kind = stringValue(marker.kind) ?? ''
+    const isExit = kind === 'exit'
+    chart.createOverlay({
+      name: BACKTEST_MARKER_OVERLAY,
+      groupId: BACKTEST_MARKER_GROUP,
+      lock: true,
+      points: [{ timestamp, value: price }],
+      extendData: {
+        label: isExit ? 'EXIT' : 'ENTRY',
+        color: isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up,
+        side: isExit ? 'sell' : 'buy',
+        kind: 'trade',
+        tradeIndex: numberValue(marker.trade_index),
+      } satisfies MarkerData,
+      onClick: (event: OverlayEvent) => {
+        onSelectMarker?.(recordValue(event.overlay.extendData) as MarkerData)
+        return true
+      },
     })
   })
 }
@@ -609,6 +753,7 @@ export function BacktestWorkbench({
   onOpenRecord,
 }: BacktestWorkbenchProps) {
   const baseUrl = trimTrailingSlash(signalsWebBaseUrl)
+  const codeInputRef = useRef<HTMLInputElement | null>(null)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
@@ -619,6 +764,8 @@ export function BacktestWorkbench({
   const [tab, setTab] = useState<BacktestTab>('perf')
   const [result, setResult] = useState<BacktestResult | null>(null)
   const [scan, setScan] = useState<ScanResult | null>(null)
+  const [selectedSignalIndex, setSelectedSignalIndex] = useState<number | null>(null)
+  const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -641,10 +788,19 @@ export function BacktestWorkbench({
     scan_metric: 'sharpe',
   })
 
-  const klineData = useMemo(() => toKLineData(result?.ohlcv), [result])
-  const signals = result?.signals ?? []
-  const trades = result?.sim_trades ?? []
+  const terminalPanelData = terminalPanels(result)
+  const terminalChartData = terminalChart(result)
+  const klineData = useMemo(() => toKLineData(terminalChartData?.ohlcv ?? result?.ohlcv), [result, terminalChartData])
+  const signals = terminalPanelData?.signals?.rows ?? result?.signals ?? []
+  const trades = terminalPanelData?.trades?.rows ?? result?.sim_trades ?? []
+  const tradeMarkers = terminalChartData?.trade_markers ?? terminalChartData?.entry_exit_markers ?? []
+  const datePresets = terminalChartData?.date_presets ?? result?.date_presets ?? []
   const filledTrades = trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
+  const targetInfo = terminalTarget(result)
+  const metrics = terminalMetrics(result)
+  const displaySymbol = stringValue(targetInfo.symbol) ?? result?.symbol ?? result?.code ?? code
+  const displayName = stringValue(targetInfo.name)
+  const displayFreq = stringValue(targetInfo.freq) ?? result?.freq ?? freq
   const dataSourceLabel = backtestDataSourceLabel(result, locale)
   const dataHealthLabel = dataHealthText(result, locale)
 
@@ -672,7 +828,10 @@ export function BacktestWorkbench({
       const data = await fetchJson<BacktestResult>(baseUrl, `/api/backtest/analyze?${params.toString()}`)
       setResult(data)
       setScan(null)
+      setSelectedSignalIndex(null)
+      setSelectedTradeIndex(null)
       if (!hadResult) setTab('perf')
+      const metrics = recordValue(data.terminal?.metrics)
       recordObservationEvent('backtest.analyze.success', {
         code: data.code ?? code.trim(),
         symbol: data.symbol,
@@ -685,8 +844,9 @@ export function BacktestWorkbench({
         derived_from: data.derived_from,
         partial: data.partial,
         last_upstream_error: data.last_upstream_error,
-        signals: data.signals?.length ?? 0,
-        trades: data.sim_trades?.length ?? 0,
+        signals: numberValue(metrics.signal_count) ?? data.signals?.length ?? 0,
+        trades: numberValue(metrics.filled_trades) ?? data.sim_trades?.length ?? 0,
+        terminal_version: data.terminal?.version,
       })
     } catch (rawError) {
       const apiError = rawError as ApiError
@@ -754,6 +914,73 @@ export function BacktestWorkbench({
     window.open(`${baseUrl}/api/backtest/export?${params.toString()}`, '_blank', 'noopener,noreferrer')
   }, [baseUrl, code, freq, signalType, simParams])
 
+  const handleMarkerSelect = useCallback((marker: MarkerData) => {
+    if (marker.kind === 'signal' && marker.sourceIndex !== undefined) {
+      setSelectedSignalIndex(marker.sourceIndex)
+      setTab('signals')
+      return
+    }
+    if (marker.kind === 'trade' && marker.tradeIndex !== undefined) {
+      setSelectedTradeIndex(marker.tradeIndex)
+      setTab('trades')
+    }
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const tagName = target?.tagName.toLowerCase()
+      const editing = tagName === 'input' || tagName === 'textarea' || tagName === 'select' || Boolean(target?.isContentEditable)
+      const interactive = editing || tagName === 'button'
+
+      if (event.key === '/' && !editing) {
+        event.preventDefault()
+        codeInputRef.current?.focus()
+        codeInputRef.current?.select()
+        return
+      }
+      if (event.key === 'Escape') {
+        setSelectedSignalIndex(null)
+        setSelectedTradeIndex(null)
+        if (editing) target?.blur()
+        return
+      }
+      if (interactive) return
+
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        void runAnalyze()
+        return
+      }
+      const tabByKey: Record<string, BacktestTab> = {
+        '1': 'perf',
+        '2': 'trades',
+        '3': 'signals',
+        '4': 'scan',
+        '5': 'risk',
+      }
+      const nextTab = tabByKey[event.key]
+      if (nextTab) {
+        event.preventDefault()
+        setTab(nextTab)
+        return
+      }
+      const freqByKey: Record<string, string> = { d: 'daily', w: 'weekly', m: 'monthly' }
+      const nextFreq = freqByKey[event.key.toLowerCase()]
+      if (nextFreq) {
+        event.preventDefault()
+        setFreq(nextFreq)
+        recordObservationEvent('backtest.freq.hotkey', {
+          previous: freq,
+          next: nextFreq,
+          code: code.trim(),
+        })
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [code, freq, runAnalyze])
+
   useEffect(() => {
     if (!chartContainerRef.current) return
     ensureMarkerOverlay()
@@ -800,10 +1027,10 @@ export function BacktestWorkbench({
       return
     }
     chart.applyNewData(klineData)
-    createSignalOverlays(chart, klineData, signals)
+    createSignalOverlays(chart, klineData, signals, tradeMarkers, handleMarkerSelect)
     chart.scrollToRealTime()
     chart.resize()
-  }, [klineData, signals])
+  }, [handleMarkerSelect, klineData, signals, tradeMarkers])
 
   if (!baseUrl) {
     return (
@@ -834,6 +1061,7 @@ export function BacktestWorkbench({
       >
         <div style={labelStyle}>{locale === 'zh-CN' ? 'Signals 回测' : 'Signals Backtest'}</div>
         <input
+          ref={codeInputRef}
           aria-label={locale === 'zh-CN' ? '股票代码' : 'Symbol'}
           style={inputStyle}
           value={code}
@@ -886,7 +1114,7 @@ export function BacktestWorkbench({
         <div style={mutedStyle}>
           {error ??
             (result
-              ? `${result.symbol ?? result.code ?? code} · ${signals.length} signals · ${filledTrades.length} trades`
+              ? `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length} signals · ${numberValue(metrics.filled_trades) ?? filledTrades.length} trades`
                 + (dataSourceLabel ? ` · ${dataSourceLabel}` : '')
               : locale === 'zh-CN'
                 ? '输入代码后运行增强回测'
@@ -903,9 +1131,9 @@ export function BacktestWorkbench({
             <ParamGrid params={simParams} onChange={updateSimParam} />
           </Panel>
           <Panel title={locale === 'zh-CN' ? '日期标签' : 'Date presets'}>
-            {result?.date_presets?.length ? (
+            {datePresets.length ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {result.date_presets.slice(0, 12).map(item => (
+                {datePresets.slice(0, 12).map(item => (
                   <button
                     key={item.key ?? item.label ?? item.date}
                     type="button"
@@ -932,8 +1160,8 @@ export function BacktestWorkbench({
         <div style={chartPanelStyle}>
           <div style={chartHeaderStyle}>
             <div style={{ minWidth: 0 }}>
-              <div style={labelStyle}>{[result?.freq ?? freq, dataSourceLabel].filter(Boolean).join(' · ')}</div>
-              <div style={chartTitleStyle}>{result?.symbol ?? result?.code ?? code}</div>
+              <div style={labelStyle}>{[displayFreq, dataSourceLabel].filter(Boolean).join(' · ')}</div>
+              <div style={chartTitleStyle}>{[displaySymbol, displayName].filter(Boolean).join(' · ')}</div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {dataSourceLabel ? (
@@ -941,9 +1169,9 @@ export function BacktestWorkbench({
                   {dataSourceLabel}
                 </span>
               ) : null}
-              {result?.freshness ? (
-                <span style={statusBadgeStyle(result.freshness === 'fresh' ? 'success' : 'warning')}>
-                  {result.freshness}
+              {(stringValue(targetInfo.freshness) ?? result?.freshness) ? (
+                <span style={statusBadgeStyle((stringValue(targetInfo.freshness) ?? result?.freshness) === 'fresh' ? 'success' : 'warning')}>
+                  {stringValue(targetInfo.freshness) ?? result?.freshness}
                 </span>
               ) : null}
               {(result?.warnings ?? []).slice(0, 2).map(item => (
@@ -970,7 +1198,7 @@ export function BacktestWorkbench({
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: terminalTheme.mutedStrong,
-                background: result ? 'rgba(8, 11, 18, 0.86)' : 'transparent',
+                background: result ? tradingDeskTheme.alpha.overlay : 'transparent',
               }}>
                 {loading
                   ? (locale === 'zh-CN' ? '正在拉取 Signals 回测数据。' : 'Loading Signals backtest data.')
@@ -982,8 +1210,8 @@ export function BacktestWorkbench({
 
         <div style={sideStyle}>
           <div style={{ ...panelStyle, gap: 7 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
-              {(['perf', 'trades', 'signals', 'scan'] as BacktestTab[]).map(item => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
+              {(['perf', 'trades', 'signals', 'scan', 'risk'] as BacktestTab[]).map(item => (
                 <button
                   key={item}
                   type="button"
@@ -1005,17 +1233,34 @@ export function BacktestWorkbench({
           </div>
           {tab === 'perf' ? (
             <Panel title={locale === 'zh-CN' ? '绩效总览' : 'Performance'}>
-              <KpiPanel kpi={result?.kpi} simKpi={result?.sim_kpi} />
+              <KpiPanel result={result} />
             </Panel>
           ) : tab === 'trades' ? (
             <Panel title={locale === 'zh-CN' ? '交易明细' : 'Trades'} meta={String(filledTrades.length)}>
-              <TradeTable trades={trades} />
+              <TradeTable
+                trades={trades}
+                selectedIndex={selectedTradeIndex}
+                onSelect={index => {
+                  setSelectedTradeIndex(index)
+                  setTab('trades')
+                }}
+              />
             </Panel>
           ) : tab === 'signals' ? (
             <Panel title={locale === 'zh-CN' ? '信号详情' : 'Signals'} meta={String(signals.length)}>
-              <SignalTable signals={signals} />
+              <SignalTable
+                signals={signals}
+                selectedIndex={selectedSignalIndex}
+                onSelect={(index, rawTime) => {
+                  setSelectedSignalIndex(index)
+                  setTab('signals')
+                  const chart = chartRef.current
+                  const time = numberValue(rawTime)
+                  if (chart && time) chart.scrollToTimestamp((time < 10_000_000_000 ? time * 1000 : time), 300)
+                }}
+              />
             </Panel>
-          ) : (
+          ) : tab === 'scan' ? (
             <Panel title={locale === 'zh-CN' ? '参数扫描' : 'Parameter scan'}>
               <ScanControls
                 params={scanParams}
@@ -1026,6 +1271,10 @@ export function BacktestWorkbench({
                   void runScan()
                 }}
               />
+            </Panel>
+          ) : (
+            <Panel title={locale === 'zh-CN' ? '风控摘要' : 'Risk'}>
+              <RiskPanel result={result} />
             </Panel>
           )}
         </div>
@@ -1057,20 +1306,22 @@ function Panel({
 function MetricStrip({ result }: { result: BacktestResult | null }) {
   const kpi = result?.kpi ?? {}
   const simKpi = result?.sim_kpi ?? {}
+  const metrics = terminalMetrics(result)
+  const pnlValue = numberValue(metrics.total_return_pct ?? simKpi.total_return_pct)
   const items = [
-    { label: 'Signals', value: formatNumber(kpi.total, 0) },
-    { label: 'Win T10', value: formatPercent(kpi.win_rate) },
-    { label: 'Expect', value: formatPercent(kpi.expectancy) },
-    { label: 'Trades', value: formatNumber(simKpi.filled_trades, 0) },
-    { label: 'Return', value: formatPercent(simKpi.total_return_pct) },
-    { label: 'DD', value: formatPercent(simKpi.max_drawdown_pct) },
+    { label: 'PnL', value: formatPercent(metrics.total_return_pct ?? simKpi.total_return_pct), tone: (pnlValue ?? 0) >= 0 ? 'up' : 'down' },
+    { label: 'DD', value: formatDrawdown(metrics.max_drawdown_pct ?? simKpi.max_drawdown_pct), tone: 'down' },
+    { label: 'WinRate', value: formatPercent(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate), tone: (numberValue(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
+    { label: 'Trades', value: formatNumber(metrics.filled_trades ?? simKpi.filled_trades, 0), tone: 'neutral' },
+    { label: 'Sharpe', value: formatNumber(metrics.sharpe ?? simKpi.sharpe, 2), tone: (numberValue(metrics.sharpe ?? simKpi.sharpe) ?? 0) >= 1 ? 'up' : 'neutral' },
+    { label: 'Excess', value: formatPercent(metrics.excess_return_pct), tone: (numberValue(metrics.excess_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
   ]
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6 }}>
       {items.map(item => (
         <div key={item.label} style={metricCardStyle}>
           <div style={labelStyle}>{item.label}</div>
-          <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ color: toneColor(item.tone), fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {item.value}
           </div>
         </div>
@@ -1113,29 +1364,45 @@ function ParamGrid({
   )
 }
 
-function KpiPanel({
-  kpi,
-  simKpi,
-}: {
-  kpi?: Record<string, unknown>
-  simKpi?: Record<string, unknown>
-}) {
+function KpiPanel({ result }: { result: BacktestResult | null }) {
+  const kpi = result?.kpi
+  const simKpi = result?.sim_kpi
+  const metrics = terminalMetrics(result)
+  if (Object.keys(metrics).length > 0) {
+    const metricRows = (key: string): Array<{ label: string; value: unknown; tone?: string }> =>
+      (Array.isArray(metrics[key]) ? metrics[key] : [])
+        .map(item => recordValue(item))
+        .map(item => ({
+          label: stringValue(item.label) ?? stringValue(item.key) ?? '',
+          value: formatMetricValue(item.value, stringValue(item.unit)),
+          tone: stringValue(item.tone),
+        }))
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, overflow: 'auto' }}>
+        <MetricGroup title="绩效" items={metricRows('performance')} />
+        <MetricGroup title="风险" items={metricRows('risk')} />
+        <MetricGroup title="交易质量" items={metricRows('trade_quality')} />
+        <MetricGroup title="执行体验" items={metricRows('execution')} />
+        <MetricGroup title="信号质量" items={metricRows('signal_quality')} />
+      </div>
+    )
+  }
   if (!kpi && !simKpi) return <div style={emptyStyle}>运行后显示绩效。</div>
   const signalItems = [
-    ['总信号', kpi?.total],
-    ['已评估', kpi?.evaluated],
-    ['胜率', formatPercent(kpi?.win_rate)],
-    ['期望', formatPercent(kpi?.expectancy)],
-    ['T+10', formatPercent(kpi?.avg_return_t10)],
-    ['MFE/MAE', `${formatPercent(kpi?.avg_mfe)} / ${formatPercent(kpi?.avg_mae)}`],
+    { label: '总信号', value: kpi?.total },
+    { label: '已评估', value: kpi?.evaluated },
+    { label: '胜率', value: formatPercent(kpi?.win_rate), tone: (numberValue(kpi?.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
+    { label: '期望', value: formatPercent(kpi?.expectancy), tone: (numberValue(kpi?.expectancy) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: 'T+10', value: formatPercent(kpi?.avg_return_t10), tone: (numberValue(kpi?.avg_return_t10) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: 'MFE/MAE', value: `${formatPercent(kpi?.avg_mfe)} / ${formatPercent(kpi?.avg_mae)}` },
   ]
   const simItems = [
-    ['成交', simKpi?.filled_trades],
-    ['胜率', formatPercent(simKpi?.win_rate)],
-    ['总收益', formatPercent(simKpi?.total_return_pct)],
-    ['Sharpe', formatNumber(simKpi?.sharpe, 2)],
-    ['盈亏比', formatNumber(simKpi?.profit_factor, 2)],
-    ['最大回撤', formatPercent(simKpi?.max_drawdown_pct)],
+    { label: '成交', value: simKpi?.filled_trades },
+    { label: '胜率', value: formatPercent(simKpi?.win_rate), tone: (numberValue(simKpi?.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
+    { label: '总收益', value: formatPercent(simKpi?.total_return_pct), tone: (numberValue(simKpi?.total_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: 'Sharpe', value: formatNumber(simKpi?.sharpe, 2), tone: (numberValue(simKpi?.sharpe) ?? 0) >= 1 ? 'up' : 'neutral' },
+    { label: '盈亏比', value: formatNumber(simKpi?.profit_factor, 2), tone: (numberValue(simKpi?.profit_factor) ?? 0) >= 1 ? 'up' : 'down' },
+    { label: '最大回撤', value: formatDrawdown(simKpi?.max_drawdown_pct), tone: 'down' },
   ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, overflow: 'auto' }}>
@@ -1145,15 +1412,15 @@ function KpiPanel({
   )
 }
 
-function MetricGroup({ title, items }: { title: string; items: Array<[string, unknown]> }) {
+function MetricGroup({ title, items }: { title: string; items: Array<{ label: string; value: unknown; tone?: string }> }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       <div style={labelStyle}>{title}</div>
       <div style={metricGridStyle}>
-        {items.map(([label, value]) => (
+        {items.map(({ label, value, tone }) => (
           <div key={label} style={metricCardStyle}>
             <div style={mutedStyle}>{label}</div>
-            <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>{String(value ?? 'N/A')}</div>
+            <div style={{ color: toneColor(tone), fontWeight: 800 }}>{String(value ?? 'N/A')}</div>
           </div>
         ))}
       </div>
@@ -1161,7 +1428,15 @@ function MetricGroup({ title, items }: { title: string; items: Array<[string, un
   )
 }
 
-function SignalTable({ signals }: { signals: BacktestSignal[] }) {
+function SignalTable({
+  signals,
+  selectedIndex,
+  onSelect,
+}: {
+  signals: BacktestSignal[]
+  selectedIndex: number | null
+  onSelect: (index: number, rawTime?: number) => void
+}) {
   if (signals.length === 0) return <div style={emptyStyle}>暂无信号。</div>
   return (
     <div style={tableWrapStyle}>
@@ -1176,10 +1451,20 @@ function SignalTable({ signals }: { signals: BacktestSignal[] }) {
         </thead>
         <tbody>
           {signals.slice().reverse().map((signal, index) => {
-            const returnT10 = numberValue(signal.eval?.return_t10)
+            const sourceIndex = signal.index ?? signals.length - index - 1
+            const returnT10 = numberValue(signal.eval?.return_t10 ?? signal.return_t10)
+            const rowActive = selectedIndex === sourceIndex
             return (
-              <tr key={`${signal.dt ?? index}-${signal.type ?? 'signal'}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
-                <td style={{ padding: 7, color: terminalTheme.mono }}>{signal.date_str ?? ''}</td>
+              <tr
+                key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'signal'}`}
+                style={{
+                  borderTop: `1px solid ${terminalTheme.border}`,
+                  background: rowActive ? tradingDeskTheme.alpha.accentSurface : 'transparent',
+                  cursor: 'pointer',
+                }}
+                onClick={() => onSelect(sourceIndex, signal.dt ?? signal.time)}
+              >
+                <td style={{ padding: 7, color: terminalTheme.mono }}>{signal.date_str ?? signal.date ?? ''}</td>
                 <td style={{ padding: 7 }}>
                   <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{signal.type ?? signal.group ?? 'Signal'}</div>
                   <div style={mutedStyle}>{[signal.group, signal.ma_status, signal.volume_status].filter(Boolean).join(' · ')}</div>
@@ -1197,7 +1482,15 @@ function SignalTable({ signals }: { signals: BacktestSignal[] }) {
   )
 }
 
-function TradeTable({ trades }: { trades: BacktestTrade[] }) {
+function TradeTable({
+  trades,
+  selectedIndex,
+  onSelect,
+}: {
+  trades: BacktestTrade[]
+  selectedIndex: number | null
+  onSelect: (index: number) => void
+}) {
   const filled = trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
   if (filled.length === 0) return <div style={emptyStyle}>暂无成交记录。</div>
   return (
@@ -1211,8 +1504,19 @@ function TradeTable({ trades }: { trades: BacktestTrade[] }) {
           </tr>
         </thead>
         <tbody>
-          {filled.slice().reverse().map((trade, index) => (
-            <tr key={`${trade.signal_date ?? index}-${trade.signal_type ?? 'trade'}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
+          {filled.slice().reverse().map((trade, index) => {
+            const sourceIndex = trade.index ?? filled.length - index - 1
+            const rowActive = selectedIndex === sourceIndex
+            return (
+            <tr
+              key={`${trade.id ?? trade.signal_date ?? index}-${trade.signal_type ?? 'trade'}`}
+              style={{
+                borderTop: `1px solid ${terminalTheme.border}`,
+                background: rowActive ? tradingDeskTheme.alpha.accentSurface : 'transparent',
+                cursor: 'pointer',
+              }}
+              onClick={() => onSelect(sourceIndex)}
+            >
               <td style={{ padding: 7 }}>
                 <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{trade.signal_type ?? 'Signal'}</div>
                 <div style={mutedStyle}>{trade.signal_date}</div>
@@ -1225,9 +1529,66 @@ function TradeTable({ trades }: { trades: BacktestTrade[] }) {
                 {formatPercent(trade.net_return_pct)}
               </td>
             </tr>
-          ))}
+            )
+          })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function RiskPanel({ result }: { result: BacktestResult | null }) {
+  const terminal = terminalOf(result)
+  if (!terminal) return <div style={emptyStyle}>运行后显示风控摘要。</div>
+  const risk = recordValue(terminal.panels?.risk)
+  const config = recordValue(terminal.panels?.config)
+  const dataHealth = recordValue(config.data_health)
+  const assumptions = recordValue(terminal.trade_assumptions ?? risk.assumptions)
+  const bands = Array.isArray(risk.bands) ? risk.bands.map(item => recordValue(item)) : []
+  const skipReasons = recordValue(risk.skip_reasons)
+  const riskMetrics = Array.isArray(terminal.metrics?.risk)
+    ? (terminal.metrics?.risk as BacktestTerminalMetric[])
+    : []
+  const metricRows = riskMetrics.map(item => ({
+    label: item.label ?? item.key ?? '',
+    value: formatMetricValue(item.value, item.unit),
+    tone: item.tone,
+  }))
+  const assumptionRows = [
+    { label: '初始资金', value: formatNumber(assumptions.initial_capital, 0) },
+    { label: '仓位', value: formatNumber(assumptions.position_size, 2) },
+    { label: '佣金', value: formatPercent(assumptions.commission_pct) },
+    { label: '印花税', value: formatPercent(assumptions.stamp_tax_pct) },
+    { label: '滑点', value: formatPercent(assumptions.slippage_pct) },
+    { label: '手数', value: formatNumber(assumptions.lot_size, 0) },
+    { label: '最长持仓', value: `${formatNumber(assumptions.max_hold_days, 0)}D` },
+  ]
+  const bandRows = bands.length
+    ? bands.map(item => ({
+        label: stringValue(item.label) ?? stringValue(item.key) ?? '',
+        value: [
+          numberValue(item.price) === undefined ? '' : formatNumber(item.price, 3),
+          numberValue(item.pct) === undefined ? '' : formatPercent(item.pct),
+        ].filter(Boolean).join(' / ') || 'N/A',
+        tone: numberValue(item.pct) !== undefined && (numberValue(item.pct) ?? 0) < 0 ? 'down' : 'up',
+      }))
+    : [{ label: '风控线', value: '未启用' }]
+  const healthRows = [
+    { label: '数据源', value: dataHealth.data_source_detail ?? dataHealth.data_source ?? 'N/A' },
+    { label: '新鲜度', value: dataHealth.freshness ?? 'N/A' },
+    { label: '截至', value: dataHealth.as_of ?? 'N/A' },
+    { label: 'K线', value: dataHealth.bar_count ?? 'N/A' },
+  ]
+  const skipRows = Object.keys(skipReasons).length
+    ? Object.entries(skipReasons).map(([label, value]) => ({ label, value }))
+    : [{ label: '跳过原因', value: '无' }]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0, overflow: 'auto' }}>
+      <MetricGroup title="风险指标" items={metricRows} />
+      <MetricGroup title="交易假设" items={assumptionRows} />
+      <MetricGroup title="止损/止盈带" items={bandRows} />
+      <MetricGroup title="配置与数据健康" items={[...healthRows, ...skipRows]} />
     </div>
   )
 }
@@ -1245,6 +1606,13 @@ function ScanControls({
   onChange: (key: string, value: string) => void
   onRun: () => void
 }) {
+  const scanPanel = recordValue(scan?.terminal?.panels?.scan)
+  const bestParams = Object.keys(recordValue(scanPanel.best_params)).length
+    ? recordValue(scanPanel.best_params)
+    : scan?.best_params
+  const scanRows = Array.isArray(scanPanel.rows)
+    ? (scanPanel.rows as Array<Record<string, unknown>>)
+    : scan?.scan_results
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
@@ -1265,16 +1633,16 @@ function ScanControls({
           {loading ? '扫描中' : '运行扫描'}
         </button>
       </div>
-      {scan?.best_params ? (
+      {bestParams ? (
         <div style={warningStyle}>
-          最优参数：{Object.entries(scan.best_params).map(([key, value]) => `${key}=${String(value)}`).join(', ')}
+          最优参数：{Object.entries(bestParams).map(([key, value]) => `${key}=${String(value)}`).join(', ')}
         </div>
       ) : null}
-      {scan?.scan_results?.length ? (
+      {scanRows?.length ? (
         <div style={tableWrapStyle}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <tbody>
-              {scan.scan_results.slice(0, 18).map((row, index) => (
+              {scanRows.slice(0, 18).map((row, index) => (
                 <tr key={index} style={{ borderTop: index === 0 ? 'none' : `1px solid ${terminalTheme.border}` }}>
                   <td style={{ padding: 7, color: terminalTheme.textStrong }}>
                     {Object.values(recordValue(row.params)).join(' / ')}
