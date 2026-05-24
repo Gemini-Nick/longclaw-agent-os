@@ -64,6 +64,14 @@ type BacktestSignal = {
   eval?: Record<string, unknown>
 }
 
+type BoardStocksResponse = {
+  board?: string
+  total?: number
+  showing?: number
+  stocks?: Array<{ symbol?: string; code?: string; name?: string }>
+  error?: string
+}
+
 type BacktestTrade = {
   id?: string
   index?: number
@@ -213,6 +221,14 @@ const basketBarStyle: React.CSSProperties = {
   padding: '6px 9px',
   borderBottom: `1px solid ${terminalTheme.grid}`,
   background: terminalTheme.panel,
+  minWidth: 0,
+}
+
+const basketSearchStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(190px, 300px) auto auto auto minmax(0, 1fr)',
+  alignItems: 'center',
+  gap: 6,
   minWidth: 0,
 }
 
@@ -417,6 +433,40 @@ const presetSymbolBaskets: SymbolBasket[] = [
     ],
   },
   {
+    id: 'semiconductor_equipment',
+    label: '半导体设备',
+    codes: [
+      { code: '688012', name: '中微公司', group: '半导体设备' },
+      { code: '688072', name: '拓荆科技', group: '半导体设备' },
+      { code: '688082', name: '盛美上海', group: '半导体设备' },
+      { code: '688120', name: '华海清科', group: '半导体设备' },
+      { code: '688478', name: '晶升股份', group: '半导体设备' },
+      { code: '002371', name: '北方华创', group: '半导体设备' },
+    ],
+  },
+  {
+    id: 'optical_cpo',
+    label: '光模块/CPO',
+    codes: [
+      { code: '300308', name: '中际旭创', group: '光模块/CPO' },
+      { code: '300502', name: '新易盛', group: '光模块/CPO' },
+      { code: '300394', name: '天孚通信', group: '光模块/CPO' },
+      { code: '002281', name: '光迅科技', group: '光模块/CPO' },
+      { code: '603083', name: '剑桥科技', group: '光模块/CPO' },
+    ],
+  },
+  {
+    id: 'pcb_ccl',
+    label: 'PCB/CCL',
+    codes: [
+      { code: '300476', name: '胜宏科技', group: 'PCB/CCL' },
+      { code: '600183', name: '生益科技', group: 'PCB/CCL' },
+      { code: '688183', name: '生益电子', group: 'PCB/CCL' },
+      { code: '002463', name: '沪电股份', group: 'PCB/CCL' },
+      { code: '002916', name: '深南电路', group: 'PCB/CCL' },
+    ],
+  },
+  {
     id: 'battery_materials',
     label: '电池材料',
     codes: [
@@ -474,8 +524,8 @@ function multiKpiGridStyle(density: MultiReportDensity): React.CSSProperties {
   return {
     display: 'grid',
     gridTemplateColumns: density === 'compact'
-      ? 'repeat(6, minmax(70px, 1fr))'
-      : 'repeat(6, minmax(86px, 1fr))',
+      ? 'repeat(auto-fit, minmax(74px, 1fr))'
+      : 'repeat(auto-fit, minmax(86px, 1fr))',
     gap: 6,
     minWidth: 0,
   }
@@ -884,6 +934,27 @@ function dashboardSymbolOptions(dashboard: BacktestDashboard): SymbolOption[] {
 function symbolOptionsForPicker(dashboard: BacktestDashboard): SymbolOption[] {
   const presetOptions = presetSymbolBaskets.flatMap(basket => basket.codes)
   return uniqueSymbolOptions([...dashboardSymbolOptions(dashboard), ...presetOptions]).slice(0, 24)
+}
+
+function symbolOptionMatches(option: SymbolOption, query: string): boolean {
+  if (!query) return true
+  const haystack = [option.code, option.name, option.group].join(' ').toLowerCase()
+  return haystack.includes(query)
+}
+
+function presetOptionByCode(code: string): SymbolOption | undefined {
+  const key = normalizeSymbolCode(code).toUpperCase()
+  if (!key) return undefined
+  return presetSymbolBaskets.flatMap(basket => basket.codes).find(option => option.code.toUpperCase() === key)
+}
+
+function basketMatches(basket: SymbolBasket, query: string): boolean {
+  if (!query) return true
+  const haystack = [
+    basket.label,
+    ...basket.codes.flatMap(item => [item.code, item.name, item.group]),
+  ].join(' ').toLowerCase()
+  return haystack.includes(query)
 }
 
 function selectedSymbolText(codes: string[]): string {
@@ -1548,9 +1619,12 @@ export function BacktestWorkbench({
         <input
           ref={codeInputRef}
           aria-label={locale === 'zh-CN' ? '标的代码列表' : 'Symbol list'}
+          name="backtest-symbols"
+          autoComplete="off"
+          spellCheck={false}
           style={inputStyle}
           value={code}
-          placeholder={locale === 'zh-CN' ? '输入代码，逗号分隔' : 'Type symbols, comma separated'}
+          placeholder={locale === 'zh-CN' ? '输入代码，逗号分隔…' : 'Type symbols, comma separated…'}
           onChange={event => setCode(event.target.value)}
         />
         <select
@@ -1618,10 +1692,16 @@ export function BacktestWorkbench({
 
       <SymbolBasketBar
         locale={locale}
+        baseUrl={baseUrl}
         selectedCodes={selectedCodes}
         options={symbolOptions}
         onApplyBasket={codes => setCodeList(codes)}
         onToggleCode={toggleSymbolCode}
+        onClearCodes={() => {
+          setCodeList([])
+          setBatchResult(null)
+          setResult(null)
+        }}
         onRemoveCode={codeToRemove => {
           setCodeList(selectedCodes.filter(item => item.toUpperCase() !== codeToRemove.toUpperCase()))
         }}
@@ -1798,27 +1878,115 @@ export function BacktestWorkbench({
 
 function SymbolBasketBar({
   locale,
+  baseUrl,
   selectedCodes,
   options,
   onApplyBasket,
   onToggleCode,
+  onClearCodes,
   onRemoveCode,
 }: {
   locale: LongclawLocale
+  baseUrl: string
   selectedCodes: string[]
   options: SymbolOption[]
   onApplyBasket: (codes: string[]) => void
   onToggleCode: (code: string) => void
+  onClearCodes: () => void
   onRemoveCode: (code: string) => void
 }) {
+  const [query, setQuery] = useState('')
+  const [boardOptions, setBoardOptions] = useState<SymbolOption[]>([])
+  const [boardLabel, setBoardLabel] = useState('')
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupMessage, setLookupMessage] = useState('')
   const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
-  const optionByCode = new Map(options.map(option => [symbolOptionKey(option), option]))
-  const availableOptions = options.filter(option => !selectedSet.has(option.code.toUpperCase()))
+  const mergedOptions = uniqueSymbolOptions([...boardOptions, ...options])
+  const optionByCode = new Map(mergedOptions.map(option => [symbolOptionKey(option), option]))
+  const normalizedQuery = query.trim().toLowerCase()
+  const filteredBaskets = presetSymbolBaskets.filter(basket => basketMatches(basket, normalizedQuery))
+  const availableOptions = mergedOptions
+    .filter(option => !selectedSet.has(option.code.toUpperCase()))
+    .filter(option => symbolOptionMatches(option, normalizedQuery))
+    .slice(0, 40)
+  const dynamicCodes = boardOptions.map(option => option.code)
+  const lookupBoard = useCallback(async () => {
+    const board = query.trim()
+    if (!board) return
+    setLookupLoading(true)
+    setLookupMessage('')
+    try {
+      const data = await fetchJson<BoardStocksResponse>(
+        baseUrl,
+        `/api/cluster/stocks?board=${encodeURIComponent(board)}`,
+        120_000,
+      )
+      const rows = Array.isArray(data.stocks) ? data.stocks : []
+      const nextOptions = uniqueSymbolOptions(rows.map(row => {
+        const code = normalizeSymbolCode(row.code ?? row.symbol ?? '')
+        const preset = presetOptionByCode(code)
+        const rawName = stringValue(row.name)
+        return {
+          code,
+          name: rawName && rawName !== code ? rawName : preset?.name ?? code,
+          group: stringValue(data.board) ?? board,
+        }
+      }).filter(option => option.code))
+      setBoardLabel(stringValue(data.board) ?? board)
+      setBoardOptions(nextOptions.slice(0, 60))
+      if (nextOptions.length === 0) {
+        setLookupMessage(data.error || (locale === 'zh-CN' ? '没有找到成分股，换一个板块名试试。' : 'No constituents found. Try another board name.'))
+      } else {
+        setLookupMessage(locale === 'zh-CN'
+          ? `${stringValue(data.board) ?? board} · ${numberValue(data.total) ?? nextOptions.length}只`
+          : `${stringValue(data.board) ?? board} · ${numberValue(data.total) ?? nextOptions.length} symbols`)
+      }
+    } catch (rawError) {
+      const apiError = rawError as ApiError
+      setBoardOptions([])
+      setBoardLabel('')
+      setLookupMessage(compactApiError(apiError, locale, locale === 'zh-CN' ? '板块搜索失败。' : 'Board lookup failed.'))
+    } finally {
+      setLookupLoading(false)
+    }
+  }, [baseUrl, locale, query])
   return (
     <div style={basketBarStyle}>
-      <div style={labelStyle}>{locale === 'zh-CN' ? '板块组合' : 'Baskets'}</div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '搜索' : 'Search'}</div>
+      <div style={basketSearchStyle}>
+        <input
+          aria-label={locale === 'zh-CN' ? '搜索板块或标的' : 'Search board or symbol'}
+          name="backtest-board-search"
+          autoComplete="off"
+          spellCheck={false}
+          style={{ ...inputStyle, height: 28, fontFamily: fontStacks.ui }}
+          value={query}
+          placeholder={locale === 'zh-CN' ? '半导体设备 / 光模块 / 代码 / 名称…' : 'Board, concept, code, or name…'}
+          onChange={event => setQuery(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              void lookupBoard()
+            }
+          }}
+        />
+        <button type="button" style={buttonStyle(false, lookupLoading || !query.trim())} disabled={lookupLoading || !query.trim()} onClick={() => void lookupBoard()}>
+          {lookupLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜板块' : 'Board')}
+        </button>
+        <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket([...selectedCodes, ...dynamicCodes])}>
+          {locale === 'zh-CN' ? '加入全部' : 'Add all'}
+        </button>
+        <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket(dynamicCodes)}>
+          {locale === 'zh-CN' ? '替换已选' : 'Replace'}
+        </button>
+        <div style={{ ...mutedStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lookupMessage}>
+          {lookupMessage || (boardLabel ? `${boardLabel} · ${boardOptions.length}` : '')}
+        </div>
+      </div>
+
+      <div style={labelStyle}>{locale === 'zh-CN' ? '组合' : 'Baskets'}</div>
       <div style={chipRowStyle}>
-        {presetSymbolBaskets.map(basket => {
+        {filteredBaskets.length ? filteredBaskets.map(basket => {
           const basketCodes = basket.codes.map(item => item.code)
           const active = sameCodeSet(selectedCodes, basketCodes)
           return (
@@ -1832,7 +2000,7 @@ function SymbolBasketBar({
               {basket.label}
             </button>
           )
-        })}
+        }) : <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>{locale === 'zh-CN' ? '没有匹配的本地组合，可直接搜板块。' : 'No local basket matches. Search a board directly.'}</div>}
       </div>
       <div style={labelStyle}>{locale === 'zh-CN' ? '已选池' : 'Selected'}</div>
       <div style={chipRowStyle}>
@@ -1854,6 +2022,12 @@ function SymbolBasketBar({
             {locale === 'zh-CN' ? '选择一个板块组合，或勾选右侧标的。' : 'Pick a basket or toggle symbols.'}
           </div>
         )}
+        <button type="button" style={buttonStyle(false, selectedCodes.length === 0)} disabled={selectedCodes.length === 0} onClick={onClearCodes}>
+          {locale === 'zh-CN' ? '清空' : 'Clear'}
+        </button>
+      </div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '候选' : 'Candidates'}</div>
+      <div style={chipRowStyle}>
         {availableOptions.map(option => {
           const active = selectedSet.has(option.code.toUpperCase())
           return (
@@ -1869,6 +2043,11 @@ function SymbolBasketBar({
             </button>
           )
         })}
+        {availableOptions.length === 0 ? (
+          <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
+            {locale === 'zh-CN' ? '没有更多候选。可搜索板块或清空已选池。' : 'No more candidates. Search a board or clear selected symbols.'}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -1903,6 +2082,7 @@ function MultiBacktestReport({
   const panels = terminal.panels ?? {}
   const rankingRows = panels.ranking?.rows ?? []
   const overviewRows = panels.interval_overview?.rows ?? []
+  const signalRows = Array.isArray(panels.signals?.rows) ? panels.signals.rows.map(recordValue) : []
   const chartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? []
   const scriptCards = panels.scripts?.cards ?? []
   const metrics = recordValue(terminal.metrics)
@@ -1913,6 +2093,7 @@ function MultiBacktestReport({
     { label: 'Trades', value: formatNumber(metrics.filled_trades, 0), tone: 'neutral' },
     { label: 'WinRate', value: formatPercent(metrics.win_rate), tone: (numberValue(metrics.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
     { label: 'Avg Ret', value: formatPercent(metrics.total_return_pct), tone: (numberValue(metrics.total_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: '5D Range', value: formatPercent(metrics.median_5d_high_low_pct), tone: 'warning' },
     { label: 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct), tone: 'down' },
   ]
   return (
@@ -1946,6 +2127,10 @@ function MultiBacktestReport({
         </Panel>
       </div>
 
+      <Panel title={locale === 'zh-CN' ? '全部信号收益拆解' : 'Signal return breakdown'} meta={signalRows.length ? String(signalRows.length) : undefined} style={multiPanelStyle(density)}>
+        <BatchSignalBreakdownTable rows={signalRows} density={density} />
+      </Panel>
+
       <Panel title={locale === 'zh-CN' ? '多股票 K线复盘' : 'Multi-symbol candles'} style={multiPanelStyle(density)}>
         {chartItems.length ? (
           <div style={multiChartsGridStyle(density, chartItems.length)}>
@@ -1963,7 +2148,7 @@ function MultiBacktestReport({
         )}
       </Panel>
 
-      <Panel title={locale === 'zh-CN' ? '视频脚本 / 交易员结论' : 'Script cards'} style={multiPanelStyle(density)}>
+      <Panel title={locale === 'zh-CN' ? '规则锐评 / 交易员结论' : 'Rule review cards'} style={multiPanelStyle(density)}>
         {scriptCards.length ? (
           <div style={scriptGridStyle(density, scriptCards.length)}>
             {scriptCards.map((card, index) => (
@@ -2003,6 +2188,7 @@ function MultiRankingTable({
     ['strength_grade', '强弱'],
     ['range_return_pct', '区间收益'],
     ['max_drawdown_pct', '最大回撤'],
+    ['median_5d_high_low_pct', '5日高低幅'],
     ['up_bar_ratio_pct', '上涨K占比'],
     ['relative_excess_pct', '相对超额'],
     ['current_character', '当前性质'],
@@ -2016,6 +2202,7 @@ function MultiRankingTable({
     'name',
     'range_return_pct',
     'max_drawdown_pct',
+    'median_5d_high_low_pct',
     'trade_difficulty',
     'review_level',
     'review_conclusion',
@@ -2067,6 +2254,7 @@ function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, u
     ['range_return_pct', '区间收益'],
     ['max_drawdown_pct', '最大回撤'],
     ['max_runup_pct', '最大浮盈'],
+    ['median_5d_high_low_pct', '5日高低幅'],
     ['volatility_pct', '波动率'],
     ['up_bar_ratio_pct', '上涨K占比'],
   ] as const
@@ -2081,6 +2269,61 @@ function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, u
         <tbody>
           {rows.map((row, index) => (
             <tr key={`${String(row.code ?? index)}-${index}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
+              {headers.map(([key]) => (
+                <td key={key} style={{ padding: 7, color: cellToneColor(key, row[key]), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {formatReportCell(key, row[key])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<string, unknown>>; density: MultiReportDensity }) {
+  if (rows.length === 0) return <div style={emptyStyle}>运行“全部信号”后显示各信号类型的 T+5/T+10、MFE/MAE 和成交收益。</div>
+  const fullHeaders = [
+    ['signal_type', '信号'],
+    ['symbol_count', '标的'],
+    ['signal_count', '信号数'],
+    ['evaluated_count', '已评估'],
+    ['trade_count', '成交'],
+    ['win_rate', '信号胜率'],
+    ['avg_t5_pct', 'T+5'],
+    ['avg_t10_pct', 'T+10'],
+    ['avg_mfe_pct', 'MFE'],
+    ['avg_mae_pct', 'MAE'],
+    ['avg_trade_return_pct', '成交均利'],
+    ['best_symbol', '最佳标的'],
+  ] as const
+  const compactHeaders = fullHeaders.filter(([key]) => [
+    'signal_type',
+    'signal_count',
+    'trade_count',
+    'win_rate',
+    'avg_t10_pct',
+    'avg_mfe_pct',
+    'avg_mae_pct',
+    'best_symbol',
+  ].includes(key))
+  const headers = density === 'compact' ? compactHeaders : fullHeaders
+  return (
+    <div style={reportTableWrapStyle('overview', density)}>
+      <table style={reportTableStyleFor('overview', density)}>
+        <thead>
+          <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
+            {headers.map(([key, label]) => (
+              <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={`${String(row.signal_type ?? index)}-${index}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
               {headers.map(([key]) => (
                 <td key={key} style={{ padding: 7, color: cellToneColor(key, row[key]), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {formatReportCell(key, row[key])}
@@ -2247,8 +2490,10 @@ function ExpandedKlineOverlay({
     ['最大回撤', 'max_drawdown_pct'],
     ['最大浮盈', 'max_runup_pct'],
     ['波动率', 'volatility_pct'],
+    ['5日高低幅', 'median_5d_high_low_pct'],
     ['上涨K占比', 'up_bar_ratio_pct'],
     ['K线数', 'bar_count'],
+    ['显示K线', 'visible_bar_count'],
   ] as const
   return (
     <div
@@ -2283,12 +2528,16 @@ function ExpandedKlineOverlay({
           </div>
           <button type="button" aria-label="关闭放大K线" style={buttonStyle(false)} onClick={onClose}>×</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(86px, 1fr))', gap: 6 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 6 }}>
           {stats.map(([label, key]) => (
             <div key={key} style={metricCardStyle}>
               <div style={labelStyle}>{label}</div>
               <div style={{ color: cellToneColor(key, item[key]), fontWeight: 800 }}>
-                {key === 'bar_count' ? formatNumber(item[key] ?? rows.length, 0) : formatReportCell(key, item[key])}
+                {key === 'visible_bar_count'
+                  ? formatNumber(rows.length, 0)
+                  : key === 'bar_count'
+                    ? formatNumber(item[key] ?? rows.length, 0)
+                    : formatReportCell(key, item[key])}
               </div>
             </div>
           ))}
@@ -2315,10 +2564,13 @@ function ReviewScriptCard({ card, density }: { card: Record<string, unknown>; de
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
         <div>
-          <div style={labelStyle}>视频脚本</div>
+          <div style={labelStyle}>规则锐评</div>
           <div style={{ color: terminalTheme.textStrong, fontSize: compact ? 16 : 18, fontWeight: 900 }}>{String(card.name ?? card.code ?? '')}</div>
         </div>
-        <div style={monoStyle}>{String(card.code ?? '')}</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={monoStyle}>{String(card.code ?? '')}</div>
+          <div style={labelStyle}>随回测刷新</div>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
         {stats.slice(0, 4).map((item, index) => (
@@ -2350,7 +2602,7 @@ function ScriptLine({ title, text, strong = false }: { title: string; text: stri
 
 function formatReportCell(key: string, value: unknown): string {
   if (key.includes('pct') || key.includes('return') || key.includes('drawdown') || key.includes('ratio')) return formatPercent(value)
-  if (key === 'rank' || key === 'bar_count') return formatNumber(value, 0)
+  if (key === 'rank' || key === 'bar_count' || key.endsWith('_count') || key === 'trade_count' || key === 'signal_count') return formatNumber(value, 0)
   if (key === 'sharpe') return formatNumber(value, 2)
   return String(value ?? 'N/A')
 }
