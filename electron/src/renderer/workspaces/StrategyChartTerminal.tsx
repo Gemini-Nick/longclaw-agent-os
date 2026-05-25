@@ -481,7 +481,7 @@ const MA_COLORS = [
   tradingDeskTheme.chart.gold,
   tradingDeskTheme.colors.textStrong,
 ]
-const FIBONACCI_MA_PERIODS = [8, 13, 21, 34, 55, 89]
+const KEY_MA_PERIODS = [5, 8, 10, 13, 20, 21]
 const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
 
 let signalOverlayRegistered = false
@@ -1172,6 +1172,54 @@ const watchlistSubStyle: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+}
+
+const watchlistSignalCellStyle: React.CSSProperties = {
+  ...watchlistCellStyle,
+  padding: '5px 4px',
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.ui,
+  lineHeight: 1.25,
+  overflow: 'visible',
+  textOverflow: 'clip',
+  whiteSpace: 'normal',
+}
+
+const watchlistSignalStackStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 2,
+  minWidth: 0,
+}
+
+const watchlistSignalMainStyle: React.CSSProperties = {
+  minWidth: 0,
+  maxWidth: '100%',
+  color: terminalTheme.textStrong,
+  fontSize: 10.5,
+  fontWeight: 800,
+  lineHeight: 1.25,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+}
+
+const watchlistSignalDetailStyle: React.CSSProperties = {
+  minWidth: 0,
+  maxWidth: '100%',
+  color: terminalTheme.muted,
+  fontSize: 9,
+  lineHeight: 1.2,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
 }
 
 const stockWatchlistNameCellStyle: React.CSSProperties = {
@@ -1958,6 +2006,12 @@ const signalBadgeRowStyle: React.CSSProperties = {
   overflow: 'hidden',
 }
 
+const contextSignalBadgeRowStyle: React.CSSProperties = {
+  ...signalBadgeRowStyle,
+  flexWrap: 'wrap',
+  maxHeight: 34,
+}
+
 const stockDecisionBadgeStackStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -2385,6 +2439,40 @@ function firstNumberValue(...values: unknown[]): number | undefined {
 
 function compactText(value: unknown, fallback = ''): string {
   return stringValue(value) ?? (typeof value === 'number' ? String(value) : fallback)
+}
+
+function meaningfulSignalText(value: unknown): string {
+  const text = compactText(value)
+  const normalized = text.toLowerCase()
+  return text && !['无', '暂无', 'none', 'n/a', 'na', 'null'].includes(normalized) ? text : ''
+}
+
+export function timeframeBadgeDisplayLabel(value: unknown, locale: LongclawLocale = 'zh-CN'): string {
+  const text = compactText(value)
+  const normalized = text.toLowerCase()
+  if (['weekly', 'week', '1w', 'w', '周', '周线'].includes(normalized)) {
+    return locale === 'zh-CN' ? '周线' : 'Weekly'
+  }
+  if (['daily', 'day', '1d', 'd', '日', '日线'].includes(normalized)) {
+    return locale === 'zh-CN' ? '日线' : 'Daily'
+  }
+  if (['30m', '30min', '30分钟', 'f30'].includes(normalized)) {
+    return locale === 'zh-CN' ? '30分钟' : '30m'
+  }
+  if (['15m', '15min', '15分钟', 'f15'].includes(normalized)) {
+    return locale === 'zh-CN' ? '15分钟' : '15m'
+  }
+  if (['5m', '5min', '5分钟', 'f5'].includes(normalized)) {
+    return locale === 'zh-CN' ? '5分钟' : '5m'
+  }
+  return text
+}
+
+function signalBadgeDisplayLabel(badge: WatchlistSignalBadge, locale: LongclawLocale): string {
+  const label = timeframeBadgeDisplayLabel(badge.label, locale)
+  if (badge.side === 'sell') return locale === 'zh-CN' ? `${label}卖点` : `${label} sell`
+  if (badge.side === 'buy') return locale === 'zh-CN' ? `${label}买点` : `${label} buy`
+  return label
 }
 
 function localizedPair(pair: [string, string] | undefined, locale: LongclawLocale, fallback = ''): string {
@@ -3565,15 +3653,9 @@ function chartStyles(): DeepPartial<Styles> {
 }
 
 export function maPeriodsForChart(freq?: string, targetKind?: string): number[] {
-  if (compactText(targetKind).toLowerCase() === 'index') return FIBONACCI_MA_PERIODS
-  const normalized = String(freq ?? '').toLowerCase()
-  if (normalized.includes('week') || normalized === 'w' || normalized === '1w') {
-    return [5, 10, 20, 50]
-  }
-  if (normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily') {
-    return [5, 10, 20, 60]
-  }
-  return [5, 10, 20, 60]
+  void freq
+  void targetKind
+  return KEY_MA_PERIODS
 }
 
 function maIndicatorStyles(periods: number[]): DeepPartial<IndicatorStyle> {
@@ -4237,29 +4319,16 @@ function isDailyFreq(freq?: string): boolean {
 
 function derivedMaKeyLevels(data: KLineData[], freq?: string, targetKind?: string): StrategyKeyLevel[] {
   const normalized = normalizeSignalFreq(freq)
-  const basePeriods = normalized === 'weekly'
-    ? [20, 50]
-    : normalized === '30min'
-      ? [20, 60]
-      : normalized === 'daily'
-        ? [50, 200]
-        : []
-  const periods = Array.from(new Set([
-    ...(compactText(targetKind).toLowerCase() === 'index' ? FIBONACCI_MA_PERIODS : []),
-    ...basePeriods,
-  ]))
-  return periods
+  void targetKind
+  return KEY_MA_PERIODS
     .map(period => {
       const value = movingAverageLevel(data, period)
       if (value === undefined) return null
       const close = latestClose(data)
-      const isFibIndexMa = compactText(targetKind).toLowerCase() === 'index' && FIBONACCI_MA_PERIODS.includes(period)
       return {
-        name: `${displayFreqLabel(normalized)}${isFibIndexMa ? 'Fib MA' : 'MA'}${period}`,
+        name: `${displayFreqLabel(normalized)}MA${period}`,
         value,
-        role: isFibIndexMa
-          ? '指数Fibonacci均线'
-          : normalized === 'daily' && period === 200 ? '长期趋势压力/支撑' : '阶段底部/成本线',
+        role: '关键均线',
         position: close !== undefined && close >= value ? '下方' : '上方',
         distance_pct: close !== undefined && value > 0 ? ((value - close) / close) * 100 : null,
         timeframe: normalized,
@@ -5688,6 +5757,18 @@ function watchlistRowSignalLine(row: WatchlistRow, locale: LongclawLocale): stri
   return opposite && opposite !== (locale === 'zh-CN' ? '暂无' : 'None') ? opposite : row.signal || row.rankReason || row.explanation
 }
 
+function watchlistSignalDetailLine(row: WatchlistRow): string {
+  const currentTimeframeMa = recordValue(row.raw.current_timeframe_ma)
+  const detail = [
+    row.raw.signal_detail,
+    currentTimeframeMa.summary,
+    currentTimeframeMa.details,
+    row.raw.explanation,
+    row.raw.reason,
+  ].map(meaningfulSignalText).find(value => value && value !== row.signal)
+  return detail || ''
+}
+
 function sourceConfidenceAlias(source: string): string[] {
   const normalized = source.toLowerCase()
   if (normalized.includes('technical') || normalized === 'signals' || normalized.includes('signal')) return ['signal']
@@ -6014,28 +6095,36 @@ function timeframeBadges(row: Record<string, unknown>): string[] {
   return timeframeSignalBadges(row).map(item => item.label)
 }
 
-function signalForWatchlist(row: Record<string, unknown>, kind: string): string {
-  const badges = timeframeSignalBadges(row)
-  if (badges.length > 0) return badges.map(item => item.label).join('/')
+export function signalForWatchlist(row: Record<string, unknown>, kind: string): string {
+  const currentTimeframeMa = recordValue(row.current_timeframe_ma)
+  const explicitSignal = [
+    row.latest_signal,
+    row.signal_detail,
+    currentTimeframeMa.summary,
+    currentTimeframeMa.label,
+  ].map(meaningfulSignalText).find(Boolean)
+  if (explicitSignal) return explicitSignal
   const stackedSignals = [
-    compactText(row.daily_latest_signal),
-    compactText(row.f30_latest_signal),
-    compactText(row.f15_latest_signal),
-  ].filter(value => value && value !== '无')
+    meaningfulSignalText(row.daily_latest_signal),
+    meaningfulSignalText(row.f30_latest_signal),
+    meaningfulSignalText(row.f15_latest_signal),
+  ].filter(Boolean)
   if (stackedSignals.length > 0) return stackedSignals.slice(0, 2).join('/')
   const evidenceSignal = compactText(recordValue(row.signal_evidence).signal_type)
   if (evidenceSignal) return evidenceSignal
+  const badges = timeframeSignalBadges(row)
+  if (badges.length > 0) return badges.map(item => signalBadgeDisplayLabel(item, 'zh-CN')).join('/')
   if (kind === 'industry' || kind === 'concept') {
     return (
-      compactText(row.latest_signal) ||
-      compactText(row.leader) ||
+      meaningfulSignalText(row.latest_signal) ||
+      meaningfulSignalText(row.leader) ||
       compactText(recordValue(row.carrier).name) ||
       compactText(row.source)
     )
   }
   return (
-    compactText(row.latest_signal) ||
-    compactText(row.signal) ||
+    meaningfulSignalText(row.latest_signal) ||
+    meaningfulSignalText(row.signal) ||
     compactText(row.reason) ||
     compactText(row.direction)
   )
@@ -6142,7 +6231,7 @@ function toWatchlistRow(
     latest: latestValueForWatchlist(row),
     dayChange,
     rangeValues,
-    signal: signalBadges.length > 0 ? signalBadges.map(item => item.label).join('/') : signalForWatchlist(row, kind),
+    signal: signalForWatchlist(row, kind),
     signalBadges,
     tags: tagsForWatchlist(row, kind),
     lane: compactText(row.lane),
@@ -6897,7 +6986,6 @@ export function StrategyChartTerminal({
   )
   const activeChartMode = chartModeFromTarget(target, symbolData)
   const targetKindForMa = compactText(symbolData?.target?.kind, target.kind)
-  const isIndexPriceChart = targetKindForMa.toLowerCase() === 'index' && chartMeta.is_price_kline !== false
   const symbolChainContext = useMemo(() => chainContextFromSymbolSummary(symbolData), [symbolData])
   const chainContext = selectedChainContext ?? symbolChainContext
   const primaryValueLabel = chartMeta.is_price_kline === false
@@ -7990,7 +8078,7 @@ export function StrategyChartTerminal({
                 {activeMaPeriods.map((period, index) => (
                   <span key={`ma-${period}`} style={indicatorLegendItemStyle}>
                     <span style={{ ...indicatorLegendSwatchStyle, background: MA_COLORS[index % MA_COLORS.length] }} />
-                    {chartMeta.is_price_kline === false ? `热度MA${period}` : isIndexPriceChart ? `Fib MA${period}` : `MA${period}`}
+                    {chartMeta.is_price_kline === false ? `热度MA${period}` : `MA${period}`}
                   </span>
                 ))}
                 <span style={indicatorLegendItemStyle}>
@@ -8007,12 +8095,6 @@ export function StrategyChartTerminal({
                   <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.alpha.textBorderStrong }} />
                   {chartMeta.is_price_kline === false ? '热度动量0' : 'MACD 0'}
                 </span>
-                {isDailyFreq(currentFreq) ? (
-                  <span style={indicatorLegendItemStyle}>
-                    <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.chart.line }} />
-                    MA50/200关键位
-                  </span>
-                ) : null}
                 <span style={indicatorLegendItemStyle}>
                   <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up }} />
                   {locale === 'zh-CN' ? `背离 ${divergences.length}` : `Divergence ${divergences.length}`}
@@ -8134,7 +8216,7 @@ export function StrategyChartTerminal({
                 {maAcceptance ? (
                   <div style={{ ...signalBlockStyle, borderTop: 0, paddingTop: 0 }}>
                     <div style={candidateGroupHeaderStyle}>
-                      <span>{locale === 'zh-CN' ? '均线斐波那契承接' : 'Fibonacci MA acceptance'}</span>
+                      <span>{locale === 'zh-CN' ? '关键均线承接' : 'Key MA acceptance'}</span>
                       <span>{shortMaAcceptanceLabel(maAcceptance)}</span>
                     </div>
                     <div
@@ -8196,7 +8278,7 @@ export function StrategyChartTerminal({
                                 key={`${label || index}-${badge.side}-${badge.label}`}
                                 style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
                               >
-                                {badge.side === 'sell' ? `卖${badge.label}` : badge.label}
+                                {signalBadgeDisplayLabel(badge, locale)}
                               </span>
                             ))}
                           </div>
@@ -9591,7 +9673,7 @@ function WatchlistTabbedTable({
 
 function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
   const stockTab = activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks'
-  const rangeWidth = stockTab ? 72 : 68
+  const rangeWidth = stockTab ? 72 : 64
   const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, ${rangeWidth}px)` : ''
   if (activeTab === 'sector_boards') {
     return `minmax(100px, 1fr) 50px 60px 62px${rangeColumns}`
@@ -9599,7 +9681,7 @@ function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: num
   if (stockTab) {
     return `minmax(176px, 1.5fr) 56px 58px minmax(78px, 0.7fr)${rangeColumns}`
   }
-  return `minmax(96px, 1fr) 48px 52px 54px${rangeColumns}`
+  return `minmax(104px, 1fr) 46px 52px minmax(96px, 0.95fr)${rangeColumns}`
 }
 
 function watchlistRangeHeaderLabel(column: WatchlistRangeColumn): string {
@@ -10176,6 +10258,7 @@ function WatchlistTable({
         const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : ''
         const contextLine = stockDecision ? stockContextLine(row, locale) : ''
         const displayBadges = stockDecision ? stockDisplayBadges(row) : []
+        const signalDetailLine = stockDecision ? '' : watchlistSignalDetailLine(row)
         const stageBadgeStyle = row.decision.opportunitySide === 'risk'
           ? miniSellSignalBadgeStyle
           : row.decision.opportunitySide === 'right'
@@ -10202,11 +10285,14 @@ function WatchlistTable({
 	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'}: ${sectorPrimaryDomainForWatchlist(row)}` : '',
 	                activeTab === 'sector_boards' && sectorConceptOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '概念叠加' : 'Concept overlay'}: ${sectorConceptOverlayForWatchlist(row)}` : '',
 	                activeTab === 'sector_boards' && sectorConceptOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源概念' : 'Source concepts'}: ${sectorConceptOverlayDetailForWatchlist(row)}` : '',
-	                activeTab === 'sector_boards' && sectorThemeOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '主题叠加' : 'Theme overlay'}: ${sectorThemeOverlayForWatchlist(row)}` : '',
-	                activeTab === 'sector_boards' && sectorThemeOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源主题' : 'Source themes'}: ${sectorThemeOverlayDetailForWatchlist(row)}` : '',
-	                activeTab === 'sector_boards' && chainChangeExplain ? chainChangeExplain : '',
-	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
-	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+                activeTab === 'sector_boards' && sectorThemeOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '主题叠加' : 'Theme overlay'}: ${sectorThemeOverlayForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' && sectorThemeOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源主题' : 'Source themes'}: ${sectorThemeOverlayDetailForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' && chainChangeExplain ? chainChangeExplain : '',
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+                !stockDecision && row.signal ? `${locale === 'zh-CN' ? '信号' : 'Signal'}: ${row.signal}` : '',
+                !stockDecision && signalDetailLine ? `${locale === 'zh-CN' ? '说明' : 'Detail'}: ${signalDetailLine}` : '',
+                !stockDecision && row.signalBadges.length > 0 ? `${locale === 'zh-CN' ? '周期' : 'Timeframes'}: ${row.signalBadges.map(badge => signalBadgeDisplayLabel(badge, locale)).join(' / ')}` : '',
                 stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
                 stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '证据' : 'Evidence'}: ${evidenceLine}` : '',
                 row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${row.rankReason}` : '',
@@ -10280,7 +10366,7 @@ function WatchlistTable({
               </div>
               <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? percentTone(firstMetric) : {}) }}>{firstMetric}</div>
               <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? {} : percentTone(secondMetric)) }}>{secondMetric}</div>
-              <div style={watchlistCellStyle}>
+              <div style={activeTab === 'sector_boards' || activeTab === 'ai_focus' || stockDecision ? watchlistCellStyle : watchlistSignalCellStyle}>
                 {activeTab === 'sector_boards' ? (
                   sectorCarrierForWatchlist(row, locale)
                 ) : activeTab === 'ai_focus' ? (
@@ -10297,19 +10383,25 @@ function WatchlistTable({
                         </span>
                       ))}
                   </span>
-                ) : row.signalBadges.length > 0 ? (
-                  <span style={signalBadgeRowStyle}>
-                    {row.signalBadges.slice(0, 4).map(badge => (
-                      <span
-                        key={`${row.id}-${badge.side}-${badge.label}`}
-                        style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
-                      >
-                        {badge.label}
-                      </span>
-                    ))}
-                  </span>
                 ) : (
-                  row.signal || 'N/A'
+                  <span style={watchlistSignalStackStyle}>
+                    <span style={watchlistSignalMainStyle}>{row.signal || 'N/A'}</span>
+                    {signalDetailLine ? (
+                      <span style={watchlistSignalDetailStyle}>{signalDetailLine}</span>
+                    ) : null}
+                    {row.signalBadges.length > 0 ? (
+                      <span style={contextSignalBadgeRowStyle}>
+                        {row.signalBadges.slice(0, 4).map(badge => (
+                          <span
+                            key={`${row.id}-${badge.side}-${badge.label}`}
+                            style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                          >
+                            {signalBadgeDisplayLabel(badge, locale)}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
+                  </span>
                 )}
               </div>
               {row.rangeValues.map((value, index) => (
@@ -10897,13 +10989,13 @@ function TargetRows({
                 {signalBadges.length > 0 ? (
                   <div style={signalBadgeRowStyle}>
                     {signalBadges.slice(0, 5).map(badge => (
-                      <span
-                        key={`${section.key}-${label || index}-${badge.side}-${badge.label}`}
-                        style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
-                      >
-                        {badge.side === 'sell' ? `卖${badge.label}` : badge.label}
-                      </span>
-                    ))}
+                        <span
+                          key={`${section.key}-${label || index}-${badge.side}-${badge.label}`}
+                          style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                        >
+                          {signalBadgeDisplayLabel(badge, locale)}
+                        </span>
+                      ))}
                   </div>
                 ) : null}
                 <div style={mutedTwoLineStyle}>

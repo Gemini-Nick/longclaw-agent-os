@@ -9,10 +9,12 @@ import {
   mongoCoverageState,
   signalCalloutBadgeSummary,
   signalEvidenceCalloutsForChart,
+  signalForWatchlist,
   signalOverlayPriority,
   signalsFromSymbolData,
   shouldAddManualClueForSearch,
   sourceMonitorSummary,
+  timeframeBadgeDisplayLabel,
   withSignalCalloutIds,
 } from './StrategyChartTerminal.js'
 
@@ -180,9 +182,9 @@ describe('StrategyChartTerminal MA acceptance evidence', () => {
       summary: {
         ma_alignment: {
           fib_accept_periods: [],
-          fib_touch_periods: [21, 89],
+          fib_touch_periods: [21, 13],
           fib_breakdown_periods: [21],
-          fib_array_summary: 'MA21跌破待修复 / MA89触碰待确认',
+          fib_array_summary: 'MA21跌破待修复 / MA13触碰待确认',
           fib_ma_array: [
             {
               period: 21,
@@ -191,7 +193,7 @@ describe('StrategyChartTerminal MA acceptance evidence', () => {
               pullback_breakdown: true,
             },
             {
-              period: 89,
+              period: 13,
               pullback_touch: true,
               pullback_acceptance: false,
             },
@@ -333,10 +335,27 @@ describe('StrategyChartTerminal index multi-timeframe signals', () => {
     ]))
   })
 
-  it('uses Fibonacci MA periods for index price charts', () => {
-    expect(maPeriodsForChart('daily', 'index')).toEqual([8, 13, 21, 34, 55, 89])
-    expect(maPeriodsForChart('30min', 'index')).toEqual([8, 13, 21, 34, 55, 89])
-    expect(maPeriodsForChart('daily', 'stock')).toEqual([5, 10, 20, 60])
+  it('uses the same key MA periods for every chart target', () => {
+    expect(maPeriodsForChart('daily', 'index')).toEqual([5, 8, 10, 13, 20, 21])
+    expect(maPeriodsForChart('weekly', 'industry')).toEqual([5, 8, 10, 13, 20, 21])
+    expect(maPeriodsForChart('30min', 'stock')).toEqual([5, 8, 10, 13, 20, 21])
+  })
+
+  it('uses readable timeframe labels instead of compact codes', () => {
+    expect(timeframeBadgeDisplayLabel('D', 'zh-CN')).toBe('日线')
+    expect(timeframeBadgeDisplayLabel('30M', 'zh-CN')).toBe('30分钟')
+    expect(timeframeBadgeDisplayLabel('15min', 'zh-CN')).toBe('15分钟')
+  })
+
+  it('keeps explicit index risk text ahead of timeframe badges', () => {
+    const signal = signalForWatchlist({
+      latest_signal: '未站稳5周线',
+      signal_detail: '上周五收盘价没站稳5周线',
+      sell_timeframes: [{ badge: 'D', side: 'sell' }],
+      buy_timeframes: [{ badge: '30m', side: 'buy' }],
+    }, 'index')
+
+    expect(signal).toBe('未站稳5周线')
   })
 })
 

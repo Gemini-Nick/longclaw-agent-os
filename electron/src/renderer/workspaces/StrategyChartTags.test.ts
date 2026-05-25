@@ -40,7 +40,7 @@ describe('StrategyChart watchlist tags', () => {
     expect(tags).toEqual(['custom_signal', '等待5m确认'])
   })
 
-  it('surfaces Fibonacci MA acceptance for index rows', () => {
+  it('surfaces key MA acceptance for index rows', () => {
     const tags = tagsForWatchlist({
       kind: 'index',
       ma_acceptance: {
