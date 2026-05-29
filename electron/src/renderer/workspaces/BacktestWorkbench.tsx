@@ -780,6 +780,24 @@ function normalizeSymbolCode(value: string): string {
   return (suffixMatch?.[1] ?? withoutPrefix).toUpperCase()
 }
 
+const MAX_BACKTEST_BATCH_CODES = 20
+const BATCH_BACKTEST_LOOKBACK_BARS = 360
+
+function isBacktestUnsupportedBoardCode(code: string): boolean {
+  const normalized = normalizeSymbolCode(code)
+  return /^(4|8|920)\d{3,5}$/.test(normalized)
+}
+
+function orderBacktestCandidateOptions(options: SymbolOption[]): SymbolOption[] {
+  return options
+    .map((option, index) => ({ option, index, unsupported: isBacktestUnsupportedBoardCode(option.code) }))
+    .sort((left, right) => {
+      if (left.unsupported === right.unsupported) return left.index - right.index
+      return left.unsupported ? 1 : -1
+    })
+    .map(item => item.option)
+}
+
 function extractSymbolCandidates(value: string): string[] {
   const normalized = normalizeSymbolCode(value)
   if (!normalized) return []
@@ -939,17 +957,66 @@ function symbolOptionKey(option: SymbolOption): string {
   return option.code.toUpperCase()
 }
 
+function hasReadableSymbolName(option: SymbolOption): boolean {
+  return Boolean(option.name && option.name.toUpperCase() !== option.code.toUpperCase())
+}
+
 function uniqueSymbolOptions(options: SymbolOption[]): SymbolOption[] {
   const byCode = new Map<string, SymbolOption>()
   options.forEach(option => {
     const code = normalizeSymbolCode(option.code)
     if (!code) return
     const key = code.toUpperCase()
+    const normalizedOption = { ...option, code, name: option.name || code }
     const existing = byCode.get(key)
-    if (existing && existing.name) return
-    byCode.set(key, { ...option, code })
+    if (!existing) {
+      byCode.set(key, normalizedOption)
+      return
+    }
+    const nextHasName = hasReadableSymbolName(normalizedOption)
+    const existingHasName = hasReadableSymbolName(existing)
+    byCode.set(key, {
+      ...existing,
+      name: !existingHasName && nextHasName ? normalizedOption.name : existing.name,
+      group: existing.group === '直接输入' || existing.group === '当前图表' ? normalizedOption.group : existing.group,
+      role: existing.role ?? normalizedOption.role,
+      source: existing.source ?? normalizedOption.source,
+    })
   })
   return Array.from(byCode.values())
+}
+
+function symbolOptionsEqual(left: SymbolOption[], right: SymbolOption[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((item, index) => {
+    const other = right[index]
+    return other &&
+      item.code === other.code &&
+      item.name === other.name &&
+      item.group === other.group &&
+      item.role === other.role &&
+      item.source === other.source
+  })
+}
+
+function symbolLabel(code: string, option?: SymbolOption): string {
+  const normalized = normalizeSymbolCode(code)
+  const name = option?.name?.trim()
+  return name && name.toUpperCase() !== normalized.toUpperCase()
+    ? `${normalized} ${name}`
+    : normalized
+}
+
+function selectedSymbolDisplay(codes: string[], options: SymbolOption[], locale: LongclawLocale): { short: string; full: string } {
+  const byCode = new Map(options.map(option => [symbolOptionKey(option), option]))
+  const labels = codes.map(code => symbolLabel(code, byCode.get(code.toUpperCase())))
+  const full = labels.join(locale === 'zh-CN' ? '、' : ', ')
+  if (labels.length <= 3) return { short: full, full }
+  const suffix = locale === 'zh-CN' ? ` 等${labels.length}只` : ` +${labels.length - 3} more`
+  return {
+    short: `${labels.slice(0, 3).join(locale === 'zh-CN' ? '、' : ', ')}${suffix}`,
+    full,
+  }
 }
 
 function dashboardSymbolOptions(dashboard: BacktestDashboard): SymbolOption[] {
@@ -1126,7 +1193,7 @@ function buildBatchBody(
   signalType: SignalType,
   simParams: Record<string, string>,
 ): Record<string, unknown> {
-  const body: Record<string, unknown> = { codes, freq, lookback: 999 }
+  const body: Record<string, unknown> = { codes, freq, lookback: BATCH_BACKTEST_LOOKBACK_BARS }
   if (signalType === 'all' || signalType === 'macd' || signalType === 'czsc') {
     body.signal_group = signalType
   } else {
@@ -1371,6 +1438,7 @@ export function BacktestWorkbench({
   const [loading, setLoading] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [symbolCatalog, setSymbolCatalog] = useState<SymbolOption[]>([])
   const [simParams, setSimParams] = useState<Record<string, string>>({
     stop_loss: '5',
     trail_stop: '50',
@@ -1407,7 +1475,18 @@ export function BacktestWorkbench({
   const dataSourceLabel = backtestDataSourceLabel(result, locale)
   const dataHealthLabel = dataHealthText(result, locale)
   const selectedCodes = useMemo(() => parseCodeList(code), [code])
-  const symbolOptions = useMemo(() => symbolOptionsForPicker(dashboard), [dashboard])
+  const symbolOptions = useMemo(() => uniqueSymbolOptions([...symbolOptionsForPicker(dashboard), ...symbolCatalog]), [dashboard, symbolCatalog])
+  const selectedDisplay = useMemo(() => selectedSymbolDisplay(selectedCodes, symbolOptions, locale), [locale, selectedCodes, symbolOptions])
+  const chartTitle = selectedDisplay.short || [displaySymbol, displayName].filter(Boolean).join(' · ')
+  const chartTitleFull = selectedDisplay.full || chartTitle
+
+  const rememberSymbolOptions = useCallback((nextOptions: SymbolOption[]) => {
+    if (!nextOptions.length) return
+    setSymbolCatalog(previous => {
+      const merged = uniqueSymbolOptions([...previous, ...nextOptions])
+      return symbolOptionsEqual(previous, merged) ? previous : merged
+    })
+  }, [])
 
   const setCodeList = useCallback((codes: string[]) => {
     setCode(selectedSymbolText(parseCodeList(codes.join(','))))
@@ -1441,6 +1520,18 @@ export function BacktestWorkbench({
     const normalizedCodeText = selectedSymbolText(codeList)
     if (normalizedCodeText !== code.trim()) setCode(normalizedCodeText)
     const multiMode = codeList.length > 1
+    if (!multiMode && isBacktestUnsupportedBoardCode(codeList[0] ?? '')) {
+      setError(locale === 'zh-CN'
+        ? `当前回测暂不支持北交所/新三板标的：${codeList[0]}。请选择沪深或 HK 标的。`
+        : `${codeList[0]} is not supported by the current backtest data path. Pick an SH/SZ or HK symbol.`)
+      return
+    }
+    if (multiMode && codeList.length > MAX_BACKTEST_BATCH_CODES) {
+      setError(locale === 'zh-CN'
+        ? `批量回测最多支持 ${MAX_BACKTEST_BATCH_CODES} 只；请先缩小已选池。`
+        : `Batch backtest supports up to ${MAX_BACKTEST_BATCH_CODES} symbols. Narrow the selected pool first.`)
+      return
+    }
     const hadResult = Boolean(result || batchResult)
     recordObservationEvent('backtest.analyze.submit', {
       code: code.trim(),
@@ -1809,6 +1900,7 @@ export function BacktestWorkbench({
         options={symbolOptions}
         onApplyBasket={codes => setCodeList(codes)}
         onToggleCode={toggleSymbolCode}
+        onSymbolOptionsSeen={rememberSymbolOptions}
         onClearCodes={() => {
           setCodeList([])
           setBatchResult(null)
@@ -1865,7 +1957,7 @@ export function BacktestWorkbench({
           <div style={chartHeaderStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={labelStyle}>{[freqLabel(displayFreq, locale), dataSourceLabel].filter(Boolean).join(' · ')}</div>
-              <div style={chartTitleStyle}>{[displaySymbol, displayName].filter(Boolean).join(' · ')}</div>
+              <div style={chartTitleStyle} title={chartTitleFull}>{chartTitle}</div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {dataSourceLabel ? (
@@ -1995,6 +2087,7 @@ function SymbolBasketBar({
   options,
   onApplyBasket,
   onToggleCode,
+  onSymbolOptionsSeen,
   onClearCodes,
   onRemoveCode,
 }: {
@@ -2004,6 +2097,7 @@ function SymbolBasketBar({
   options: SymbolOption[]
   onApplyBasket: (codes: string[]) => void
   onToggleCode: (code: string) => void
+  onSymbolOptionsSeen: (options: SymbolOption[]) => void
   onClearCodes: () => void
   onRemoveCode: (code: string) => void
 }) {
@@ -2023,18 +2117,24 @@ function SymbolBasketBar({
   const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
   const dynamicOptions = useMemo(() => uniqueSymbolOptions(dynamicBaskets.flatMap(basket => basket.codes)), [dynamicBaskets])
   const baseOptions = useMemo(
-    () => uniqueSymbolOptions([...directSymbolOptionsFromQuery(query), ...options, ...dynamicOptions]),
+    () => uniqueSymbolOptions([...directSymbolOptionsFromQuery(query), ...dynamicOptions, ...options]),
     [dynamicOptions, options, query],
   )
   const mergedOptions = uniqueSymbolOptions([...boardOptions, ...baseOptions])
   const optionByCode = new Map(mergedOptions.map(option => [symbolOptionKey(option), option]))
   const normalizedQuery = query.trim().toLowerCase()
   const filteredBaskets = dynamicBaskets.filter(basket => basketMatches(basket, normalizedQuery))
+  const orderedBoardOptions = useMemo(() => orderBacktestCandidateOptions(boardOptions), [boardOptions])
+  const boardBacktestReadyCodes = orderedBoardOptions
+    .filter(option => !isBacktestUnsupportedBoardCode(option.code))
+    .map(option => option.code)
+  const candidateCodes = boardBacktestReadyCodes.slice(0, MAX_BACKTEST_BATCH_CODES)
+  const unsupportedCandidateCount = orderedBoardOptions.length - boardBacktestReadyCodes.length
+  const batchLimitHiddenCount = Math.max(0, boardBacktestReadyCodes.length - candidateCodes.length)
   const localCandidateOptions = (normalizedQuery
     ? symbolOptionsMatchingQuery(query, mergedOptions)
     : mergedOptions).slice(0, 28)
-  const candidateOptions = boardOptions.length ? boardOptions : localCandidateOptions
-  const dynamicCodes = boardOptions.map(option => option.code)
+  const candidateOptions = boardOptions.length ? orderedBoardOptions : localCandidateOptions
   const displayBoardMatches = boardMatches.length
     ? boardMatches
     : boardLabel
@@ -2049,12 +2149,12 @@ function SymbolBasketBar({
   const hiddenSelectedCount = Math.max(0, selectedCodes.length - visibleSelectedCodes.length)
   const showCandidateChips = Boolean(boardOptions.length || normalizedQuery)
   const candidatePreviewLimit = showCandidateChips
-    ? (boardOptions.length ? (candidateExpanded ? 18 : 6) : 8)
+    ? (boardOptions.length ? (candidateExpanded ? 18 : 6) : (candidateExpanded ? 18 : 5))
     : 0
   const visibleCandidateOptions = candidateOptions.slice(0, candidatePreviewLimit)
   const hiddenCandidateCount = Math.max(0, candidateOptions.length - visibleCandidateOptions.length)
-  const loadDynamicBaskets = useCallback(async (search = '') => {
-    if (!baseUrl) return
+  const loadDynamicBaskets = useCallback(async (search = ''): Promise<SymbolBasket[]> => {
+    if (!baseUrl) return []
     setBasketLoading(true)
     try {
       const params = new URLSearchParams()
@@ -2063,18 +2163,21 @@ function SymbolBasketBar({
       const data = await fetchJson<DynamicBasketsResponse>(baseUrl, `/api/cluster/baskets?${params.toString()}`, 120_000)
       const baskets = normalizeDynamicBaskets(data.baskets)
       setDynamicBaskets(baskets)
+      onSymbolOptionsSeen(baskets.flatMap(basket => basket.codes))
       setBasketMessage(baskets.length
         ? (locale === 'zh-CN'
           ? `动态组合 ${baskets.length} 个 · ${baskets[0]?.source ?? 'Signals'}`
           : `${baskets.length} dynamic baskets · ${baskets[0]?.source ?? 'Signals'}`)
         : (locale === 'zh-CN' ? '没有动态产业链组合。' : 'No dynamic chain baskets.'))
+      return baskets
     } catch (rawError) {
       const apiError = rawError as ApiError
       setBasketMessage(compactApiError(apiError, locale, locale === 'zh-CN' ? '动态组合加载失败。' : 'Dynamic baskets failed to load.'))
+      return []
     } finally {
       setBasketLoading(false)
     }
-  }, [baseUrl, locale])
+  }, [baseUrl, locale, onSymbolOptionsSeen])
   useEffect(() => {
     void loadDynamicBaskets()
   }, [loadDynamicBaskets])
@@ -2131,12 +2234,28 @@ function SymbolBasketBar({
       setBoardLabel(resolvedBoard)
       setBoardMatches(matches)
       setSelectedBoardName(nextSelectedBoard)
-      setBoardOptions(nextOptions.slice(0, 60))
-      setSelectedCandidateCode(nextOptions[0]?.code ?? '')
+      const orderedOptions = orderBacktestCandidateOptions(nextOptions).slice(0, 60)
+      const readyCount = orderedOptions.filter(option => !isBacktestUnsupportedBoardCode(option.code)).length
+      const unsupportedCount = orderedOptions.length - readyCount
+      const batchCount = Math.min(readyCount, MAX_BACKTEST_BATCH_CODES)
+      const limitedCount = Math.max(0, readyCount - MAX_BACKTEST_BATCH_CODES)
+      setBoardOptions(orderedOptions)
+      onSymbolOptionsSeen(nextOptions)
+      setSelectedCandidateCode(orderedOptions.find(option => !isBacktestUnsupportedBoardCode(option.code))?.code ?? orderedOptions[0]?.code ?? '')
       setCandidateExpanded(false)
       setLookupMessage(locale === 'zh-CN'
-        ? `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length}只成分股，点击标的加入篮子。`
-        : `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length} constituents. Toggle symbols below.`)
+        ? [
+          `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length}只成分股`,
+          batchCount ? `批量默认取前${batchCount}只可回测标的` : '当前没有可批量回测标的',
+          unsupportedCount ? `跳过${unsupportedCount}只暂不支持标的` : '',
+          limitedCount ? `另有${limitedCount}只可手动勾选` : '',
+        ].filter(Boolean).join('，') + '。'
+        : [
+          `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length} constituents`,
+          batchCount ? `batch uses the first ${batchCount} supported symbols` : 'no batch-ready symbols',
+          unsupportedCount ? `${unsupportedCount} unsupported symbols skipped` : '',
+          limitedCount ? `${limitedCount} more can be toggled manually` : '',
+        ].filter(Boolean).join(', ') + '.')
     } catch (rawError) {
       const apiError = rawError as ApiError
       setBoardOptions([])
@@ -2153,13 +2272,25 @@ function SymbolBasketBar({
     } finally {
       setLookupLoading(false)
     }
-  }, [baseOptions, baseUrl, locale, query])
+  }, [baseOptions, baseUrl, locale, onSymbolOptionsSeen, query])
   const lookupBoard = useCallback(async () => {
-    await Promise.all([
-      loadDynamicBaskets(query),
-      loadBoard(query),
+    const search = query.trim()
+    if (!search) return
+    const [baskets] = await Promise.all([
+      loadDynamicBaskets(search),
+      loadBoard(search),
     ])
-  }, [loadBoard, loadDynamicBaskets, query])
+    if (baskets.length === 1) {
+      const codes = baskets[0]?.codes.map(item => item.code) ?? []
+      if (codes.length) {
+        onApplyBasket(codes)
+        setSelectedExpanded(false)
+        setLookupMessage(locale === 'zh-CN'
+          ? `已载入「${baskets[0]?.label}」首选组合，可直接运行回测。`
+          : `Loaded ${baskets[0]?.label}. Ready to run.`)
+      }
+    }
+  }, [loadBoard, loadDynamicBaskets, locale, onApplyBasket, query])
   return (
     <div style={basketBarStyle}>
       <div style={labelStyle}>{locale === 'zh-CN' ? '搜索' : 'Search'}</div>
@@ -2195,14 +2326,18 @@ function SymbolBasketBar({
           disabled={lookupLoading || basketLoading || !query.trim()}
           onClick={() => void lookupBoard()}
         >
-          {lookupLoading || basketLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜索/匹配' : 'Search')}
+          {lookupLoading || basketLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜索/载入' : 'Search')}
         </button>
         <select
           aria-label={locale === 'zh-CN' ? '匹配来源' : 'Matched source'}
           style={{ ...selectStyle, height: 28, flex: '1 1 210px' }}
           disabled={displayBoardMatches.length === 0}
           value={selectedBoardName}
-          onChange={event => setSelectedBoardName(event.target.value)}
+          onChange={event => {
+            const nextBoard = event.target.value
+            setSelectedBoardName(nextBoard)
+            if (nextBoard) void loadBoard(nextBoard)
+          }}
         >
           {displayBoardMatches.length === 0 ? (
             <option value="">{locale === 'zh-CN' ? '先搜索来源' : 'Search a source first'}</option>
@@ -2218,14 +2353,15 @@ function SymbolBasketBar({
             )
           })}
         </select>
-        <button type="button" style={buttonStyle(false, lookupLoading || !selectedBoardName)} disabled={lookupLoading || !selectedBoardName} onClick={() => void loadBoard(selectedBoardName)}>
-          {locale === 'zh-CN' ? '载入成分股' : 'Load'}
+        <button type="button" style={buttonStyle(false, candidateCodes.length === 0)} disabled={candidateCodes.length === 0} onClick={() => onApplyBasket([...selectedCodes, ...candidateCodes])}>
+          {locale === 'zh-CN'
+            ? (batchLimitHiddenCount ? `加入前${candidateCodes.length}只` : (unsupportedCandidateCount ? '加入可回测' : '全加入篮子'))
+            : (batchLimitHiddenCount ? `Add first ${candidateCodes.length}` : (unsupportedCandidateCount ? 'Add supported' : 'Add all'))}
         </button>
-        <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket([...selectedCodes, ...dynamicCodes])}>
-          {locale === 'zh-CN' ? '全加入篮子' : 'Add all'}
-        </button>
-        <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket(dynamicCodes)}>
-          {locale === 'zh-CN' ? '替换篮子' : 'Replace'}
+        <button type="button" style={buttonStyle(false, candidateCodes.length === 0)} disabled={candidateCodes.length === 0} onClick={() => onApplyBasket(candidateCodes)}>
+          {locale === 'zh-CN'
+            ? (batchLimitHiddenCount ? `替换前${candidateCodes.length}只` : (unsupportedCandidateCount ? '替换可回测' : '替换为成分股'))
+            : (batchLimitHiddenCount ? `Replace first ${candidateCodes.length}` : (unsupportedCandidateCount ? 'Replace supported' : 'Replace'))}
         </button>
         <div style={{ ...mutedStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={[lookupMessage, basketMessage].filter(Boolean).join(' · ')}>
           {lookupMessage || basketMessage || (boardLabel ? `${boardLabel} · ${boardOptions.length}` : '')}
@@ -2263,9 +2399,11 @@ function SymbolBasketBar({
               type="button"
               style={buttonStyle(true)}
               onClick={() => onRemoveCode(item)}
-              title={locale === 'zh-CN' ? '点击移除' : 'Click to remove'}
+              title={locale === 'zh-CN'
+                ? `${symbolLabel(item, option)} · 点击移除`
+                : `${symbolLabel(item, option)} · click to remove`}
             >
-              {[item, option?.name].filter(Boolean).join(' ')} ×
+              {symbolLabel(item, option)} ×
             </button>
           )
         }) : (
@@ -2304,9 +2442,9 @@ function SymbolBasketBar({
               value={selectedCandidateCode}
               onChange={event => setSelectedCandidateCode(event.target.value)}
             >
-              {boardOptions.map(option => (
+              {orderedBoardOptions.map(option => (
                 <option key={`candidate-option-${option.code}`} value={option.code}>
-                  {[option.code, option.name].filter(Boolean).join(' ')}
+                  {symbolLabel(option.code, option)}
                 </option>
               ))}
             </select>
@@ -2324,6 +2462,7 @@ function SymbolBasketBar({
         ) : null}
         {visibleCandidateOptions.map(option => {
           const active = selectedSet.has(option.code.toUpperCase())
+          const unsupported = isBacktestUnsupportedBoardCode(option.code)
           return (
             <button
               key={`${option.group}-${option.code}`}
@@ -2332,10 +2471,10 @@ function SymbolBasketBar({
               style={buttonStyle(active)}
               onClick={() => onToggleCode(option.code)}
               title={locale === 'zh-CN'
-                ? `${option.group} · 点击${active ? '移出' : '加入'}标的篮子`
-                : `${option.group} · click to ${active ? 'remove' : 'add'}`}
+                ? `${option.group} · ${unsupported ? '当前回测暂不支持批量运行 · ' : ''}点击${active ? '移出' : '加入'}标的篮子`
+                : `${option.group} · ${unsupported ? 'not supported by batch backtest · ' : ''}click to ${active ? 'remove' : 'add'}`}
             >
-              {[option.code, option.name].filter(Boolean).join(' ')}
+              {symbolLabel(option.code, option)}
             </button>
           )
         })}
@@ -2355,6 +2494,12 @@ function SymbolBasketBar({
             {normalizedQuery
               ? (locale === 'zh-CN' ? '没有匹配标的，试试板块名、股票代码或股票名称。' : 'No symbol matches. Try a board name, code, or stock name.')
               : (locale === 'zh-CN' ? '搜索板块后显示可勾选成分股。' : 'Search a board to show selectable constituents.')}
+          </div>
+        ) : unsupportedCandidateCount > 0 ? (
+          <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
+            {locale === 'zh-CN'
+              ? `已将${unsupportedCandidateCount}只暂不支持回测的标的排到后面。`
+              : `${unsupportedCandidateCount} unsupported symbols are shown after supported ones.`}
           </div>
         ) : null}
       </div>
