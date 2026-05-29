@@ -3,6 +3,7 @@ import path from 'path'
 import fs from 'fs'
 import os from 'os'
 import http from 'http'
+import net from 'net'
 import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
@@ -1643,6 +1644,30 @@ async function probeHttpOk(url: string | undefined, timeoutMs = 2500): Promise<b
   }
 }
 
+async function probeTcpOpen(url: string | undefined, timeoutMs = 700): Promise<boolean> {
+  if (!url) return false
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  const port = Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80))
+  if (!parsed.hostname || !Number.isFinite(port)) return false
+  return new Promise(resolve => {
+    const socket = net.createConnection({ host: parsed.hostname, port })
+    const finish = (ok: boolean) => {
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(ok)
+    }
+    socket.setTimeout(timeoutMs)
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+}
+
 async function collectRuntimeStatus(
   packs: LongclawDomainPackDescriptor[],
   overviewReady: boolean,
@@ -1662,7 +1687,7 @@ async function collectRuntimeStatus(
   const duePackVisible = packs.some(pack => pack.pack_id === 'due_diligence')
   const signalsPackVisible = packs.some(pack => pack.pack_id === 'signals')
   const normalizedCoreBaseUrl = coreBaseUrl?.replace(/\/$/, '')
-  const [coreHealthReady, dueHealthReady, signalsWebReady] = await Promise.all([
+  const [coreHealthReady, dueHealthReady, signalsWebReady, signalsWebPortOpen] = await Promise.all([
     // `getOverview()` can fall back to a synthesized local summary when Hermes is down,
     // so connectivity must come from a direct probe rather than the fulfilled state alone.
     probeHttpOk(
@@ -1676,8 +1701,9 @@ async function collectRuntimeStatus(
         : undefined,
     ),
     probeHttpOk(`${signalsWebCandidateUrl}/api/pack/dashboard`),
+    probeTcpOpen(signalsWebCandidateUrl),
   ])
-  const signalsWebBaseUrl = configuredSignalsWebBaseUrl || (signalsWebReady ? signalsWebCandidateUrl : '')
+  const signalsWebBaseUrl = configuredSignalsWebBaseUrl || (signalsWebReady || signalsWebPortOpen ? signalsWebCandidateUrl : '')
 
   return {
     stack_env_loaded: runtimeStackEnv.loaded,

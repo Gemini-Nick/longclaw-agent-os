@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildStrategyResearchSummary } from './BacktestWorkbench.js'
+import { buildStrategyResearchSummary, symbolOptionFromLookupPayload, symbolOptionsFromBacktestOutputs } from './BacktestWorkbench.js'
 
 describe('BacktestWorkbench strategy research summary', () => {
   it('blocks strategy judgment when the backtest has no result yet', () => {
@@ -72,5 +72,71 @@ describe('BacktestWorkbench strategy research summary', () => {
     expect(summary.tone).toBe('failed')
     expect(summary.issues).toContain('没有信号样本')
     expect(summary.issues).toContain('没有成交样本')
+  })
+
+  it('treats narrow batch samples as reviewable evidence, not strategy proof', () => {
+    const summary = buildStrategyResearchSummary({
+      locale: 'zh-CN',
+      selectedCodes: ['300394', '002409'],
+      batchResult: {
+        summary: {
+          total_stocks: 2,
+          ok_stocks: 2,
+          total_signals: 145,
+          total_trades: 33,
+        },
+        terminal: {
+          version: 'backtest-terminal.v1',
+          mode: 'multi',
+          metrics: {
+            signal_count: 145,
+            filled_trades: 33,
+            win_rate: 48.5,
+            total_return_pct: 21.73,
+            max_drawdown_pct: -13.01,
+          },
+        },
+      },
+    })
+
+    expect(summary.tone).toBe('warning')
+    expect(summary.statusLabel).toBe('先清洗样本')
+    expect(summary.issues).toContain('组合样本偏薄，不能直接沉淀策略')
+    expect(summary.actions.join(' ')).toContain('5-10 只标的')
+  })
+
+  it('learns stock names from batch output so selected codes render with names', () => {
+    const options = symbolOptionsFromBacktestOutputs(null, {
+      terminal: {
+        version: 'backtest-terminal.v1',
+        mode: 'multi',
+        panels: {
+          ranking: {
+            rows: [
+              { code: '002409', name: '雅克科技' },
+              { code: '300394', name: '天孚通信' },
+            ],
+          },
+        },
+      },
+    })
+
+    expect(options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: '002409', name: '雅克科技' }),
+      expect.objectContaining({ code: '300394', name: '天孚通信' }),
+    ]))
+  })
+
+  it('learns stock names from workbench symbol lookup before a batch run finishes', () => {
+    const option = symbolOptionFromLookupPayload({
+      symbol: 'SZ.002409',
+      name: '雅克科技',
+    }, '002409')
+
+    expect(option).toEqual(expect.objectContaining({
+      code: '002409',
+      name: '雅克科技',
+      group: '名称查询',
+    }))
   })
 })

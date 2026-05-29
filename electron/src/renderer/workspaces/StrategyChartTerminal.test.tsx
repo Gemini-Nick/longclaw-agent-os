@@ -19,6 +19,8 @@ import {
   signalsFromSymbolData,
   shouldAddManualClueForSearch,
   sourceMonitorSummary,
+  stockIdentityDisplay,
+  strategyTradeActionPlanFromState,
   symbolDataCacheKey,
   terminalListTargetFreq,
   timeframeBadgeDisplayLabel,
@@ -58,6 +60,49 @@ describe('StrategyChartTerminal default timeframe', () => {
 describe('StrategyChartTerminal symbol cache', () => {
   it('normalizes symbol cache keys across freq aliases and casing', () => {
     expect(symbolDataCacheKey({ label: ' sh.601398 ', kind: 'STOCK', freq: '日线' })).toBe('stock|SH.601398|daily')
+  })
+})
+
+describe('StrategyChartTerminal stock identity display', () => {
+  it('keeps stock code and name together for trader-facing labels', () => {
+    expect(stockIdentityDisplay({ symbol: 'SZ.300394', name: '天孚通信' })).toBe('SZ.300394 天孚通信')
+    expect(stockIdentityDisplay({ code: '002409', stock_name: '雅克科技' })).toBe('002409 雅克科技')
+  })
+})
+
+describe('StrategyChartTerminal trader action plan', () => {
+  it('turns entry-ready names into review actions with post-close backtest guidance', () => {
+    const plan = strategyTradeActionPlanFromState({
+      decisionStage: 'entry_ready',
+      tradeRole: 'right_attack',
+      identity: '右侧进攻',
+      confirmation: '买点已出 30m 二买',
+    }, 'zh-CN')
+
+    expect(plan.action).toBe('看')
+    expect(plan.reason).toBe('右侧进攻')
+    expect(plan.postmarket).toContain('T+5/T+10')
+  })
+
+  it('does not spend intraday attention on off-pool names without evidence', () => {
+    const plan = strategyTradeActionPlanFromState({
+      targetKind: 'stock',
+      identity: '池外观察',
+      hasEvidence: false,
+    }, 'zh-CN')
+
+    expect(plan.action).toBe('忽略')
+    expect(plan.next).toContain('不占用盘中注意力')
+  })
+
+  it('treats indices as market context instead of single-name entries', () => {
+    const plan = strategyTradeActionPlanFromState({
+      targetKind: 'index',
+      identity: '背景锚点',
+    }, 'zh-CN')
+
+    expect(plan.action).toBe('看大盘')
+    expect(plan.postmarket).toContain('指数环境')
   })
 })
 

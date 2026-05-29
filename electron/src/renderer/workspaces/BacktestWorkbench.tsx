@@ -78,6 +78,16 @@ type BoardStocksResponse = {
   error?: string
 }
 
+type SymbolLookupResponse = {
+  target?: Record<string, unknown>
+  matches?: Array<Record<string, unknown>>
+  symbol?: string
+  code?: string
+  name?: string
+  stock_name?: string
+  label?: string
+}
+
 type BacktestTrade = {
   id?: string
   index?: number
@@ -850,6 +860,7 @@ function normalizeSymbolCode(value: string): string {
 
 const MAX_BACKTEST_BATCH_CODES = 20
 const BATCH_BACKTEST_LOOKBACK_BARS = 360
+const SYMBOL_NAME_LOOKUP_TIMEOUT_MS = 45_000
 
 function isBacktestUnsupportedBoardCode(code: string): boolean {
   const normalized = normalizeSymbolCode(code)
@@ -1087,6 +1098,61 @@ function selectedSymbolDisplay(codes: string[], options: SymbolOption[], locale:
   }
 }
 
+function symbolOptionFromRecord(row: Record<string, unknown>, group: string): SymbolOption | null {
+  const code = normalizeSymbolCode(
+    stringValue(row.code) ??
+    stringValue(row.symbol) ??
+    stringValue(row.ts_code) ??
+    '',
+  )
+  if (!code) return null
+  return {
+    code,
+    name: stringValue(row.name) ?? stringValue(row.stock_name) ?? stringValue(row.target_name) ?? code,
+    group,
+  }
+}
+
+export function symbolOptionFromLookupPayload(payload: SymbolLookupResponse, fallbackCode: string): SymbolOption | null {
+  const target = recordValue(payload.target)
+  const firstMatch = Array.isArray(payload.matches) ? recordValue(payload.matches[0]) : {}
+  return symbolOptionFromRecord({
+    code: target.symbol ?? target.code ?? payload.symbol ?? payload.code ?? firstMatch.symbol ?? firstMatch.code ?? fallbackCode,
+    name: target.name ?? target.label ?? payload.name ?? payload.stock_name ?? payload.label ?? firstMatch.name,
+  }, '名称查询')
+}
+
+export function symbolOptionsFromBacktestOutputs(
+  result?: BacktestResult | null,
+  batchResult?: BatchBacktestResult | null,
+): SymbolOption[] {
+  const options: SymbolOption[] = []
+  const target = terminalTarget(result)
+  const singleOption = symbolOptionFromRecord({
+    code: target.symbol ?? target.code ?? result?.symbol ?? result?.code,
+    name: target.name,
+  }, '回测结果')
+  if (singleOption) options.push(singleOption)
+
+  const batchPanels = batchResult?.terminal?.panels ?? {}
+  const batchChart = batchResult?.terminal?.chart ?? {}
+  const recordGroups: Array<[Array<Record<string, unknown>> | undefined, string]> = [
+    [Array.isArray(batchResult?.stocks) ? batchResult?.stocks : undefined, '批量结果'],
+    [Array.isArray(batchPanels.ranking?.rows) ? batchPanels.ranking?.rows : undefined, '批量排名'],
+    [Array.isArray(batchPanels.interval_overview?.rows) ? batchPanels.interval_overview?.rows : undefined, '区间概览'],
+    [Array.isArray(batchPanels.multi_charts?.items) ? batchPanels.multi_charts?.items : undefined, '批量K线'],
+    [Array.isArray(batchChart.multi_charts) ? batchChart.multi_charts : undefined, '批量K线'],
+    [Array.isArray(batchPanels.scripts?.cards) ? batchPanels.scripts?.cards : undefined, '交易员结论'],
+  ]
+  recordGroups.forEach(([rows, group]) => {
+    rows?.forEach(row => {
+      const option = symbolOptionFromRecord(recordValue(row), group)
+      if (option) options.push(option)
+    })
+  })
+  return uniqueSymbolOptions(options)
+}
+
 function dashboardSymbolOptions(dashboard: BacktestDashboard): SymbolOption[] {
   const options: SymbolOption[] = []
   dashboard.buy_candidates.slice(0, 12).forEach(candidate => {
@@ -1255,45 +1321,59 @@ function batchResearchSummary(
 ): StrategyResearchSummary {
   const zh = locale === 'zh-CN'
   const summary = recordValue(batchResult.summary)
+  const metrics = recordValue(batchResult.terminal?.metrics)
   const totalStocks = numberValue(summary.total_stocks) ?? batchResult.stocks?.length ?? 0
   const okStocks = numberValue(summary.ok_stocks)
   const totalSignals = numberValue(summary.total_signals) ?? 0
   const totalTrades = numberValue(summary.total_trades) ?? 0
+  const winRate = numberValue(metrics.win_rate)
+  const avgReturn = numberValue(metrics.total_return_pct)
+  const avgDrawdown = Math.abs(numberValue(metrics.max_drawdown_pct) ?? 0)
+  const failureCount = okStocks !== undefined ? Math.max(0, totalStocks - okStocks) : 0
+  const sampleThin = totalStocks < 3 || totalTrades < Math.max(12, totalStocks * 4)
   const warnings = uniqueText([...(batchResult.warnings ?? []), stringValue(batchResult.error) ?? ''])
   const issues = uniqueText([
     totalStocks === 0 ? (zh ? '没有有效标的样本' : 'No valid symbols') : '',
-    totalTrades < Math.max(8, totalStocks) ? (zh ? '成交样本偏少，容易过拟合' : 'Too few trades; overfit risk') : '',
-    okStocks !== undefined && okStocks < totalStocks ? (zh ? `${totalStocks - okStocks}只标的回测失败或跳过` : `${totalStocks - okStocks} symbols failed or skipped`) : '',
+    sampleThin ? (zh ? '组合样本偏薄，不能直接沉淀策略' : 'Basket sample is too thin to promote') : '',
+    failureCount > 0 ? (zh ? `${failureCount}只标的回测失败或跳过` : `${failureCount} symbols failed or skipped`) : '',
+    avgDrawdown > 18 ? (zh ? `平均回撤压力 ${formatDrawdown(avgDrawdown)}` : `High average drawdown ${formatDrawdown(avgDrawdown)}`) : '',
+    winRate !== undefined && winRate < 50 ? (zh ? `批量胜率不足 ${formatPercent(winRate)}` : `Batch win rate below 50% ${formatPercent(winRate)}`) : '',
     ...warnings,
   ])
   const tone: ResearchTone = issues.length
     ? totalTrades > 0 ? 'warning' : 'failed'
     : 'success'
   const actions = uniqueText([
-    totalTrades < Math.max(8, totalStocks)
-      ? (zh ? '扩大篮子或拉长区间，先把成交样本做厚。' : 'Widen the basket or range before judging the rule.')
+    totalStocks < 3
+      ? (zh ? '先扩到同一主线 5-10 只标的，再看规则是否跨标的有效。' : 'Expand to 5-10 names in the same theme before judging generalization.')
       : '',
-    zh ? '按排名前列标的逐个打开交易明细，剔除靠单一大阳线贡献的样本。' : 'Open top-ranked symbols and remove one-off outlier trades.',
-    zh ? '用参数扫描验证止损、持仓日和移动止盈是否稳定。' : 'Scan stop loss, holding days, and trailing stop stability.',
+    sampleThin
+      ? (zh ? '优先补厚成交样本；样本薄时只做观察，不做参数优化。' : 'Thicken filled-trade samples before optimizing parameters.')
+      : '',
+    zh ? '先下钻排名第一和最大回撤标的，对照买卖点是否来自同一种信号。' : 'Drill into the top-ranked and worst-drawdown symbols and compare signal sources.',
+    zh ? '只把跨标的、跨参数仍稳定的信号族推进到策略候选。' : 'Promote only signal families that stay stable across symbols and parameters.',
   ])
   return {
     tone,
-    statusLabel: zh ? (tone === 'success' ? '组合可复核' : '组合需清洗') : (tone === 'success' ? 'Basket ready' : 'Clean basket'),
+    statusLabel: zh ? (tone === 'success' ? '组合可复核' : '先清洗样本') : (tone === 'success' ? 'Basket ready' : 'Clean sample'),
     headline: zh
       ? `${totalStocks}只标的 · ${totalSignals}个信号 · ${totalTrades}笔成交`
       : `${totalStocks} symbols · ${totalSignals} signals · ${totalTrades} trades`,
     detail: zh
-      ? '先看组合是否有稳定样本，再进入单票交易明细和参数敏感性。'
-      : 'Check sample stability before reviewing trades and parameter sensitivity.',
+      ? '批量回测不是看平均数好不好，而是判断同一规则能否在一组相似标的上重复出现。'
+      : 'Batch backtest is for repeatability across comparable symbols, not just average metrics.',
     cards: [
       { label: zh ? '标的' : 'Symbols', value: formatNumber(totalStocks, 0) },
       { label: zh ? '信号' : 'Signals', value: formatNumber(totalSignals, 0) },
       { label: zh ? '成交' : 'Trades', value: formatNumber(totalTrades, 0), tone: totalTrades >= Math.max(8, totalStocks) ? 'up' : 'down' },
+      { label: zh ? '胜率' : 'WinRate', value: formatPercent(winRate), tone: classifyMetricTone(winRate, 50) },
+      { label: zh ? '均收益' : 'AvgRet', value: formatPercent(avgReturn), tone: classifyMetricTone(avgReturn) },
+      { label: zh ? '均回撤' : 'AvgDD', value: formatDrawdown(avgDrawdown), tone: avgDrawdown <= 15 ? 'up' : 'down' },
     ],
     flow: [
-      { label: zh ? '盘中观察' : 'Intraday', value: zh ? '从主线篮子取样' : 'Sample from themes', tone: 'open' },
-      { label: zh ? '盘后验证' : 'Post-close', value: zh ? '看组合厚度' : 'Check sample depth', tone },
-      { label: zh ? '研发推进' : 'Research', value: zh ? '转入单票和扫描' : 'Open trades and scan', tone: totalTrades > 0 ? 'success' : 'warning' },
+      { label: zh ? '交易筛选' : 'Trade filter', value: totalStocks ? (zh ? `${totalStocks}只候选` : `${totalStocks} candidates`) : (zh ? '无候选' : 'No candidates'), tone: totalStocks ? 'success' : 'failed' },
+      { label: zh ? '共性验证' : 'Repeatability', value: sampleThin ? (zh ? '样本偏薄' : 'Thin sample') : (zh ? '可比较' : 'Comparable'), tone: sampleThin ? 'warning' : 'success' },
+      { label: zh ? '下钻动作' : 'Next drilldown', value: totalTrades > 0 ? (zh ? '强弱对照' : 'Compare winners/losers') : (zh ? '先补成交' : 'Get trades first'), tone: totalTrades > 0 ? 'success' : 'warning' },
     ],
     issues,
     actions,
@@ -1306,21 +1386,24 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
   const result = input.result as BacktestResult | null | undefined
   const batchResult = input.batchResult as BatchBacktestResult | null | undefined
   const selectedCodes = input.selectedCodes ?? []
+  const batchSelected = selectedCodes.length > 1
   if (input.loading) {
     return {
       tone: 'running',
-      statusLabel: zh ? '正在验证' : 'Running',
-      headline: zh ? '正在拉取回测证据' : 'Collecting backtest evidence',
-      detail: zh ? '先等数据、K线、信号和成交同时返回，再做策略判断。' : 'Wait for candles, signals, and trades before judging the rule.',
+      statusLabel: zh ? (batchSelected ? '批量验证中' : '正在验证') : 'Running',
+      headline: zh ? (batchSelected ? '正在拉取批量回测证据' : '正在拉取回测证据') : 'Collecting backtest evidence',
+      detail: zh
+        ? (batchSelected ? '先等成功/失败标的、排名、信号拆解和成交样本返回，再判断规则共性。' : '先等数据、K线、信号和成交同时返回，再做策略判断。')
+        : 'Wait for candles, signals, and trades before judging the rule.',
       cards: [
         { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
         { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
         { label: zh ? '状态' : 'Status', value: zh ? '运行中' : 'Running' },
       ],
       flow: [
-        { label: zh ? '盘中观察' : 'Intraday', value: zh ? '保留候选' : 'Keep candidates', tone: 'open' },
-        { label: zh ? '盘后验证' : 'Post-close', value: zh ? '等待结果' : 'Waiting', tone: 'running' },
-        { label: zh ? '研发推进' : 'Research', value: zh ? '暂不下结论' : 'No verdict yet', tone: 'open' },
+        { label: zh ? (batchSelected ? '样本' : '盘中观察') : 'Sample', value: zh ? (batchSelected ? `${selectedCodes.length}只候选` : '保留候选') : 'Keep candidates', tone: 'open' },
+        { label: zh ? (batchSelected ? '批量证据' : '盘后验证') : 'Evidence', value: zh ? '等待结果' : 'Waiting', tone: 'running' },
+        { label: zh ? (batchSelected ? '下一步' : '研发推进') : 'Next step', value: zh ? '暂不下结论' : 'No verdict yet', tone: 'open' },
       ],
       issues: [],
       actions: [zh ? '如果超过一分钟仍无结果，先缩小到单票日线。' : 'If it takes over a minute, narrow to one daily symbol.'],
@@ -1353,6 +1436,31 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
     return batchResearchSummary(batchResult, locale)
   }
   if (!result) {
+    if (batchSelected) {
+      return {
+        tone: 'open',
+        statusLabel: zh ? '待批量验证' : 'Batch not run',
+        headline: zh ? `${selectedCodes.length}只候选待验证` : `${selectedCodes.length} candidates ready`,
+        detail: zh
+          ? '批量回测用于判断规则能不能跨标的重复出现；先看共性和失败样本，再下钻单票。'
+          : 'Use batch backtest to test repeatability, then drill into representative symbols.',
+        cards: [
+          { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length, 0) },
+          { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
+          { label: zh ? '成交' : 'Trades', value: emptyDisplay },
+        ],
+        flow: [
+          { label: zh ? '交易筛选' : 'Trade filter', value: zh ? '候选已就绪' : 'Candidates ready', tone: 'open' },
+          { label: zh ? '共性验证' : 'Repeatability', value: zh ? '待回测' : 'Not run', tone: 'open' },
+          { label: zh ? '下钻动作' : 'Next drilldown', value: zh ? '等排名' : 'Wait ranking', tone: 'open' },
+        ],
+        issues: [],
+        actions: [
+          zh ? '运行批量回测后，先看强弱排名、失败样本和信号族拆解。' : 'Run batch, then inspect ranking, failures, and signal families.',
+          zh ? '不要直接用两三只样本优化参数，先扩到同一主线 5-10 只。' : 'Do not optimize on a tiny basket; expand to 5-10 comparable names first.',
+        ],
+      }
+    }
     return {
       tone: 'open',
       statusLabel: zh ? '待建立样本' : 'No sample',
@@ -1764,7 +1872,12 @@ export function BacktestWorkbench({
   const dataSourceLabel = backtestDataSourceLabel(result, locale)
   const dataHealthLabel = dataHealthText(result, locale)
   const selectedCodes = useMemo(() => parseCodeList(code), [code])
-  const symbolOptions = useMemo(() => uniqueSymbolOptions([...symbolOptionsForPicker(dashboard), ...symbolCatalog]), [dashboard, symbolCatalog])
+  const isBatchView = selectedCodes.length > 1 || isMultiMode
+  const resultSymbolOptions = useMemo(() => symbolOptionsFromBacktestOutputs(result, batchResult), [batchResult, result])
+  const symbolOptions = useMemo(
+    () => uniqueSymbolOptions([...symbolOptionsForPicker(dashboard), ...symbolCatalog, ...resultSymbolOptions]),
+    [dashboard, resultSymbolOptions, symbolCatalog],
+  )
   const selectedDisplay = useMemo(() => selectedSymbolDisplay(selectedCodes, symbolOptions, locale), [locale, selectedCodes, symbolOptions])
   const chartTitle = selectedDisplay.short || [displaySymbol, displayName].filter(Boolean).join(' · ')
   const chartTitleFull = selectedDisplay.full || chartTitle
@@ -1984,6 +2097,18 @@ export function BacktestWorkbench({
     }
   }, [])
 
+  const drillIntoBatchSymbol = useCallback((nextCode: string) => {
+    const normalized = normalizeSymbolCode(nextCode)
+    if (!normalized) return
+    setCode(normalized)
+    setBatchResult(null)
+    setResult(null)
+    setScan(null)
+    setSelectedSignalIndex(null)
+    setSelectedTradeIndex(null)
+    setTab('perf')
+  }, [])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -2040,7 +2165,7 @@ export function BacktestWorkbench({
   }, [code, freq, runAnalyze])
 
   useEffect(() => {
-    if (isMultiMode) return
+    if (isBatchView) return
     if (!chartContainerRef.current) return
     ensureMarkerOverlay()
     const chart = init(chartContainerRef.current, {
@@ -2075,10 +2200,10 @@ export function BacktestWorkbench({
       chartRef.current = null
       dispose(chart)
     }
-  }, [isMultiMode, locale])
+  }, [isBatchView, locale])
 
   useEffect(() => {
-    if (isMultiMode) return
+    if (isBatchView) return
     const chart = chartRef.current
     if (!chart) return
     chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
@@ -2090,7 +2215,7 @@ export function BacktestWorkbench({
     createSignalOverlays(chart, klineData, signals, tradeMarkers, handleMarkerSelect)
     chart.scrollToRealTime()
     chart.resize()
-  }, [handleMarkerSelect, isMultiMode, klineData, signals, tradeMarkers])
+  }, [handleMarkerSelect, isBatchView, klineData, signals, tradeMarkers])
 
   if (!baseUrl) {
     return (
@@ -2212,24 +2337,31 @@ export function BacktestWorkbench({
         }}
       />
 
-      {isMultiMode ? (
-        <div style={{ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', minHeight: 0, overflow: 'hidden' }}>
-          <StrategyResearchPanel summary={researchSummary} locale={locale} compact />
-          <MultiBacktestReport
-            locale={locale}
-            terminal={batchResult?.terminal}
-            onSelectCode={nextCode => {
-              setCode(nextCode)
-              setBatchResult(null)
-            }}
-          />
-        </div>
-      ) : (
       <div style={mainGridStyle}>
         <div style={sideStyle}>
-          <Panel title={locale === 'zh-CN' ? '模拟参数' : 'Simulation'}>
+          <Panel title={isBatchView
+            ? (locale === 'zh-CN' ? '样本与参数' : 'Sample and params')
+            : (locale === 'zh-CN' ? '模拟参数' : 'Simulation')}
+          >
+            {isBatchView ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <div style={metricCardStyle}>
+                  <div style={labelStyle}>{locale === 'zh-CN' ? '当前样本' : 'Current sample'}</div>
+                  <div style={{ color: terminalTheme.textStrong, fontWeight: 800, lineHeight: 1.35 }}>
+                    {selectedDisplay.full || emptyDisplay}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <ParamGrid params={simParams} onChange={updateSimParam} />
           </Panel>
+          {isBatchView ? (
+            <BatchSamplePanel
+              locale={locale}
+              batchResult={batchResult}
+              selectedCodes={selectedCodes}
+            />
+          ) : (
           <Panel title={locale === 'zh-CN' ? '日期标签' : 'Date presets'}>
             {datePresets.length ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -2252,12 +2384,23 @@ export function BacktestWorkbench({
               <div style={emptyStyle}>{locale === 'zh-CN' ? '运行后显示事件标签。' : 'Run to show event presets.'}</div>
             )}
           </Panel>
+          )}
+          {!isBatchView && !result ? (
           <Panel title={locale === 'zh-CN' ? '回测记录' : 'Backtest records'}>
             <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
           </Panel>
+          ) : null}
         </div>
 
-        <div style={chartPanelStyle}>
+        <div style={isBatchView ? { ...chartPanelStyle, padding: 0, gap: 0, overflow: 'hidden' } : chartPanelStyle}>
+          {isBatchView ? (
+            <MultiBacktestReport
+              locale={locale}
+              terminal={batchResult?.terminal}
+              onSelectCode={drillIntoBatchSymbol}
+            />
+          ) : (
+          <>
           <div style={chartHeaderStyle}>
             <div style={{ minWidth: 0 }}>
               <div style={labelStyle}>{[freqLabel(displayFreq, locale), dataSourceLabel].filter(Boolean).join(' · ')}</div>
@@ -2306,10 +2449,20 @@ export function BacktestWorkbench({
               </div>
             ) : null}
           </div>
+          </>
+          )}
         </div>
 
         <div style={sideStyle}>
           <StrategyResearchPanel summary={researchSummary} locale={locale} />
+          {isBatchView ? (
+            <BatchResearchDrilldownPanel
+              locale={locale}
+              batchResult={batchResult}
+              onSelectCode={drillIntoBatchSymbol}
+            />
+          ) : (
+          <>
           <div style={{ ...panelStyle, gap: 7 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
               {(['perf', 'trades', 'signals', 'scan', 'risk'] as BacktestTab[]).map(item => (
@@ -2378,9 +2531,10 @@ export function BacktestWorkbench({
               <RiskPanel result={result} />
             </Panel>
           )}
+          </>
+          )}
         </div>
       </div>
-      )}
     </div>
   )
 }
@@ -2446,6 +2600,140 @@ function StrategyResearchPanel({
   )
 }
 
+function batchRankingRows(batchResult: BatchBacktestResult | null | undefined): Array<Record<string, unknown>> {
+  const rows = batchResult?.terminal?.panels?.ranking?.rows
+  return Array.isArray(rows) ? rows.map(recordValue) : []
+}
+
+function batchSignalRows(batchResult: BatchBacktestResult | null | undefined): Array<Record<string, unknown>> {
+  const rows = batchResult?.terminal?.panels?.signals?.rows
+  return Array.isArray(rows) ? rows.map(recordValue) : []
+}
+
+function recordSymbolLabel(row: Record<string, unknown>): string {
+  const code = normalizeSymbolCode(stringValue(row.code) ?? stringValue(row.symbol) ?? '')
+  const name = stringValue(row.name) ?? stringValue(row.stock_name)
+  if (!code) return name ?? emptyDisplay
+  return name && name.toUpperCase() !== code.toUpperCase() ? `${code} ${name}` : code
+}
+
+function BatchSamplePanel({
+  locale,
+  batchResult,
+  selectedCodes,
+}: {
+  locale: LongclawLocale
+  batchResult: BatchBacktestResult | null
+  selectedCodes: string[]
+}) {
+  const zh = locale === 'zh-CN'
+  const summary = recordValue(batchResult?.summary)
+  const metrics = recordValue(batchResult?.terminal?.metrics)
+  const target = recordValue(batchResult?.terminal?.target)
+  const totalStocks = numberValue(summary.total_stocks) ?? selectedCodes.length
+  const okStocks = numberValue(summary.ok_stocks)
+  const failedStocks = okStocks === undefined ? undefined : Math.max(0, totalStocks - okStocks)
+  const cards = [
+    { label: zh ? '周期' : 'Freq', value: freqLabel(target.freq, locale) || emptyDisplay },
+    { label: zh ? '截至' : 'As of', value: stringValue(target.as_of) ?? emptyDisplay },
+    { label: zh ? '新鲜度' : 'Freshness', value: freshnessLabel(target.freshness, locale) || emptyDisplay },
+    { label: zh ? '成功/失败' : 'OK/failed', value: failedStocks === undefined ? `${formatNumber(totalStocks, 0)} / --` : `${formatNumber(okStocks, 0)} / ${formatNumber(failedStocks, 0)}` },
+    { label: zh ? '成交/标的' : 'Trades/symbol', value: totalStocks ? formatNumber((numberValue(metrics.filled_trades) ?? 0) / totalStocks, 1) : emptyDisplay },
+    { label: zh ? '均回撤' : 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct) },
+  ]
+  return (
+    <Panel title={zh ? '样本证据' : 'Sample evidence'}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+        {cards.map(item => (
+          <div key={item.label} style={metricCardStyle}>
+            <div style={labelStyle}>{item.label}</div>
+            <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+      {batchResult?.warnings?.length ? (
+        <div style={researchIssueRowStyle}>
+          {batchResult.warnings.slice(0, 3).map(item => (
+            <span key={item} style={statusBadgeStyle('warning')}>{item}</span>
+          ))}
+        </div>
+      ) : null}
+    </Panel>
+  )
+}
+
+function BatchResearchDrilldownPanel({
+  locale,
+  batchResult,
+  onSelectCode,
+}: {
+  locale: LongclawLocale
+  batchResult: BatchBacktestResult | null
+  onSelectCode: (code: string) => void
+}) {
+  const zh = locale === 'zh-CN'
+  const rankingRows = batchRankingRows(batchResult)
+  const signalRows = batchSignalRows(batchResult)
+  const topRow = rankingRows[0]
+  const worstDrawdownRow = rankingRows.reduce<Record<string, unknown> | null>((worst, row) => {
+    const value = Math.abs(numberValue(row.max_drawdown_pct) ?? 0)
+    const worstValue = Math.abs(numberValue(worst?.max_drawdown_pct) ?? 0)
+    return !worst || value > worstValue ? row : worst
+  }, null)
+  const bestSignal = signalRows.reduce<Record<string, unknown> | null>((best, row) => {
+    const value = numberValue(row.avg_trade_return_pct ?? row.avg_t10_pct)
+    if (value === undefined) return best
+    const bestValue = numberValue(best?.avg_trade_return_pct ?? best?.avg_t10_pct)
+    return !best || bestValue === undefined || value > bestValue ? row : best
+  }, null)
+  const drillButtons = [
+    topRow ? { label: zh ? '下钻第一名' : 'Open top', row: topRow, meta: formatPercent(topRow.range_return_pct) } : null,
+    worstDrawdownRow ? { label: zh ? '下钻最大回撤' : 'Open worst DD', row: worstDrawdownRow, meta: formatDrawdown(worstDrawdownRow.max_drawdown_pct) } : null,
+  ].filter((item): item is { label: string; row: Record<string, unknown>; meta: string } => Boolean(item))
+  return (
+    <Panel title={zh ? '批量研发动作' : 'Batch research actions'}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {drillButtons.map(item => {
+          const code = normalizeSymbolCode(stringValue(item.row.code) ?? '')
+          return (
+            <button
+              key={`${item.label}-${code}`}
+              type="button"
+              style={{ ...rowStyle, width: '100%', cursor: code ? 'pointer' : 'default', textAlign: 'left' }}
+              disabled={!code}
+              onClick={() => onSelectCode(code)}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>{item.label}</div>
+                <div style={mutedStyle}>{recordSymbolLabel(item.row)}</div>
+              </div>
+              <div style={{ color: cellToneColor('return_pct', item.meta), fontWeight: 800 }}>{item.meta}</div>
+            </button>
+          )
+        })}
+        {bestSignal ? (
+          <div style={metricCardStyle}>
+            <div style={labelStyle}>{zh ? '优先验证信号族' : 'Signal family to verify'}</div>
+            <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>
+              {String(bestSignal.signal_type ?? emptyDisplay)}
+            </div>
+            <div style={mutedStyle}>
+              {zh ? '成交均利' : 'Avg trade'} {formatPercent(bestSignal.avg_trade_return_pct)} · T+10 {formatPercent(bestSignal.avg_t10_pct)}
+            </div>
+          </div>
+        ) : null}
+        <div style={emptyStyle}>
+          {zh
+            ? '批量先找共性和失败样本，再选代表单票做交易明细与参数扫描。'
+            : 'Use batch for repeatability and failure samples, then scan representative single symbols.'}
+        </div>
+      </div>
+    </Panel>
+  )
+}
+
 function SymbolBasketBar({
   locale,
   baseUrl,
@@ -2488,6 +2776,13 @@ function SymbolBasketBar({
   )
   const mergedOptions = uniqueSymbolOptions([...boardOptions, ...baseOptions])
   const optionByCode = new Map(mergedOptions.map(option => [symbolOptionKey(option), option]))
+  const selectedNameLookupKey = selectedCodes
+    .map(code => {
+      const normalized = normalizeSymbolCode(code)
+      const option = optionByCode.get(normalized.toUpperCase())
+      return `${normalized}:${option && hasReadableSymbolName(option) ? option.name : ''}`
+    })
+    .join('|')
   const normalizedQuery = query.trim().toLowerCase()
   const filteredBaskets = dynamicBaskets.filter(basket => basketMatches(basket, normalizedQuery))
   const orderedBoardOptions = useMemo(() => orderBacktestCandidateOptions(boardOptions), [boardOptions])
@@ -2547,6 +2842,36 @@ function SymbolBasketBar({
   useEffect(() => {
     void loadDynamicBaskets()
   }, [loadDynamicBaskets])
+  useEffect(() => {
+    if (!baseUrl || !selectedCodes.length) return
+    const missingCodes = selectedCodes
+      .map(normalizeSymbolCode)
+      .filter(Boolean)
+      .filter(code => {
+        const option = optionByCode.get(code.toUpperCase())
+        return !option || !hasReadableSymbolName(option)
+      })
+      .slice(0, 6)
+    if (!missingCodes.length) return
+    let cancelled = false
+    void Promise.allSettled(missingCodes.map(async code => {
+      const data = await fetchJson<SymbolLookupResponse>(
+        baseUrl,
+        `/api/stock/resolve/${encodeURIComponent(code)}`,
+        SYMBOL_NAME_LOOKUP_TIMEOUT_MS,
+      )
+      return symbolOptionFromLookupPayload(data, code)
+    })).then(results => {
+      if (cancelled) return
+      const resolved = results
+        .map(result => result.status === 'fulfilled' ? result.value : null)
+        .filter((option): option is SymbolOption => Boolean(option && hasReadableSymbolName(option)))
+      if (resolved.length) onSymbolOptionsSeen(resolved)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [baseUrl, onSymbolOptionsSeen, selectedCodes, selectedNameLookupKey])
   useEffect(() => {
     if (candidateOptions.some(option => option.code === selectedCandidateCode)) return
     setSelectedCandidateCode(candidateOptions[0]?.code ?? '')
@@ -2734,9 +3059,9 @@ function SymbolBasketBar({
         </div>
       </div>
 
-      <div style={labelStyle}>{locale === 'zh-CN' ? '动态组合' : 'Dynamic baskets'}</div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '样本来源' : 'Sample source'}</div>
       <div style={chipRowStyle}>
-        {filteredBaskets.length ? filteredBaskets.map(basket => {
+        {filteredBaskets.length ? filteredBaskets.slice(0, 6).map(basket => {
           const basketCodes = basket.codes.map(item => item.code)
           const active = sameCodeSet(selectedCodes, basketCodes)
           return (
@@ -2798,6 +3123,8 @@ function SymbolBasketBar({
           {locale === 'zh-CN' ? '清空' : 'Clear'}
         </button>
       </div>
+      {showCandidateChips ? (
+      <>
       <div style={labelStyle}>{candidateLabel}</div>
       <div style={candidateExpanded ? chipRowStyle : compactChipRowStyle}>
         {boardOptions.length ? (
@@ -2869,6 +3196,8 @@ function SymbolBasketBar({
           </div>
         ) : null}
       </div>
+      </>
+      ) : null}
     </div>
   )
 }
