@@ -21,7 +21,7 @@ import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
 type BacktestDashboard = Pick<
   SignalsDashboard,
-  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates' | 'chart_context'
+  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates' | 'chart_context' | 'deep_links'
 >
 
 type BacktestWorkbenchProps = {
@@ -102,8 +102,24 @@ type BacktestTrade = {
 
 type ElementSize = { width: number; height: number }
 type MultiReportDensity = 'compact' | 'desk' | 'wide'
-type SymbolOption = { code: string; name: string; group: string }
-type SymbolBasket = { id: string; label: string; codes: SymbolOption[] }
+type SymbolOption = { code: string; name: string; group: string; role?: string; source?: string }
+type SymbolBasket = {
+  id: string
+  label: string
+  codes: SymbolOption[]
+  source?: string
+  domain?: string
+  description?: string
+  chain_id?: string
+  node_id?: string
+  confidence?: number
+}
+type DynamicBasketsResponse = {
+  query?: string
+  total?: number
+  baskets?: SymbolBasket[]
+  source_order?: string[]
+}
 
 type BacktestTerminalMetric = {
   key?: string
@@ -197,6 +213,7 @@ const BACKTEST_MARKER_OVERLAY = 'longclawBacktestMarker'
 const BACKTEST_MARKER_GROUP = 'longclaw-backtest-markers'
 let markerRegistered = false
 const terminalTheme = tradingDeskTheme.colors
+const emptyDisplay = '--'
 
 const rootStyle: React.CSSProperties = {
   height: '100%',
@@ -243,9 +260,14 @@ const chipRowStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: 6,
   minWidth: 0,
-  overflowX: 'auto',
-  overflowY: 'hidden',
-  paddingBottom: 1,
+  flexWrap: 'wrap',
+  overflow: 'hidden',
+  paddingBottom: 0,
+}
+
+const compactChipRowStyle: React.CSSProperties = {
+  ...chipRowStyle,
+  maxHeight: 68,
 }
 
 const mainGridStyle: React.CSSProperties = {
@@ -428,81 +450,6 @@ const reportTableStyle: React.CSSProperties = {
   tableLayout: 'fixed',
 }
 
-const presetSymbolBaskets: SymbolBasket[] = [
-  {
-    id: 'ai_semis',
-    label: 'AI算力半导体',
-    codes: [
-      { code: '300394', name: '天孚通信', group: 'AI算力半导体' },
-      { code: '688041', name: '海光信息', group: 'AI算力半导体' },
-      { code: '688521', name: '芯原股份', group: 'AI算力半导体' },
-    ],
-  },
-  {
-    id: 'semiconductor_equipment',
-    label: '半导体设备',
-    codes: [
-      { code: '688012', name: '中微公司', group: '半导体设备' },
-      { code: '688072', name: '拓荆科技', group: '半导体设备' },
-      { code: '688082', name: '盛美上海', group: '半导体设备' },
-      { code: '688120', name: '华海清科', group: '半导体设备' },
-      { code: '688478', name: '晶升股份', group: '半导体设备' },
-      { code: '002371', name: '北方华创', group: '半导体设备' },
-    ],
-  },
-  {
-    id: 'optical_cpo',
-    label: '光模块/CPO',
-    codes: [
-      { code: '300308', name: '中际旭创', group: '光模块/CPO' },
-      { code: '300502', name: '新易盛', group: '光模块/CPO' },
-      { code: '300394', name: '天孚通信', group: '光模块/CPO' },
-      { code: '002281', name: '光迅科技', group: '光模块/CPO' },
-      { code: '603083', name: '剑桥科技', group: '光模块/CPO' },
-    ],
-  },
-  {
-    id: 'pcb_ccl',
-    label: 'PCB/CCL',
-    codes: [
-      { code: '300476', name: '胜宏科技', group: 'PCB/CCL' },
-      { code: '600183', name: '生益科技', group: 'PCB/CCL' },
-      { code: '688183', name: '生益电子', group: 'PCB/CCL' },
-      { code: '002463', name: '沪电股份', group: 'PCB/CCL' },
-      { code: '002916', name: '深南电路', group: 'PCB/CCL' },
-    ],
-  },
-  {
-    id: 'battery_materials',
-    label: '电池材料',
-    codes: [
-      { code: '002709', name: '天赐材料', group: '电池材料' },
-      { code: '300750', name: '宁德时代', group: '电池材料' },
-      { code: '002460', name: '赣锋锂业', group: '电池材料' },
-    ],
-  },
-  {
-    id: 'consumer_core',
-    label: '消费权重',
-    codes: [
-      { code: '600519', name: '贵州茅台', group: '消费权重' },
-      { code: '601888', name: '中国中免', group: '消费权重' },
-      { code: '000858', name: '五粮液', group: '消费权重' },
-    ],
-  },
-  {
-    id: 'review_sample',
-    label: '当前复盘篮子',
-    codes: [
-      { code: '002709', name: '天赐材料', group: '当前复盘篮子' },
-      { code: '688041', name: '海光信息', group: '当前复盘篮子' },
-      { code: '688521', name: '芯原股份', group: '当前复盘篮子' },
-      { code: '600519', name: '贵州茅台', group: '当前复盘篮子' },
-      { code: '601888', name: '中国中免', group: '当前复盘篮子' },
-    ],
-  },
-]
-
 function multiReportDensity(width: number, height: number): MultiReportDensity {
   if (width >= 1680 && height >= 720) return 'wide'
   if (width <= 1240 || height <= 760) return 'compact'
@@ -664,7 +611,7 @@ function backtestDataSourceLabel(result: BacktestResult | null, locale: Longclaw
         daily_cache_resampled_weekly: '日线聚合周线',
         daily_cache_resampled_monthly: '日线聚合月线',
         mongodb: 'MongoDB',
-        mongodb_bars: 'MongoDB bars',
+        mongodb_bars: 'MongoDB K线',
         mongodb_daily_resampled_weekly: 'Mongo日线聚合周线',
         mongodb_daily_resampled_monthly: 'Mongo日线聚合月线',
         eastmoney: '东财',
@@ -708,12 +655,93 @@ function dataHealthText(result: BacktestResult | null, locale: LongclawLocale): 
   const freshness = stringValue(target.freshness) ?? result.freshness
   const parts = [
     asOf ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${asOf}` : '',
-    typeof barCount === 'number' ? `${barCount} bars` : '',
-    freshness ? freshness : '',
+    typeof barCount === 'number' ? (locale === 'zh-CN' ? `${barCount}根K线` : `${barCount} bars`) : '',
+    freshness ? freshnessLabel(freshness, locale) : '',
     result.derived_from ? `${locale === 'zh-CN' ? '聚合自' : 'derived from'} ${result.derived_from}` : '',
-    result.partial ? (locale === 'zh-CN' ? 'partial' : 'partial') : '',
+    result.partial ? (locale === 'zh-CN' ? '部分数据' : 'partial') : '',
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+function freqLabel(value: unknown, locale: LongclawLocale): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const key = raw.toLowerCase()
+  const labels: Record<string, string> = locale === 'zh-CN'
+    ? {
+        daily: '日线',
+        day: '日线',
+        d: '日线',
+        weekly: '周线',
+        week: '周线',
+        w: '周线',
+        monthly: '月线',
+        month: '月线',
+        m: '月线',
+      }
+    : {
+        daily: 'Daily',
+        day: 'Daily',
+        d: 'Daily',
+        weekly: 'Weekly',
+        week: 'Weekly',
+        w: 'Weekly',
+        monthly: 'Monthly',
+        month: 'Monthly',
+        m: 'Monthly',
+      }
+  return labels[key] ?? raw
+}
+
+function freshnessLabel(value: unknown, locale: LongclawLocale): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const key = raw.toLowerCase()
+  const labels: Record<string, string> = locale === 'zh-CN'
+    ? {
+        fresh: '最新',
+        stale: '陈旧',
+        partial: '部分数据',
+        missing: '缺失',
+      }
+    : {
+        fresh: 'fresh',
+        stale: 'stale',
+        partial: 'partial',
+        missing: 'missing',
+      }
+  return labels[key] ?? raw
+}
+
+function runStatusLabel(error: string | null, loading: boolean, hasResult: boolean, locale: LongclawLocale): string {
+  if (locale !== 'zh-CN') return error ? 'error' : loading ? 'running' : hasResult ? 'ready' : 'idle'
+  if (error) return '失败'
+  if (loading) return '分析中'
+  if (hasResult) return '已就绪'
+  return '待运行'
+}
+
+function backtestTabLabel(tab: BacktestTab, locale: LongclawLocale): string {
+  if (locale !== 'zh-CN') return tab
+  return {
+    perf: '绩效',
+    trades: '交易',
+    signals: '信号',
+    scan: '扫描',
+    risk: '风控',
+  }[tab]
+}
+
+function boardKindLabel(kind: unknown, locale: LongclawLocale): string {
+  const raw = String(kind ?? '').trim()
+  if (!raw) return locale === 'zh-CN' ? '板块' : 'board'
+  if (locale !== 'zh-CN') return raw
+  return {
+    board: '板块',
+    concept: '概念',
+    industry: '行业',
+    chain: '产业链',
+  }[raw.toLowerCase()] ?? raw
 }
 
 function buttonStyle(active = false, disabled = false): React.CSSProperties {
@@ -737,6 +765,11 @@ function buttonStyle(active = false, disabled = false): React.CSSProperties {
 
 function trimTrailingSlash(value?: string): string {
   return value?.trim().replace(/\/+$/, '') ?? ''
+}
+
+function urlFromBacktestDashboard(dashboard: BacktestDashboard): string {
+  const terminalLink = dashboard.deep_links?.find(link => link.link_id === 'signals-terminal')
+  return trimTrailingSlash(terminalLink?.url)
 }
 
 function normalizeSymbolCode(value: string): string {
@@ -797,25 +830,25 @@ function terminalChart(result: BacktestResult | null | undefined): BacktestTermi
 
 function formatNumber(value: unknown, digits = 2): string {
   const number = numberValue(value)
-  if (number === undefined) return 'N/A'
+  if (number === undefined) return emptyDisplay
   return number.toFixed(digits)
 }
 
 function formatPercent(value: unknown): string {
   const number = numberValue(value)
-  if (number === undefined) return 'N/A'
+  if (number === undefined) return emptyDisplay
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
 function formatUnsignedPercent(value: unknown): string {
   const number = numberValue(value)
-  if (number === undefined) return 'N/A'
+  if (number === undefined) return emptyDisplay
   return `${number.toFixed(2)}%`
 }
 
 function formatDrawdown(value: unknown): string {
   const number = numberValue(value)
-  if (number === undefined) return 'N/A'
+  if (number === undefined) return emptyDisplay
   return `-${Math.abs(number).toFixed(2)}%`
 }
 
@@ -823,7 +856,7 @@ function formatMetricValue(value: unknown, unit?: string): string {
   if (unit === '%') return formatPercent(value)
   if (unit === 'D') return `${formatNumber(value, 1)}D`
   const number = numberValue(value)
-  if (number === undefined) return String(value ?? 'N/A')
+  if (number === undefined) return String(value ?? emptyDisplay)
   if (Number.isInteger(number)) return String(number)
   return number.toFixed(2)
 }
@@ -953,8 +986,7 @@ function dashboardSymbolOptions(dashboard: BacktestDashboard): SymbolOption[] {
 }
 
 function symbolOptionsForPicker(dashboard: BacktestDashboard): SymbolOption[] {
-  const presetOptions = presetSymbolBaskets.flatMap(basket => basket.codes)
-  return uniqueSymbolOptions([...dashboardSymbolOptions(dashboard), ...presetOptions])
+  return dashboardSymbolOptions(dashboard)
 }
 
 function symbolOptionMatches(option: SymbolOption, query: string): boolean {
@@ -963,19 +995,78 @@ function symbolOptionMatches(option: SymbolOption, query: string): boolean {
   return haystack.includes(query)
 }
 
-function presetOptionByCode(code: string): SymbolOption | undefined {
-  const key = normalizeSymbolCode(code).toUpperCase()
-  if (!key) return undefined
-  return presetSymbolBaskets.flatMap(basket => basket.codes).find(option => option.code.toUpperCase() === key)
+function directSymbolOptionsFromQuery(query: string): SymbolOption[] {
+  const chunks = query.split(/[\s,，、;；]+/).map(item => item.trim()).filter(Boolean)
+  const codes = chunks.flatMap(item => {
+    const normalized = normalizeSymbolCode(item)
+    const hasMarketPrefix = /^(SZ|SH|HK|US)\./i.test(item)
+    const hasMarketSuffix = /\.(SZ|SH|HK|US)$/i.test(item)
+    const numericCode = /^\d{5,6}$/.test(normalized)
+    if (!hasMarketPrefix && !hasMarketSuffix && !numericCode) return []
+    return extractSymbolCandidates(item)
+  })
+  return uniqueSymbolOptions(codes.map(code => ({
+    code,
+    name: code,
+    group: '直接输入',
+  })))
+}
+
+function symbolOptionsMatchingQuery(query: string, options: SymbolOption[]): SymbolOption[] {
+  const normalizedQuery = query.trim().toLowerCase()
+  if (!normalizedQuery) return []
+  const directOptions = directSymbolOptionsFromQuery(query)
+  const matchedOptions = uniqueSymbolOptions([...directOptions, ...options])
+    .filter(option => symbolOptionMatches(option, normalizedQuery))
+  return uniqueSymbolOptions([...directOptions, ...matchedOptions])
 }
 
 function basketMatches(basket: SymbolBasket, query: string): boolean {
   if (!query) return true
   const haystack = [
     basket.label,
+    basket.source,
+    basket.domain,
+    basket.description,
+    basket.chain_id,
+    basket.node_id,
     ...basket.codes.flatMap(item => [item.code, item.name, item.group]),
   ].join(' ').toLowerCase()
   return haystack.includes(query)
+}
+
+function normalizeDynamicBaskets(rawBaskets: SymbolBasket[] | undefined): SymbolBasket[] {
+  if (!Array.isArray(rawBaskets)) return []
+  const baskets: SymbolBasket[] = []
+  rawBaskets.forEach((rawBasket, index) => {
+    const label = stringValue(rawBasket.label) ?? ''
+    const source = stringValue(rawBasket.source)
+    const id = stringValue(rawBasket.id) ?? `${source ?? 'basket'}:${label || index}`
+    const codes = uniqueSymbolOptions((Array.isArray(rawBasket.codes) ? rawBasket.codes : []).flatMap(rawOption => {
+      const code = normalizeSymbolCode(rawOption.code)
+      if (!code) return []
+      return [{
+        code,
+        name: stringValue(rawOption.name) ?? code,
+        group: stringValue(rawOption.group) ?? label,
+        role: stringValue(rawOption.role),
+        source: stringValue(rawOption.source) ?? source,
+      }]
+    }))
+    if (!label || codes.length === 0) return
+    baskets.push({
+      id,
+      label,
+      source,
+      domain: stringValue(rawBasket.domain),
+      description: stringValue(rawBasket.description),
+      chain_id: stringValue(rawBasket.chain_id),
+      node_id: stringValue(rawBasket.node_id),
+      confidence: numberValue(rawBasket.confidence),
+      codes,
+    })
+  })
+  return baskets
 }
 
 function selectedSymbolText(codes: string[]): string {
@@ -1262,7 +1353,7 @@ export function BacktestWorkbench({
   onOpenRun,
   onOpenRecord,
 }: BacktestWorkbenchProps) {
-  const baseUrl = trimTrailingSlash(signalsWebBaseUrl)
+  const baseUrl = trimTrailingSlash(signalsWebBaseUrl) || urlFromBacktestDashboard(dashboard)
   const codeInputRef = useRef<HTMLInputElement | null>(null)
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<Chart | null>(null)
@@ -1703,11 +1794,11 @@ export function BacktestWorkbench({
                 : `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length} signals · ${numberValue(metrics.filled_trades) ?? filledTrades.length} trades`
               }${dataSourceLabel ? ` · ${dataSourceLabel}` : ''}`
               : locale === 'zh-CN'
-                ? '从下方选择板块组合或勾选多只标的'
+                ? '从下方选择动态产业链组合或勾选多只标的'
                 : 'Enter one symbol for single backtest, multiple symbols for portfolio review')}
         </div>
         <button type="button" style={buttonStyle(false, !result || Boolean(batchResult))} disabled={!result || Boolean(batchResult)} onClick={exportCsv}>
-          CSV
+          {locale === 'zh-CN' ? '导出' : 'CSV'}
         </button>
       </form>
 
@@ -1773,7 +1864,7 @@ export function BacktestWorkbench({
         <div style={chartPanelStyle}>
           <div style={chartHeaderStyle}>
             <div style={{ minWidth: 0 }}>
-              <div style={labelStyle}>{[displayFreq, dataSourceLabel].filter(Boolean).join(' · ')}</div>
+              <div style={labelStyle}>{[freqLabel(displayFreq, locale), dataSourceLabel].filter(Boolean).join(' · ')}</div>
               <div style={chartTitleStyle}>{[displaySymbol, displayName].filter(Boolean).join(' · ')}</div>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1784,14 +1875,14 @@ export function BacktestWorkbench({
               ) : null}
               {(stringValue(targetInfo.freshness) ?? result?.freshness) ? (
                 <span style={statusBadgeStyle((stringValue(targetInfo.freshness) ?? result?.freshness) === 'fresh' ? 'success' : 'warning')}>
-                  {stringValue(targetInfo.freshness) ?? result?.freshness}
+                  {freshnessLabel(stringValue(targetInfo.freshness) ?? result?.freshness, locale)}
                 </span>
               ) : null}
               {(result?.warnings ?? []).slice(0, 2).map(item => (
                 <span key={item} style={statusBadgeStyle('warning')}>{item}</span>
               ))}
               <span style={statusBadgeStyle(error ? 'failed' : loading ? 'running' : result ? 'success' : 'open')}>
-                {error ? 'error' : loading ? 'running' : result ? 'ready' : 'idle'}
+                {runStatusLabel(error, loading, Boolean(result), locale)}
               </span>
             </div>
           </div>
@@ -1800,7 +1891,7 @@ export function BacktestWorkbench({
               {dataHealthLabel}
             </div>
           ) : null}
-          <MetricStrip result={result} />
+          <MetricStrip result={result} locale={locale} />
           <div style={chartShellStyle}>
             <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
             {!result || klineData.length === 0 ? (
@@ -1839,7 +1930,7 @@ export function BacktestWorkbench({
                     setTab(item)
                   }}
                 >
-                  {item}
+                  {backtestTabLabel(item, locale)}
                 </button>
               ))}
             </div>
@@ -1922,19 +2013,71 @@ function SymbolBasketBar({
   const [boardMatches, setBoardMatches] = useState<BoardMatch[]>([])
   const [selectedBoardName, setSelectedBoardName] = useState('')
   const [selectedCandidateCode, setSelectedCandidateCode] = useState('')
+  const [dynamicBaskets, setDynamicBaskets] = useState<SymbolBasket[]>([])
+  const [basketLoading, setBasketLoading] = useState(false)
+  const [basketMessage, setBasketMessage] = useState('')
+  const [candidateExpanded, setCandidateExpanded] = useState(false)
+  const [selectedExpanded, setSelectedExpanded] = useState(false)
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupMessage, setLookupMessage] = useState('')
   const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
-  const mergedOptions = uniqueSymbolOptions([...boardOptions, ...options])
+  const dynamicOptions = useMemo(() => uniqueSymbolOptions(dynamicBaskets.flatMap(basket => basket.codes)), [dynamicBaskets])
+  const baseOptions = useMemo(
+    () => uniqueSymbolOptions([...directSymbolOptionsFromQuery(query), ...options, ...dynamicOptions]),
+    [dynamicOptions, options, query],
+  )
+  const mergedOptions = uniqueSymbolOptions([...boardOptions, ...baseOptions])
   const optionByCode = new Map(mergedOptions.map(option => [symbolOptionKey(option), option]))
   const normalizedQuery = query.trim().toLowerCase()
-  const filteredBaskets = presetSymbolBaskets.filter(basket => basketMatches(basket, normalizedQuery))
-  const localCandidateOptions = mergedOptions
-    .filter(option => !selectedSet.has(option.code.toUpperCase()))
-    .filter(option => symbolOptionMatches(option, normalizedQuery))
-    .slice(0, 28)
+  const filteredBaskets = dynamicBaskets.filter(basket => basketMatches(basket, normalizedQuery))
+  const localCandidateOptions = (normalizedQuery
+    ? symbolOptionsMatchingQuery(query, mergedOptions)
+    : mergedOptions).slice(0, 28)
   const candidateOptions = boardOptions.length ? boardOptions : localCandidateOptions
   const dynamicCodes = boardOptions.map(option => option.code)
+  const displayBoardMatches = boardMatches.length
+    ? boardMatches
+    : boardLabel
+      ? [{ name: boardLabel, kind: 'board', total: boardOptions.length }]
+      : []
+  const candidateLabel = boardOptions.length
+    ? (locale === 'zh-CN' ? '成分股' : 'Constituents')
+    : normalizedQuery
+      ? (locale === 'zh-CN' ? '匹配标的' : 'Matched symbols')
+      : (locale === 'zh-CN' ? '候选标的' : 'Symbols')
+  const visibleSelectedCodes = selectedExpanded ? selectedCodes : selectedCodes.slice(0, 6)
+  const hiddenSelectedCount = Math.max(0, selectedCodes.length - visibleSelectedCodes.length)
+  const showCandidateChips = Boolean(boardOptions.length || normalizedQuery)
+  const candidatePreviewLimit = showCandidateChips
+    ? (boardOptions.length ? (candidateExpanded ? 18 : 6) : 8)
+    : 0
+  const visibleCandidateOptions = candidateOptions.slice(0, candidatePreviewLimit)
+  const hiddenCandidateCount = Math.max(0, candidateOptions.length - visibleCandidateOptions.length)
+  const loadDynamicBaskets = useCallback(async (search = '') => {
+    if (!baseUrl) return
+    setBasketLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('limit', '8')
+      if (search.trim()) params.set('query', search.trim())
+      const data = await fetchJson<DynamicBasketsResponse>(baseUrl, `/api/cluster/baskets?${params.toString()}`, 120_000)
+      const baskets = normalizeDynamicBaskets(data.baskets)
+      setDynamicBaskets(baskets)
+      setBasketMessage(baskets.length
+        ? (locale === 'zh-CN'
+          ? `动态组合 ${baskets.length} 个 · ${baskets[0]?.source ?? 'Signals'}`
+          : `${baskets.length} dynamic baskets · ${baskets[0]?.source ?? 'Signals'}`)
+        : (locale === 'zh-CN' ? '没有动态产业链组合。' : 'No dynamic chain baskets.'))
+    } catch (rawError) {
+      const apiError = rawError as ApiError
+      setBasketMessage(compactApiError(apiError, locale, locale === 'zh-CN' ? '动态组合加载失败。' : 'Dynamic baskets failed to load.'))
+    } finally {
+      setBasketLoading(false)
+    }
+  }, [baseUrl, locale])
+  useEffect(() => {
+    void loadDynamicBaskets()
+  }, [loadDynamicBaskets])
   useEffect(() => {
     if (candidateOptions.some(option => option.code === selectedCandidateCode)) return
     setSelectedCandidateCode(candidateOptions[0]?.code ?? '')
@@ -1942,6 +2085,7 @@ function SymbolBasketBar({
   const loadBoard = useCallback(async (name?: string) => {
     const board = (name ?? query).trim()
     if (!board) return
+    const localMatches = symbolOptionsMatchingQuery(board, baseOptions).slice(0, 28)
     setLookupLoading(true)
     setLookupMessage('')
     try {
@@ -1958,28 +2102,41 @@ function SymbolBasketBar({
         : stringValue(matches[0]?.name) ?? resolvedBoard
       const nextOptions = uniqueSymbolOptions(rows.map(row => {
         const code = normalizeSymbolCode(row.code ?? row.symbol ?? '')
-        const preset = presetOptionByCode(code)
+        const knownOption = baseOptions.find(option => option.code.toUpperCase() === code.toUpperCase())
         const rawName = stringValue(row.name)
         return {
           code,
-          name: rawName && rawName !== code ? rawName : preset?.name ?? code,
+          name: rawName && rawName !== code ? rawName : knownOption?.name ?? code,
           group: resolvedBoard,
         }
       }).filter(option => option.code))
+      if (nextOptions.length === 0) {
+        setBoardLabel('')
+        setBoardMatches(matches)
+        setSelectedBoardName(stringValue(matches[0]?.name) ?? '')
+        setBoardOptions([])
+        setSelectedCandidateCode('')
+        setCandidateExpanded(false)
+        if (localMatches.length) {
+          setLookupMessage(locale === 'zh-CN'
+            ? `找到${localMatches.length}个匹配标的，可在下方直接勾选。`
+            : `${localMatches.length} matching symbols. Toggle them below.`)
+        } else {
+          setLookupMessage(data.error || (matches.length
+            ? (locale === 'zh-CN' ? `找到${matches.length}个匹配来源，选择后点“载入成分股”。` : `${matches.length} matching sources. Pick one and load.`)
+            : (locale === 'zh-CN' ? '没有找到成分股，换一个产业链、板块名或股票代码试试。' : 'No constituents found. Try another chain, board name, or symbol code.')))
+        }
+        return
+      }
       setBoardLabel(resolvedBoard)
       setBoardMatches(matches)
       setSelectedBoardName(nextSelectedBoard)
       setBoardOptions(nextOptions.slice(0, 60))
       setSelectedCandidateCode(nextOptions[0]?.code ?? '')
-      if (nextOptions.length === 0) {
-        setLookupMessage(data.error || (matches.length
-          ? (locale === 'zh-CN' ? `找到${matches.length}个匹配板块，选择后点“载入”。` : `${matches.length} matching boards. Pick one and load.`)
-          : (locale === 'zh-CN' ? '没有找到成分股，换一个板块名试试。' : 'No constituents found. Try another board name.')))
-      } else {
-        setLookupMessage(locale === 'zh-CN'
-          ? `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length}只成分股`
-          : `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length} constituents`)
-      }
+      setCandidateExpanded(false)
+      setLookupMessage(locale === 'zh-CN'
+        ? `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length}只成分股，点击标的加入篮子。`
+        : `${resolvedBoard} · ${numberValue(data.total) ?? nextOptions.length} constituents. Toggle symbols below.`)
     } catch (rawError) {
       const apiError = rawError as ApiError
       setBoardOptions([])
@@ -1987,27 +2144,44 @@ function SymbolBasketBar({
       setBoardMatches([])
       setSelectedBoardName('')
       setSelectedCandidateCode('')
-      setLookupMessage(compactApiError(apiError, locale, locale === 'zh-CN' ? '板块搜索失败。' : 'Board lookup failed.'))
+      setCandidateExpanded(false)
+      setLookupMessage(localMatches.length
+        ? (locale === 'zh-CN'
+          ? `成分股接口暂不可用；已找到${localMatches.length}个本地匹配标的，可直接勾选。`
+          : `Board lookup is unavailable. ${localMatches.length} local symbols are available below.`)
+        : compactApiError(apiError, locale, locale === 'zh-CN' ? '板块搜索失败。' : 'Board lookup failed.'))
     } finally {
       setLookupLoading(false)
     }
-  }, [baseUrl, locale, query])
+  }, [baseOptions, baseUrl, locale, query])
   const lookupBoard = useCallback(async () => {
-    await loadBoard(query)
-  }, [loadBoard, query])
+    await Promise.all([
+      loadDynamicBaskets(query),
+      loadBoard(query),
+    ])
+  }, [loadBoard, loadDynamicBaskets, query])
   return (
     <div style={basketBarStyle}>
       <div style={labelStyle}>{locale === 'zh-CN' ? '搜索' : 'Search'}</div>
       <div style={basketSearchStyle}>
         <input
-          aria-label={locale === 'zh-CN' ? '搜索板块或标的' : 'Search board or symbol'}
+          aria-label={locale === 'zh-CN' ? '搜索产业链、板块或标的' : 'Search chain, board, or symbol'}
           name="backtest-board-search"
           autoComplete="off"
           spellCheck={false}
           style={{ ...inputStyle, height: 28, fontFamily: fontStacks.ui, flex: '1 1 230px' }}
           value={query}
-          placeholder={locale === 'zh-CN' ? '半导体设备 / 白酒 / PCB / 代码 / 名称…' : 'Board, concept, code, or name…'}
-          onChange={event => setQuery(event.target.value)}
+          placeholder={locale === 'zh-CN' ? '电解液 / 半导体设备 / 光模块 / 代码 / 名称…' : 'Chain, board, concept, code, or name…'}
+          onChange={event => {
+            setQuery(event.target.value)
+            setBoardOptions([])
+            setBoardLabel('')
+            setBoardMatches([])
+            setSelectedBoardName('')
+            setSelectedCandidateCode('')
+            setLookupMessage('')
+            setCandidateExpanded(false)
+          }}
           onKeyDown={event => {
             if (event.key === 'Enter') {
               event.preventDefault()
@@ -2015,44 +2189,50 @@ function SymbolBasketBar({
             }
           }}
         />
-        <button type="button" style={buttonStyle(false, lookupLoading || !query.trim())} disabled={lookupLoading || !query.trim()} onClick={() => void lookupBoard()}>
-          {lookupLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜索匹配' : 'Search')}
+        <button
+          type="button"
+          style={buttonStyle(false, lookupLoading || basketLoading || !query.trim())}
+          disabled={lookupLoading || basketLoading || !query.trim()}
+          onClick={() => void lookupBoard()}
+        >
+          {lookupLoading || basketLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜索/匹配' : 'Search')}
         </button>
         <select
-          aria-label={locale === 'zh-CN' ? '匹配板块' : 'Matched board'}
+          aria-label={locale === 'zh-CN' ? '匹配来源' : 'Matched source'}
           style={{ ...selectStyle, height: 28, flex: '1 1 210px' }}
-          disabled={boardMatches.length === 0}
+          disabled={displayBoardMatches.length === 0}
           value={selectedBoardName}
           onChange={event => setSelectedBoardName(event.target.value)}
         >
-          {boardMatches.length === 0 ? (
-            <option value="">{locale === 'zh-CN' ? '先搜索板块' : 'Search a board first'}</option>
-          ) : boardMatches.map(match => {
+          {displayBoardMatches.length === 0 ? (
+            <option value="">{locale === 'zh-CN' ? '先搜索来源' : 'Search a source first'}</option>
+          ) : displayBoardMatches.map(match => {
             const name = stringValue(match.name) ?? ''
+            const total = numberValue(match.total)
             return (
               <option key={`${name}-${String(match.kind ?? '')}`} value={name}>
                 {locale === 'zh-CN'
-                  ? `${name} · ${String(match.kind ?? 'board')} · ${formatNumber(match.total, 0)}只`
-                  : `${name} · ${String(match.kind ?? 'board')} · ${formatNumber(match.total, 0)}`}
+                  ? `${name} · ${boardKindLabel(match.kind, locale)}${total === undefined ? '' : ` · ${formatNumber(total, 0)}只`}`
+                  : `${name} · ${boardKindLabel(match.kind, locale)}${total === undefined ? '' : ` · ${formatNumber(total, 0)}`}`}
               </option>
             )
           })}
         </select>
         <button type="button" style={buttonStyle(false, lookupLoading || !selectedBoardName)} disabled={lookupLoading || !selectedBoardName} onClick={() => void loadBoard(selectedBoardName)}>
-          {locale === 'zh-CN' ? '载入' : 'Load'}
+          {locale === 'zh-CN' ? '载入成分股' : 'Load'}
         </button>
         <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket([...selectedCodes, ...dynamicCodes])}>
-          {locale === 'zh-CN' ? '加入全部' : 'Add all'}
+          {locale === 'zh-CN' ? '全加入篮子' : 'Add all'}
         </button>
         <button type="button" style={buttonStyle(false, dynamicCodes.length === 0)} disabled={dynamicCodes.length === 0} onClick={() => onApplyBasket(dynamicCodes)}>
-          {locale === 'zh-CN' ? '替换已选' : 'Replace'}
+          {locale === 'zh-CN' ? '替换篮子' : 'Replace'}
         </button>
-        <div style={{ ...mutedStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lookupMessage}>
-          {lookupMessage || (boardLabel ? `${boardLabel} · ${boardOptions.length}` : '')}
+        <div style={{ ...mutedStyle, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={[lookupMessage, basketMessage].filter(Boolean).join(' · ')}>
+          {lookupMessage || basketMessage || (boardLabel ? `${boardLabel} · ${boardOptions.length}` : '')}
         </div>
       </div>
 
-      <div style={labelStyle}>{locale === 'zh-CN' ? '组合' : 'Baskets'}</div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '动态组合' : 'Dynamic baskets'}</div>
       <div style={chipRowStyle}>
         {filteredBaskets.length ? filteredBaskets.map(basket => {
           const basketCodes = basket.codes.map(item => item.code)
@@ -2064,15 +2244,18 @@ function SymbolBasketBar({
               aria-pressed={active}
               style={buttonStyle(active)}
               onClick={() => onApplyBasket(basketCodes)}
+              title={[basket.source, basket.description].filter(Boolean).join(' · ')}
             >
               {basket.label}
             </button>
           )
-        }) : <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>{locale === 'zh-CN' ? '没有匹配的本地组合，可直接搜板块。' : 'No local basket matches. Search a board directly.'}</div>}
+        }) : <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>{basketLoading
+          ? (locale === 'zh-CN' ? '正在加载动态产业链组合…' : 'Loading dynamic chain baskets…')
+          : (locale === 'zh-CN' ? '没有匹配的动态组合；搜索后会用板块成分股兜底。' : 'No dynamic basket matches. Search falls back to constituents.')}</div>}
       </div>
       <div style={labelStyle}>{locale === 'zh-CN' ? '已选池' : 'Selected'}</div>
       <div style={chipRowStyle}>
-        {selectedCodes.length ? selectedCodes.map(item => {
+        {selectedCodes.length ? visibleSelectedCodes.map(item => {
           const option = optionByCode.get(item.toUpperCase())
           return (
             <button
@@ -2087,15 +2270,32 @@ function SymbolBasketBar({
           )
         }) : (
           <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
-            {locale === 'zh-CN' ? '选择一个板块组合，或勾选右侧标的。' : 'Pick a basket or toggle symbols.'}
+            {locale === 'zh-CN' ? '选择组合、搜索板块，或勾选匹配标的。' : 'Pick a basket, search a board, or toggle symbols.'}
           </div>
         )}
-        <button type="button" style={buttonStyle(false, selectedCodes.length === 0)} disabled={selectedCodes.length === 0} onClick={onClearCodes}>
+        {hiddenSelectedCount > 0 ? (
+          <button type="button" style={buttonStyle(false)} onClick={() => setSelectedExpanded(true)}>
+            {locale === 'zh-CN' ? `展开 ${hiddenSelectedCount} 只` : `Show ${hiddenSelectedCount} more`}
+          </button>
+        ) : selectedExpanded && selectedCodes.length > 6 ? (
+          <button type="button" style={buttonStyle(false)} onClick={() => setSelectedExpanded(false)}>
+            {locale === 'zh-CN' ? '收起已选' : 'Collapse'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          style={buttonStyle(false, selectedCodes.length === 0)}
+          disabled={selectedCodes.length === 0}
+          onClick={() => {
+            setSelectedExpanded(false)
+            onClearCodes()
+          }}
+        >
           {locale === 'zh-CN' ? '清空' : 'Clear'}
         </button>
       </div>
-      <div style={labelStyle}>{boardOptions.length ? (locale === 'zh-CN' ? '成分股' : 'Constituents') : (locale === 'zh-CN' ? '常用标的' : 'Symbols')}</div>
-      <div style={chipRowStyle}>
+      <div style={labelStyle}>{candidateLabel}</div>
+      <div style={candidateExpanded ? chipRowStyle : compactChipRowStyle}>
         {boardOptions.length ? (
           <>
             <select
@@ -2117,12 +2317,12 @@ function SymbolBasketBar({
               onClick={() => onToggleCode(selectedCandidateCode)}
             >
               {selectedSet.has(selectedCandidateCode.toUpperCase())
-                ? (locale === 'zh-CN' ? '移出选中' : 'Remove')
-                : (locale === 'zh-CN' ? '加入选中' : 'Add selected')}
+                ? (locale === 'zh-CN' ? '移出篮子' : 'Remove')
+                : (locale === 'zh-CN' ? '加入篮子' : 'Add selected')}
             </button>
           </>
         ) : null}
-        {candidateOptions.slice(0, boardOptions.length ? 24 : 28).map(option => {
+        {visibleCandidateOptions.map(option => {
           const active = selectedSet.has(option.code.toUpperCase())
           return (
             <button
@@ -2131,15 +2331,30 @@ function SymbolBasketBar({
               aria-pressed={active}
               style={buttonStyle(active)}
               onClick={() => onToggleCode(option.code)}
-              title={option.group}
+              title={locale === 'zh-CN'
+                ? `${option.group} · 点击${active ? '移出' : '加入'}标的篮子`
+                : `${option.group} · click to ${active ? 'remove' : 'add'}`}
             >
               {[option.code, option.name].filter(Boolean).join(' ')}
             </button>
           )
         })}
-        {candidateOptions.length === 0 ? (
+        {showCandidateChips && hiddenCandidateCount > 0 ? (
+          <button type="button" style={buttonStyle(false)} onClick={() => setCandidateExpanded(previous => !previous)}>
+            {candidateExpanded
+              ? (locale === 'zh-CN' ? '收起候选' : 'Collapse')
+              : (locale === 'zh-CN' ? `展开 ${hiddenCandidateCount} 只` : `Show ${hiddenCandidateCount} more`)}
+          </button>
+        ) : null}
+        {!showCandidateChips ? (
           <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
-            {locale === 'zh-CN' ? '搜索板块后显示可勾选成分股。' : 'Search a board to show selectable constituents.'}
+            {locale === 'zh-CN' ? '默认收起候选；搜索产业链、板块、股票代码或名称后再显示。' : 'Symbols stay collapsed by default. Search to reveal candidates.'}
+          </div>
+        ) : candidateOptions.length === 0 ? (
+          <div style={{ ...mutedStyle, whiteSpace: 'nowrap' }}>
+            {normalizedQuery
+              ? (locale === 'zh-CN' ? '没有匹配标的，试试板块名、股票代码或股票名称。' : 'No symbol matches. Try a board name, code, or stock name.')
+              : (locale === 'zh-CN' ? '搜索板块后显示可勾选成分股。' : 'Search a board to show selectable constituents.')}
           </div>
         ) : null}
       </div>
@@ -2182,22 +2397,22 @@ function MultiBacktestReport({
   const metrics = recordValue(terminal.metrics)
   const target = recordValue(terminal.target)
   const kpiItems = [
-    { label: 'Symbols', value: rankingRows.length, tone: 'neutral' },
-    { label: 'Signals', value: formatNumber(metrics.signal_count, 0), tone: 'neutral' },
-    { label: 'Trades', value: formatNumber(metrics.filled_trades, 0), tone: 'neutral' },
-    { label: 'WinRate', value: formatPercent(metrics.win_rate), tone: (numberValue(metrics.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
-    { label: 'Avg Ret', value: formatPercent(metrics.total_return_pct), tone: (numberValue(metrics.total_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
-    { label: '5D Range', value: formatPercent(metrics.median_5d_high_low_pct), tone: 'warning' },
-    { label: 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct), tone: 'down' },
+    { label: locale === 'zh-CN' ? '标的数' : 'Symbols', value: rankingRows.length, tone: 'neutral' },
+    { label: locale === 'zh-CN' ? '信号数' : 'Signals', value: formatNumber(metrics.signal_count, 0), tone: 'neutral' },
+    { label: locale === 'zh-CN' ? '成交数' : 'Trades', value: formatNumber(metrics.filled_trades, 0), tone: 'neutral' },
+    { label: locale === 'zh-CN' ? '胜率' : 'WinRate', value: formatPercent(metrics.win_rate), tone: (numberValue(metrics.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
+    { label: locale === 'zh-CN' ? '平均收益' : 'Avg Ret', value: formatPercent(metrics.total_return_pct), tone: (numberValue(metrics.total_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: locale === 'zh-CN' ? '5日波幅' : '5D Range', value: formatPercent(metrics.median_5d_high_low_pct), tone: 'warning' },
+    { label: locale === 'zh-CN' ? '平均回撤' : 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct), tone: 'down' },
   ]
   return (
     <div ref={reportRef} style={multiReportStyle(density)}>
       <div style={multiHeaderStyle(density)}>
         <div style={{ minWidth: 0 }}>
           <div style={labelStyle}>{locale === 'zh-CN' ? '多标的复盘' : 'Multi-symbol review'}</div>
-          <div style={chartTitleStyle}>{String(target.name ?? 'Signals Batch')}</div>
+          <div style={chartTitleStyle}>{String(target.name ?? (locale === 'zh-CN' ? '多标的回测' : 'Signals Batch'))}</div>
           <div style={mutedStyle}>
-            {[target.freq, target.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${target.as_of}` : '', target.freshness].filter(Boolean).join(' · ')}
+            {[freqLabel(target.freq, locale), target.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${target.as_of}` : '', freshnessLabel(target.freshness, locale)].filter(Boolean).join(' · ')}
           </div>
         </div>
         <div style={multiKpiGridStyle(density)}>
@@ -2401,10 +2616,10 @@ function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<strin
           <div key={item.label} style={{ ...metricCardStyle, padding: '6px 8px' }}>
             <div style={labelStyle}>{item.label}</div>
             <div style={{ color: cellToneColor(item.key, item.row?.[item.key]), fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {item.row ? item.format(item.row[item.key]) : 'N/A'}
+              {item.row ? item.format(item.row[item.key]) : emptyDisplay}
             </div>
             <div style={{ ...mutedStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {String(item.row?.signal_type ?? 'N/A')}
+              {String(item.row?.signal_type ?? emptyDisplay)}
             </div>
           </div>
         ))}
@@ -2447,7 +2662,7 @@ function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<strin
                     <div style={mutedStyle}>胜率 {formatUnsignedPercent(row.trade_win_rate)}</div>
                   </td>
                   <td style={{ padding: 8, color: terminalTheme.textStrong, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {String(row.best_symbol ?? 'N/A')}
+                    {String(row.best_symbol ?? emptyDisplay)}
                   </td>
                 </tr>
               )
@@ -2493,7 +2708,7 @@ function MiniKlineCard({
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {String(item.name ?? item.code ?? 'Symbol')}
+            {String(item.name ?? item.code ?? '标的')}
           </div>
           <div style={monoStyle}>{String(item.code ?? item.symbol ?? '')}</div>
         </div>
@@ -2645,7 +2860,7 @@ function ExpandedKlineOverlay({
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
           <div style={{ minWidth: 0 }}>
             <div style={labelStyle}>放大K线 · ESC</div>
-            <div style={chartTitleStyle}>{String(item.name ?? item.code ?? 'Symbol')}</div>
+            <div style={chartTitleStyle}>{String(item.name ?? item.code ?? '标的')}</div>
             <div style={monoStyle}>{String(item.code ?? item.symbol ?? '')}</div>
           </div>
           <button type="button" aria-label="关闭放大K线" style={buttonStyle(false)} onClick={onClose}>×</button>
@@ -2699,7 +2914,7 @@ function ReviewScriptCard({ card, density }: { card: Record<string, unknown>; de
           <div key={`${String(item.label ?? index)}-${index}`} style={{ ...metricCardStyle, padding: 7 }}>
             <div style={mutedStyle}>{String(item.label ?? '')}</div>
             <div style={{ color: cellToneColor(String(item.label ?? ''), item.value), fontWeight: 800 }}>
-              {String(item.unit) === '%' ? formatPercent(item.value) : String(item.value ?? 'N/A')}
+              {String(item.unit) === '%' ? formatPercent(item.value) : String(item.value ?? emptyDisplay)}
             </div>
           </div>
         ))}
@@ -2716,7 +2931,7 @@ function ScriptLine({ title, text, strong = false }: { title: string; text: stri
     <div style={{ borderTop: `1px solid ${terminalTheme.border}`, paddingTop: 8 }}>
       <div style={labelStyle}>{title}</div>
       <div style={{ color: strong ? terminalTheme.textStrong : terminalTheme.text, fontSize: 13, lineHeight: 1.55, fontWeight: strong ? 800 : 500 }}>
-        {text || 'N/A'}
+        {text || emptyDisplay}
       </div>
     </div>
   )
@@ -2726,7 +2941,7 @@ function formatReportCell(key: string, value: unknown): string {
   if (key.includes('pct') || key.includes('return') || key.includes('drawdown') || key.includes('ratio')) return formatPercent(value)
   if (key === 'rank' || key === 'bar_count' || key.endsWith('_count') || key === 'trade_count' || key === 'signal_count') return formatNumber(value, 0)
   if (key === 'sharpe') return formatNumber(value, 2)
-  return String(value ?? 'N/A')
+  return String(value ?? emptyDisplay)
 }
 
 function cellToneColor(key: string, value: unknown): string {
@@ -2760,18 +2975,18 @@ function Panel({
   )
 }
 
-function MetricStrip({ result }: { result: BacktestResult | null }) {
+function MetricStrip({ result, locale }: { result: BacktestResult | null; locale: LongclawLocale }) {
   const kpi = result?.kpi ?? {}
   const simKpi = result?.sim_kpi ?? {}
   const metrics = terminalMetrics(result)
   const pnlValue = numberValue(metrics.total_return_pct ?? simKpi.total_return_pct)
   const items = [
-    { label: 'PnL', value: formatPercent(metrics.total_return_pct ?? simKpi.total_return_pct), tone: (pnlValue ?? 0) >= 0 ? 'up' : 'down' },
-    { label: 'DD', value: formatDrawdown(metrics.max_drawdown_pct ?? simKpi.max_drawdown_pct), tone: 'down' },
-    { label: 'WinRate', value: formatPercent(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate), tone: (numberValue(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
-    { label: 'Trades', value: formatNumber(metrics.filled_trades ?? simKpi.filled_trades, 0), tone: 'neutral' },
-    { label: 'Sharpe', value: formatNumber(metrics.sharpe ?? simKpi.sharpe, 2), tone: (numberValue(metrics.sharpe ?? simKpi.sharpe) ?? 0) >= 1 ? 'up' : 'neutral' },
-    { label: 'Excess', value: formatPercent(metrics.excess_return_pct), tone: (numberValue(metrics.excess_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
+    { label: locale === 'zh-CN' ? '收益' : 'PnL', value: formatPercent(metrics.total_return_pct ?? simKpi.total_return_pct), tone: (pnlValue ?? 0) >= 0 ? 'up' : 'down' },
+    { label: locale === 'zh-CN' ? '回撤' : 'DD', value: formatDrawdown(metrics.max_drawdown_pct ?? simKpi.max_drawdown_pct), tone: 'down' },
+    { label: locale === 'zh-CN' ? '胜率' : 'WinRate', value: formatPercent(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate), tone: (numberValue(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate) ?? 0) >= 50 ? 'up' : 'down' },
+    { label: locale === 'zh-CN' ? '成交' : 'Trades', value: formatNumber(metrics.filled_trades ?? simKpi.filled_trades, 0), tone: 'neutral' },
+    { label: locale === 'zh-CN' ? '夏普' : 'Sharpe', value: formatNumber(metrics.sharpe ?? simKpi.sharpe, 2), tone: (numberValue(metrics.sharpe ?? simKpi.sharpe) ?? 0) >= 1 ? 'up' : 'neutral' },
+    { label: locale === 'zh-CN' ? '超额' : 'Excess', value: formatPercent(metrics.excess_return_pct), tone: (numberValue(metrics.excess_return_pct) ?? 0) >= 0 ? 'up' : 'down' },
   ]
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 6 }}>
@@ -2877,7 +3092,7 @@ function MetricGroup({ title, items }: { title: string; items: Array<{ label: st
         {items.map(({ label, value, tone }) => (
           <div key={label} style={metricCardStyle}>
             <div style={mutedStyle}>{label}</div>
-            <div style={{ color: toneColor(tone), fontWeight: 800 }}>{String(value ?? 'N/A')}</div>
+            <div style={{ color: toneColor(tone), fontWeight: 800 }}>{String(value ?? emptyDisplay)}</div>
           </div>
         ))}
       </div>
@@ -2923,7 +3138,7 @@ function SignalTable({
               >
                 <td style={{ padding: 7, color: terminalTheme.mono }}>{signal.date_str ?? signal.date ?? ''}</td>
                 <td style={{ padding: 7 }}>
-                  <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{signal.type ?? signal.group ?? 'Signal'}</div>
+                  <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{signal.type ?? signal.group ?? '信号'}</div>
                   <div style={mutedStyle}>{[signal.group, signal.ma_status, signal.volume_status].filter(Boolean).join(' · ')}</div>
                 </td>
                 <td style={{ padding: 7, color: terminalTheme.mono }}>{formatNumber(signal.price)}</td>
@@ -2975,7 +3190,7 @@ function TradeTable({
               onClick={() => onSelect(sourceIndex)}
             >
               <td style={{ padding: 7 }}>
-                <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{trade.signal_type ?? 'Signal'}</div>
+                <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{trade.signal_type ?? '信号'}</div>
                 <div style={mutedStyle}>{trade.signal_date}</div>
               </td>
               <td style={{ padding: 7, color: terminalTheme.mono }}>
@@ -3026,15 +3241,15 @@ function RiskPanel({ result }: { result: BacktestResult | null }) {
         value: [
           numberValue(item.price) === undefined ? '' : formatNumber(item.price, 3),
           numberValue(item.pct) === undefined ? '' : formatPercent(item.pct),
-        ].filter(Boolean).join(' / ') || 'N/A',
+        ].filter(Boolean).join(' / ') || emptyDisplay,
         tone: numberValue(item.pct) !== undefined && (numberValue(item.pct) ?? 0) < 0 ? 'down' : 'up',
       }))
     : [{ label: '风控线', value: '未启用' }]
   const healthRows = [
-    { label: '数据源', value: dataHealth.data_source_detail ?? dataHealth.data_source ?? 'N/A' },
-    { label: '新鲜度', value: dataHealth.freshness ?? 'N/A' },
-    { label: '截至', value: dataHealth.as_of ?? 'N/A' },
-    { label: 'K线', value: dataHealth.bar_count ?? 'N/A' },
+    { label: '数据源', value: dataHealth.data_source_detail ?? dataHealth.data_source ?? emptyDisplay },
+    { label: '新鲜度', value: freshnessLabel(dataHealth.freshness, 'zh-CN') || emptyDisplay },
+    { label: '截至', value: dataHealth.as_of ?? emptyDisplay },
+    { label: 'K线', value: dataHealth.bar_count ?? emptyDisplay },
   ]
   const skipRows = Object.keys(skipReasons).length
     ? Object.entries(skipReasons).map(([label, value]) => ({ label, value }))

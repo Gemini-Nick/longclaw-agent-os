@@ -1069,7 +1069,7 @@ export type SignalsStrategyVM = Pick<
 
 export type SignalsBacktestVM = Pick<
   SignalsDashboard,
-  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates'
+  'backtest_summary' | 'backtest_jobs' | 'pending_backlog_preview' | 'review_runs' | 'buy_candidates' | 'chart_context' | 'deep_links'
 >
 
 export type SignalsFactoryVM = Pick<
@@ -1103,6 +1103,8 @@ function toSignalsBacktestVM(dashboard: SignalsDashboard): SignalsBacktestVM {
     pending_backlog_preview: dashboard.pending_backlog_preview,
     review_runs: dashboard.review_runs,
     buy_candidates: dashboard.buy_candidates,
+    chart_context: dashboard.chart_context,
+    deep_links: dashboard.deep_links,
   }
 }
 
