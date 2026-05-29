@@ -1629,13 +1629,17 @@ function getWeclawSession(sessionId: string): WeclawSessionDetail | null {
   return null
 }
 
-async function probeHttpOk(url: string | undefined): Promise<boolean> {
+async function probeHttpOk(url: string | undefined, timeoutMs = 2500): Promise<boolean> {
   if (!url) return false
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(url)
+    const response = await fetch(url, { signal: controller.signal })
     return response.ok
   } catch {
     return false
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -1671,7 +1675,7 @@ async function collectRuntimeStatus(
         ? `${dueDiligenceBaseUrl.replace(/\/$/, '')}/healthz`
         : undefined,
     ),
-    probeHttpOk(`${signalsWebCandidateUrl}/api/workbench/shell`),
+    probeHttpOk(`${signalsWebCandidateUrl}/api/pack/dashboard`),
   ])
   const signalsWebBaseUrl = configuredSignalsWebBaseUrl || (signalsWebReady ? signalsWebCandidateUrl : '')
 

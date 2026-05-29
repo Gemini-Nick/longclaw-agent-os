@@ -6,7 +6,12 @@ import {
   looksLikeIndexValue,
   maAcceptanceFromSymbolData,
   maPeriodsForChart,
+  marketSnapshotFromSymbolData,
   mongoCoverageState,
+  sectorTargetCountForContext,
+  sectorTargetRowsForContext,
+  shellGroupCount,
+  shellNeedsWarmRefresh,
   signalCalloutBadgeSummary,
   signalEvidenceCalloutsForChart,
   signalForWatchlist,
@@ -14,6 +19,8 @@ import {
   signalsFromSymbolData,
   shouldAddManualClueForSearch,
   sourceMonitorSummary,
+  symbolDataCacheKey,
+  terminalListTargetFreq,
   timeframeBadgeDisplayLabel,
   withSignalCalloutIds,
 } from './StrategyChartTerminal.js'
@@ -33,6 +40,45 @@ describe('StrategyChartTerminal search clues', () => {
     expect(looksLikeIndexValue('SZ.300394')).toBe(false)
     expect(looksLikeIndexValue('SH.000300')).toBe(true)
     expect(looksLikeIndexValue('沪深300')).toBe(true)
+  })
+})
+
+describe('StrategyChartTerminal default timeframe', () => {
+  it('uses daily when a row or search has no explicit timeframe', () => {
+    expect(terminalListTargetFreq(undefined)).toBe('daily')
+    expect(terminalListTargetFreq('', '')).toBe('daily')
+  })
+
+  it('still preserves an explicit timeframe when supplied', () => {
+    expect(terminalListTargetFreq('30m')).toBe('30min')
+    expect(terminalListTargetFreq('15分钟')).toBe('15min')
+  })
+})
+
+describe('StrategyChartTerminal symbol cache', () => {
+  it('normalizes symbol cache keys across freq aliases and casing', () => {
+    expect(symbolDataCacheKey({ label: ' sh.601398 ', kind: 'STOCK', freq: '日线' })).toBe('stock|SH.601398|daily')
+  })
+})
+
+describe('StrategyChartTerminal shell refresh', () => {
+  it('keeps warming when the shell is missing, building, or empty', () => {
+    expect(shellNeedsWarmRefresh(null)).toBe(true)
+    expect(shellNeedsWarmRefresh({ cache: { status: 'building' }, watchlist_groups: {} } as any)).toBe(true)
+    expect(shellNeedsWarmRefresh({ watchlist_groups: { focus_stocks: [] } } as any)).toBe(true)
+  })
+
+  it('uses the normal refresh cadence once watchlist groups are populated', () => {
+    const shell = {
+      cache: { status: 'hit' },
+      watchlist_groups: {
+        major_indices: [{ label: '上证指数' }],
+        focus_stocks: [{ label: '张江高科' }],
+      },
+    } as any
+
+    expect(shellGroupCount(shell)).toBe(2)
+    expect(shellNeedsWarmRefresh(shell)).toBe(false)
   })
 })
 
@@ -94,6 +140,46 @@ describe('StrategyChartTerminal source monitor', () => {
 })
 
 describe('StrategyChartTerminal mongo coverage', () => {
+  it('labels current-day catch-up as running while postmarket backfill is active', () => {
+    const summary = mongoCoverageState({
+      available: true,
+      mode: 'mongo',
+      updated_at: '2026-05-29T14:13:00',
+      trade_date: '2026-05-29',
+      daily_coverage_date: '2026-05-29',
+      live_low_latency: { modules: [], summary: {} },
+      postmarket_backfill: {
+        run: { status: 'running', recovery_state: 'postmarket_running' },
+        tasks: [],
+        summary: { critical_status: 'running' },
+      },
+      mongo_stock_cache: {
+        freqs: [
+          {
+            freq: '日线',
+            symbols: 5506,
+            today_symbols: 3244,
+            coverage_date: '2026-05-29',
+          },
+        ],
+        summary: {
+          daily_coverage_date: '2026-05-29',
+          minute_universe_total: 72,
+          minute_universe_cached: 72,
+          minute_universe_pending: 0,
+          minute_universe_error: 0,
+        },
+      },
+      terminal_outputs: [],
+      provider_health: [],
+      blockers: [],
+    } as any, 'zh-CN')
+
+    expect(summary.status).toBe('running')
+    expect(summary.isCurrent).toBe(true)
+    expect(summary.compactLabel).toBe('2026-05-29 3,244/5,506')
+  })
+
   it('labels old daily coverage as partial instead of ok', () => {
     const summary = mongoCoverageState({
       available: true,
@@ -126,6 +212,106 @@ describe('StrategyChartTerminal mongo coverage', () => {
     expect(summary.isCurrent).toBe(false)
     expect(summary.compactLabel).toBe('2026-05-12 5,498/5,498')
     expect(summary.detail).toContain('旧缓存可读')
+  })
+})
+
+describe('StrategyChartTerminal sector target context', () => {
+  it('counts unique grouped sector targets for the right-side panel', () => {
+    const row = {
+      source: 'chain_heat_snapshots',
+      candidate_groups: {
+        leaders: [
+          { symbol: 'SZ.000002', name: '万科A', leader_tier: '龙头' },
+          { symbol: 'SH.601668', name: '中国建筑', leader_tier: '龙二' },
+        ],
+        weighted: [
+          { symbol: 'SZ.000002', name: '万科A', chain_role: '房地产开发链主' },
+        ],
+        elastic: [
+          { symbol: 'SH.600585', name: '海螺水泥', chain_role: '水泥弹性标的' },
+        ],
+      },
+    }
+
+    expect(sectorTargetCountForContext(row)).toBe(3)
+    expect(sectorTargetRowsForContext(row).map(item => item.name)).toEqual(['万科A', '中国建筑', '海螺水泥'])
+  })
+
+  it('falls back to focus stock previews when grouped candidates are missing', () => {
+    const row = {
+      focus_stocks_preview: [
+        { symbol: 'SH.601888', name: '中国中免' },
+        { symbol: 'SH.600185', name: '珠免集团' },
+      ],
+    }
+
+    expect(sectorTargetCountForContext(row)).toBe(2)
+  })
+})
+
+describe('StrategyChartTerminal timeframe market snapshots', () => {
+  it('formats latest price, period change, volume, and amount from chart bars', () => {
+    const snapshot = marketSnapshotFromSymbolData({
+      target: {
+        kind: 'stock',
+        symbol: 'SH.600000',
+        requested_freq: '30min',
+        effective_freq: '30min',
+      },
+      chart: {
+        meta: {
+          freq: '30min',
+          source: 'bars',
+          cache_status: 'ready',
+          data_as_of: '2026-05-29',
+          latest_bar_time: '2026-05-29T14:30:00',
+          bars: 2,
+        },
+        ohlcv: [
+          { time: 1_780_000_000, open: 10, high: 10.2, low: 9.9, close: 10, volume: 1_000_000, amount: 10_000_000 },
+          { time: 1_780_001_800, open: 10.2, high: 11.2, low: 10.1, close: 11, volume: 2_000_000, amount: 22_000_000 },
+        ],
+      },
+      summary: {
+        latest_price: 11.01,
+        latest_signal: 'MACD零上',
+      },
+    } as any, '30min', 'zh-CN')
+
+    expect(snapshot.status).toBe('ready')
+    expect(snapshot.latestPrice).toBe('11.00')
+    expect(snapshot.periodChange).toBe('+10.00%')
+    expect(snapshot.volume).toBe('2.00万手')
+    expect(snapshot.amount).toBe('2200.00万')
+    expect(snapshot.bars).toBe('2')
+    expect(snapshot.signal).toBe('MACD零上')
+  })
+
+  it('keeps not-ready minute periods visible as loading rows', () => {
+    const snapshot = marketSnapshotFromSymbolData({
+      target: {
+        kind: 'stock',
+        label: 'SH.600000',
+        symbol: 'SH.600000',
+        requested_freq: '5min',
+        effective_freq: '5min',
+        not_ready_reason: 'stock_minute_not_ready',
+      },
+      chart: {
+        meta: {
+          freq: '5min',
+          cache_status: 'not_ready',
+          load_status: 'running',
+          bars: 0,
+        },
+        ohlcv: [],
+      },
+      summary: {},
+    } as any, '5min', 'zh-CN')
+
+    expect(snapshot.status).toBe('loading')
+    expect(snapshot.latestPrice).toBe('N/A')
+    expect(snapshot.statusText).toContain('股票分钟缓存未就绪')
   })
 })
 

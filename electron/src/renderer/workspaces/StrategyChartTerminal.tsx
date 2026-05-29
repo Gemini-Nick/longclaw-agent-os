@@ -114,6 +114,12 @@ type WorkbenchSession = {
 
 type WorkbenchShell = {
   session?: WorkbenchSession
+  cache?: {
+    status?: string
+    building?: boolean
+    age_seconds?: number
+    ttl_seconds?: number
+  }
   indices?: Record<string, unknown>[]
   buy_candidates?: Record<string, unknown>[]
   watchlist?: Record<string, unknown>[]
@@ -253,9 +259,29 @@ type ChartTarget = {
   freq: string
 }
 
+type SymbolDataCacheEntry = {
+  data: WorkbenchSymbolData
+  cachedAt: number
+}
+
 type FrequencyOption = {
   value: string
   label: string
+}
+
+type TimeframeMarketSnapshotStatus = 'loading' | 'ready' | 'stale' | 'empty' | 'error'
+
+type TimeframeMarketSnapshot = {
+  freq: string
+  label: string
+  status: TimeframeMarketSnapshotStatus
+  latestPrice: string
+  periodChange: string
+  volume: string
+  amount: string
+  bars: string
+  signal: string
+  statusText: string
 }
 
 type WatchlistRangeColumn = {
@@ -356,6 +382,11 @@ type TradeMapItem = {
 const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['major_indices', 'industry_etfs', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
 const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
+const SHELL_REQUEST_TIMEOUT_MS = 12_000
+const SYMBOL_REQUEST_TIMEOUT_MS = 45_000
+const SYMBOL_DATA_CACHE_TTL_MS = 60_000
+const RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 8
+const RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS = 12_000
 const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
   { key: 'all', zh: '全部', en: 'All' },
   { key: 'left_attack', zh: '低吸进攻', en: 'Left attack' },
@@ -445,7 +476,7 @@ const FREQ_OPTIONS: FrequencyOption[] = [
   { value: 'daily', label: '日' },
   { value: 'weekly', label: '周' },
 ]
-const DEFAULT_TERMINAL_FREQ = '30min'
+const DEFAULT_TERMINAL_FREQ = 'daily'
 const DEFAULT_AVAILABLE_FREQS = FREQ_OPTIONS.map(option => option.value)
 const WATCHLIST_RANGE_COLUMNS: WatchlistRangeColumn[] = [
   { key: '5d', label: '5日', aliases: ['5d', '5日', 'week', '1w', '1week', 'weekly'] },
@@ -985,6 +1016,34 @@ const targetButtonStyle: React.CSSProperties = {
   transition: interaction.transition,
 }
 
+const timeframeMarketRowStyle = (active: boolean): React.CSSProperties => ({
+  ...targetButtonStyle,
+  borderColor: active ? terminalTheme.accent : terminalTheme.border,
+  background: active ? terminalTheme.accentSoft : terminalTheme.panelSoft,
+  padding: '5px 6px',
+})
+
+const timeframeMarketTopLineStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  minWidth: 0,
+}
+
+const timeframeMarketMetricStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(54px, 0.8fr) minmax(58px, 0.8fr) minmax(72px, 1fr)',
+  gap: 5,
+  alignItems: 'center',
+  minWidth: 0,
+}
+
+const timeframeMarketSublineStyle: React.CSSProperties = {
+  ...mutedTwoLineStyle,
+  fontSize: 10,
+}
+
 const chainDrawerStyle: React.CSSProperties = {
   borderTop: `1px solid ${terminalTheme.border}`,
   borderBottom: `1px solid ${terminalTheme.borderMuted}`,
@@ -1027,6 +1086,39 @@ const chainContextHeroStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 5,
+}
+
+const sectorTargetFocusStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: 5,
+  background: terminalTheme.accentSoft,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+}
+
+const sectorTargetGroupRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+const chainVizTargetPreviewStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  minWidth: 0,
+  color: terminalTheme.muted,
+  fontSize: 9,
+  lineHeight: 1.15,
+}
+
+const chainVizTargetNameStyle: React.CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }
 
 const chartModeSummaryStyle: React.CSSProperties = {
@@ -3135,7 +3227,8 @@ function cacheProgressColor(value: number, status?: unknown): string {
   if (normalized.includes('error') || normalized.includes('degraded') || normalized.includes('stale')) {
     return palette.error
   }
-  if (normalized.includes('running') || normalized.includes('partial')) return tradingDeskTheme.colors.auroraGold
+  if (normalized.includes('running')) return tradingDeskTheme.colors.auroraBlue
+  if (normalized.includes('partial')) return tradingDeskTheme.colors.auroraGold
   if (value < 100) return tradingDeskTheme.colors.auroraBlue
   return palette.success
 }
@@ -3330,6 +3423,18 @@ export function mongoCoverageState(
   const minuteUniverseCached = numberValue(mongoSummary.minute_universe_cached) ?? 0
   const minuteUniversePending = numberValue(mongoSummary.minute_universe_pending) ?? 0
   const minuteUniverseError = numberValue(mongoSummary.minute_universe_error) ?? 0
+  const postRun = recordValue(cacheStatus.postmarket_backfill.run)
+  const postSummary = recordValue(cacheStatus.postmarket_backfill.summary)
+  const postRunStatus = compactText(postRun.status, compactText(postSummary.status)).toLowerCase()
+  const postCriticalStatus = compactText(postSummary.critical_status).toLowerCase()
+  const recoveryState = compactText(recordValue(cacheStatus).recovery_state)
+    || compactText(postSummary.recovery_state)
+    || compactText(postRun.recovery_state)
+  const backfillActive = ['running', 'partial'].includes(postRunStatus)
+    || ['running', 'partial'].includes(postCriticalStatus)
+    || recoveryState === 'postmarket_running'
+  const currentCoveragePending = isCurrent
+    && (minuteUniversePending > 0 || (dailySymbols > 0 && dailyToday < dailySymbols))
   const detail = locale === 'zh-CN'
     ? (isCurrent
       ? `当日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
@@ -3348,8 +3453,10 @@ export function mongoCoverageState(
     ? 'degraded'
     : minuteUniverseError > 0
       ? 'degraded'
-      : !isCurrent || minuteUniversePending > 0 || (dailySymbols > 0 && dailyToday < dailySymbols)
-        ? 'partial'
+      : !isCurrent
+      ? 'partial'
+      : currentCoveragePending
+        ? (backfillActive ? 'running' : 'partial')
         : 'ok'
   const datePrefix = coverageDate ? `${coverageDate} ` : ''
   return {
@@ -3553,13 +3660,29 @@ function shouldUseLiveRefresh(session?: WorkbenchSession): boolean {
   return Boolean(session?.a_live || session?.hk_live || session?.us_live)
 }
 
+export function shellGroupCount(shell: WorkbenchShell | null): number {
+  const groups = shell?.watchlist_groups ?? {}
+  return Object.values(groups).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0)
+}
+
+export function shellNeedsWarmRefresh(shell: WorkbenchShell | null): boolean {
+  if (!shell) return true
+  const cache = recordValue(shell.cache)
+  const cacheStatus = compactText(cache.status).toLowerCase()
+  return (
+    Boolean(cache.building) ||
+    cacheStatus === 'building' ||
+    shellGroupCount(shell) === 0
+  )
+}
+
 async function fetchJson<T>(
   baseUrl: string,
   path: string,
   signal: AbortSignal | undefined,
   source: string,
   action?: string,
-  request?: { method?: string; body?: BodyInit | null; headers?: HeadersInit },
+  request?: { method?: string; body?: BodyInit | null; headers?: HeadersInit; timeoutMs?: number },
 ): Promise<T> {
   return observedFetchJson<T>(baseUrl, path, {
     signal,
@@ -3568,7 +3691,7 @@ async function fetchJson<T>(
     method: request?.method,
     headers: request?.headers,
     body: request?.body,
-    timeoutMs: 45_000,
+    timeoutMs: request?.timeoutMs ?? SYMBOL_REQUEST_TIMEOUT_MS,
   })
 }
 
@@ -5297,7 +5420,7 @@ function initialTargetFrom(
   return {
     label: shellTarget.label,
     kind: shellTarget.kind ?? 'index',
-    freq: shellTarget.freq ?? DEFAULT_TERMINAL_FREQ,
+    freq: DEFAULT_TERMINAL_FREQ,
   }
 }
 
@@ -5306,12 +5429,19 @@ function availableFreqs(symbolData: WorkbenchSymbolData | null): string[] {
   return Array.isArray(freqs) && freqs.length > 0 ? freqs : DEFAULT_AVAILABLE_FREQS
 }
 
-function terminalListTargetFreq(value: unknown, fallback?: string): string {
-  const normalized = compactText(value)
-  if (normalized && normalized !== 'daily' && normalized !== 'weekly') return normalized
-  const fallbackFreq = compactText(fallback)
-  if (fallbackFreq && fallbackFreq !== 'daily' && fallbackFreq !== 'weekly') return fallbackFreq
+export function terminalListTargetFreq(value: unknown, fallback?: string): string {
+  const normalized = normalizeSignalFreq(compactText(value))
+  if (normalized) return normalized
+  const fallbackFreq = normalizeSignalFreq(compactText(fallback))
+  if (fallbackFreq) return fallbackFreq
   return DEFAULT_TERMINAL_FREQ
+}
+
+export function symbolDataCacheKey(target: { label?: string; kind?: string; freq?: string }): string {
+  const label = compactText(target.label).trim().toUpperCase()
+  const kind = compactText(target.kind, 'auto').trim().toLowerCase()
+  const freq = normalizeSignalFreq(compactText(target.freq).trim()) || DEFAULT_TERMINAL_FREQ
+  return `${kind}|${label}|${freq}`
 }
 
 function formatNumber(value: unknown, digits = 2): string {
@@ -5343,6 +5473,114 @@ function formatPercent(value: unknown): string {
       : numberValue(value)
   if (number === undefined) return 'N/A'
   return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
+}
+
+function latestPeriodChangePct(data: KLineData[]): number | undefined {
+  const latest = data[data.length - 1]
+  const previous = data[data.length - 2]
+  if (!latest || !previous || previous.close === 0) return undefined
+  return ((latest.close - previous.close) / previous.close) * 100
+}
+
+function compactMarketTimeLabel(value: unknown): string {
+  const text = compactText(value)
+  if (!text) return ''
+  return text
+    .replace('T', ' ')
+    .replace(/\.\d+$/, '')
+    .replace(/:\d{2}$/, '')
+}
+
+function timeframeSnapshotStatusLabel(status: TimeframeMarketSnapshotStatus, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  if (status === 'ready') return zh ? '可用' : 'Ready'
+  if (status === 'stale') return zh ? '陈旧' : 'Stale'
+  if (status === 'loading') return zh ? '加载' : 'Loading'
+  if (status === 'error') return zh ? '失败' : 'Error'
+  return zh ? '无K线' : 'No bars'
+}
+
+function timeframeSnapshotBadgeTone(status: TimeframeMarketSnapshotStatus): 'success' | 'warning' | 'running' | 'error' | 'open' {
+  if (status === 'ready') return 'success'
+  if (status === 'stale' || status === 'empty') return 'warning'
+  if (status === 'loading') return 'running'
+  if (status === 'error') return 'error'
+  return 'open'
+}
+
+function loadingTimeframeSnapshot(freq: string, locale: LongclawLocale): TimeframeMarketSnapshot {
+  return {
+    freq: normalizeSignalFreq(freq) || freq,
+    label: displayFreqLabel(freq),
+    status: 'loading',
+    latestPrice: 'N/A',
+    periodChange: 'N/A',
+    volume: 'N/A',
+    amount: 'N/A',
+    bars: '0',
+    signal: '',
+    statusText: locale === 'zh-CN' ? '读取中' : 'Loading',
+  }
+}
+
+function errorTimeframeSnapshot(freq: string, message: string, locale: LongclawLocale): TimeframeMarketSnapshot {
+  return {
+    ...loadingTimeframeSnapshot(freq, locale),
+    status: 'error',
+    statusText: message || (locale === 'zh-CN' ? '读取失败' : 'Failed to load'),
+  }
+}
+
+export function marketSnapshotFromSymbolData(
+  symbolData: WorkbenchSymbolData | null,
+  freq: string,
+  locale: LongclawLocale = 'zh-CN',
+): TimeframeMarketSnapshot {
+  const normalizedFreq = normalizeSignalFreq(symbolData?.target?.effective_freq ?? symbolData?.target?.requested_freq ?? freq) || freq
+  const chart = recordValue(symbolData?.chart)
+  const meta = recordValue(chart.meta)
+  const summary = recordValue(symbolData?.summary)
+  const data = toKLineData(chart)
+  const latest = data[data.length - 1]
+  const statusFromMeta = compactText(meta.cache_status).toLowerCase()
+  const loadStatus = compactText(meta.load_status).toLowerCase()
+  const isStale = booleanValue(meta.is_stale) || statusFromMeta === 'stale'
+  const status: TimeframeMarketSnapshotStatus = data.length > 0
+    ? (isStale ? 'stale' : 'ready')
+    : ['triggered', 'running', 'pending'].includes(loadStatus)
+      ? 'loading'
+      : 'empty'
+  const latestPrice = firstNumberValue(latest?.close, summary.latest_price)
+  const latestVolumeValue = firstNumberValue(latest?.volume, summary.day_volume, summary.daily_volume, summary.latest_daily_volume)
+  const latestAmountValue = firstNumberValue(latest?.turnover, summary.day_amount, summary.daily_amount, summary.latest_daily_amount)
+  const periodChange = latestPeriodChangePct(data)
+  const signal = (
+    compactText(recordValue(summary.current_timeframe_ma).summary) ||
+    compactText(summary.latest_signal) ||
+    compactText(recordValue(summary.ma_acceptance).summary)
+  )
+  const cacheNotice = status === 'empty' || status === 'loading'
+    ? chartCacheNotReadyMessage(symbolData, locale)
+    : ''
+  const statusText = [
+    cacheNotice,
+    compactText(meta.collection) || compactText(meta.source),
+    compactMarketTimeLabel(meta.latest_bar_time) || compactMarketTimeLabel(meta.data_as_of),
+    status === 'stale' ? (compactText(meta.stale_reason) || (locale === 'zh-CN' ? '缓存陈旧' : 'stale cache')) : '',
+  ].filter(Boolean).join(' · ')
+
+  return {
+    freq: normalizedFreq,
+    label: displayFreqLabel(normalizedFreq),
+    status,
+    latestPrice: formatNumber(latestPrice),
+    periodChange: formatPercent(periodChange),
+    volume: formatAStockVolume(latestVolumeValue),
+    amount: formatTurnoverAmount(latestAmountValue),
+    bars: countText(numberValue(meta.bars) ?? data.length),
+    signal,
+    statusText,
+  }
 }
 
 function maAcceptanceMetricChips(acceptance: MaAcceptanceSummary): string[] {
@@ -6480,6 +6718,35 @@ function candidateStockLabel(row: Record<string, unknown>): string {
   )
 }
 
+function candidateTargetFromRow(row: Record<string, unknown>, freq = DEFAULT_TERMINAL_FREQ): ChartTarget | null {
+  const label = candidateStockLabel(row)
+  if (!label) return null
+  return { label, kind: kindForTarget(row, 'stock'), freq }
+}
+
+function effectiveChartTarget(effectiveTarget: WorkbenchTarget | undefined, fallback: ChartTarget): ChartTarget | null {
+  if (!effectiveTarget) return null
+  const effectiveKind = compactText(effectiveTarget.kind, fallback.kind)
+  const keepsLogicalLabel = ['index', 'industry', 'concept'].includes(effectiveKind)
+  return {
+    label: keepsLogicalLabel
+      ? compactText(effectiveTarget.label, fallback.label)
+      : compactText(effectiveTarget.symbol) || compactText(effectiveTarget.label) || fallback.label,
+    kind: effectiveKind,
+    freq: compactText(effectiveTarget.effective_freq, fallback.freq),
+  }
+}
+
+function uniqueChartTargets(targets: ChartTarget[]): ChartTarget[] {
+  const seen = new Set<string>()
+  return targets.filter(target => {
+    const key = symbolDataCacheKey(target)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function uniqueCandidateRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   const seen = new Set<string>()
   const output: Record<string, unknown>[] = []
@@ -6490,6 +6757,20 @@ function uniqueCandidateRows(rows: Record<string, unknown>[]): Record<string, un
     output.push(row)
   })
   return output
+}
+
+export function sectorTargetRowsForContext(row: unknown): Record<string, unknown>[] {
+  const groups = candidateGroupsFromRow(row as WatchlistRow | Record<string, unknown> | null | undefined)
+  const groupedRows = candidateGroupOrder.flatMap(key => groups[key] ?? [])
+  const raw = 'raw' in recordValue(row) ? recordValue(recordValue(row).raw) : recordValue(row)
+  const previewRows = Array.isArray(raw.focus_stocks_preview)
+    ? raw.focus_stocks_preview.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  return uniqueCandidateRows(previewRows.length > 0 ? previewRows : groupedRows)
+}
+
+export function sectorTargetCountForContext(row: unknown): number {
+  return sectorTargetRowsForContext(row).length
 }
 
 function chartModeFromTarget(target: ChartTarget, symbolData: WorkbenchSymbolData | null): ChartModeKey {
@@ -6615,9 +6896,12 @@ export function StrategyChartTerminal({
   const activeWatchlistTabRef = useRef<WatchlistTabKey>('sector_boards')
   const silentSymbolRefreshInFlightRef = useRef(false)
   const manualSymbolAbortRef = useRef<AbortController | null>(null)
+  const timeframeSnapshotKeyRef = useRef('')
   const dashboardRef = useRef(dashboard)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const lastChartUpdateSilentRef = useRef(false)
+  const symbolDataCacheRef = useRef<Map<string, SymbolDataCacheEntry>>(new Map())
+  const prefetchSymbolKeysRef = useRef<Set<string>>(new Set())
   const autoCollapsedForFocusRef = useRef(false)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
   const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
@@ -6646,6 +6930,7 @@ export function StrategyChartTerminal({
   const [aiReviewStatus, setAiReviewStatus] = useState<StrategyAiTaskStatus>('idle')
   const [aiError, setAiError] = useState('')
   const lastAiRankingHashRef = useRef('')
+  const [timeframeSnapshots, setTimeframeSnapshots] = useState<Record<string, TimeframeMarketSnapshot>>({})
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1000 : window.innerHeight))
   const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(false)
@@ -6658,6 +6943,10 @@ export function StrategyChartTerminal({
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
   const referenceChartSignals = useMemo(() => referenceSignalsForIndexChart(symbolData), [symbolData])
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const activeTargetKind = compactText(symbolData?.target?.kind, target.kind)
+  const timeframeSnapshotSymbol = activeTargetKind === 'stock'
+    ? compactText(symbolData?.target?.symbol) || target.label
+    : ''
   const aiFactorChartSignals = useMemo(
     () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq, symbolData, target),
     [aiFactorStrategySignals, currentFreq, klineData, symbolData, target],
@@ -6985,7 +7274,7 @@ export function StrategyChartTerminal({
     [displayVolumeInWanHands, klineData],
   )
   const activeChartMode = chartModeFromTarget(target, symbolData)
-  const targetKindForMa = compactText(symbolData?.target?.kind, target.kind)
+  const targetKindForMa = activeTargetKind
   const symbolChainContext = useMemo(() => chainContextFromSymbolSummary(symbolData), [symbolData])
   const chainContext = selectedChainContext ?? symbolChainContext
   const primaryValueLabel = chartMeta.is_price_kline === false
@@ -7039,6 +7328,136 @@ export function StrategyChartTerminal({
   )
   const chartLoadStatus = compactText(chartMeta.load_status)
   const chartLoadRetrySeconds = numberValue(chartMeta.load_retry_after_seconds) ?? numberValue(chartMeta.load_eta_seconds)
+  const timeframeSnapshotRows = useMemo(
+    () => FREQ_OPTIONS.map(option => {
+      const key = normalizeSignalFreq(option.value) || option.value
+      return timeframeSnapshots[key] ?? loadingTimeframeSnapshot(option.value, locale)
+    }),
+    [locale, timeframeSnapshots],
+  )
+  const visibleBoardPrefetchTargets = useMemo(
+    () => activeWatchlistTab === 'sector_boards'
+      ? uniqueChartTargets(
+          activeWatchlistRows
+            .slice(0, 4)
+            .flatMap(row => sectorTargetRowsForContext(row.raw))
+            .map(row => candidateTargetFromRow(row))
+            .filter((item): item is ChartTarget => Boolean(item)),
+        ).slice(0, RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT)
+      : [],
+    [activeWatchlistRows, activeWatchlistTab],
+  )
+  const rightPanelPrefetchTargets = useMemo(
+    () => uniqueChartTargets([
+      ...sectorTargetRowsForContext(chainContext)
+        .map(row => candidateTargetFromRow(row))
+        .filter((item): item is ChartTarget => Boolean(item)),
+      ...visibleBoardPrefetchTargets,
+    ]).slice(0, RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT),
+    [chainContext, visibleBoardPrefetchTargets],
+  )
+  const rightPanelPrefetchKey = useMemo(
+    () => rightPanelPrefetchTargets.map(symbolDataCacheKey).join(','),
+    [rightPanelPrefetchTargets],
+  )
+
+  const rememberSymbolData = useCallback((requestTarget: ChartTarget, nextSymbolData: WorkbenchSymbolData, cachedAt = Date.now()) => {
+    const cache = symbolDataCacheRef.current
+    const entry: SymbolDataCacheEntry = { data: nextSymbolData, cachedAt }
+    cache.set(symbolDataCacheKey(requestTarget), entry)
+    const effectiveTarget = effectiveChartTarget(nextSymbolData.target, requestTarget)
+    if (effectiveTarget) cache.set(symbolDataCacheKey(effectiveTarget), entry)
+    while (cache.size > 80) {
+      const oldestKey = cache.keys().next().value
+      if (!oldestKey) break
+      cache.delete(oldestKey)
+    }
+  }, [])
+
+  const applySymbolData = useCallback((
+    nextSymbolData: WorkbenchSymbolData,
+    requestTarget: ChartTarget,
+    options: { silent?: boolean; cachedAt?: number } = {},
+  ) => {
+    lastChartUpdateSilentRef.current = Boolean(options.silent)
+    setSymbolData(nextSymbolData)
+    setBooting(false)
+    setBootAttempt(0)
+    setLastUpdated(new Date(options.cachedAt ?? Date.now()))
+    const effectiveTarget = nextSymbolData.target
+    if (effectiveTarget) {
+      const requested = compactText(effectiveTarget.requested_freq, requestTarget.freq)
+      const effective = compactText(effectiveTarget.effective_freq, requestTarget.freq)
+      if (requested && effective && requested !== effective) {
+        recordObservationEvent('strategy.freq.fallback', {
+          requested_freq: requested,
+          effective_freq: effective,
+          target: requestTarget.label,
+          kind: requestTarget.kind,
+          silent: Boolean(options.silent),
+          level: 'warning',
+        })
+      }
+      const nextEffectiveTarget = effectiveChartTarget(effectiveTarget, requestTarget)
+      if (nextEffectiveTarget) {
+        setTarget(previous => (
+          nextEffectiveTarget.label === previous.label
+            && nextEffectiveTarget.kind === previous.kind
+            && nextEffectiveTarget.freq === previous.freq
+            ? previous
+            : nextEffectiveTarget
+        ))
+      }
+    }
+  }, [])
+
+  const prefetchSymbolData = useCallback(async (
+    nextTarget: ChartTarget,
+    options: { signal?: AbortSignal; reason?: string } = {},
+  ) => {
+    if (!baseUrl) return
+    const cacheKey = symbolDataCacheKey(nextTarget)
+    const cached = symbolDataCacheRef.current.get(cacheKey)
+    const now = Date.now()
+    if (cached && now - cached.cachedAt <= SYMBOL_DATA_CACHE_TTL_MS) return
+    if (prefetchSymbolKeysRef.current.has(cacheKey)) return
+    prefetchSymbolKeysRef.current.add(cacheKey)
+    try {
+      const nextSymbolData = await fetchJson<WorkbenchSymbolData>(
+        baseUrl,
+        `/api/workbench/symbol/${encodeURIComponent(nextTarget.label)}?${new URLSearchParams({
+          kind: nextTarget.kind || 'auto',
+          freq: nextTarget.freq || DEFAULT_TERMINAL_FREQ,
+        }).toString()}`,
+        options.signal,
+        'strategy.symbol-prefetch',
+        options.reason ?? 'right-panel-prefetch',
+        { timeoutMs: RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS },
+      )
+      rememberSymbolData(nextTarget, nextSymbolData)
+    } catch {
+      if (options.signal?.aborted) return
+    } finally {
+      prefetchSymbolKeysRef.current.delete(cacheKey)
+    }
+  }, [baseUrl, rememberSymbolData])
+
+  useEffect(() => {
+    if (!baseUrl || rightPanelPrefetchTargets.length === 0) return
+    const controller = new AbortController()
+    let cancelled = false
+    void (async () => {
+      for (const nextTarget of rightPanelPrefetchTargets) {
+        if (cancelled || controller.signal.aborted) return
+        await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: 'visible-right-panel' })
+        await new Promise(resolve => window.setTimeout(resolve, 80))
+      }
+    })()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [baseUrl, prefetchSymbolData, rightPanelPrefetchKey])
 
   const loadShell = useCallback(
     async (signal?: AbortSignal) => {
@@ -7051,6 +7470,8 @@ export function StrategyChartTerminal({
           '/api/workbench/shell',
           signal,
           'strategy.shell',
+          undefined,
+          { timeoutMs: SHELL_REQUEST_TIMEOUT_MS },
         )
         if (shellLoadedRef.current && activeWatchlistTabRef.current === 'sector_boards') setPendingListUpdate(true)
         shellLoadedRef.current = true
@@ -7072,6 +7493,20 @@ export function StrategyChartTerminal({
       activeRequestRef.current = requestId
       if (!options.silent) setLoading(true)
       setError(null)
+      const cacheKey = symbolDataCacheKey(nextTarget)
+      const cached = symbolDataCacheRef.current.get(cacheKey)
+      const cacheAgeMs = cached ? Date.now() - cached.cachedAt : Number.POSITIVE_INFINITY
+      const hasFreshCache = Boolean(cached && cacheAgeMs <= SYMBOL_DATA_CACHE_TTL_MS)
+      if (!options.silent && cached && hasFreshCache) {
+        applySymbolData(cached.data, nextTarget, { cachedAt: cached.cachedAt })
+        setLoading(false)
+        recordObservationEvent('strategy.symbol.cache-hit', {
+          target: nextTarget.label,
+          kind: nextTarget.kind,
+          freq: nextTarget.freq,
+          age_ms: Math.round(cacheAgeMs),
+        })
+      }
       try {
         const nextSymbolData = await fetchJson<WorkbenchSymbolData>(
           baseUrl,
@@ -7084,39 +7519,11 @@ export function StrategyChartTerminal({
           options.silent ? 'background-refresh' : 'load-symbol',
         )
         if (requestId !== activeRequestRef.current) return
-        lastChartUpdateSilentRef.current = Boolean(options.silent)
-        setSymbolData(nextSymbolData)
-        setBooting(false)
-        setBootAttempt(0)
-        setLastUpdated(new Date())
-        const effectiveTarget = nextSymbolData.target
-        if (effectiveTarget) {
-          const requested = compactText(effectiveTarget.requested_freq, nextTarget.freq)
-          const effective = compactText(effectiveTarget.effective_freq, nextTarget.freq)
-          if (requested && effective && requested !== effective) {
-            recordObservationEvent('strategy.freq.fallback', {
-              requested_freq: requested,
-              effective_freq: effective,
-              target: nextTarget.label,
-              kind: nextTarget.kind,
-              silent: Boolean(options.silent),
-              level: 'warning',
-            })
-          }
-          setTarget(previous => {
-            const effectiveKind = compactText(effectiveTarget.kind, previous.kind)
-            const keepsLogicalLabel = ['index', 'industry', 'concept'].includes(effectiveKind)
-            return {
-              label: keepsLogicalLabel
-                ? compactText(effectiveTarget.label, previous.label)
-                : compactText(effectiveTarget.symbol) || compactText(effectiveTarget.label) || previous.label,
-              kind: effectiveKind,
-              freq: compactText(effectiveTarget.effective_freq, previous.freq),
-            }
-          })
-        }
+        rememberSymbolData(nextTarget, nextSymbolData)
+        applySymbolData(nextSymbolData, nextTarget, { silent: options.silent })
       } catch (rawError) {
         if (options.signal?.aborted) return
+        if (cached && hasFreshCache) return
         const apiError = rawError as ApiError
         if (apiError.status === 503) {
           const session = recordValue(apiError.payload?.session) as WorkbenchSession
@@ -7133,8 +7540,85 @@ export function StrategyChartTerminal({
         if (requestId === activeRequestRef.current) setLoading(false)
       }
     },
-    [baseUrl, locale],
+    [applySymbolData, baseUrl, locale, rememberSymbolData],
   )
+
+  useEffect(() => {
+    if (!baseUrl || !timeframeSnapshotSymbol) {
+      timeframeSnapshotKeyRef.current = ''
+      setTimeframeSnapshots({})
+      return
+    }
+    const requestKey = timeframeSnapshotSymbol.trim().toUpperCase()
+    timeframeSnapshotKeyRef.current = requestKey
+    const controller = new AbortController()
+    const currentSnapshotFreq = normalizeSignalFreq(currentFreq) || DEFAULT_TERMINAL_FREQ
+    setTimeframeSnapshots(Object.fromEntries(
+      FREQ_OPTIONS.map(option => {
+        const key = normalizeSignalFreq(option.value) || option.value
+        return [
+          key,
+          key === currentSnapshotFreq && symbolData
+            ? marketSnapshotFromSymbolData(symbolData, key, locale)
+            : loadingTimeframeSnapshot(option.value, locale),
+        ]
+      }),
+    ))
+
+    const pendingFreqs = FREQ_OPTIONS
+      .map(option => normalizeSignalFreq(option.value) || option.value)
+      .filter(freq => freq !== currentSnapshotFreq)
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const freq of pendingFreqs) {
+          if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+          try {
+            const nextData = await fetchJson<WorkbenchSymbolData>(
+              baseUrl,
+              `/api/workbench/symbol/${encodeURIComponent(timeframeSnapshotSymbol)}?${new URLSearchParams({
+                kind: 'stock',
+                freq,
+              }).toString()}`,
+              controller.signal,
+              'strategy.timeframe-market',
+              'load-snapshot',
+              { timeoutMs: 15_000 },
+            )
+            if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+            setTimeframeSnapshots(previous => ({
+              ...previous,
+              [freq]: marketSnapshotFromSymbolData(nextData, freq, locale),
+            }))
+          } catch (rawError) {
+            if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+            const apiError = rawError as ApiError
+            setTimeframeSnapshots(previous => ({
+              ...previous,
+              [freq]: errorTimeframeSnapshot(freq, apiError.message, locale),
+            }))
+          }
+          await new Promise(resolve => window.setTimeout(resolve, 120))
+        }
+      })()
+    }, 700)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [baseUrl, locale, timeframeSnapshotSymbol])
+
+  useEffect(() => {
+    if (!symbolData || !timeframeSnapshotSymbol) return
+    const freq = normalizeSignalFreq(currentFreq) || currentFreq
+    setTimeframeSnapshots(previous => {
+      if (Object.keys(previous).length === 0) return previous
+      return {
+        ...previous,
+        [freq]: marketSnapshotFromSymbolData(symbolData, freq, locale),
+      }
+    })
+  }, [currentFreq, locale, symbolData, timeframeSnapshotSymbol])
 
   useEffect(() => {
     dashboardRef.current = dashboard
@@ -7196,22 +7680,12 @@ export function StrategyChartTerminal({
       })
       setTarget(fallbackTarget)
       setSearchDraft(fallbackTarget.label)
-      const shellResult = loadShell(controller.signal)
-      const symbolResult = loadSymbol(fallbackTarget, { signal: controller.signal })
-      const [shellOutcome, symbolOutcome] = await Promise.allSettled([shellResult, symbolResult])
+      void loadShell(controller.signal).catch(() => undefined)
+      const symbolOutcome = await Promise.allSettled([loadSymbol(fallbackTarget, { signal: controller.signal })])
       if (controller.signal.aborted) return
-      if (shellOutcome.status === 'fulfilled' && shellOutcome.value) {
-        const shellTarget = initialTargetFrom(shellOutcome.value, dashboardRef.current)
-        if (shellTarget.label !== fallbackTarget.label || shellTarget.kind !== fallbackTarget.kind) {
-          recordObservationEvent('strategy.init-target.resolved', {
-            target: shellTarget,
-            fallback_target: fallbackTarget,
-            reason: 'shell-loaded-after-fast-target',
-          })
-        }
-      }
-      if (shellOutcome.status === 'rejected' && symbolOutcome.status === 'rejected') {
-        const apiError = shellOutcome.reason as ApiError
+      const symbolResult = symbolOutcome[0]
+      if (symbolResult?.status === 'rejected') {
+        const apiError = symbolResult.reason as ApiError
         setError(apiError.message || (locale === 'zh-CN' ? 'Signals 终端初始化失败。' : 'Failed to initialize Signals terminal.'))
       }
       setLoading(false)
@@ -7220,10 +7694,9 @@ export function StrategyChartTerminal({
   }, [baseUrl, loadShell, loadSymbol, locale])
 
   useEffect(() => {
-    if (!baseUrl || !target.label) return
+    if (!baseUrl) return
     const controllers = new Set<AbortController>()
-    const shellRefreshMs = liveRefresh ? 60_000 : 120_000
-    const symbolRefreshMs = liveRefresh ? 15_000 : 60_000
+    const shellRefreshMs = shellNeedsWarmRefresh(shell) ? 10_000 : (liveRefresh ? 60_000 : 120_000)
     const refreshShell = () => {
       const controller = new AbortController()
       controllers.add(controller)
@@ -7232,6 +7705,18 @@ export function StrategyChartTerminal({
           controllers.delete(controller)
         })
     }
+    const shellTimer = window.setInterval(refreshShell, shellRefreshMs)
+    return () => {
+      window.clearInterval(shellTimer)
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
+    }
+  }, [baseUrl, liveRefresh, loadShell, shell])
+
+  useEffect(() => {
+    if (!baseUrl || !target.label) return
+    const controllers = new Set<AbortController>()
+    const symbolRefreshMs = liveRefresh ? 15_000 : 60_000
     const refreshSymbol = () => {
       const controller = new AbortController()
       controllers.add(controller)
@@ -7240,15 +7725,13 @@ export function StrategyChartTerminal({
           controllers.delete(controller)
         })
     }
-    const shellTimer = window.setInterval(refreshShell, shellRefreshMs)
     const symbolTimer = window.setInterval(refreshSymbol, symbolRefreshMs)
     return () => {
-      window.clearInterval(shellTimer)
       window.clearInterval(symbolTimer)
       controllers.forEach(controller => controller.abort())
       controllers.clear()
     }
-  }, [baseUrl, liveRefresh, loadShell, loadSymbol, target])
+  }, [baseUrl, liveRefresh, loadSymbol, target.label, target.kind, target.freq])
 
   useEffect(() => {
     if (!baseUrl || !booting || !target.label) return
@@ -7368,12 +7851,19 @@ export function StrategyChartTerminal({
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
+      const targetChanged = compactText(next.label) !== compactText(target.label)
+        || compactText(next.kind) !== compactText(target.kind)
       recordObservationEvent(source, {
         previous: target,
         next,
       })
       if (!['industry', 'concept'].includes(compactText(next.kind).toLowerCase())) {
         setSelectedChainContext(null)
+      }
+      if (targetChanged) {
+        setSymbolData(null)
+        setSelectedChartCalloutId('')
+        setTimeframeSnapshots({})
       }
       manualSymbolAbortRef.current?.abort()
       const controller = new AbortController()
@@ -7387,11 +7877,19 @@ export function StrategyChartTerminal({
 
   const selectCandidateTarget = useCallback(
     (row: Record<string, unknown>, source = 'strategy.chain-drawer.stock-click') => {
-      const label = candidateStockLabel(row)
-      if (!label) return
-      selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq }, source)
+      const nextTarget = candidateTargetFromRow(row)
+      if (!nextTarget) return
+      selectTarget(nextTarget, source)
     },
-    [selectTarget, target.freq],
+    [selectTarget],
+  )
+
+  const prefetchCandidateTarget = useCallback(
+    (row: Record<string, unknown>) => {
+      const nextTarget = candidateTargetFromRow(row)
+      if (nextTarget) void prefetchSymbolData(nextTarget, { reason: 'right-panel-hover' })
+    },
+    [prefetchSymbolData],
   )
 
   const activateWatchlistRow = useCallback(
@@ -7417,7 +7915,7 @@ export function StrategyChartTerminal({
         {
           label: row.targetLabel || row.label,
           kind: row.targetKind || row.kind,
-          freq: terminalListTargetFreq(row.targetFreq, target.freq),
+          freq: DEFAULT_TERMINAL_FREQ,
         },
         source,
       )
@@ -7499,14 +7997,14 @@ export function StrategyChartTerminal({
       const isIndex = indexTargets.some(row => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value)
       const shouldAddManualClue = shouldAddManualClueForSearch(value, isIndex)
       selectTarget(
-        { label: value, kind: isIndex ? 'index' : 'auto', freq: target.freq || DEFAULT_TERMINAL_FREQ },
+        { label: value, kind: isIndex ? 'index' : 'auto', freq: DEFAULT_TERMINAL_FREQ },
         'strategy.search.submit',
       )
       if (shouldAddManualClue) {
-        void addManualClueFromSearch(value, target.freq || DEFAULT_TERMINAL_FREQ)
+        void addManualClueFromSearch(value, DEFAULT_TERMINAL_FREQ)
       }
     },
-    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget, target.freq],
+    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget],
   )
 
   const refreshNow = useCallback(() => {
@@ -8181,7 +8679,17 @@ export function StrategyChartTerminal({
             context={chainContext}
             symbolData={symbolData}
             onSelect={row => selectCandidateTarget(row, 'strategy.chain-context.stock-click')}
+            onPrefetch={prefetchCandidateTarget}
           />
+
+          {timeframeSnapshotSymbol ? (
+            <TimeframeMarketPanel
+              locale={locale}
+              rows={timeframeSnapshotRows}
+              currentFreq={currentFreq}
+              onSelectFreq={freq => selectTarget({ ...target, freq }, 'strategy.timeframe-market.click')}
+            />
+          ) : null}
 
           <StrategyDecisionPanel
             locale={locale}
@@ -8571,6 +9079,61 @@ function Panel({
       </div>
       {children}
     </div>
+  )
+}
+
+function TimeframeMarketPanel({
+  locale,
+  rows,
+  currentFreq,
+  onSelectFreq,
+}: {
+  locale: LongclawLocale
+  rows: TimeframeMarketSnapshot[]
+  currentFreq: string
+  onSelectFreq: (freq: string) => void
+}) {
+  const readyRows = rows.filter(row => row.status === 'ready' || row.status === 'stale').length
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '各周期行情' : 'Timeframes'}
+      meta={`${readyRows}/${rows.length}`}
+    >
+      <div style={compactListStyle}>
+        {rows.map(row => {
+          const active = normalizeSignalFreq(row.freq) === normalizeSignalFreq(currentFreq)
+          return (
+            <button
+              key={`timeframe-market-${row.freq}`}
+              type="button"
+              style={timeframeMarketRowStyle(active)}
+              onClick={() => onSelectFreq(row.freq)}
+            >
+              <div style={timeframeMarketTopLineStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                  <span style={{ ...miniNeutralSignalBadgeStyle, flex: '0 0 auto' }}>{row.label}</span>
+                  <span style={rowTitleStyle}>{row.latestPrice}</span>
+                  <span style={{ ...monoTextStyle, ...percentTone(row.periodChange) }}>{row.periodChange}</span>
+                </div>
+                <span style={statusBadgeStyle(timeframeSnapshotBadgeTone(row.status))}>
+                  {timeframeSnapshotStatusLabel(row.status, locale)}
+                </span>
+              </div>
+              <div style={timeframeMarketMetricStyle}>
+                <span style={monoTextStyle}>VOL {row.volume}</span>
+                <span style={monoTextStyle}>AMT {row.amount}</span>
+                <span style={mutedLineStyle}>{locale === 'zh-CN' ? `K线 ${row.bars}` : `${row.bars} bars`}</span>
+              </div>
+              {[row.signal, row.statusText].filter(Boolean).length > 0 ? (
+                <div style={timeframeMarketSublineStyle}>
+                  {[row.signal, row.statusText].filter(Boolean).join(' · ')}
+                </div>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    </Panel>
   )
 }
 
@@ -10122,6 +10685,12 @@ function ChainHeatVisualization({
 	          const domains = chainDomainLabels(row)
 	          const sectorTitle = sectorTitleForWatchlist(row, locale)
 	          const sectorStatus = sectorStatusForWatchlist(row, locale)
+	          const targetRows = sectorTargetRowsForContext(row)
+	          const targetPreview = targetRows
+	            .map(item => compactText(item.name) || candidateStockLabel(item))
+	            .filter(Boolean)
+	            .slice(0, 3)
+	            .join(' / ')
 	          return (
 	            <button
 	              key={`chain-viz-${row.id}`}
@@ -10161,6 +10730,14 @@ function ChainHeatVisualization({
 	                <span style={chainVizChipStyle}>15m {formatNumber(row.raw.momentum_15m)}</span>
 	                <span style={chainVizChipStyle}>30m {formatNumber(row.raw.momentum_30m)}</span>
 	              </div>
+	              {targetRows.length > 0 ? (
+	                <div style={chainVizTargetPreviewStyle}>
+	                  <span style={{ ...miniNeutralSignalBadgeStyle, flex: '0 0 auto' }}>
+	                    {locale === 'zh-CN' ? `标的 ${targetRows.length}` : `${targetRows.length} names`}
+	                  </span>
+	                  <span style={chainVizTargetNameStyle}>{targetPreview}</span>
+	                </div>
+	              ) : null}
             </button>
           )
         })}
@@ -10701,11 +11278,13 @@ function ChainContextRail({
   context,
   symbolData,
   onSelect,
+  onPrefetch,
 }: {
   locale: LongclawLocale
   context: Record<string, unknown>
   symbolData: WorkbenchSymbolData | null
   onSelect: (row: Record<string, unknown>) => void
+  onPrefetch?: (row: Record<string, unknown>) => void
 }) {
   const source = Object.keys(context).length > 0 ? context : recordValue(symbolData?.summary?.mapping_chain)
   const groups = candidateGroupsFromRow(source)
@@ -10736,19 +11315,29 @@ function ChainContextRail({
   ].map(item => compactText(item)).filter(Boolean)
   const hasContext = Object.keys(source).length > 0 || candidates.length > 0
   if (!hasContext) return null
+  const chainTitle = [compactText(source.chain_name), compactText(source.node_name), compactText(mapping.chain_name), compactText(mapping.node_name)]
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' -> ') || compactText(symbolData?.summary?.title) || 'Chain'
+  const isSectorContext = compactText(source.source) === 'chain_heat_snapshots'
+    || compactText(source.domain) === 'chain_heat'
+    || compactText(source.domain) === 'theme_heat'
+    || candidates.length > 0
+  const panelTitle = isSectorContext
+    ? (locale === 'zh-CN' ? '板块标的' : 'Sector targets')
+    : (locale === 'zh-CN' ? '产业链上下文' : 'Chain context')
+  const panelMeta = [
+    candidates.length > 0 ? `${candidates.length}` : '',
+    compactText(source.phase) || compactText(mapping.mapping_status) || compactText(viewpoint.status) || 'context',
+  ].filter(Boolean).join(' · ')
   return (
     <Panel
-      title={locale === 'zh-CN' ? '产业链上下文' : 'Chain context'}
-      meta={compactText(source.phase) || compactText(mapping.mapping_status) || compactText(viewpoint.status) || 'context'}
+      title={panelTitle}
+      meta={panelMeta}
     >
       <div style={compactListStyle}>
         <div style={chainContextHeroStyle}>
-          <div style={rowTitleStyle}>
-            {[compactText(source.chain_name), compactText(source.node_name), compactText(mapping.chain_name), compactText(mapping.node_name)]
-              .filter(Boolean)
-              .slice(0, 2)
-              .join(' -> ') || compactText(symbolData?.summary?.title) || 'Chain'}
-          </div>
+          <div style={rowTitleStyle}>{chainTitle}</div>
           <div style={mutedTwoLineStyle}>
             {[
               compactText(source.trading_signal || source.latest_signal),
@@ -10763,6 +11352,88 @@ function ChainContextRail({
             <span style={miniNeutralSignalBadgeStyle}>15m {formatNumber(source.momentum_15m)}</span>
             <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span>
           </div>
+        </div>
+        <div style={sectorTargetFocusStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{locale === 'zh-CN' ? '板块内标的' : 'Names in this sector'}</span>
+            <span>{candidates.length}</span>
+          </div>
+          {candidateSections.length > 0 ? (
+            <div style={sectorTargetGroupRailStyle}>
+              {candidateSections.map(section => (
+                <span key={`sector-target-pill-${section.key}`} style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>
+                  {section.label} {section.rows.length}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {candidateSections.length > 0 ? candidateSections.map(section => (
+            <div key={`chain-context-${section.key}`} style={compactListStyle}>
+              <div style={candidateGroupHeaderStyle}>
+                <span>{section.label}</span>
+                <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>{section.rows.length}</span>
+              </div>
+              {section.rows.slice(0, section.key === 'leaders' ? 3 : 4).map((candidate, index) => {
+                const relation = compactText(candidate.chain_relation_type)
+                const score = compactText(candidate.attention_score)
+                  || compactText(candidate.weight_score)
+                  || compactText(candidate.elasticity_score)
+                  || compactText(candidate.trend_score)
+                return (
+                  <button
+                    key={`${section.key}-${candidateStockLabel(candidate) || index}-${index}`}
+                    type="button"
+                    style={chainLifecycleButtonStyle}
+                    onMouseEnter={() => onPrefetch?.(candidate)}
+                    onFocus={() => onPrefetch?.(candidate)}
+                    onClick={() => onSelect(candidate)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+                      <div style={rowTitleStyle}>{compactText(candidate.name) || candidateStockLabel(candidate) || 'N/A'}</div>
+                      <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>
+                        {relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier) || '观察'}
+                      </span>
+                    </div>
+                    <div style={mutedTwoLineStyle}>
+                      {[
+                        candidateStockLabel(candidate),
+                        compactText(candidate.chain_role) || compactText(candidate.relation),
+                        `涨幅 ${formatPercent(candidate.day_change_pct)}`,
+                        compactText(candidate.latest_signal),
+                        score ? `关注 ${formatNumber(score, 0)}` : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )) : candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => {
+            const score = compactText(candidate.attention_score) || compactText(candidate.score)
+            return (
+              <button
+                key={`${candidateStockLabel(candidate) || index}-${index}`}
+                type="button"
+                style={targetButtonStyle}
+                onMouseEnter={() => onPrefetch?.(candidate)}
+                onFocus={() => onPrefetch?.(candidate)}
+                onClick={() => onSelect(candidate)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={rowTitleStyle}>{compactText(candidate.name) || candidateStockLabel(candidate) || 'N/A'}</div>
+                  <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.leader_tier) || compactText(candidate.chain_role) || '观察'}</span>
+                </div>
+                <div style={mutedTwoLineStyle}>
+                  {[candidateStockLabel(candidate), compactText(candidate.latest_signal), `涨幅 ${formatPercent(candidate.day_change_pct)}`, score ? `关注 ${formatNumber(score, 0)}` : '', compactText(candidate.why_watch)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </button>
+            )
+          }) : (
+            <div style={emptyStateDarkStyle}>{locale === 'zh-CN' ? '暂无标的分组。' : 'No target groups.'}</div>
+          )}
         </div>
         {(Object.keys(activeDriver).length > 0 || driverCandidates.length > 0) && (
           <div style={signalBlockStyle}>
@@ -10822,62 +11493,6 @@ function ChainContextRail({
             })}
           </div>
         )}
-        <div style={signalBlockStyle}>
-          <div style={candidateGroupHeaderStyle}>
-            <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
-            <span>{candidates.length}</span>
-          </div>
-          {candidateSections.length > 0 ? candidateSections.map(section => (
-            <div key={`chain-context-${section.key}`} style={compactListStyle}>
-              <div style={candidateGroupHeaderStyle}>
-                <span>{section.label}</span>
-                <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>{section.rows.length}</span>
-              </div>
-              {section.rows.slice(0, section.key === 'leaders' ? 3 : 4).map((candidate, index) => {
-                const relation = compactText(candidate.chain_relation_type)
-                return (
-                  <button
-                    key={`${section.key}-${candidateStockLabel(candidate) || index}-${index}`}
-                    type="button"
-                    style={chainLifecycleButtonStyle}
-                    onClick={() => onSelect(candidate)}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
-                      <div style={rowTitleStyle}>{compactText(candidate.name) || candidateStockLabel(candidate) || 'N/A'}</div>
-                      <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>
-                        {relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier) || '观察'}
-                      </span>
-                    </div>
-                    <div style={mutedTwoLineStyle}>
-                      {[candidateStockLabel(candidate), compactText(candidate.chain_role) || compactText(candidate.relation), `涨幅 ${formatPercent(candidate.day_change_pct)}`, compactText(candidate.latest_signal)]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          )) : candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => (
-            <button
-              key={`${candidateStockLabel(candidate) || index}-${index}`}
-              type="button"
-              style={targetButtonStyle}
-              onClick={() => onSelect(candidate)}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                <div style={rowTitleStyle}>{compactText(candidate.name) || candidateStockLabel(candidate) || 'N/A'}</div>
-                <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.leader_tier) || compactText(candidate.chain_role) || '观察'}</span>
-              </div>
-              <div style={mutedTwoLineStyle}>
-                {[candidateStockLabel(candidate), compactText(candidate.latest_signal), `涨幅 ${formatPercent(candidate.day_change_pct)}`, compactText(candidate.why_watch)]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </div>
-            </button>
-          )) : (
-            <div style={emptyStateDarkStyle}>{locale === 'zh-CN' ? '暂无标的分组。' : 'No target groups.'}</div>
-          )}
-        </div>
         <div style={signalBlockStyle}>
           <div style={candidateGroupHeaderStyle}>
             <span>{locale === 'zh-CN' ? '技术联动' : 'Technical linkage'}</span>

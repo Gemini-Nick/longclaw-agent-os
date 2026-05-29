@@ -209,6 +209,29 @@ type MarkerData = {
   tradeIndex?: number
 }
 
+type ResearchTone = 'success' | 'warning' | 'failed' | 'open' | 'running'
+
+type StrategyResearchSummary = {
+  tone: ResearchTone
+  statusLabel: string
+  headline: string
+  detail: string
+  cards: Array<{ label: string; value: string; tone?: string }>
+  flow: Array<{ label: string; value: string; tone: ResearchTone }>
+  issues: string[]
+  actions: string[]
+}
+
+type StrategyResearchSummaryInput = {
+  result?: unknown
+  batchResult?: unknown
+  error?: string | null
+  loading?: boolean
+  selectedCodes?: string[]
+  freq?: string
+  locale?: LongclawLocale
+}
+
 const BACKTEST_MARKER_OVERLAY = 'longclawBacktestMarker'
 const BACKTEST_MARKER_GROUP = 'longclaw-backtest-markers'
 let markerRegistered = false
@@ -431,6 +454,51 @@ const warningStyle: React.CSSProperties = {
   color: terminalTheme.accentText,
   padding: '8px 10px',
   fontSize: 13,
+}
+
+const researchPanelStyle: React.CSSProperties = {
+  ...panelStyle,
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: terminalTheme.panelRaised,
+  gap: 8,
+}
+
+const researchHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  minWidth: 0,
+}
+
+const researchFlowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 6,
+}
+
+const researchPillStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: '6px 7px',
+  minWidth: 0,
+}
+
+const researchIssueRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 5,
+  minWidth: 0,
+}
+
+const researchActionStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
 }
 
 const multiReportBaseStyle: React.CSSProperties = {
@@ -1153,12 +1221,233 @@ function compactApiError(rawError: ApiError, locale: LongclawLocale, fallback: s
     stringValue(payload.detail) ??
     rawError.message
   if (!rawMessage) return fallback
+  if (/timeout|timed out|abort/i.test(rawMessage)) {
+    return locale === 'zh-CN'
+      ? 'Signals 回测接口超时。先缩小标的篮子或换成日线单票；如果连续超时，再看数据源和回测队列。'
+      : 'Signals backtest timed out. Narrow the basket or run one daily symbol first.'
+  }
   if (/traceback|File\s+["'].*\.py["']|^\s*at\s+/i.test(rawMessage)) {
     return locale === 'zh-CN'
       ? '回测服务返回了内部错误。请确认输入的是股票代码，或从已选池勾选后重试。'
       : 'Backtest service returned an internal error. Check the symbol code or pick from the pool.'
   }
   return rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage
+}
+
+function uniqueText(items: string[]): string[] {
+  const seen = new Set<string>()
+  return items.filter(item => {
+    const text = item.trim()
+    if (!text || seen.has(text)) return false
+    seen.add(text)
+    return true
+  })
+}
+
+function classifyMetricTone(value: number | undefined, goodAtOrAbove = 0): string {
+  if (value === undefined) return 'neutral'
+  return value >= goodAtOrAbove ? 'up' : 'down'
+}
+
+function batchResearchSummary(
+  batchResult: BatchBacktestResult,
+  locale: LongclawLocale,
+): StrategyResearchSummary {
+  const zh = locale === 'zh-CN'
+  const summary = recordValue(batchResult.summary)
+  const totalStocks = numberValue(summary.total_stocks) ?? batchResult.stocks?.length ?? 0
+  const okStocks = numberValue(summary.ok_stocks)
+  const totalSignals = numberValue(summary.total_signals) ?? 0
+  const totalTrades = numberValue(summary.total_trades) ?? 0
+  const warnings = uniqueText([...(batchResult.warnings ?? []), stringValue(batchResult.error) ?? ''])
+  const issues = uniqueText([
+    totalStocks === 0 ? (zh ? '没有有效标的样本' : 'No valid symbols') : '',
+    totalTrades < Math.max(8, totalStocks) ? (zh ? '成交样本偏少，容易过拟合' : 'Too few trades; overfit risk') : '',
+    okStocks !== undefined && okStocks < totalStocks ? (zh ? `${totalStocks - okStocks}只标的回测失败或跳过` : `${totalStocks - okStocks} symbols failed or skipped`) : '',
+    ...warnings,
+  ])
+  const tone: ResearchTone = issues.length
+    ? totalTrades > 0 ? 'warning' : 'failed'
+    : 'success'
+  const actions = uniqueText([
+    totalTrades < Math.max(8, totalStocks)
+      ? (zh ? '扩大篮子或拉长区间，先把成交样本做厚。' : 'Widen the basket or range before judging the rule.')
+      : '',
+    zh ? '按排名前列标的逐个打开交易明细，剔除靠单一大阳线贡献的样本。' : 'Open top-ranked symbols and remove one-off outlier trades.',
+    zh ? '用参数扫描验证止损、持仓日和移动止盈是否稳定。' : 'Scan stop loss, holding days, and trailing stop stability.',
+  ])
+  return {
+    tone,
+    statusLabel: zh ? (tone === 'success' ? '组合可复核' : '组合需清洗') : (tone === 'success' ? 'Basket ready' : 'Clean basket'),
+    headline: zh
+      ? `${totalStocks}只标的 · ${totalSignals}个信号 · ${totalTrades}笔成交`
+      : `${totalStocks} symbols · ${totalSignals} signals · ${totalTrades} trades`,
+    detail: zh
+      ? '先看组合是否有稳定样本，再进入单票交易明细和参数敏感性。'
+      : 'Check sample stability before reviewing trades and parameter sensitivity.',
+    cards: [
+      { label: zh ? '标的' : 'Symbols', value: formatNumber(totalStocks, 0) },
+      { label: zh ? '信号' : 'Signals', value: formatNumber(totalSignals, 0) },
+      { label: zh ? '成交' : 'Trades', value: formatNumber(totalTrades, 0), tone: totalTrades >= Math.max(8, totalStocks) ? 'up' : 'down' },
+    ],
+    flow: [
+      { label: zh ? '盘中观察' : 'Intraday', value: zh ? '从主线篮子取样' : 'Sample from themes', tone: 'open' },
+      { label: zh ? '盘后验证' : 'Post-close', value: zh ? '看组合厚度' : 'Check sample depth', tone },
+      { label: zh ? '研发推进' : 'Research', value: zh ? '转入单票和扫描' : 'Open trades and scan', tone: totalTrades > 0 ? 'success' : 'warning' },
+    ],
+    issues,
+    actions,
+  }
+}
+
+export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput): StrategyResearchSummary {
+  const locale = input.locale ?? 'zh-CN'
+  const zh = locale === 'zh-CN'
+  const result = input.result as BacktestResult | null | undefined
+  const batchResult = input.batchResult as BatchBacktestResult | null | undefined
+  const selectedCodes = input.selectedCodes ?? []
+  if (input.loading) {
+    return {
+      tone: 'running',
+      statusLabel: zh ? '正在验证' : 'Running',
+      headline: zh ? '正在拉取回测证据' : 'Collecting backtest evidence',
+      detail: zh ? '先等数据、K线、信号和成交同时返回，再做策略判断。' : 'Wait for candles, signals, and trades before judging the rule.',
+      cards: [
+        { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
+        { label: zh ? '状态' : 'Status', value: zh ? '运行中' : 'Running' },
+      ],
+      flow: [
+        { label: zh ? '盘中观察' : 'Intraday', value: zh ? '保留候选' : 'Keep candidates', tone: 'open' },
+        { label: zh ? '盘后验证' : 'Post-close', value: zh ? '等待结果' : 'Waiting', tone: 'running' },
+        { label: zh ? '研发推进' : 'Research', value: zh ? '暂不下结论' : 'No verdict yet', tone: 'open' },
+      ],
+      issues: [],
+      actions: [zh ? '如果超过一分钟仍无结果，先缩小到单票日线。' : 'If it takes over a minute, narrow to one daily symbol.'],
+    }
+  }
+  if (input.error) {
+    return {
+      tone: 'failed',
+      statusLabel: zh ? '异常优先' : 'Fix first',
+      headline: zh ? '先处理回测异常，再判断策略质量' : 'Resolve the backtest issue before judging the strategy',
+      detail: input.error,
+      cards: [
+        { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
+        { label: zh ? '状态' : 'Status', value: zh ? '失败' : 'Failed', tone: 'down' },
+      ],
+      flow: [
+        { label: zh ? '盘中观察' : 'Intraday', value: zh ? '保留原始线索' : 'Keep clues', tone: 'warning' },
+        { label: zh ? '盘后验证' : 'Post-close', value: zh ? '数据/接口异常' : 'Data/API issue', tone: 'failed' },
+        { label: zh ? '研发推进' : 'Research', value: zh ? '暂停结论' : 'Pause verdict', tone: 'warning' },
+      ],
+      issues: [input.error],
+      actions: [
+        zh ? '先确认代码是沪深/HK有效标的，或从已选池重新勾选。' : 'Confirm the symbol is supported or pick from the basket.',
+        zh ? '若是超时，先单票日线，再逐步加回篮子。' : 'For timeouts, retry one daily symbol before expanding.',
+      ],
+    }
+  }
+  if (batchResult?.terminal?.mode === 'multi' || batchResult?.summary) {
+    return batchResearchSummary(batchResult, locale)
+  }
+  if (!result) {
+    return {
+      tone: 'open',
+      statusLabel: zh ? '待建立样本' : 'No sample',
+      headline: zh ? '先把盘中观察变成可验证样本' : 'Turn intraday observations into a testable sample',
+      detail: zh
+        ? '从买点池、盯盘池或产业链组合选标的，盘后用日线/周线验证，再用扫描看参数稳定性。'
+        : 'Pick names from candidates or baskets, validate daily/weekly, then scan parameter stability.',
+      cards: [
+        { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
+        { label: zh ? '成交' : 'Trades', value: emptyDisplay },
+      ],
+      flow: [
+        { label: zh ? '盘中观察' : 'Intraday', value: zh ? '主线/买点/失效' : 'Theme, entry, invalidation', tone: 'open' },
+        { label: zh ? '盘后验证' : 'Post-close', value: zh ? '收益/回撤/超额' : 'Return, drawdown, excess', tone: 'open' },
+        { label: zh ? '研发推进' : 'Research', value: zh ? '扫描参数稳定性' : 'Scan parameter stability', tone: 'open' },
+      ],
+      issues: [],
+      actions: [
+        zh ? '先运行当前单票，确认有K线、信号和成交。' : 'Run the current symbol and confirm candles, signals, and trades.',
+        zh ? '再换成产业链组合，检查规则是否只对单票有效。' : 'Then test a basket to see whether the rule generalizes.',
+      ],
+    }
+  }
+
+  const panels = terminalPanels(result)
+  const metrics = terminalMetrics(result)
+  const target = terminalTarget(result)
+  const kpi = recordValue(result.kpi)
+  const simKpi = recordValue(result.sim_kpi)
+  const trades = panels?.trades?.rows ?? result.sim_trades ?? []
+  const signals = panels?.signals?.rows ?? result.signals ?? []
+  const totalReturn = numberValue(metrics.total_return_pct ?? simKpi.total_return_pct)
+  const maxDrawdown = Math.abs(numberValue(metrics.max_drawdown_pct ?? simKpi.max_drawdown_pct) ?? 0)
+  const winRate = numberValue(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate)
+  const sharpe = numberValue(metrics.sharpe ?? simKpi.sharpe)
+  const excess = numberValue(metrics.excess_return_pct)
+  const tradeCount = numberValue(metrics.filled_trades ?? simKpi.filled_trades) ?? trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined).length
+  const signalCount = numberValue(metrics.signal_count ?? kpi.total) ?? signals.length
+  const freshness = stringValue(target.freshness) ?? result.freshness
+  const warnings = uniqueText(result.warnings ?? [])
+  const issues = uniqueText([
+    freshness && freshness !== 'fresh' ? `${zh ? '数据新鲜度' : 'Freshness'}: ${freshnessLabel(freshness, locale)}` : '',
+    result.partial ? (zh ? '仅返回部分数据' : 'Partial data returned') : '',
+    result.last_upstream_error ? (zh ? `上游异常：${result.last_upstream_error}` : `Upstream: ${result.last_upstream_error}`) : '',
+    signalCount === 0 ? (zh ? '没有信号样本' : 'No signal sample') : '',
+    tradeCount === 0 ? (zh ? '没有成交样本' : 'No filled trades') : '',
+    tradeCount > 0 && tradeCount < 8 ? (zh ? '成交样本偏少' : 'Too few trades') : '',
+    totalReturn !== undefined && totalReturn < 0 ? (zh ? '策略收益为负' : 'Negative strategy return') : '',
+    maxDrawdown > 20 ? (zh ? `最大回撤偏大 ${formatDrawdown(maxDrawdown)}` : `High drawdown ${formatDrawdown(maxDrawdown)}`) : '',
+    sharpe !== undefined && sharpe < 0.8 ? (zh ? `Sharpe 不足 ${formatNumber(sharpe, 2)}` : `Low Sharpe ${formatNumber(sharpe, 2)}`) : '',
+    excess !== undefined && excess < 0 ? (zh ? `未跑赢基准 ${formatPercent(excess)}` : `Under benchmark ${formatPercent(excess)}`) : '',
+    ...warnings,
+  ])
+  const hasHardIssue = signalCount === 0 || tradeCount === 0 || (totalReturn !== undefined && totalReturn < 0)
+  const tone: ResearchTone = hasHardIssue
+    ? 'failed'
+    : issues.length
+      ? 'warning'
+      : 'success'
+  const actions = uniqueText([
+    freshness && freshness !== 'fresh' ? (zh ? '先补齐最新K线或换数据源，再判断策略。' : 'Refresh bars or switch data source before judging.') : '',
+    tradeCount < 8 ? (zh ? '扩大标的篮子或拉长区间，避免用薄样本研发。' : 'Widen the basket or range before optimizing.') : '',
+    maxDrawdown > 20 ? (zh ? '优先扫描止损、移动止盈、均线离场，先压回撤。' : 'Scan stop loss, trailing stop, and MA exits to reduce drawdown.') : '',
+    excess !== undefined && excess < 0 ? (zh ? '把同一主线强势股一起回测，确认是不是选股弱于基准。' : 'Backtest stronger peers in the same theme to separate selection from rule weakness.') : '',
+    sharpe !== undefined && sharpe >= 1 && tradeCount >= 8 ? (zh ? '进入参数扫描，检查收益是否对单一参数过敏。' : 'Run parameter scans and check sensitivity.') : '',
+    tone === 'success' ? (zh ? '用产业链组合复验，若仍稳定再沉淀为候选策略。' : 'Re-test on a basket, then promote if stable.') : '',
+  ])
+  return {
+    tone,
+    statusLabel: zh
+      ? tone === 'success' ? '可继续研发' : tone === 'warning' ? '谨慎推进' : '先淘汰/重写'
+      : tone === 'success' ? 'Researchable' : tone === 'warning' ? 'Proceed carefully' : 'Rewrite first',
+    headline: zh
+      ? `收益 ${formatPercent(totalReturn)} · 回撤 ${formatDrawdown(maxDrawdown)} · 超额 ${formatPercent(excess)}`
+      : `Return ${formatPercent(totalReturn)} · DD ${formatDrawdown(maxDrawdown)} · Excess ${formatPercent(excess)}`,
+    detail: zh
+      ? '研发判断优先看样本厚度、回撤、超额收益和数据健康；单票好看但超额为负时不能直接升级为策略。'
+      : 'Research judgment prioritizes sample depth, drawdown, excess return, and data health.',
+    cards: [
+      { label: zh ? '收益' : 'Return', value: formatPercent(totalReturn), tone: classifyMetricTone(totalReturn) },
+      { label: zh ? '回撤' : 'Drawdown', value: formatDrawdown(maxDrawdown), tone: maxDrawdown <= 15 ? 'up' : 'down' },
+      { label: zh ? '胜率' : 'WinRate', value: formatPercent(winRate), tone: classifyMetricTone(winRate, 50) },
+      { label: zh ? '成交' : 'Trades', value: formatNumber(tradeCount, 0), tone: tradeCount >= 8 ? 'up' : 'down' },
+      { label: 'Sharpe', value: formatNumber(sharpe, 2), tone: classifyMetricTone(sharpe, 1) },
+      { label: zh ? '超额' : 'Excess', value: formatPercent(excess), tone: classifyMetricTone(excess) },
+    ],
+    flow: [
+      { label: zh ? '盘中观察' : 'Intraday', value: signalCount > 0 ? (zh ? `${signalCount}个信号` : `${signalCount} signals`) : (zh ? '无信号' : 'No signal'), tone: signalCount > 0 ? 'success' : 'failed' },
+      { label: zh ? '盘后验证' : 'Post-close', value: tradeCount > 0 ? (zh ? `${tradeCount}笔成交` : `${tradeCount} trades`) : (zh ? '无成交' : 'No trades'), tone: tradeCount >= 8 ? 'success' : tradeCount > 0 ? 'warning' : 'failed' },
+      { label: zh ? '研发推进' : 'Research', value: tone === 'success' ? (zh ? '可扫描参数' : 'Scan params') : (zh ? '先修约束' : 'Fix constraints'), tone },
+    ],
+    issues,
+    actions: actions.length ? actions : [zh ? '打开交易明细，确认收益不是少数异常成交贡献。' : 'Review trades and check that returns are not one-off outliers.'],
+  }
 }
 
 function useElementSize<T extends HTMLElement>(): [React.RefObject<T | null>, ElementSize] {
@@ -1479,6 +1768,18 @@ export function BacktestWorkbench({
   const selectedDisplay = useMemo(() => selectedSymbolDisplay(selectedCodes, symbolOptions, locale), [locale, selectedCodes, symbolOptions])
   const chartTitle = selectedDisplay.short || [displaySymbol, displayName].filter(Boolean).join(' · ')
   const chartTitleFull = selectedDisplay.full || chartTitle
+  const researchSummary = useMemo(
+    () => buildStrategyResearchSummary({
+      result,
+      batchResult,
+      error,
+      loading,
+      selectedCodes,
+      freq,
+      locale,
+    }),
+    [batchResult, error, freq, loading, locale, result, selectedCodes],
+  )
 
   const rememberSymbolOptions = useCallback((nextOptions: SymbolOption[]) => {
     if (!nextOptions.length) return
@@ -1912,14 +2213,17 @@ export function BacktestWorkbench({
       />
 
       {isMultiMode ? (
-        <MultiBacktestReport
-          locale={locale}
-          terminal={batchResult?.terminal}
-          onSelectCode={nextCode => {
-            setCode(nextCode)
-            setBatchResult(null)
-          }}
-        />
+        <div style={{ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', minHeight: 0, overflow: 'hidden' }}>
+          <StrategyResearchPanel summary={researchSummary} locale={locale} compact />
+          <MultiBacktestReport
+            locale={locale}
+            terminal={batchResult?.terminal}
+            onSelectCode={nextCode => {
+              setCode(nextCode)
+              setBatchResult(null)
+            }}
+          />
+        </div>
       ) : (
       <div style={mainGridStyle}>
         <div style={sideStyle}>
@@ -2005,6 +2309,7 @@ export function BacktestWorkbench({
         </div>
 
         <div style={sideStyle}>
+          <StrategyResearchPanel summary={researchSummary} locale={locale} />
           <div style={{ ...panelStyle, gap: 7 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 6 }}>
               {(['perf', 'trades', 'signals', 'scan', 'risk'] as BacktestTab[]).map(item => (
@@ -2076,6 +2381,67 @@ export function BacktestWorkbench({
         </div>
       </div>
       )}
+    </div>
+  )
+}
+
+function StrategyResearchPanel({
+  summary,
+  locale,
+  compact = false,
+}: {
+  summary: StrategyResearchSummary
+  locale: LongclawLocale
+  compact?: boolean
+}) {
+  const issueLimit = compact ? 3 : 4
+  const actionLimit = compact ? 2 : 3
+  return (
+    <div style={{ ...researchPanelStyle, padding: compact ? '8px 10px' : researchPanelStyle.padding }}>
+      <div style={researchHeaderStyle}>
+        <div style={{ minWidth: 0 }}>
+          <div style={labelStyle}>{locale === 'zh-CN' ? '策略研发判定' : 'Strategy research'}</div>
+          <div style={{ color: terminalTheme.textStrong, fontSize: compact ? 14 : 15, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {summary.headline}
+          </div>
+        </div>
+        <span style={statusBadgeStyle(summary.tone)}>{summary.statusLabel}</span>
+      </div>
+      <div style={mutedStyle}>{summary.detail}</div>
+      <div style={researchFlowStyle}>
+        {summary.flow.map(item => (
+          <div key={item.label} style={researchPillStyle}>
+            <div style={labelStyle}>{item.label}</div>
+            <div style={{ color: statusBadgeStyle(item.tone).color, fontSize: 12, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+      {compact ? null : (
+        <div style={{ ...metricGridStyle, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+          {summary.cards.slice(0, 6).map(card => (
+            <div key={card.label} style={metricCardStyle}>
+              <div style={mutedStyle}>{card.label}</div>
+              <div style={{ color: toneColor(card.tone), fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {summary.issues.length ? (
+        <div style={researchIssueRowStyle}>
+          {summary.issues.slice(0, issueLimit).map(issue => (
+            <span key={issue} style={statusBadgeStyle(summary.tone === 'failed' ? 'failed' : 'warning')}>{issue}</span>
+          ))}
+        </div>
+      ) : null}
+      <ul style={researchActionStyle}>
+        {summary.actions.slice(0, actionLimit).map(action => (
+          <li key={action} style={{ ...mutedStyle, color: terminalTheme.text, lineHeight: 1.35 }}>
+            {action}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
