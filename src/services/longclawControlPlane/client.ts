@@ -41,6 +41,8 @@ export type LongclawControlPlaneClientOptions = {
   fetchImpl?: typeof fetch
 }
 
+const CONTROL_PLANE_FETCH_TIMEOUT_MS = 5_000
+
 function envValue(name: string): string | undefined {
   const value = process.env[name]?.trim()
   return value ? value : undefined
@@ -429,11 +431,21 @@ async function fetchJson<T>(
   fetchImpl: typeof fetch,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetchImpl(url, init)
-  if (!response.ok) {
-    throw new Error(`Longclaw control plane request failed: ${response.status} ${url}`)
+  const controller = init?.signal ? null : new AbortController()
+  const timeout = controller
+    ? setTimeout(() => controller.abort(), CONTROL_PLANE_FETCH_TIMEOUT_MS)
+    : null
+  try {
+    const response = await fetchImpl(url, controller ? { ...init, signal: controller.signal } : init)
+    if (!response.ok) {
+      throw new Error(`Longclaw control plane request failed: ${response.status} ${url}`)
+    }
+    return parse(await response.json())
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
   }
-  return parse(await response.json())
 }
 
 async function readSignalsRunFiles(stateRoot: string): Promise<LongclawRun[]> {
@@ -1135,23 +1147,17 @@ export class LongclawControlPlaneClient {
         const backtestSeed = backtestSeedRaw.includes('.')
           ? backtestSeedRaw.split('.').at(-1) ?? backtestSeedRaw
           : backtestSeedRaw.replace(/^[a-z]{2}/i, '')
-        const backtestPath = backtestSeed
-          ? `/api/backtest/analyze?code=${encodeURIComponent(backtestSeed)}&freq=daily&signal_group=all&lookback=180`
-          : ''
-        const backtestAnalysisResult = await fetchSignalsJsonWithFallback(
-          { url: web1 && backtestPath ? `${web1}${backtestPath}` : undefined, source: 'web1' },
-          { url: web2 && backtestPath ? `${web2}${backtestPath}` : undefined, source: 'web2' },
+        const backtestSummaryResult = await fetchSignalsJsonWithFallback(
+          { url: web1 ? `${web1}/api/backtest/summary` : undefined, source: 'web1' },
+          { url: web2 ? `${web2}/api/backtest/summary` : undefined, source: 'web2' },
           value => recordValue(value),
           this.fetchImpl,
         )
-        const backtestAnalysis = backtestAnalysisResult.value
-
-        const backtestTerminal = recordValue(backtestAnalysis?.terminal)
-        const backtestTerminalMetrics = recordValue(backtestTerminal.metrics)
-        const backtestSummary = recordValue(backtestAnalysis?.forward_kpi ?? backtestAnalysis?.kpi)
-        const totalSignals = numberValue(backtestTerminalMetrics.signal_count) ?? numberValue(backtestSummary.total) ?? 0
-        const evaluatedSignals = numberValue(backtestTerminalMetrics.evaluated_count) ?? numberValue(backtestSummary.evaluated) ?? totalSignals
-        const pendingSignals = Math.max(totalSignals - evaluatedSignals, 0)
+        const backtestSummary = recordValue(backtestSummaryResult.value)
+        const totalSignals = numberValue(backtestSummary.total) ?? 0
+        const evaluatedSignals = numberValue(backtestSummary.evaluated) ?? totalSignals
+        const pendingSignals =
+          numberValue(backtestSummary.pending) ?? Math.max(totalSignals - evaluatedSignals, 0)
         const pendingBacklogPreview = uniqueBuyCandidates.slice(0, 6).map(item => ({
           symbol: item.symbol,
           signal_date:
@@ -1173,10 +1179,10 @@ export class LongclawControlPlaneClient {
             aiFactorFactory ||
             chartData ||
             clusterLatestResult.source === 'web1' ||
-            backtestAnalysisResult.source === 'web1',
+            backtestSummaryResult.source === 'web1',
         )
         const web2Used =
-          clusterLatestResult.source === 'web2' || backtestAnalysisResult.source === 'web2'
+          clusterLatestResult.source === 'web2' || backtestSummaryResult.source === 'web2'
         const web2Status = web2
           ? web2Used
             ? 'available'
@@ -1185,7 +1191,7 @@ export class LongclawControlPlaneClient {
               : 'degraded'
           : 'not_connected'
         const clusterSource = clusterLatestResult.source ?? ''
-        const backtestSource = backtestAnalysisResult.source ?? ''
+        const backtestSource = backtestSummaryResult.source ?? ''
 
         const diagnostics = [
           packDiagnostic(
@@ -1413,26 +1419,24 @@ export class LongclawControlPlaneClient {
         ].filter(Boolean)
 
         const backtestJobs = [
-          backtestAnalysis
+          backtestSource
             ? {
                 job_id: `backtest:${backtestSeed || 'daily'}`,
-                status: 'ready',
+                status: pendingSignals > 0 ? 'needs_review' : 'ready',
                 symbol: backtestSeedRaw,
-                freq: stringValue(backtestAnalysis.freq) ?? 'daily',
-                summary:
-                  stringValue(recordValue(backtestAnalysis.sim_kpi).summary) ??
-                  `Win rate ${numberValue(backtestTerminalMetrics.win_rate) ?? numberValue(recordValue(backtestAnalysis.sim_kpi).win_rate) ?? 0}%`,
+                freq: 'daily',
+                summary: totalSignals
+                  ? `${evaluatedSignals}/${totalSignals} signals evaluated`
+                  : stringValue(backtestSummary.status) ?? 'Backtest service ready',
                 updated_at: new Date().toISOString(),
-                source: backtestSource || 'web1',
+                source: backtestSource,
                 metadata: {
-                  forward_kpi: recordValue(backtestAnalysis.forward_kpi),
-                  sim_kpi: recordValue(backtestAnalysis.sim_kpi),
-                  terminal: backtestTerminal,
+                  summary: backtestSummary,
                   source: backtestSource,
                 },
               }
             : null,
-          ...recentRuns.slice(0, 3).map(run => ({
+          ...recentRuns.filter(run => run.capability.toLowerCase().includes('backtest')).slice(0, 3).map(run => ({
             job_id: run.run_id,
             status: run.status,
             symbol: stringValue(recordValue(run.metadata).symbol) ?? '',
@@ -1506,7 +1510,7 @@ export class LongclawControlPlaneClient {
             status: 'open',
             priority: 'medium',
             symbol: item.symbol,
-            action: backtestAnalysis ? 'review_entry' : 'run_backtest',
+            action: pendingSignals > 0 ? 'review_entry' : 'run_backtest',
             rationale: item.reason,
             metadata: item.metadata,
           })),

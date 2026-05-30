@@ -656,13 +656,14 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       }
       if (
         url ===
-        'http://signals-web2.local/api/backtest/analyze?code=002759&freq=daily&signal_group=all&lookback=180'
+        'http://signals-web2.local/api/backtest/summary'
       ) {
         return new Response(
           JSON.stringify({
-            freq: 'daily',
-            forward_kpi: { total: 12, evaluated: 9 },
-            sim_kpi: { win_rate: 66.7 },
+            total: 12,
+            evaluated: 9,
+            pending: 3,
+            status: 'ready',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
@@ -797,13 +798,14 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       }
       if (
         url ===
-        'http://signals-web.local/api/backtest/analyze?code=000001&freq=daily&signal_group=all&lookback=180'
+        'http://signals-web.local/api/backtest/summary'
       ) {
         return new Response(
           JSON.stringify({
-            freq: 'daily',
-            forward_kpi: { total: 5, evaluated: 4 },
-            sim_kpi: { win_rate: 60 },
+            total: 5,
+            evaluated: 4,
+            pending: 1,
+            status: 'ready',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
@@ -838,7 +840,7 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(requests).toContain('http://signals-web.local/api/cluster/latest?top=5')
     expect(requests).toContain('http://signals-web.local/api/strategy/ai-factor-factory')
     expect(requests).toContain(
-      'http://signals-web.local/api/backtest/analyze?code=000001&freq=daily&signal_group=all&lookback=180',
+      'http://signals-web.local/api/backtest/summary',
     )
     expect(requests.some(url => url.includes('signals-web2'))).toBe(false)
   })

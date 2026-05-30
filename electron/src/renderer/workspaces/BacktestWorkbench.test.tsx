@@ -1,6 +1,35 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildStrategyResearchSummary, symbolOptionFromLookupPayload, symbolOptionsFromBacktestOutputs } from './BacktestWorkbench.js'
+import {
+  backtestHistoryEntryFromRecord,
+  buildDatePresetWindows,
+  buildStrategyResearchSummary,
+  createBacktestHistoryEntry,
+  filterSignalsForDateWindow,
+  filterTradesForDateWindow,
+  parseBacktestHistoryEntries,
+  symbolOptionFromLookupPayload,
+  symbolOptionsFromBacktestOutputs,
+} from './BacktestWorkbench.js'
+
+function dayTimestamp(date: string): number {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(year, month - 1, day).getTime()
+}
+
+function daySeconds(date: string): number {
+  return Math.floor(dayTimestamp(date) / 1000)
+}
+
+function klineBar(date: string) {
+  return {
+    timestamp: dayTimestamp(date),
+    open: 1,
+    high: 1,
+    low: 1,
+    close: 1,
+  }
+}
 
 describe('BacktestWorkbench strategy research summary', () => {
   it('blocks strategy judgment when the backtest has no result yet', () => {
@@ -138,5 +167,84 @@ describe('BacktestWorkbench strategy research summary', () => {
       name: '雅克科技',
       group: '名称查询',
     }))
+  })
+
+  it('syncs date presets to the current backtest candle range', () => {
+    const windows = buildDatePresetWindows([
+      { key: 'old', label: '924新政 — 央行三箭齐发', date: '2024-09-24', time: daySeconds('2024-09-24') },
+      { key: 'deepseek', label: 'DeepSeek行情 — AI新纪元', date: '2025-01-23', time: daySeconds('2025-01-23') },
+      { key: 'late', label: '未来事件', date: '2026-01-01', time: daySeconds('2026-01-01') },
+    ], [
+      klineBar('2025-01-01'),
+      klineBar('2025-01-23'),
+      klineBar('2025-02-15'),
+    ])
+
+    expect(windows.map(item => item.key)).toEqual(['deepseek'])
+    expect(windows[0]?.shortLabel).toBe('DeepSeek行情')
+    expect(windows[0]?.displayRange).toBe('2025-01-01 ~ 2025-02-15')
+  })
+
+  it('filters signal and trade detail rows by selected date preset window', () => {
+    const [window] = buildDatePresetWindows([
+      { key: 'deepseek', label: 'DeepSeek行情 — AI新纪元', date: '2025-01-23', time: daySeconds('2025-01-23') },
+    ], [
+      klineBar('2025-01-01'),
+      klineBar('2025-01-23'),
+      klineBar('2025-02-15'),
+      klineBar('2025-05-12'),
+    ])
+
+    const signals = filterSignalsForDateWindow([
+      { date: '2024-12-15', type: 'old' },
+      { dt: daySeconds('2025-01-24'), type: 'inside' },
+      { date_str: '2025-05-12', type: 'outside' },
+    ], window ?? null)
+    const trades = filterTradesForDateWindow([
+      { signal_date: '2024-12-15', entry_price: 1 },
+      { signal_date: '2025-01-24', entry_date: '2025-01-27', exit_date: '2025-01-30', entry_price: 1 },
+      { signal_date: '2025-05-12', entry_price: 1 },
+    ], window ?? null)
+
+    expect(signals.map(item => item.type)).toEqual(['inside'])
+    expect(trades.map(item => item.signal_date)).toEqual(['2025-01-24'])
+  })
+
+  it('serializes multi-symbol batch output as a restorable history entry', () => {
+    const entry = createBacktestHistoryEntry({
+      createdAt: '2026-05-29T15:00:00.000Z',
+      codes: ['002409', '300394'],
+      freq: 'daily',
+      signalType: 'all',
+      batchResult: {
+        summary: { total_stocks: 2, total_signals: 8, total_trades: 3 },
+        terminal: {
+          version: 'backtest-terminal.v1',
+          mode: 'multi',
+          panels: {
+            ranking: { rows: [{ code: '002409', name: '雅克科技' }] },
+            multi_charts: { items: [{ code: '002409', ohlcv: [klineBar('2026-05-29')] }] },
+          },
+        },
+      },
+    })
+
+    expect(entry).toMatchObject({
+      mode: 'multi',
+      codes: ['002409', '300394'],
+      freq: 'daily',
+    })
+    expect(parseBacktestHistoryEntries([entry])[0]?.batchResult?.terminal?.mode).toBe('multi')
+  })
+
+  it('does not turn strategy snapshots into restorable backtest records', () => {
+    expect(backtestHistoryEntryFromRecord('strategy-snapshot-2026-05-29', {
+      job_id: 'strategy-snapshot-2026-05-29',
+      status: 'completed',
+      metadata: {
+        as_of: '2026-05-29',
+        candidate_count: 12,
+      },
+    })).toBeNull()
   })
 })

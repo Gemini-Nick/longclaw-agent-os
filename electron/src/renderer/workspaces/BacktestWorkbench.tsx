@@ -139,6 +139,25 @@ type BacktestTerminalMetric = {
   tone?: string
 }
 
+type DatePreset = {
+  key?: string
+  label?: string
+  date?: string
+  time?: number
+  tier?: string
+}
+
+type DatePresetWindow = DatePreset & {
+  key: string
+  label: string
+  shortLabel: string
+  from: number
+  to: number
+  anchorTime: number
+  displayRange: string
+  barCount: number
+}
+
 type BacktestTerminal = {
   version?: string
   mode?: string
@@ -148,7 +167,7 @@ type BacktestTerminal = {
   metrics?: Record<string, unknown>
   chart?: {
     ohlcv?: Record<string, unknown>[]
-    date_presets?: Array<{ key?: string; label?: string; date?: string; time?: number }>
+    date_presets?: DatePreset[]
     signal_markers?: Array<Record<string, unknown>>
     trade_markers?: Array<Record<string, unknown>>
     entry_exit_markers?: Array<Record<string, unknown>>
@@ -189,9 +208,22 @@ type BacktestResult = {
   sim_equity?: Record<string, unknown>[]
   sim_config?: Record<string, unknown>
   sim_skip_reasons?: Record<string, unknown>
-  date_presets?: Array<{ key?: string; label?: string; date?: string; time?: number }>
+  date_presets?: DatePreset[]
   warnings?: string[]
   terminal?: BacktestTerminal
+}
+
+type BacktestHistoryEntry = {
+  id: string
+  title: string
+  meta: string
+  mode: 'single' | 'multi'
+  createdAt: string
+  codes: string[]
+  freq: string
+  signalType?: string
+  result?: BacktestResult
+  batchResult?: BatchBacktestResult
 }
 
 type ScanResult = {
@@ -214,7 +246,7 @@ type MarkerData = {
   label: string
   color: string
   side: 'buy' | 'sell'
-  kind?: 'signal' | 'trade'
+  kind?: 'signal' | 'trade' | 'date-preset'
   sourceIndex?: number
   tradeIndex?: number
 }
@@ -244,6 +276,13 @@ type StrategyResearchSummaryInput = {
 
 const BACKTEST_MARKER_OVERLAY = 'longclawBacktestMarker'
 const BACKTEST_MARKER_GROUP = 'longclaw-backtest-markers'
+const DATE_PRESET_BEFORE_DAYS = 30
+const DATE_PRESET_AFTER_DAYS = 60
+const MS_PER_DAY = 86_400_000
+const MARKET_DATE_TZ_OFFSET_MS = 8 * 60 * 60 * 1000
+const MARKET_DATE_TIME_ZONE = 'Asia/Shanghai'
+const BACKTEST_HISTORY_STORAGE_KEY = 'longclaw.backtestWorkbench.history.v1'
+const BACKTEST_HISTORY_LIMIT = 8
 let markerRegistered = false
 const terminalTheme = tradingDeskTheme.colors
 const emptyDisplay = '--'
@@ -365,6 +404,18 @@ const chartShellStyle: React.CSSProperties = {
   border: `1px solid ${terminalTheme.chartBorder}`,
   background: terminalTheme.chartPanel,
   overflow: 'hidden',
+}
+
+const datePresetFocusStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  alignItems: 'center',
+  gap: 8,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: '7px 8px',
+  minHeight: 0,
 }
 
 const inputStyle: React.CSSProperties = {
@@ -925,6 +976,206 @@ function terminalChart(result: BacktestResult | null | undefined): BacktestTermi
   return terminalOf(result)?.chart
 }
 
+function isRecoverableBatchResult(value: unknown): value is BatchBacktestResult {
+  const result = recordValue(value) as BatchBacktestResult
+  const terminal = recordValue(result.terminal)
+  const panels = recordValue(result.terminal?.panels)
+  const multiCharts = Array.isArray(recordValue(panels.multi_charts).items)
+    ? recordValue(panels.multi_charts).items as unknown[]
+    : []
+  return Boolean(
+    result &&
+      (terminal.mode === 'multi' ||
+        Array.isArray(result.stocks) ||
+        Object.keys(recordValue(result.summary)).length > 0 ||
+        multiCharts.length > 0),
+  )
+}
+
+function isRecoverableSingleResult(value: unknown): value is BacktestResult {
+  const result = recordValue(value) as BacktestResult
+  const terminal = terminalOf(result)
+  return Boolean(
+    result &&
+      (terminal?.chart?.ohlcv?.length ||
+        terminal?.panels?.signals?.rows?.length ||
+        Array.isArray(result.ohlcv) ||
+        Array.isArray(result.signals)),
+  )
+}
+
+function resultCodesFromBatch(batchResult: BatchBacktestResult, fallbackCodes: string[]): string[] {
+  const rankingRows = Array.isArray(batchResult.terminal?.panels?.ranking?.rows)
+    ? batchResult.terminal?.panels?.ranking?.rows ?? []
+    : []
+  const stockRows = Array.isArray(batchResult.stocks) ? batchResult.stocks : []
+  const codes = [...fallbackCodes, ...rankingRows, ...stockRows]
+    .map(item => typeof item === 'string'
+      ? item
+      : stringValue(recordValue(item).code) ?? stringValue(recordValue(item).symbol) ?? '')
+    .map(normalizeSymbolCode)
+    .filter(Boolean)
+  return [...new Set(codes)]
+}
+
+function resultCodesFromSingle(result: BacktestResult, fallbackCodes: string[]): string[] {
+  const target = terminalTarget(result)
+  const codes = [
+    ...fallbackCodes,
+    stringValue(target.code),
+    stringValue(target.symbol),
+    result.code,
+    result.symbol,
+  ]
+    .map(item => normalizeSymbolCode(item ?? ''))
+    .filter(Boolean)
+  return [...new Set(codes)].slice(0, 1)
+}
+
+export function createBacktestHistoryEntry(input: {
+  result?: BacktestResult | null
+  batchResult?: BatchBacktestResult | null
+  codes?: string[]
+  freq?: string
+  signalType?: string
+  createdAt?: string
+}): BacktestHistoryEntry | null {
+  const createdAt = input.createdAt ?? new Date().toISOString()
+  const freq = input.freq || 'daily'
+  const signalType = input.signalType || 'all'
+  if (input.batchResult && isRecoverableBatchResult(input.batchResult)) {
+    const codes = resultCodesFromBatch(input.batchResult, input.codes ?? [])
+    const summary = recordValue(input.batchResult.summary)
+    const metrics = recordValue(input.batchResult.terminal?.metrics)
+    const totalStocks = numberValue(summary.total_stocks) ?? codes.length
+    const totalSignals = numberValue(summary.total_signals) ?? numberValue(metrics.signal_count)
+    const totalTrades = numberValue(summary.total_trades) ?? numberValue(metrics.filled_trades)
+    return {
+      id: `multi:${freq}:${codes.join(',')}:${createdAt}`,
+      title: `多标的回测复盘`,
+      meta: [
+        `${formatNumber(totalStocks, 0)}标的`,
+        totalSignals === undefined ? '' : `${formatNumber(totalSignals, 0)}信号`,
+        totalTrades === undefined ? '' : `${formatNumber(totalTrades, 0)}成交`,
+      ].filter(Boolean).join(' · '),
+      mode: 'multi',
+      createdAt,
+      codes,
+      freq,
+      signalType,
+      batchResult: input.batchResult,
+    }
+  }
+  if (input.result && isRecoverableSingleResult(input.result)) {
+    const codes = resultCodesFromSingle(input.result, input.codes ?? [])
+    const target = terminalTarget(input.result)
+    const metrics = terminalMetrics(input.result)
+    const displayCode = codes[0] ?? normalizeSymbolCode(input.result.code ?? input.result.symbol ?? '')
+    const displayName = stringValue(target.name)
+    return {
+      id: `single:${freq}:${displayCode}:${createdAt}`,
+      title: [displayCode, displayName].filter(Boolean).join(' ') || '单票回测',
+      meta: [
+        `${formatNumber(numberValue(metrics.signal_count) ?? input.result.signals?.length ?? 0, 0)}信号`,
+        `${formatNumber(numberValue(metrics.filled_trades) ?? input.result.sim_trades?.length ?? 0, 0)}成交`,
+      ].join(' · '),
+      mode: 'single',
+      createdAt,
+      codes: displayCode ? [displayCode] : codes,
+      freq,
+      signalType,
+      result: input.result,
+    }
+  }
+  return null
+}
+
+function isBacktestHistoryEntry(value: unknown): value is BacktestHistoryEntry {
+  const record = recordValue(value)
+  const mode = stringValue(record.mode)
+  return Boolean(
+    stringValue(record.id) &&
+      (mode === 'single' || mode === 'multi') &&
+      (isRecoverableBatchResult(record.batchResult) || isRecoverableSingleResult(record.result)),
+  )
+}
+
+export function parseBacktestHistoryEntries(value: unknown): BacktestHistoryEntry[] {
+  const rows = Array.isArray(value) ? value : []
+  return rows
+    .filter(isBacktestHistoryEntry)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+}
+
+function readBacktestHistoryEntries(): BacktestHistoryEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    return parseBacktestHistoryEntries(JSON.parse(window.localStorage.getItem(BACKTEST_HISTORY_STORAGE_KEY) ?? '[]'))
+  } catch {
+    return []
+  }
+}
+
+function writeBacktestHistoryEntries(entries: BacktestHistoryEntry[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(BACKTEST_HISTORY_STORAGE_KEY, JSON.stringify(entries.slice(0, BACKTEST_HISTORY_LIMIT)))
+  } catch {
+    try {
+      window.localStorage.setItem(BACKTEST_HISTORY_STORAGE_KEY, JSON.stringify(entries.slice(0, 3)))
+    } catch {
+      // Ignore storage quota or privacy-mode failures; the active result still renders.
+    }
+  }
+}
+
+function mergeBacktestHistoryEntries(entries: BacktestHistoryEntry[]): BacktestHistoryEntry[] {
+  const byId = new Map<string, BacktestHistoryEntry>()
+  entries.forEach(entry => {
+    if (!byId.has(entry.id)) byId.set(entry.id, entry)
+  })
+  return [...byId.values()]
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, BACKTEST_HISTORY_LIMIT)
+}
+
+export function backtestHistoryEntryFromRecord(title: string, record: Record<string, unknown>): BacktestHistoryEntry | null {
+  const metadata = recordValue(record.metadata)
+  const batchResult =
+    record.batchResult ??
+    record.batch_result ??
+    metadata.batchResult ??
+    metadata.batch_result ??
+    metadata.result
+  const singleResult =
+    record.result ??
+    record.backtest_result ??
+    metadata.result ??
+    metadata.backtest_result
+  const codes = parseCodeList([
+    stringValue(record.symbol),
+    stringValue(metadata.symbol),
+    stringValue(metadata.code),
+    stringValue(record.code),
+  ].filter(Boolean).join(','))
+  const freq = stringValue(record.freq) ?? stringValue(metadata.freq) ?? 'daily'
+  const entry = createBacktestHistoryEntry({
+    batchResult: isRecoverableBatchResult(batchResult) ? batchResult : null,
+    result: isRecoverableSingleResult(singleResult) ? singleResult : null,
+    codes,
+    freq,
+    signalType: stringValue(metadata.signal_type) ?? stringValue(metadata.signal_group),
+    createdAt: stringValue(record.updated_at) ?? stringValue(metadata.created_at) ?? stringValue(metadata.updated_at),
+  })
+  return entry ? { ...entry, title: entry.mode === 'multi' ? entry.title : (title || entry.title) } : null
+}
+
+function dashboardBacktestHistoryEntries(dashboard: BacktestDashboard): BacktestHistoryEntry[] {
+  return dashboard.backtest_jobs
+    .map(job => backtestHistoryEntryFromRecord(String(job.job_id ?? job.symbol ?? 'Backtest'), job as unknown as Record<string, unknown>))
+    .filter((entry): entry is BacktestHistoryEntry => Boolean(entry))
+}
+
 function formatNumber(value: unknown, digits = 2): string {
   const number = numberValue(value)
   if (number === undefined) return emptyDisplay
@@ -999,6 +1250,127 @@ function toKLineData(rawRows: Record<string, unknown>[] | undefined): KLineData[
     })
     .filter((item): item is KLineData => Boolean(item))
     .sort((left, right) => left.timestamp - right.timestamp)
+}
+
+function normalizeTimestampMs(value: unknown): number | undefined {
+  const number = numberValue(value)
+  if (number === undefined) return undefined
+  return number < 10_000_000_000 ? number * 1000 : number
+}
+
+function parseDateTimestampMs(value: unknown): number | undefined {
+  const text = stringValue(value)
+  if (!text) return undefined
+  const match = text.match(/\d{4}-\d{1,2}-\d{1,2}/)
+  if (!match) return undefined
+  const [year, month, day] = match[0].split('-').map(Number)
+  const timestamp = Date.UTC(year, month - 1, day) - MARKET_DATE_TZ_OFFSET_MS
+  return Number.isFinite(timestamp) ? timestamp : undefined
+}
+
+function datePresetTimestampMs(preset: DatePreset): number | undefined {
+  return normalizeTimestampMs(preset.time) ?? parseDateTimestampMs(preset.date)
+}
+
+function dateKey(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: MARKET_DATE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(timestamp))
+  const year = parts.find(item => item.type === 'year')?.value
+  const month = parts.find(item => item.type === 'month')?.value
+  const day = parts.find(item => item.type === 'day')?.value
+  return year && month && day ? `${year}-${month}-${day}` : new Date(timestamp).toISOString().slice(0, 10)
+}
+
+function datePresetShortLabel(preset: DatePreset): string {
+  const label = stringValue(preset.label) ?? stringValue(preset.date) ?? stringValue(preset.key) ?? ''
+  return label.split('—')[0]?.trim() || label.trim()
+}
+
+function datePresetKey(preset: DatePreset, index: number): string {
+  return stringValue(preset.key) ?? stringValue(preset.date) ?? stringValue(preset.label) ?? `preset-${index}`
+}
+
+export function buildDatePresetWindows(presets: DatePreset[] | undefined, data: KLineData[]): DatePresetWindow[] {
+  if (!Array.isArray(presets) || presets.length === 0 || data.length === 0) return []
+  const sortedData = data.slice().sort((left, right) => left.timestamp - right.timestamp)
+  const first = sortedData[0]?.timestamp
+  const last = sortedData[sortedData.length - 1]?.timestamp
+  if (!first || !last) return []
+
+  return presets
+    .map((preset, index) => {
+      const anchorTime = datePresetTimestampMs(preset)
+      if (anchorTime === undefined) return null
+
+      const inStrategyRange = anchorTime >= first - MS_PER_DAY && anchorTime <= last + MS_PER_DAY
+      if (!inStrategyRange) return null
+
+      const from = Math.max(first, anchorTime - DATE_PRESET_BEFORE_DAYS * MS_PER_DAY)
+      const to = Math.min(last, anchorTime + DATE_PRESET_AFTER_DAYS * MS_PER_DAY)
+      const barCount = sortedData.filter(item => item.timestamp >= from && item.timestamp <= to).length
+      if (barCount === 0) return null
+
+      const label = stringValue(preset.label) ?? stringValue(preset.date) ?? stringValue(preset.key) ?? ''
+      return {
+        ...preset,
+        key: datePresetKey(preset, index),
+        label,
+        shortLabel: datePresetShortLabel(preset),
+        from,
+        to,
+        anchorTime,
+        displayRange: `${dateKey(from)} ~ ${dateKey(to)}`,
+        barCount,
+      } satisfies DatePresetWindow
+    })
+    .filter((item): item is DatePresetWindow => Boolean(item))
+    .sort((left, right) => left.anchorTime - right.anchorTime)
+}
+
+function timestampInDateWindow(timestamp: number | undefined, window: DatePresetWindow | null): boolean {
+  if (!window || timestamp === undefined) return false
+  return timestamp >= window.from && timestamp <= window.to
+}
+
+function signalTimestampMs(signal: BacktestSignal): number | undefined {
+  return normalizeTimestampMs(signal.dt ?? signal.time) ?? parseDateTimestampMs(signal.date ?? signal.date_str)
+}
+
+function tradeTimestampsMs(trade: BacktestTrade): number[] {
+  return [trade.signal_date, trade.entry_date, trade.exit_date]
+    .map(parseDateTimestampMs)
+    .filter((item): item is number => item !== undefined)
+}
+
+export function filterSignalsForDateWindow(signals: BacktestSignal[], window: DatePresetWindow | null): BacktestSignal[] {
+  if (!window) return signals
+  return signals.filter(signal => timestampInDateWindow(signalTimestampMs(signal), window))
+}
+
+export function filterTradesForDateWindow(trades: BacktestTrade[], window: DatePresetWindow | null): BacktestTrade[] {
+  if (!window) return trades
+  return trades.filter(trade => tradeTimestampsMs(trade).some(timestamp => timestampInDateWindow(timestamp, window)))
+}
+
+function filterKLineDataForDateWindow(data: KLineData[], window: DatePresetWindow | null): KLineData[] {
+  if (!window) return data
+  return data.filter(item => timestampInDateWindow(item.timestamp, window))
+}
+
+function filterTradeMarkersForDateWindow(markers: Array<Record<string, unknown>>, window: DatePresetWindow | null): Array<Record<string, unknown>> {
+  if (!window) return markers
+  return markers.filter(marker => timestampInDateWindow(normalizeTimestampMs(marker.time), window))
+}
+
+function nearestKLineData(data: KLineData[], timestamp: number): KLineData | undefined {
+  return data.reduce<KLineData | undefined>((nearest, item) => {
+    if (!nearest) return item
+    return Math.abs(item.timestamp - timestamp) < Math.abs(nearest.timestamp - timestamp) ? item : nearest
+  }, undefined)
 }
 
 async function fetchJson<T>(
@@ -1735,11 +2107,29 @@ function createSignalOverlays(
   data: KLineData[],
   signals: BacktestSignal[],
   tradeMarkers: Array<Record<string, unknown>> = [],
+  activeDateWindow: DatePresetWindow | null = null,
   onSelectMarker?: (marker: MarkerData) => void,
 ) {
   chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
   if (data.length === 0) return
   const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
+  if (activeDateWindow) {
+    const eventBar = nearestKLineData(data, activeDateWindow.anchorTime)
+    if (eventBar) {
+      chart.createOverlay({
+        name: BACKTEST_MARKER_OVERLAY,
+        groupId: BACKTEST_MARKER_GROUP,
+        lock: true,
+        points: [{ timestamp: eventBar.timestamp, value: eventBar.close }],
+        extendData: {
+          label: activeDateWindow.shortLabel,
+          color: tradingDeskTheme.chart.gold,
+          side: 'sell',
+          kind: 'date-preset',
+        } satisfies MarkerData,
+      })
+    }
+  }
   signals.slice(-80).forEach(signal => {
     const rawTime = numberValue(signal.dt ?? signal.time)
     if (!rawTime) return
@@ -1832,10 +2222,12 @@ export function BacktestWorkbench({
   const [scan, setScan] = useState<ScanResult | null>(null)
   const [selectedSignalIndex, setSelectedSignalIndex] = useState<number | null>(null)
   const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null)
+  const [selectedDatePresetKey, setSelectedDatePresetKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [symbolCatalog, setSymbolCatalog] = useState<SymbolOption[]>([])
+  const [localHistory, setLocalHistory] = useState<BacktestHistoryEntry[]>(() => readBacktestHistoryEntries())
   const [simParams, setSimParams] = useState<Record<string, string>>({
     stop_loss: '5',
     trail_stop: '50',
@@ -1863,7 +2255,17 @@ export function BacktestWorkbench({
   const trades = terminalPanelData?.trades?.rows ?? result?.sim_trades ?? []
   const tradeMarkers = terminalChartData?.trade_markers ?? terminalChartData?.entry_exit_markers ?? []
   const datePresets = terminalChartData?.date_presets ?? result?.date_presets ?? []
+  const datePresetWindows = useMemo(() => buildDatePresetWindows(datePresets, klineData), [datePresets, klineData])
+  const activeDateWindow = useMemo(
+    () => datePresetWindows.find(item => item.key === selectedDatePresetKey) ?? null,
+    [datePresetWindows, selectedDatePresetKey],
+  )
+  const visibleKlineData = useMemo(() => filterKLineDataForDateWindow(klineData, activeDateWindow), [activeDateWindow, klineData])
+  const visibleSignals = useMemo(() => filterSignalsForDateWindow(signals, activeDateWindow), [activeDateWindow, signals])
+  const visibleTrades = useMemo(() => filterTradesForDateWindow(trades, activeDateWindow), [activeDateWindow, trades])
+  const visibleTradeMarkers = useMemo(() => filterTradeMarkersForDateWindow(tradeMarkers, activeDateWindow), [activeDateWindow, tradeMarkers])
   const filledTrades = trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
+  const visibleFilledTrades = visibleTrades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
   const targetInfo = terminalTarget(result)
   const metrics = terminalMetrics(result)
   const displaySymbol = stringValue(targetInfo.symbol) ?? result?.symbol ?? result?.code ?? code
@@ -1874,6 +2276,11 @@ export function BacktestWorkbench({
   const selectedCodes = useMemo(() => parseCodeList(code), [code])
   const isBatchView = selectedCodes.length > 1 || isMultiMode
   const resultSymbolOptions = useMemo(() => symbolOptionsFromBacktestOutputs(result, batchResult), [batchResult, result])
+  const dashboardHistory = useMemo(() => dashboardBacktestHistoryEntries(dashboard), [dashboard])
+  const restorableHistory = useMemo(
+    () => mergeBacktestHistoryEntries([...localHistory, ...dashboardHistory]),
+    [dashboardHistory, localHistory],
+  )
   const symbolOptions = useMemo(
     () => uniqueSymbolOptions([...symbolOptionsForPicker(dashboard), ...symbolCatalog, ...resultSymbolOptions]),
     [dashboard, resultSymbolOptions, symbolCatalog],
@@ -1893,12 +2300,23 @@ export function BacktestWorkbench({
     }),
     [batchResult, error, freq, loading, locale, result, selectedCodes],
   )
+  const displayedSignalCount = activeDateWindow ? visibleSignals.length : (numberValue(metrics.signal_count) ?? signals.length)
+  const displayedTradeCount = activeDateWindow ? visibleFilledTrades.length : (numberValue(metrics.filled_trades) ?? filledTrades.length)
 
   const rememberSymbolOptions = useCallback((nextOptions: SymbolOption[]) => {
     if (!nextOptions.length) return
     setSymbolCatalog(previous => {
       const merged = uniqueSymbolOptions([...previous, ...nextOptions])
       return symbolOptionsEqual(previous, merged) ? previous : merged
+    })
+  }, [])
+
+  const rememberBacktestHistory = useCallback((entry: BacktestHistoryEntry | null) => {
+    if (!entry) return
+    setLocalHistory(previous => {
+      const next = mergeBacktestHistoryEntries([entry, ...previous])
+      writeBacktestHistoryEntries(next)
+      return next
     })
   }, [])
 
@@ -1915,6 +2333,13 @@ export function BacktestWorkbench({
       ? current.filter(item => item.toUpperCase() !== normalized.toUpperCase())
       : [...current, normalized])
   }, [code, setCodeList])
+
+  const selectDatePreset = useCallback((key: string | null) => {
+    setSelectedDatePresetKey(key)
+    setSelectedSignalIndex(null)
+    setSelectedTradeIndex(null)
+    if (key && (tab === 'perf' || tab === 'scan' || tab === 'risk')) setTab('signals')
+  }, [tab])
 
   const updateSimParam = useCallback((key: string, value: string) => {
     setSimParams(previous => ({ ...previous, [key]: value }))
@@ -1974,7 +2399,14 @@ export function BacktestWorkbench({
         setScan(null)
         setSelectedSignalIndex(null)
         setSelectedTradeIndex(null)
+        setSelectedDatePresetKey(null)
         setTab('perf')
+        rememberBacktestHistory(createBacktestHistoryEntry({
+          batchResult: data,
+          codes: codeList,
+          freq,
+          signalType,
+        }))
         const summary = recordValue(data.summary)
         recordObservationEvent('backtest.batch.success', {
           code_count: codeList.length,
@@ -1994,7 +2426,14 @@ export function BacktestWorkbench({
       setScan(null)
       setSelectedSignalIndex(null)
       setSelectedTradeIndex(null)
+      setSelectedDatePresetKey(null)
       if (!hadResult) setTab('perf')
+      rememberBacktestHistory(createBacktestHistoryEntry({
+        result: data,
+        codes: codeList,
+        freq,
+        signalType,
+      }))
       const metrics = recordValue(data.terminal?.metrics)
       recordObservationEvent('backtest.analyze.success', {
         code: data.code ?? code.trim(),
@@ -2028,7 +2467,7 @@ export function BacktestWorkbench({
     } finally {
       setLoading(false)
     }
-  }, [baseUrl, batchResult, code, freq, locale, result, signalType, simParams])
+  }, [baseUrl, batchResult, code, freq, locale, rememberBacktestHistory, result, signalType, simParams])
 
   const runScan = useCallback(async () => {
     if (!baseUrl || !code.trim()) return
@@ -2106,8 +2545,45 @@ export function BacktestWorkbench({
     setScan(null)
     setSelectedSignalIndex(null)
     setSelectedTradeIndex(null)
+    setSelectedDatePresetKey(null)
     setTab('perf')
   }, [])
+
+  const restoreBacktestHistory = useCallback((entry: BacktestHistoryEntry) => {
+    const codes = entry.codes.length ? entry.codes : parseCodeList(code)
+    if (codes.length) setCode(selectedSymbolText(codes))
+    setFreq(entry.freq || 'daily')
+    if (entry.signalType && ['all', 'macd', 'czsc', 'gap', 'trend_breakout', 'vol_contraction', 'candle_run', 'candle_accel'].includes(entry.signalType)) {
+      setSignalType(entry.signalType as SignalType)
+    }
+    if (entry.mode === 'multi' && entry.batchResult) {
+      setBatchResult(entry.batchResult)
+      setResult(null)
+    } else if (entry.result) {
+      setResult(entry.result)
+      setBatchResult(null)
+    }
+    setScan(null)
+    setError(null)
+    setSelectedSignalIndex(null)
+    setSelectedTradeIndex(null)
+    setSelectedDatePresetKey(null)
+    setTab('perf')
+    recordObservationEvent('backtest.history.restore', {
+      id: entry.id,
+      mode: entry.mode,
+      codes: entry.codes,
+      freq: entry.freq,
+    })
+  }, [code])
+
+  useEffect(() => {
+    if (!selectedDatePresetKey) return
+    if (datePresetWindows.some(item => item.key === selectedDatePresetKey)) return
+    setSelectedDatePresetKey(null)
+    setSelectedSignalIndex(null)
+    setSelectedTradeIndex(null)
+  }, [datePresetWindows, selectedDatePresetKey])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2207,15 +2683,19 @@ export function BacktestWorkbench({
     const chart = chartRef.current
     if (!chart) return
     chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
-    if (klineData.length === 0) {
+    if (visibleKlineData.length === 0) {
       chart.clearData()
       return
     }
-    chart.applyNewData(klineData)
-    createSignalOverlays(chart, klineData, signals, tradeMarkers, handleMarkerSelect)
-    chart.scrollToRealTime()
+    chart.applyNewData(visibleKlineData)
+    createSignalOverlays(chart, visibleKlineData, visibleSignals, visibleTradeMarkers, activeDateWindow, handleMarkerSelect)
+    if (activeDateWindow) {
+      chart.scrollToTimestamp(activeDateWindow.anchorTime, 300)
+    } else {
+      chart.scrollToRealTime()
+    }
     chart.resize()
-  }, [handleMarkerSelect, isBatchView, klineData, signals, tradeMarkers])
+  }, [activeDateWindow, handleMarkerSelect, isBatchView, visibleKlineData, visibleSignals, visibleTradeMarkers])
 
   if (!baseUrl) {
     return (
@@ -2228,6 +2708,8 @@ export function BacktestWorkbench({
         <FallbackBacktest
           locale={locale}
           dashboard={dashboard}
+          historyEntries={restorableHistory}
+          onRestoreHistory={restoreBacktestHistory}
           onOpenRun={onOpenRun}
           onOpenRecord={onOpenRecord}
         />
@@ -2307,8 +2789,8 @@ export function BacktestWorkbench({
                 : `${numberValue(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0} symbols · ${numberValue(batchResult.summary?.total_signals) ?? 0} signals · ${numberValue(batchResult.summary?.total_trades) ?? 0} trades`
               : result
               ? `${locale === 'zh-CN'
-                ? `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length}信号 · ${numberValue(metrics.filled_trades) ?? filledTrades.length}笔交易`
-                : `${displaySymbol} · ${numberValue(metrics.signal_count) ?? signals.length} signals · ${numberValue(metrics.filled_trades) ?? filledTrades.length} trades`
+                ? `${displaySymbol} · ${displayedSignalCount}信号 · ${displayedTradeCount}笔交易`
+                : `${displaySymbol} · ${displayedSignalCount} signals · ${displayedTradeCount} trades`
               }${dataSourceLabel ? ` · ${dataSourceLabel}` : ''}`
               : locale === 'zh-CN'
                 ? '从下方选择动态产业链组合或勾选多只标的'
@@ -2331,6 +2813,7 @@ export function BacktestWorkbench({
           setCodeList([])
           setBatchResult(null)
           setResult(null)
+          setSelectedDatePresetKey(null)
         }}
         onRemoveCode={codeToRemove => {
           setCodeList(selectedCodes.filter(item => item.toUpperCase() !== codeToRemove.toUpperCase()))
@@ -2363,32 +2846,61 @@ export function BacktestWorkbench({
             />
           ) : (
           <Panel title={locale === 'zh-CN' ? '日期标签' : 'Date presets'}>
-            {datePresets.length ? (
+            {datePresetWindows.length ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {datePresets.slice(0, 12).map(item => (
+                <button
+                  type="button"
+                  style={buttonStyle(!activeDateWindow)}
+                  onClick={() => selectDatePreset(null)}
+                  title={locale === 'zh-CN' ? '显示完整回测区间' : 'Show full backtest range'}
+                >
+                  {locale === 'zh-CN' ? '全部' : 'All'}
+                </button>
+                {datePresetWindows.slice(0, 12).map(item => (
                   <button
-                    key={item.key ?? item.label ?? item.date}
+                    key={item.key}
                     type="button"
-                    style={buttonStyle(false)}
+                    style={buttonStyle(activeDateWindow?.key === item.key)}
+                    title={`${item.displayRange} · ${item.label}`}
                     onClick={() => {
-                      const chart = chartRef.current
-                      const time = numberValue(item.time)
-                      if (chart && time) chart.scrollToTimestamp(time * 1000, 300)
+                      recordObservationEvent('backtest.date-preset.select', {
+                        key: item.key,
+                        label: item.shortLabel,
+                        from: dateKey(item.from),
+                        to: dateKey(item.to),
+                        code: code.trim(),
+                        freq,
+                      })
+                      selectDatePreset(item.key)
                     }}
                   >
-                    {String(item.label ?? item.date ?? item.key ?? '').split('—')[0].trim()}
+                    {item.shortLabel}
                   </button>
                 ))}
               </div>
+            ) : result && datePresets.length ? (
+              <div style={emptyStyle}>{locale === 'zh-CN' ? '当前策略区间没有匹配的事件标签。' : 'No event presets match this backtest range.'}</div>
             ) : (
               <div style={emptyStyle}>{locale === 'zh-CN' ? '运行后显示事件标签。' : 'Run to show event presets.'}</div>
             )}
+            {activeDateWindow ? (
+              <div style={mutedStyle}>
+                {activeDateWindow.displayRange} · {activeDateWindow.barCount}{locale === 'zh-CN' ? '根K线' : ' bars'}
+              </div>
+            ) : null}
           </Panel>
           )}
-          {!isBatchView && !result ? (
           <Panel title={locale === 'zh-CN' ? '回测记录' : 'Backtest records'}>
-            <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
+            <BacktestHistoryRows
+              locale={locale}
+              entries={restorableHistory}
+              onRestore={restoreBacktestHistory}
+            />
           </Panel>
+          {!isBatchView && !result ? (
+            <Panel title={locale === 'zh-CN' ? '待处理线索' : 'Pending signals'}>
+              <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
+            </Panel>
           ) : null}
         </div>
 
@@ -2431,9 +2943,29 @@ export function BacktestWorkbench({
             </div>
           ) : null}
           <MetricStrip result={result} locale={locale} />
+          {activeDateWindow ? (
+            <div style={datePresetFocusStyle}>
+              <div style={{ minWidth: 0 }}>
+                <div style={labelStyle}>{locale === 'zh-CN' ? '事件区间详情' : 'Event detail range'}</div>
+                <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {activeDateWindow.shortLabel} · {activeDateWindow.displayRange}
+                </div>
+                <div style={mutedStyle}>
+                  {activeDateWindow.barCount}{locale === 'zh-CN' ? '根K线' : ' bars'} · {visibleSignals.length}{locale === 'zh-CN' ? '个信号' : ' signals'} · {visibleFilledTrades.length}{locale === 'zh-CN' ? '笔交易' : ' trades'}
+                </div>
+              </div>
+              <button
+                type="button"
+                style={buttonStyle(false)}
+                onClick={() => selectDatePreset(null)}
+              >
+                {locale === 'zh-CN' ? '回到全部' : 'All'}
+              </button>
+            </div>
+          ) : null}
           <div style={chartShellStyle}>
             <div ref={chartContainerRef} style={{ width: '100%', height: '100%' }} />
-            {!result || klineData.length === 0 ? (
+            {!result || visibleKlineData.length === 0 ? (
               <div style={{
                 position: 'absolute',
                 inset: 0,
@@ -2490,20 +3022,23 @@ export function BacktestWorkbench({
               <KpiPanel result={result} />
             </Panel>
           ) : tab === 'trades' ? (
-            <Panel title={locale === 'zh-CN' ? '交易明细' : 'Trades'} meta={String(filledTrades.length)}>
+            <Panel title={locale === 'zh-CN' ? '交易明细' : 'Trades'} meta={String(visibleFilledTrades.length)}>
               <TradeTable
-                trades={trades}
+                trades={visibleTrades}
                 selectedIndex={selectedTradeIndex}
-                onSelect={index => {
+                onSelect={(index, rawTime) => {
                   setSelectedTradeIndex(index)
                   setTab('trades')
+                  const chart = chartRef.current
+                  const time = normalizeTimestampMs(rawTime)
+                  if (chart && time) chart.scrollToTimestamp(time, 300)
                 }}
               />
             </Panel>
           ) : tab === 'signals' ? (
-            <Panel title={locale === 'zh-CN' ? '信号详情' : 'Signals'} meta={String(signals.length)}>
+            <Panel title={locale === 'zh-CN' ? '信号详情' : 'Signals'} meta={String(visibleSignals.length)}>
               <SignalTable
-                signals={signals}
+                signals={visibleSignals}
                 selectedIndex={selectedSignalIndex}
                 onSelect={(index, rawTime) => {
                   setSelectedSignalIndex(index)
@@ -4001,7 +4536,7 @@ function TradeTable({
 }: {
   trades: BacktestTrade[]
   selectedIndex: number | null
-  onSelect: (index: number) => void
+  onSelect: (index: number, rawTime?: number) => void
 }) {
   const filled = trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
   if (filled.length === 0) return <div style={emptyStyle}>暂无成交记录。</div>
@@ -4027,7 +4562,7 @@ function TradeTable({
                 background: rowActive ? tradingDeskTheme.alpha.accentSurface : 'transparent',
                 cursor: 'pointer',
               }}
-              onClick={() => onSelect(sourceIndex)}
+              onClick={() => onSelect(sourceIndex, tradeTimestampsMs(trade)[0])}
             >
               <td style={{ padding: 7 }}>
                 <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{trade.signal_type ?? '信号'}</div>
@@ -4173,6 +4708,61 @@ function ScanControls({
   )
 }
 
+function historyEntryTitle(entry: BacktestHistoryEntry, locale: LongclawLocale): string {
+  if (entry.mode === 'multi') {
+    const count = entry.codes.length
+    return locale === 'zh-CN'
+      ? `多标的回测${count ? ` · ${count}只` : ''}`
+      : `Multi-symbol backtest${count ? ` · ${count}` : ''}`
+  }
+  return entry.title
+}
+
+function historyEntryMeta(entry: BacktestHistoryEntry, locale: LongclawLocale): string {
+  const date = entry.createdAt ? entry.createdAt.slice(5, 16).replace('T', ' ') : ''
+  return [
+    entry.meta,
+    freqLabel(entry.freq, locale),
+    date,
+  ].filter(Boolean).join(' · ')
+}
+
+function BacktestHistoryRows({
+  locale,
+  entries,
+  onRestore,
+}: {
+  locale: LongclawLocale
+  entries: BacktestHistoryEntry[]
+  onRestore: (entry: BacktestHistoryEntry) => void
+}) {
+  if (entries.length === 0) {
+    return (
+      <div style={emptyStyle}>
+        {locale === 'zh-CN' ? '暂无可复原回测。' : 'No restorable backtest yet.'}
+      </div>
+    )
+  }
+  return (
+    <div style={compactListStyle}>
+      {entries.slice(0, BACKTEST_HISTORY_LIMIT).map(entry => (
+        <button
+          key={entry.id}
+          type="button"
+          style={{ ...rowStyle, width: '100%', cursor: 'pointer', textAlign: 'left' }}
+          onClick={() => onRestore(entry)}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: terminalTheme.textStrong, fontWeight: 700 }}>{historyEntryTitle(entry, locale)}</div>
+            <div style={mutedStyle}>{historyEntryMeta(entry, locale)}</div>
+          </div>
+          <span style={statusBadgeStyle('success')}>{locale === 'zh-CN' ? '复原' : 'Restore'}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function FallbackRows({
   dashboard,
   onOpenRun,
@@ -4235,17 +4825,24 @@ function FallbackRows({
 function FallbackBacktest({
   locale,
   dashboard,
+  historyEntries,
+  onRestoreHistory,
   onOpenRun,
   onOpenRecord,
 }: {
   locale: LongclawLocale
   dashboard: BacktestDashboard
+  historyEntries: BacktestHistoryEntry[]
+  onRestoreHistory: (entry: BacktestHistoryEntry) => void
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }) {
   return (
     <div style={{ ...mainGridStyle, gridTemplateColumns: '1fr' }}>
       <Panel title={locale === 'zh-CN' ? '回测记录' : 'Backtest records'}>
+        <BacktestHistoryRows locale={locale} entries={historyEntries} onRestore={onRestoreHistory} />
+      </Panel>
+      <Panel title={locale === 'zh-CN' ? '待处理线索' : 'Pending signals'}>
         <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
       </Panel>
     </div>

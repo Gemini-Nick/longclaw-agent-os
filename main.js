@@ -31479,26 +31479,64 @@ async function observedFetchJson(baseUrl, path, options) {
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
 var BACKTEST_MARKER_OVERLAY = "longclawBacktestMarker";
 var BACKTEST_MARKER_GROUP = "longclaw-backtest-markers";
+var DATE_PRESET_BEFORE_DAYS = 30;
+var DATE_PRESET_AFTER_DAYS = 60;
+var MS_PER_DAY = 864e5;
+var MARKET_DATE_TZ_OFFSET_MS = 8 * 60 * 60 * 1e3;
+var MARKET_DATE_TIME_ZONE = "Asia/Shanghai";
+var BACKTEST_HISTORY_STORAGE_KEY = "longclaw.backtestWorkbench.history.v1";
+var BACKTEST_HISTORY_LIMIT = 8;
 var markerRegistered = false;
 var terminalTheme = tradingDeskTheme.colors;
+var emptyDisplay = "--";
 var rootStyle = {
   height: "100%",
   minHeight: 0,
   display: "grid",
-  gridTemplateRows: "40px minmax(0, 1fr)",
+  gridTemplateRows: "40px auto minmax(0, 1fr)",
   background: terminalTheme.root,
   color: terminalTheme.text,
   fontFamily: fontStacks.ui
 };
 var toolbarStyle = {
   display: "grid",
-  gridTemplateColumns: "auto minmax(160px, 240px) auto auto auto minmax(0, 1fr) auto",
+  gridTemplateColumns: "auto minmax(210px, 360px) auto auto auto minmax(0, 1fr) auto",
   alignItems: "center",
   gap: 7,
   padding: "5px 9px",
   borderBottom: `1px solid ${terminalTheme.grid}`,
   background: terminalTheme.panel,
   minWidth: 0
+};
+var basketBarStyle = {
+  display: "grid",
+  gridTemplateColumns: "auto minmax(0, 1fr)",
+  alignItems: "center",
+  gap: "6px 8px",
+  padding: "6px 9px",
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: terminalTheme.panel,
+  minWidth: 0
+};
+var basketSearchStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 6,
+  minWidth: 0
+};
+var chipRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  minWidth: 0,
+  flexWrap: "wrap",
+  overflow: "hidden",
+  paddingBottom: 0
+};
+var compactChipRowStyle = {
+  ...chipRowStyle,
+  maxHeight: 68
 };
 var mainGridStyle = {
   display: "grid",
@@ -31557,6 +31595,17 @@ var chartShellStyle = {
   background: terminalTheme.chartPanel,
   overflow: "hidden"
 };
+var datePresetFocusStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: "7px 8px",
+  minHeight: 0
+};
 var inputStyle = {
   height: 30,
   minWidth: 0,
@@ -31567,7 +31616,9 @@ var inputStyle = {
   padding: "0 9px",
   fontFamily: fontStacks.mono,
   fontSize: 13,
-  outline: "none"
+  outline: "none",
+  transition: interaction.transition,
+  touchAction: interaction.touchAction
 };
 var selectStyle = {
   ...inputStyle,
@@ -31642,15 +31693,206 @@ var warningStyle = {
   padding: "8px 10px",
   fontSize: 13
 };
+var researchPanelStyle = {
+  ...panelStyle,
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: terminalTheme.panelRaised,
+  gap: 8
+};
+var researchHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  minWidth: 0
+};
+var researchFlowStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 6
+};
+var researchPillStyle = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: "6px 7px",
+  minWidth: 0
+};
+var researchIssueRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 5,
+  minWidth: 0
+};
+var researchActionStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+  margin: 0,
+  padding: 0,
+  listStyle: "none"
+};
+var multiReportBaseStyle = {
+  minHeight: 0,
+  overflow: "auto",
+  background: terminalTheme.root,
+  padding: 10,
+  display: "flex",
+  flexDirection: "column",
+  gap: 10
+};
+var reportTableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 12,
+  tableLayout: "fixed"
+};
+function multiReportDensity(width, height) {
+  if (width >= 1680 && height >= 720) return "wide";
+  if (width <= 1240 || height <= 760) return "compact";
+  return "desk";
+}
+function multiReportStyle(density) {
+  return {
+    ...multiReportBaseStyle,
+    padding: density === "compact" ? 8 : 10,
+    gap: density === "compact" ? 8 : 10
+  };
+}
+function multiHeaderStyle(density) {
+  return {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: density === "compact" ? 7 : 10,
+    alignItems: "start"
+  };
+}
+function multiKpiGridStyle(density) {
+  return {
+    display: "grid",
+    gridTemplateColumns: density === "compact" ? "repeat(auto-fit, minmax(82px, 1fr))" : "repeat(auto-fit, minmax(104px, 1fr))",
+    gap: 6,
+    width: "100%",
+    minWidth: 0
+  };
+}
+function multiBandStyle(density) {
+  return {
+    display: "grid",
+    gridTemplateColumns: density === "compact" ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(300px, 0.62fr)",
+    gap: density === "compact" ? 8 : 10,
+    minHeight: 0
+  };
+}
+function multiChartsGridStyle(density, count) {
+  if (density === "compact") {
+    return {
+      display: "grid",
+      gridAutoFlow: "column",
+      gridAutoColumns: "minmax(258px, 32%)",
+      gap: 8,
+      overflowX: "auto",
+      overflowY: "hidden",
+      paddingBottom: 2
+    };
+  }
+  if (density === "wide") {
+    if (count < 4) {
+      return {
+        display: "grid",
+        gridTemplateColumns: `repeat(${Math.max(1, count)}, minmax(320px, 420px))`,
+        justifyContent: "start",
+        gap: 10
+      };
+    }
+    return {
+      display: "grid",
+      gridTemplateColumns: `repeat(${Math.max(1, Math.min(count, 5))}, minmax(0, 1fr))`,
+      gap: 10
+    };
+  }
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 420px))",
+    justifyContent: "start",
+    gap: 10
+  };
+}
+function scriptGridStyle(density, count) {
+  if (density === "compact") {
+    return {
+      display: "grid",
+      gridAutoFlow: "column",
+      gridAutoColumns: "minmax(252px, 31%)",
+      gap: 8,
+      overflowX: "auto",
+      overflowY: "hidden",
+      paddingBottom: 2
+    };
+  }
+  if (density === "wide") {
+    if (count < 4) {
+      return {
+        display: "grid",
+        gridTemplateColumns: `repeat(${Math.max(1, count)}, minmax(280px, 380px))`,
+        justifyContent: "start",
+        gap: 10
+      };
+    }
+    return {
+      display: "grid",
+      gridTemplateColumns: `repeat(${Math.max(1, Math.min(count, 5))}, minmax(0, 1fr))`,
+      gap: 10
+    };
+  }
+  return {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 10
+  };
+}
+function reportTableWrapStyle(kind, density) {
+  const compactHeight = kind === "ranking" ? 212 : 202;
+  return {
+    ...tableWrapStyle,
+    flex: density === "compact" ? `0 0 ${compactHeight}px` : "0 0 auto",
+    flexShrink: 0,
+    minHeight: density === "compact" ? compactHeight : 0,
+    height: density === "compact" ? compactHeight : void 0,
+    maxHeight: density === "compact" ? compactHeight : 246
+  };
+}
+function signalBreakdownWrapStyle(density) {
+  return {
+    ...tableWrapStyle,
+    flex: "0 0 auto",
+    maxHeight: density === "compact" ? 260 : 330
+  };
+}
+function multiPanelStyle(density) {
+  return {
+    flexShrink: 0,
+    overflow: density === "compact" ? "visible" : "hidden"
+  };
+}
+function reportTableStyleFor(kind, density) {
+  return {
+    ...reportTableStyle,
+    minWidth: kind === "ranking" ? density === "compact" ? 820 : 1180 : density === "compact" ? 760 : 820
+  };
+}
 function backtestDataSourceLabel(result, locale) {
-  if (!result?.data_source) return "";
-  if (result.data_source_detail) return result.data_source_detail;
+  const target = terminalTarget(result);
+  const dataSource = stringValue2(target.data_source) ?? result?.data_source;
+  const dataSourceDetail = stringValue2(target.data_source_detail) ?? result?.data_source_detail;
+  if (!dataSource) return "";
+  if (dataSourceDetail) return dataSourceDetail;
   const labels = locale === "zh-CN" ? {
     disk_cache: "\u78C1\u76D8\u7F13\u5B58",
     daily_cache_resampled_weekly: "\u65E5\u7EBF\u805A\u5408\u5468\u7EBF",
     daily_cache_resampled_monthly: "\u65E5\u7EBF\u805A\u5408\u6708\u7EBF",
     mongodb: "MongoDB",
-    mongodb_bars: "MongoDB bars",
+    mongodb_bars: "MongoDB K\u7EBF",
     mongodb_daily_resampled_weekly: "Mongo\u65E5\u7EBF\u805A\u5408\u5468\u7EBF",
     mongodb_daily_resampled_monthly: "Mongo\u65E5\u7EBF\u805A\u5408\u6708\u7EBF",
     eastmoney: "\u4E1C\u8D22",
@@ -31668,9 +31910,11 @@ function backtestDataSourceLabel(result, locale) {
     eastmoney_minute: "Eastmoney intraday",
     sina: "Sina"
   };
-  return labels[result.data_source] ?? result.data_source;
+  return labels[dataSource] ?? dataSource;
 }
 function isFallbackDataSource(result) {
+  const target = terminalTarget(result);
+  const dataSource = stringValue2(target.data_source) ?? result?.data_source ?? "";
   return [
     "disk_cache",
     "daily_cache_resampled_weekly",
@@ -31679,18 +31923,94 @@ function isFallbackDataSource(result) {
     "mongodb_bars",
     "mongodb_daily_resampled_weekly",
     "mongodb_daily_resampled_monthly"
-  ].includes(result?.data_source ?? "");
+  ].includes(dataSource);
 }
 function dataHealthText(result, locale) {
   if (!result) return "";
+  const target = terminalTarget(result);
+  const asOf = stringValue2(target.as_of) ?? result.as_of;
+  const barCount = numberValue2(target.bar_count) ?? result.bar_count;
+  const freshness = stringValue2(target.freshness) ?? result.freshness;
   const parts = [
-    result.as_of ? `${locale === "zh-CN" ? "\u622A\u81F3" : "as of"} ${result.as_of}` : "",
-    typeof result.bar_count === "number" ? `${result.bar_count} bars` : "",
-    result.freshness ? result.freshness : "",
+    asOf ? `${locale === "zh-CN" ? "\u622A\u81F3" : "as of"} ${asOf}` : "",
+    typeof barCount === "number" ? locale === "zh-CN" ? `${barCount}\u6839K\u7EBF` : `${barCount} bars` : "",
+    freshness ? freshnessLabel(freshness, locale) : "",
     result.derived_from ? `${locale === "zh-CN" ? "\u805A\u5408\u81EA" : "derived from"} ${result.derived_from}` : "",
-    result.partial ? locale === "zh-CN" ? "partial" : "partial" : ""
+    result.partial ? locale === "zh-CN" ? "\u90E8\u5206\u6570\u636E" : "partial" : ""
   ].filter(Boolean);
   return parts.join(" \xB7 ");
+}
+function freqLabel(value, locale) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const key = raw.toLowerCase();
+  const labels = locale === "zh-CN" ? {
+    daily: "\u65E5\u7EBF",
+    day: "\u65E5\u7EBF",
+    d: "\u65E5\u7EBF",
+    weekly: "\u5468\u7EBF",
+    week: "\u5468\u7EBF",
+    w: "\u5468\u7EBF",
+    monthly: "\u6708\u7EBF",
+    month: "\u6708\u7EBF",
+    m: "\u6708\u7EBF"
+  } : {
+    daily: "Daily",
+    day: "Daily",
+    d: "Daily",
+    weekly: "Weekly",
+    week: "Weekly",
+    w: "Weekly",
+    monthly: "Monthly",
+    month: "Monthly",
+    m: "Monthly"
+  };
+  return labels[key] ?? raw;
+}
+function freshnessLabel(value, locale) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const key = raw.toLowerCase();
+  const labels = locale === "zh-CN" ? {
+    fresh: "\u6700\u65B0",
+    stale: "\u9648\u65E7",
+    partial: "\u90E8\u5206\u6570\u636E",
+    missing: "\u7F3A\u5931"
+  } : {
+    fresh: "fresh",
+    stale: "stale",
+    partial: "partial",
+    missing: "missing"
+  };
+  return labels[key] ?? raw;
+}
+function runStatusLabel(error, loading, hasResult, locale) {
+  if (locale !== "zh-CN") return error ? "error" : loading ? "running" : hasResult ? "ready" : "idle";
+  if (error) return "\u5931\u8D25";
+  if (loading) return "\u5206\u6790\u4E2D";
+  if (hasResult) return "\u5DF2\u5C31\u7EEA";
+  return "\u5F85\u8FD0\u884C";
+}
+function backtestTabLabel(tab, locale) {
+  if (locale !== "zh-CN") return tab;
+  return {
+    perf: "\u7EE9\u6548",
+    trades: "\u4EA4\u6613",
+    signals: "\u4FE1\u53F7",
+    scan: "\u626B\u63CF",
+    risk: "\u98CE\u63A7"
+  }[tab];
+}
+function boardKindLabel(kind, locale) {
+  const raw = String(kind ?? "").trim();
+  if (!raw) return locale === "zh-CN" ? "\u677F\u5757" : "board";
+  if (locale !== "zh-CN") return raw;
+  return {
+    board: "\u677F\u5757",
+    concept: "\u6982\u5FF5",
+    industry: "\u884C\u4E1A",
+    chain: "\u4EA7\u4E1A\u94FE"
+  }[raw.toLowerCase()] ?? raw;
 }
 function buttonStyle(active = false, disabled = false) {
   return {
@@ -31705,11 +32025,45 @@ function buttonStyle(active = false, disabled = false) {
     fontFamily: fontStacks.ui,
     fontSize: 13,
     fontWeight: 700,
-    whiteSpace: "nowrap"
+    whiteSpace: "nowrap",
+    transition: interaction.transition,
+    touchAction: interaction.touchAction
   };
 }
 function trimTrailingSlash2(value) {
   return value?.trim().replace(/\/+$/, "") ?? "";
+}
+function urlFromBacktestDashboard(dashboard) {
+  const terminalLink = dashboard.deep_links?.find((link) => link.link_id === "signals-terminal");
+  return trimTrailingSlash2(terminalLink?.url);
+}
+function normalizeSymbolCode(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const withoutPrefix = trimmed.replace(/^(SZ|SH|HK|US)\./i, "");
+  const suffixMatch = withoutPrefix.match(/^([A-Za-z0-9]+)\.(SZ|SH|HK|US)$/i);
+  return (suffixMatch?.[1] ?? withoutPrefix).toUpperCase();
+}
+var MAX_BACKTEST_BATCH_CODES = 20;
+var BATCH_BACKTEST_LOOKBACK_BARS = 360;
+var SYMBOL_NAME_LOOKUP_TIMEOUT_MS = 45e3;
+function isBacktestUnsupportedBoardCode(code) {
+  const normalized = normalizeSymbolCode(code);
+  return /^(4|8|920)\d{3,5}$/.test(normalized);
+}
+function orderBacktestCandidateOptions(options) {
+  return options.map((option, index) => ({ option, index, unsupported: isBacktestUnsupportedBoardCode(option.code) })).sort((left, right) => {
+    if (left.unsupported === right.unsupported) return left.index - right.index;
+    return left.unsupported ? 1 : -1;
+  }).map((item) => item.option);
+}
+function extractSymbolCandidates(value) {
+  const normalized = normalizeSymbolCode(value);
+  if (!normalized) return [];
+  if (/^\d{5,6}$/.test(normalized) || /^[A-Z]{1,6}$/.test(normalized)) return [normalized];
+  const aShareCodes = normalized.match(/\d{6}/g) ?? [];
+  if (aShareCodes.length) return aShareCodes;
+  return normalized.match(/\d{5}/g) ?? [];
 }
 function recordValue2(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -31725,20 +32079,206 @@ function numberValue2(value) {
   }
   return void 0;
 }
+function terminalOf(result) {
+  return result?.terminal?.version === "backtest-terminal.v1" ? result.terminal : void 0;
+}
+function terminalTarget(result) {
+  return recordValue2(terminalOf(result)?.target);
+}
+function terminalMetrics(result) {
+  return recordValue2(terminalOf(result)?.metrics);
+}
+function terminalPanels(result) {
+  return terminalOf(result)?.panels;
+}
+function terminalChart(result) {
+  return terminalOf(result)?.chart;
+}
+function isRecoverableBatchResult(value) {
+  const result = recordValue2(value);
+  const terminal = recordValue2(result.terminal);
+  const panels = recordValue2(result.terminal?.panels);
+  const multiCharts = Array.isArray(recordValue2(panels.multi_charts).items) ? recordValue2(panels.multi_charts).items : [];
+  return Boolean(
+    result && (terminal.mode === "multi" || Array.isArray(result.stocks) || Object.keys(recordValue2(result.summary)).length > 0 || multiCharts.length > 0)
+  );
+}
+function isRecoverableSingleResult(value) {
+  const result = recordValue2(value);
+  const terminal = terminalOf(result);
+  return Boolean(
+    result && (terminal?.chart?.ohlcv?.length || terminal?.panels?.signals?.rows?.length || Array.isArray(result.ohlcv) || Array.isArray(result.signals))
+  );
+}
+function resultCodesFromBatch(batchResult, fallbackCodes) {
+  const rankingRows = Array.isArray(batchResult.terminal?.panels?.ranking?.rows) ? batchResult.terminal?.panels?.ranking?.rows ?? [] : [];
+  const stockRows = Array.isArray(batchResult.stocks) ? batchResult.stocks : [];
+  const codes = [...fallbackCodes, ...rankingRows, ...stockRows].map((item) => typeof item === "string" ? item : stringValue2(recordValue2(item).code) ?? stringValue2(recordValue2(item).symbol) ?? "").map(normalizeSymbolCode).filter(Boolean);
+  return [...new Set(codes)];
+}
+function resultCodesFromSingle(result, fallbackCodes) {
+  const target = terminalTarget(result);
+  const codes = [
+    ...fallbackCodes,
+    stringValue2(target.code),
+    stringValue2(target.symbol),
+    result.code,
+    result.symbol
+  ].map((item) => normalizeSymbolCode(item ?? "")).filter(Boolean);
+  return [...new Set(codes)].slice(0, 1);
+}
+function createBacktestHistoryEntry(input) {
+  const createdAt = input.createdAt ?? (/* @__PURE__ */ new Date()).toISOString();
+  const freq = input.freq || "daily";
+  const signalType = input.signalType || "all";
+  if (input.batchResult && isRecoverableBatchResult(input.batchResult)) {
+    const codes = resultCodesFromBatch(input.batchResult, input.codes ?? []);
+    const summary = recordValue2(input.batchResult.summary);
+    const metrics = recordValue2(input.batchResult.terminal?.metrics);
+    const totalStocks = numberValue2(summary.total_stocks) ?? codes.length;
+    const totalSignals = numberValue2(summary.total_signals) ?? numberValue2(metrics.signal_count);
+    const totalTrades = numberValue2(summary.total_trades) ?? numberValue2(metrics.filled_trades);
+    return {
+      id: `multi:${freq}:${codes.join(",")}:${createdAt}`,
+      title: `\u591A\u6807\u7684\u56DE\u6D4B\u590D\u76D8`,
+      meta: [
+        `${formatNumber(totalStocks, 0)}\u6807\u7684`,
+        totalSignals === void 0 ? "" : `${formatNumber(totalSignals, 0)}\u4FE1\u53F7`,
+        totalTrades === void 0 ? "" : `${formatNumber(totalTrades, 0)}\u6210\u4EA4`
+      ].filter(Boolean).join(" \xB7 "),
+      mode: "multi",
+      createdAt,
+      codes,
+      freq,
+      signalType,
+      batchResult: input.batchResult
+    };
+  }
+  if (input.result && isRecoverableSingleResult(input.result)) {
+    const codes = resultCodesFromSingle(input.result, input.codes ?? []);
+    const target = terminalTarget(input.result);
+    const metrics = terminalMetrics(input.result);
+    const displayCode = codes[0] ?? normalizeSymbolCode(input.result.code ?? input.result.symbol ?? "");
+    const displayName = stringValue2(target.name);
+    return {
+      id: `single:${freq}:${displayCode}:${createdAt}`,
+      title: [displayCode, displayName].filter(Boolean).join(" ") || "\u5355\u7968\u56DE\u6D4B",
+      meta: [
+        `${formatNumber(numberValue2(metrics.signal_count) ?? input.result.signals?.length ?? 0, 0)}\u4FE1\u53F7`,
+        `${formatNumber(numberValue2(metrics.filled_trades) ?? input.result.sim_trades?.length ?? 0, 0)}\u6210\u4EA4`
+      ].join(" \xB7 "),
+      mode: "single",
+      createdAt,
+      codes: displayCode ? [displayCode] : codes,
+      freq,
+      signalType,
+      result: input.result
+    };
+  }
+  return null;
+}
+function isBacktestHistoryEntry(value) {
+  const record = recordValue2(value);
+  const mode = stringValue2(record.mode);
+  return Boolean(
+    stringValue2(record.id) && (mode === "single" || mode === "multi") && (isRecoverableBatchResult(record.batchResult) || isRecoverableSingleResult(record.result))
+  );
+}
+function parseBacktestHistoryEntries(value) {
+  const rows = Array.isArray(value) ? value : [];
+  return rows.filter(isBacktestHistoryEntry).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+function readBacktestHistoryEntries() {
+  if (typeof window === "undefined") return [];
+  try {
+    return parseBacktestHistoryEntries(JSON.parse(window.localStorage.getItem(BACKTEST_HISTORY_STORAGE_KEY) ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+function writeBacktestHistoryEntries(entries) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BACKTEST_HISTORY_STORAGE_KEY, JSON.stringify(entries.slice(0, BACKTEST_HISTORY_LIMIT)));
+  } catch {
+    try {
+      window.localStorage.setItem(BACKTEST_HISTORY_STORAGE_KEY, JSON.stringify(entries.slice(0, 3)));
+    } catch {
+    }
+  }
+}
+function mergeBacktestHistoryEntries(entries) {
+  const byId = /* @__PURE__ */ new Map();
+  entries.forEach((entry) => {
+    if (!byId.has(entry.id)) byId.set(entry.id, entry);
+  });
+  return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, BACKTEST_HISTORY_LIMIT);
+}
+function backtestHistoryEntryFromRecord(title, record) {
+  const metadata = recordValue2(record.metadata);
+  const batchResult = record.batchResult ?? record.batch_result ?? metadata.batchResult ?? metadata.batch_result ?? metadata.result;
+  const singleResult = record.result ?? record.backtest_result ?? metadata.result ?? metadata.backtest_result;
+  const codes = parseCodeList([
+    stringValue2(record.symbol),
+    stringValue2(metadata.symbol),
+    stringValue2(metadata.code),
+    stringValue2(record.code)
+  ].filter(Boolean).join(","));
+  const freq = stringValue2(record.freq) ?? stringValue2(metadata.freq) ?? "daily";
+  const entry = createBacktestHistoryEntry({
+    batchResult: isRecoverableBatchResult(batchResult) ? batchResult : null,
+    result: isRecoverableSingleResult(singleResult) ? singleResult : null,
+    codes,
+    freq,
+    signalType: stringValue2(metadata.signal_type) ?? stringValue2(metadata.signal_group),
+    createdAt: stringValue2(record.updated_at) ?? stringValue2(metadata.created_at) ?? stringValue2(metadata.updated_at)
+  });
+  return entry ? { ...entry, title: entry.mode === "multi" ? entry.title : title || entry.title } : null;
+}
+function dashboardBacktestHistoryEntries(dashboard) {
+  return dashboard.backtest_jobs.map((job) => backtestHistoryEntryFromRecord(String(job.job_id ?? job.symbol ?? "Backtest"), job)).filter((entry) => Boolean(entry));
+}
 function formatNumber(value, digits = 2) {
   const number = numberValue2(value);
-  if (number === void 0) return "N/A";
+  if (number === void 0) return emptyDisplay;
   return number.toFixed(digits);
 }
 function formatPercent(value) {
   const number = numberValue2(value);
-  if (number === void 0) return "N/A";
+  if (number === void 0) return emptyDisplay;
   return `${number > 0 ? "+" : ""}${number.toFixed(2)}%`;
+}
+function formatUnsignedPercent(value) {
+  const number = numberValue2(value);
+  if (number === void 0) return emptyDisplay;
+  return `${number.toFixed(2)}%`;
+}
+function formatDrawdown(value) {
+  const number = numberValue2(value);
+  if (number === void 0) return emptyDisplay;
+  return `-${Math.abs(number).toFixed(2)}%`;
+}
+function formatMetricValue(value, unit) {
+  if (unit === "%") return formatPercent(value);
+  if (unit === "D") return `${formatNumber(value, 1)}D`;
+  const number = numberValue2(value);
+  if (number === void 0) return String(value ?? emptyDisplay);
+  if (Number.isInteger(number)) return String(number);
+  return number.toFixed(2);
+}
+function toneColor(tone) {
+  if (tone === "up") return tradingDeskTheme.market.up;
+  if (tone === "down") return tradingDeskTheme.market.down;
+  if (tone === "warning") return palette.warning;
+  return terminalTheme.textStrong;
 }
 function defaultCodeFromDashboard(dashboard) {
   const pending = dashboard.pending_backlog_preview[0];
   const candidate = dashboard.buy_candidates[0];
-  return (stringValue2(pending?.symbol) ?? stringValue2(candidate?.symbol) ?? "002759").replace(/^(SZ|SH|HK|US)\./i, "");
+  const chartSymbol = dashboard.chart_context?.symbol;
+  return normalizeSymbolCode(
+    stringValue2(chartSymbol) ?? stringValue2(pending?.symbol) ?? stringValue2(candidate?.symbol) ?? "002759"
+  );
 }
 function toKLineData(rawRows) {
   const rows = Array.isArray(rawRows) ? rawRows : [];
@@ -31760,11 +32300,619 @@ function toKLineData(rawRows) {
     };
   }).filter((item) => Boolean(item)).sort((left, right) => left.timestamp - right.timestamp);
 }
-async function fetchJson(baseUrl, path, timeoutMs = 12e4) {
+function normalizeTimestampMs(value) {
+  const number = numberValue2(value);
+  if (number === void 0) return void 0;
+  return number < 1e10 ? number * 1e3 : number;
+}
+function parseDateTimestampMs(value) {
+  const text2 = stringValue2(value);
+  if (!text2) return void 0;
+  const match = text2.match(/\d{4}-\d{1,2}-\d{1,2}/);
+  if (!match) return void 0;
+  const [year, month, day] = match[0].split("-").map(Number);
+  const timestamp = Date.UTC(year, month - 1, day) - MARKET_DATE_TZ_OFFSET_MS;
+  return Number.isFinite(timestamp) ? timestamp : void 0;
+}
+function datePresetTimestampMs(preset) {
+  return normalizeTimestampMs(preset.time) ?? parseDateTimestampMs(preset.date);
+}
+function dateKey(timestamp) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MARKET_DATE_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(timestamp));
+  const year = parts.find((item) => item.type === "year")?.value;
+  const month = parts.find((item) => item.type === "month")?.value;
+  const day = parts.find((item) => item.type === "day")?.value;
+  return year && month && day ? `${year}-${month}-${day}` : new Date(timestamp).toISOString().slice(0, 10);
+}
+function datePresetShortLabel(preset) {
+  const label = stringValue2(preset.label) ?? stringValue2(preset.date) ?? stringValue2(preset.key) ?? "";
+  return label.split("\u2014")[0]?.trim() || label.trim();
+}
+function datePresetKey(preset, index) {
+  return stringValue2(preset.key) ?? stringValue2(preset.date) ?? stringValue2(preset.label) ?? `preset-${index}`;
+}
+function buildDatePresetWindows(presets, data) {
+  if (!Array.isArray(presets) || presets.length === 0 || data.length === 0) return [];
+  const sortedData = data.slice().sort((left, right) => left.timestamp - right.timestamp);
+  const first = sortedData[0]?.timestamp;
+  const last = sortedData[sortedData.length - 1]?.timestamp;
+  if (!first || !last) return [];
+  return presets.map((preset, index) => {
+    const anchorTime = datePresetTimestampMs(preset);
+    if (anchorTime === void 0) return null;
+    const inStrategyRange = anchorTime >= first - MS_PER_DAY && anchorTime <= last + MS_PER_DAY;
+    if (!inStrategyRange) return null;
+    const from = Math.max(first, anchorTime - DATE_PRESET_BEFORE_DAYS * MS_PER_DAY);
+    const to = Math.min(last, anchorTime + DATE_PRESET_AFTER_DAYS * MS_PER_DAY);
+    const barCount = sortedData.filter((item) => item.timestamp >= from && item.timestamp <= to).length;
+    if (barCount === 0) return null;
+    const label = stringValue2(preset.label) ?? stringValue2(preset.date) ?? stringValue2(preset.key) ?? "";
+    return {
+      ...preset,
+      key: datePresetKey(preset, index),
+      label,
+      shortLabel: datePresetShortLabel(preset),
+      from,
+      to,
+      anchorTime,
+      displayRange: `${dateKey(from)} ~ ${dateKey(to)}`,
+      barCount
+    };
+  }).filter((item) => Boolean(item)).sort((left, right) => left.anchorTime - right.anchorTime);
+}
+function timestampInDateWindow(timestamp, window2) {
+  if (!window2 || timestamp === void 0) return false;
+  return timestamp >= window2.from && timestamp <= window2.to;
+}
+function signalTimestampMs(signal) {
+  return normalizeTimestampMs(signal.dt ?? signal.time) ?? parseDateTimestampMs(signal.date ?? signal.date_str);
+}
+function tradeTimestampsMs(trade) {
+  return [trade.signal_date, trade.entry_date, trade.exit_date].map(parseDateTimestampMs).filter((item) => item !== void 0);
+}
+function filterSignalsForDateWindow(signals, window2) {
+  if (!window2) return signals;
+  return signals.filter((signal) => timestampInDateWindow(signalTimestampMs(signal), window2));
+}
+function filterTradesForDateWindow(trades, window2) {
+  if (!window2) return trades;
+  return trades.filter((trade) => tradeTimestampsMs(trade).some((timestamp) => timestampInDateWindow(timestamp, window2)));
+}
+function filterKLineDataForDateWindow(data, window2) {
+  if (!window2) return data;
+  return data.filter((item) => timestampInDateWindow(item.timestamp, window2));
+}
+function filterTradeMarkersForDateWindow(markers, window2) {
+  if (!window2) return markers;
+  return markers.filter((marker) => timestampInDateWindow(normalizeTimestampMs(marker.time), window2));
+}
+function nearestKLineData(data, timestamp) {
+  return data.reduce((nearest, item) => {
+    if (!nearest) return item;
+    return Math.abs(item.timestamp - timestamp) < Math.abs(nearest.timestamp - timestamp) ? item : nearest;
+  }, void 0);
+}
+async function fetchJson(baseUrl, path, timeoutMs = 12e4, init2) {
   return observedFetchJson(baseUrl, path, {
     timeoutMs,
-    source: "backtest.api"
+    source: "backtest.api",
+    ...init2
   });
+}
+function parseCodeList(value) {
+  const seen = /* @__PURE__ */ new Set();
+  return value.split(/[\s,，、;；]+/).flatMap((item) => extractSymbolCandidates(item)).filter(Boolean).filter((item) => {
+    const key = item.toUpperCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+function symbolOptionKey(option) {
+  return option.code.toUpperCase();
+}
+function hasReadableSymbolName(option) {
+  return Boolean(option.name && option.name.toUpperCase() !== option.code.toUpperCase());
+}
+function uniqueSymbolOptions(options) {
+  const byCode = /* @__PURE__ */ new Map();
+  options.forEach((option) => {
+    const code = normalizeSymbolCode(option.code);
+    if (!code) return;
+    const key = code.toUpperCase();
+    const normalizedOption = { ...option, code, name: option.name || code };
+    const existing = byCode.get(key);
+    if (!existing) {
+      byCode.set(key, normalizedOption);
+      return;
+    }
+    const nextHasName = hasReadableSymbolName(normalizedOption);
+    const existingHasName = hasReadableSymbolName(existing);
+    byCode.set(key, {
+      ...existing,
+      name: !existingHasName && nextHasName ? normalizedOption.name : existing.name,
+      group: existing.group === "\u76F4\u63A5\u8F93\u5165" || existing.group === "\u5F53\u524D\u56FE\u8868" ? normalizedOption.group : existing.group,
+      role: existing.role ?? normalizedOption.role,
+      source: existing.source ?? normalizedOption.source
+    });
+  });
+  return Array.from(byCode.values());
+}
+function symbolOptionsEqual(left, right) {
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => {
+    const other = right[index];
+    return other && item.code === other.code && item.name === other.name && item.group === other.group && item.role === other.role && item.source === other.source;
+  });
+}
+function symbolLabel(code, option) {
+  const normalized = normalizeSymbolCode(code);
+  const name = option?.name?.trim();
+  return name && name.toUpperCase() !== normalized.toUpperCase() ? `${normalized} ${name}` : normalized;
+}
+function selectedSymbolDisplay(codes, options, locale) {
+  const byCode = new Map(options.map((option) => [symbolOptionKey(option), option]));
+  const labels = codes.map((code) => symbolLabel(code, byCode.get(code.toUpperCase())));
+  const full = labels.join(locale === "zh-CN" ? "\u3001" : ", ");
+  if (labels.length <= 3) return { short: full, full };
+  const suffix = locale === "zh-CN" ? ` \u7B49${labels.length}\u53EA` : ` +${labels.length - 3} more`;
+  return {
+    short: `${labels.slice(0, 3).join(locale === "zh-CN" ? "\u3001" : ", ")}${suffix}`,
+    full
+  };
+}
+function symbolOptionFromRecord(row, group) {
+  const code = normalizeSymbolCode(
+    stringValue2(row.code) ?? stringValue2(row.symbol) ?? stringValue2(row.ts_code) ?? ""
+  );
+  if (!code) return null;
+  return {
+    code,
+    name: stringValue2(row.name) ?? stringValue2(row.stock_name) ?? stringValue2(row.target_name) ?? code,
+    group
+  };
+}
+function symbolOptionFromLookupPayload(payload, fallbackCode) {
+  const target = recordValue2(payload.target);
+  const firstMatch = Array.isArray(payload.matches) ? recordValue2(payload.matches[0]) : {};
+  return symbolOptionFromRecord({
+    code: target.symbol ?? target.code ?? payload.symbol ?? payload.code ?? firstMatch.symbol ?? firstMatch.code ?? fallbackCode,
+    name: target.name ?? target.label ?? payload.name ?? payload.stock_name ?? payload.label ?? firstMatch.name
+  }, "\u540D\u79F0\u67E5\u8BE2");
+}
+function symbolOptionsFromBacktestOutputs(result, batchResult) {
+  const options = [];
+  const target = terminalTarget(result);
+  const singleOption = symbolOptionFromRecord({
+    code: target.symbol ?? target.code ?? result?.symbol ?? result?.code,
+    name: target.name
+  }, "\u56DE\u6D4B\u7ED3\u679C");
+  if (singleOption) options.push(singleOption);
+  const batchPanels = batchResult?.terminal?.panels ?? {};
+  const batchChart = batchResult?.terminal?.chart ?? {};
+  const recordGroups = [
+    [Array.isArray(batchResult?.stocks) ? batchResult?.stocks : void 0, "\u6279\u91CF\u7ED3\u679C"],
+    [Array.isArray(batchPanels.ranking?.rows) ? batchPanels.ranking?.rows : void 0, "\u6279\u91CF\u6392\u540D"],
+    [Array.isArray(batchPanels.interval_overview?.rows) ? batchPanels.interval_overview?.rows : void 0, "\u533A\u95F4\u6982\u89C8"],
+    [Array.isArray(batchPanels.multi_charts?.items) ? batchPanels.multi_charts?.items : void 0, "\u6279\u91CFK\u7EBF"],
+    [Array.isArray(batchChart.multi_charts) ? batchChart.multi_charts : void 0, "\u6279\u91CFK\u7EBF"],
+    [Array.isArray(batchPanels.scripts?.cards) ? batchPanels.scripts?.cards : void 0, "\u4EA4\u6613\u5458\u7ED3\u8BBA"]
+  ];
+  recordGroups.forEach(([rows, group]) => {
+    rows?.forEach((row) => {
+      const option = symbolOptionFromRecord(recordValue2(row), group);
+      if (option) options.push(option);
+    });
+  });
+  return uniqueSymbolOptions(options);
+}
+function dashboardSymbolOptions(dashboard) {
+  const options = [];
+  dashboard.buy_candidates.slice(0, 12).forEach((candidate) => {
+    const code = normalizeSymbolCode(candidate.symbol);
+    if (code) {
+      options.push({
+        code,
+        name: candidate.name || code,
+        group: "\u89C2\u5BDF\u6C60"
+      });
+    }
+  });
+  dashboard.pending_backlog_preview.slice(0, 8).forEach((item) => {
+    const code = normalizeSymbolCode(item.symbol);
+    if (code) {
+      options.push({
+        code,
+        name: code,
+        group: "\u5F85\u590D\u76D8"
+      });
+    }
+  });
+  const chartCode = normalizeSymbolCode(dashboard.chart_context?.symbol ?? "");
+  if (chartCode) {
+    options.push({
+      code: chartCode,
+      name: chartCode,
+      group: "\u5F53\u524D\u56FE\u8868"
+    });
+  }
+  return uniqueSymbolOptions(options);
+}
+function symbolOptionsForPicker(dashboard) {
+  return dashboardSymbolOptions(dashboard);
+}
+function symbolOptionMatches(option, query) {
+  if (!query) return true;
+  const haystack = [option.code, option.name, option.group].join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+function directSymbolOptionsFromQuery(query) {
+  const chunks = query.split(/[\s,，、;；]+/).map((item) => item.trim()).filter(Boolean);
+  const codes = chunks.flatMap((item) => {
+    const normalized = normalizeSymbolCode(item);
+    const hasMarketPrefix = /^(SZ|SH|HK|US)\./i.test(item);
+    const hasMarketSuffix = /\.(SZ|SH|HK|US)$/i.test(item);
+    const numericCode = /^\d{5,6}$/.test(normalized);
+    if (!hasMarketPrefix && !hasMarketSuffix && !numericCode) return [];
+    return extractSymbolCandidates(item);
+  });
+  return uniqueSymbolOptions(codes.map((code) => ({
+    code,
+    name: code,
+    group: "\u76F4\u63A5\u8F93\u5165"
+  })));
+}
+function symbolOptionsMatchingQuery(query, options) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+  const directOptions = directSymbolOptionsFromQuery(query);
+  const matchedOptions = uniqueSymbolOptions([...directOptions, ...options]).filter((option) => symbolOptionMatches(option, normalizedQuery));
+  return uniqueSymbolOptions([...directOptions, ...matchedOptions]);
+}
+function basketMatches(basket, query) {
+  if (!query) return true;
+  const haystack = [
+    basket.label,
+    basket.source,
+    basket.domain,
+    basket.description,
+    basket.chain_id,
+    basket.node_id,
+    ...basket.codes.flatMap((item) => [item.code, item.name, item.group])
+  ].join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+function normalizeDynamicBaskets(rawBaskets) {
+  if (!Array.isArray(rawBaskets)) return [];
+  const baskets = [];
+  rawBaskets.forEach((rawBasket, index) => {
+    const label = stringValue2(rawBasket.label) ?? "";
+    const source = stringValue2(rawBasket.source);
+    const id = stringValue2(rawBasket.id) ?? `${source ?? "basket"}:${label || index}`;
+    const codes = uniqueSymbolOptions((Array.isArray(rawBasket.codes) ? rawBasket.codes : []).flatMap((rawOption) => {
+      const code = normalizeSymbolCode(rawOption.code);
+      if (!code) return [];
+      return [{
+        code,
+        name: stringValue2(rawOption.name) ?? code,
+        group: stringValue2(rawOption.group) ?? label,
+        role: stringValue2(rawOption.role),
+        source: stringValue2(rawOption.source) ?? source
+      }];
+    }));
+    if (!label || codes.length === 0) return;
+    baskets.push({
+      id,
+      label,
+      source,
+      domain: stringValue2(rawBasket.domain),
+      description: stringValue2(rawBasket.description),
+      chain_id: stringValue2(rawBasket.chain_id),
+      node_id: stringValue2(rawBasket.node_id),
+      confidence: numberValue2(rawBasket.confidence),
+      codes
+    });
+  });
+  return baskets;
+}
+function selectedSymbolText(codes) {
+  return codes.join(",");
+}
+function sameCodeSet(left, right) {
+  if (left.length !== right.length) return false;
+  const keys = new Set(left.map((item) => item.toUpperCase()));
+  return right.every((item) => keys.has(item.toUpperCase()));
+}
+function compactApiError(rawError, locale, fallback) {
+  const payload = recordValue2(rawError.payload);
+  const rawMessage = stringValue2(payload.last_upstream_error) ?? stringValue2(payload.error) ?? stringValue2(payload.detail) ?? rawError.message;
+  if (!rawMessage) return fallback;
+  if (/timeout|timed out|abort/i.test(rawMessage)) {
+    return locale === "zh-CN" ? "Signals \u56DE\u6D4B\u63A5\u53E3\u8D85\u65F6\u3002\u5148\u7F29\u5C0F\u6807\u7684\u7BEE\u5B50\u6216\u6362\u6210\u65E5\u7EBF\u5355\u7968\uFF1B\u5982\u679C\u8FDE\u7EED\u8D85\u65F6\uFF0C\u518D\u770B\u6570\u636E\u6E90\u548C\u56DE\u6D4B\u961F\u5217\u3002" : "Signals backtest timed out. Narrow the basket or run one daily symbol first.";
+  }
+  if (/traceback|File\s+["'].*\.py["']|^\s*at\s+/i.test(rawMessage)) {
+    return locale === "zh-CN" ? "\u56DE\u6D4B\u670D\u52A1\u8FD4\u56DE\u4E86\u5185\u90E8\u9519\u8BEF\u3002\u8BF7\u786E\u8BA4\u8F93\u5165\u7684\u662F\u80A1\u7968\u4EE3\u7801\uFF0C\u6216\u4ECE\u5DF2\u9009\u6C60\u52FE\u9009\u540E\u91CD\u8BD5\u3002" : "Backtest service returned an internal error. Check the symbol code or pick from the pool.";
+  }
+  return rawMessage.length > 140 ? `${rawMessage.slice(0, 140)}...` : rawMessage;
+}
+function uniqueText(items) {
+  const seen = /* @__PURE__ */ new Set();
+  return items.filter((item) => {
+    const text2 = item.trim();
+    if (!text2 || seen.has(text2)) return false;
+    seen.add(text2);
+    return true;
+  });
+}
+function classifyMetricTone(value, goodAtOrAbove = 0) {
+  if (value === void 0) return "neutral";
+  return value >= goodAtOrAbove ? "up" : "down";
+}
+function batchResearchSummary(batchResult, locale) {
+  const zh = locale === "zh-CN";
+  const summary = recordValue2(batchResult.summary);
+  const metrics = recordValue2(batchResult.terminal?.metrics);
+  const totalStocks = numberValue2(summary.total_stocks) ?? batchResult.stocks?.length ?? 0;
+  const okStocks = numberValue2(summary.ok_stocks);
+  const totalSignals = numberValue2(summary.total_signals) ?? 0;
+  const totalTrades = numberValue2(summary.total_trades) ?? 0;
+  const winRate = numberValue2(metrics.win_rate);
+  const avgReturn = numberValue2(metrics.total_return_pct);
+  const avgDrawdown = Math.abs(numberValue2(metrics.max_drawdown_pct) ?? 0);
+  const failureCount = okStocks !== void 0 ? Math.max(0, totalStocks - okStocks) : 0;
+  const sampleThin = totalStocks < 3 || totalTrades < Math.max(12, totalStocks * 4);
+  const warnings = uniqueText([...batchResult.warnings ?? [], stringValue2(batchResult.error) ?? ""]);
+  const issues = uniqueText([
+    totalStocks === 0 ? zh ? "\u6CA1\u6709\u6709\u6548\u6807\u7684\u6837\u672C" : "No valid symbols" : "",
+    sampleThin ? zh ? "\u7EC4\u5408\u6837\u672C\u504F\u8584\uFF0C\u4E0D\u80FD\u76F4\u63A5\u6C89\u6DC0\u7B56\u7565" : "Basket sample is too thin to promote" : "",
+    failureCount > 0 ? zh ? `${failureCount}\u53EA\u6807\u7684\u56DE\u6D4B\u5931\u8D25\u6216\u8DF3\u8FC7` : `${failureCount} symbols failed or skipped` : "",
+    avgDrawdown > 18 ? zh ? `\u5E73\u5747\u56DE\u64A4\u538B\u529B ${formatDrawdown(avgDrawdown)}` : `High average drawdown ${formatDrawdown(avgDrawdown)}` : "",
+    winRate !== void 0 && winRate < 50 ? zh ? `\u6279\u91CF\u80DC\u7387\u4E0D\u8DB3 ${formatPercent(winRate)}` : `Batch win rate below 50% ${formatPercent(winRate)}` : "",
+    ...warnings
+  ]);
+  const tone = issues.length ? totalTrades > 0 ? "warning" : "failed" : "success";
+  const actions = uniqueText([
+    totalStocks < 3 ? zh ? "\u5148\u6269\u5230\u540C\u4E00\u4E3B\u7EBF 5-10 \u53EA\u6807\u7684\uFF0C\u518D\u770B\u89C4\u5219\u662F\u5426\u8DE8\u6807\u7684\u6709\u6548\u3002" : "Expand to 5-10 names in the same theme before judging generalization." : "",
+    sampleThin ? zh ? "\u4F18\u5148\u8865\u539A\u6210\u4EA4\u6837\u672C\uFF1B\u6837\u672C\u8584\u65F6\u53EA\u505A\u89C2\u5BDF\uFF0C\u4E0D\u505A\u53C2\u6570\u4F18\u5316\u3002" : "Thicken filled-trade samples before optimizing parameters." : "",
+    zh ? "\u5148\u4E0B\u94BB\u6392\u540D\u7B2C\u4E00\u548C\u6700\u5927\u56DE\u64A4\u6807\u7684\uFF0C\u5BF9\u7167\u4E70\u5356\u70B9\u662F\u5426\u6765\u81EA\u540C\u4E00\u79CD\u4FE1\u53F7\u3002" : "Drill into the top-ranked and worst-drawdown symbols and compare signal sources.",
+    zh ? "\u53EA\u628A\u8DE8\u6807\u7684\u3001\u8DE8\u53C2\u6570\u4ECD\u7A33\u5B9A\u7684\u4FE1\u53F7\u65CF\u63A8\u8FDB\u5230\u7B56\u7565\u5019\u9009\u3002" : "Promote only signal families that stay stable across symbols and parameters."
+  ]);
+  return {
+    tone,
+    statusLabel: zh ? tone === "success" ? "\u7EC4\u5408\u53EF\u590D\u6838" : "\u5148\u6E05\u6D17\u6837\u672C" : tone === "success" ? "Basket ready" : "Clean sample",
+    headline: zh ? `${totalStocks}\u53EA\u6807\u7684 \xB7 ${totalSignals}\u4E2A\u4FE1\u53F7 \xB7 ${totalTrades}\u7B14\u6210\u4EA4` : `${totalStocks} symbols \xB7 ${totalSignals} signals \xB7 ${totalTrades} trades`,
+    detail: zh ? "\u6279\u91CF\u56DE\u6D4B\u4E0D\u662F\u770B\u5E73\u5747\u6570\u597D\u4E0D\u597D\uFF0C\u800C\u662F\u5224\u65AD\u540C\u4E00\u89C4\u5219\u80FD\u5426\u5728\u4E00\u7EC4\u76F8\u4F3C\u6807\u7684\u4E0A\u91CD\u590D\u51FA\u73B0\u3002" : "Batch backtest is for repeatability across comparable symbols, not just average metrics.",
+    cards: [
+      { label: zh ? "\u6807\u7684" : "Symbols", value: formatNumber(totalStocks, 0) },
+      { label: zh ? "\u4FE1\u53F7" : "Signals", value: formatNumber(totalSignals, 0) },
+      { label: zh ? "\u6210\u4EA4" : "Trades", value: formatNumber(totalTrades, 0), tone: totalTrades >= Math.max(8, totalStocks) ? "up" : "down" },
+      { label: zh ? "\u80DC\u7387" : "WinRate", value: formatPercent(winRate), tone: classifyMetricTone(winRate, 50) },
+      { label: zh ? "\u5747\u6536\u76CA" : "AvgRet", value: formatPercent(avgReturn), tone: classifyMetricTone(avgReturn) },
+      { label: zh ? "\u5747\u56DE\u64A4" : "AvgDD", value: formatDrawdown(avgDrawdown), tone: avgDrawdown <= 15 ? "up" : "down" }
+    ],
+    flow: [
+      { label: zh ? "\u4EA4\u6613\u7B5B\u9009" : "Trade filter", value: totalStocks ? zh ? `${totalStocks}\u53EA\u5019\u9009` : `${totalStocks} candidates` : zh ? "\u65E0\u5019\u9009" : "No candidates", tone: totalStocks ? "success" : "failed" },
+      { label: zh ? "\u5171\u6027\u9A8C\u8BC1" : "Repeatability", value: sampleThin ? zh ? "\u6837\u672C\u504F\u8584" : "Thin sample" : zh ? "\u53EF\u6BD4\u8F83" : "Comparable", tone: sampleThin ? "warning" : "success" },
+      { label: zh ? "\u4E0B\u94BB\u52A8\u4F5C" : "Next drilldown", value: totalTrades > 0 ? zh ? "\u5F3A\u5F31\u5BF9\u7167" : "Compare winners/losers" : zh ? "\u5148\u8865\u6210\u4EA4" : "Get trades first", tone: totalTrades > 0 ? "success" : "warning" }
+    ],
+    issues,
+    actions
+  };
+}
+function buildStrategyResearchSummary(input) {
+  const locale = input.locale ?? "zh-CN";
+  const zh = locale === "zh-CN";
+  const result = input.result;
+  const batchResult = input.batchResult;
+  const selectedCodes = input.selectedCodes ?? [];
+  const batchSelected = selectedCodes.length > 1;
+  if (input.loading) {
+    return {
+      tone: "running",
+      statusLabel: zh ? batchSelected ? "\u6279\u91CF\u9A8C\u8BC1\u4E2D" : "\u6B63\u5728\u9A8C\u8BC1" : "Running",
+      headline: zh ? batchSelected ? "\u6B63\u5728\u62C9\u53D6\u6279\u91CF\u56DE\u6D4B\u8BC1\u636E" : "\u6B63\u5728\u62C9\u53D6\u56DE\u6D4B\u8BC1\u636E" : "Collecting backtest evidence",
+      detail: zh ? batchSelected ? "\u5148\u7B49\u6210\u529F/\u5931\u8D25\u6807\u7684\u3001\u6392\u540D\u3001\u4FE1\u53F7\u62C6\u89E3\u548C\u6210\u4EA4\u6837\u672C\u8FD4\u56DE\uFF0C\u518D\u5224\u65AD\u89C4\u5219\u5171\u6027\u3002" : "\u5148\u7B49\u6570\u636E\u3001K\u7EBF\u3001\u4FE1\u53F7\u548C\u6210\u4EA4\u540C\u65F6\u8FD4\u56DE\uFF0C\u518D\u505A\u7B56\u7565\u5224\u65AD\u3002" : "Wait for candles, signals, and trades before judging the rule.",
+      cards: [
+        { label: zh ? "\u6807\u7684" : "Symbols", value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? "\u5468\u671F" : "Freq", value: freqLabel(input.freq, locale) || emptyDisplay },
+        { label: zh ? "\u72B6\u6001" : "Status", value: zh ? "\u8FD0\u884C\u4E2D" : "Running" }
+      ],
+      flow: [
+        { label: zh ? batchSelected ? "\u6837\u672C" : "\u76D8\u4E2D\u89C2\u5BDF" : "Sample", value: zh ? batchSelected ? `${selectedCodes.length}\u53EA\u5019\u9009` : "\u4FDD\u7559\u5019\u9009" : "Keep candidates", tone: "open" },
+        { label: zh ? batchSelected ? "\u6279\u91CF\u8BC1\u636E" : "\u76D8\u540E\u9A8C\u8BC1" : "Evidence", value: zh ? "\u7B49\u5F85\u7ED3\u679C" : "Waiting", tone: "running" },
+        { label: zh ? batchSelected ? "\u4E0B\u4E00\u6B65" : "\u7814\u53D1\u63A8\u8FDB" : "Next step", value: zh ? "\u6682\u4E0D\u4E0B\u7ED3\u8BBA" : "No verdict yet", tone: "open" }
+      ],
+      issues: [],
+      actions: [zh ? "\u5982\u679C\u8D85\u8FC7\u4E00\u5206\u949F\u4ECD\u65E0\u7ED3\u679C\uFF0C\u5148\u7F29\u5C0F\u5230\u5355\u7968\u65E5\u7EBF\u3002" : "If it takes over a minute, narrow to one daily symbol."]
+    };
+  }
+  if (input.error) {
+    return {
+      tone: "failed",
+      statusLabel: zh ? "\u5F02\u5E38\u4F18\u5148" : "Fix first",
+      headline: zh ? "\u5148\u5904\u7406\u56DE\u6D4B\u5F02\u5E38\uFF0C\u518D\u5224\u65AD\u7B56\u7565\u8D28\u91CF" : "Resolve the backtest issue before judging the strategy",
+      detail: input.error,
+      cards: [
+        { label: zh ? "\u6807\u7684" : "Symbols", value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? "\u5468\u671F" : "Freq", value: freqLabel(input.freq, locale) || emptyDisplay },
+        { label: zh ? "\u72B6\u6001" : "Status", value: zh ? "\u5931\u8D25" : "Failed", tone: "down" }
+      ],
+      flow: [
+        { label: zh ? "\u76D8\u4E2D\u89C2\u5BDF" : "Intraday", value: zh ? "\u4FDD\u7559\u539F\u59CB\u7EBF\u7D22" : "Keep clues", tone: "warning" },
+        { label: zh ? "\u76D8\u540E\u9A8C\u8BC1" : "Post-close", value: zh ? "\u6570\u636E/\u63A5\u53E3\u5F02\u5E38" : "Data/API issue", tone: "failed" },
+        { label: zh ? "\u7814\u53D1\u63A8\u8FDB" : "Research", value: zh ? "\u6682\u505C\u7ED3\u8BBA" : "Pause verdict", tone: "warning" }
+      ],
+      issues: [input.error],
+      actions: [
+        zh ? "\u5148\u786E\u8BA4\u4EE3\u7801\u662F\u6CAA\u6DF1/HK\u6709\u6548\u6807\u7684\uFF0C\u6216\u4ECE\u5DF2\u9009\u6C60\u91CD\u65B0\u52FE\u9009\u3002" : "Confirm the symbol is supported or pick from the basket.",
+        zh ? "\u82E5\u662F\u8D85\u65F6\uFF0C\u5148\u5355\u7968\u65E5\u7EBF\uFF0C\u518D\u9010\u6B65\u52A0\u56DE\u7BEE\u5B50\u3002" : "For timeouts, retry one daily symbol before expanding."
+      ]
+    };
+  }
+  if (batchResult?.terminal?.mode === "multi" || batchResult?.summary) {
+    return batchResearchSummary(batchResult, locale);
+  }
+  if (!result) {
+    if (batchSelected) {
+      return {
+        tone: "open",
+        statusLabel: zh ? "\u5F85\u6279\u91CF\u9A8C\u8BC1" : "Batch not run",
+        headline: zh ? `${selectedCodes.length}\u53EA\u5019\u9009\u5F85\u9A8C\u8BC1` : `${selectedCodes.length} candidates ready`,
+        detail: zh ? "\u6279\u91CF\u56DE\u6D4B\u7528\u4E8E\u5224\u65AD\u89C4\u5219\u80FD\u4E0D\u80FD\u8DE8\u6807\u7684\u91CD\u590D\u51FA\u73B0\uFF1B\u5148\u770B\u5171\u6027\u548C\u5931\u8D25\u6837\u672C\uFF0C\u518D\u4E0B\u94BB\u5355\u7968\u3002" : "Use batch backtest to test repeatability, then drill into representative symbols.",
+        cards: [
+          { label: zh ? "\u6807\u7684" : "Symbols", value: formatNumber(selectedCodes.length, 0) },
+          { label: zh ? "\u5468\u671F" : "Freq", value: freqLabel(input.freq, locale) || emptyDisplay },
+          { label: zh ? "\u6210\u4EA4" : "Trades", value: emptyDisplay }
+        ],
+        flow: [
+          { label: zh ? "\u4EA4\u6613\u7B5B\u9009" : "Trade filter", value: zh ? "\u5019\u9009\u5DF2\u5C31\u7EEA" : "Candidates ready", tone: "open" },
+          { label: zh ? "\u5171\u6027\u9A8C\u8BC1" : "Repeatability", value: zh ? "\u5F85\u56DE\u6D4B" : "Not run", tone: "open" },
+          { label: zh ? "\u4E0B\u94BB\u52A8\u4F5C" : "Next drilldown", value: zh ? "\u7B49\u6392\u540D" : "Wait ranking", tone: "open" }
+        ],
+        issues: [],
+        actions: [
+          zh ? "\u8FD0\u884C\u6279\u91CF\u56DE\u6D4B\u540E\uFF0C\u5148\u770B\u5F3A\u5F31\u6392\u540D\u3001\u5931\u8D25\u6837\u672C\u548C\u4FE1\u53F7\u65CF\u62C6\u89E3\u3002" : "Run batch, then inspect ranking, failures, and signal families.",
+          zh ? "\u4E0D\u8981\u76F4\u63A5\u7528\u4E24\u4E09\u53EA\u6837\u672C\u4F18\u5316\u53C2\u6570\uFF0C\u5148\u6269\u5230\u540C\u4E00\u4E3B\u7EBF 5-10 \u53EA\u3002" : "Do not optimize on a tiny basket; expand to 5-10 comparable names first."
+        ]
+      };
+    }
+    return {
+      tone: "open",
+      statusLabel: zh ? "\u5F85\u5EFA\u7ACB\u6837\u672C" : "No sample",
+      headline: zh ? "\u5148\u628A\u76D8\u4E2D\u89C2\u5BDF\u53D8\u6210\u53EF\u9A8C\u8BC1\u6837\u672C" : "Turn intraday observations into a testable sample",
+      detail: zh ? "\u4ECE\u4E70\u70B9\u6C60\u3001\u76EF\u76D8\u6C60\u6216\u4EA7\u4E1A\u94FE\u7EC4\u5408\u9009\u6807\u7684\uFF0C\u76D8\u540E\u7528\u65E5\u7EBF/\u5468\u7EBF\u9A8C\u8BC1\uFF0C\u518D\u7528\u626B\u63CF\u770B\u53C2\u6570\u7A33\u5B9A\u6027\u3002" : "Pick names from candidates or baskets, validate daily/weekly, then scan parameter stability.",
+      cards: [
+        { label: zh ? "\u6807\u7684" : "Symbols", value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? "\u5468\u671F" : "Freq", value: freqLabel(input.freq, locale) || emptyDisplay },
+        { label: zh ? "\u6210\u4EA4" : "Trades", value: emptyDisplay }
+      ],
+      flow: [
+        { label: zh ? "\u76D8\u4E2D\u89C2\u5BDF" : "Intraday", value: zh ? "\u4E3B\u7EBF/\u4E70\u70B9/\u5931\u6548" : "Theme, entry, invalidation", tone: "open" },
+        { label: zh ? "\u76D8\u540E\u9A8C\u8BC1" : "Post-close", value: zh ? "\u6536\u76CA/\u56DE\u64A4/\u8D85\u989D" : "Return, drawdown, excess", tone: "open" },
+        { label: zh ? "\u7814\u53D1\u63A8\u8FDB" : "Research", value: zh ? "\u626B\u63CF\u53C2\u6570\u7A33\u5B9A\u6027" : "Scan parameter stability", tone: "open" }
+      ],
+      issues: [],
+      actions: [
+        zh ? "\u5148\u8FD0\u884C\u5F53\u524D\u5355\u7968\uFF0C\u786E\u8BA4\u6709K\u7EBF\u3001\u4FE1\u53F7\u548C\u6210\u4EA4\u3002" : "Run the current symbol and confirm candles, signals, and trades.",
+        zh ? "\u518D\u6362\u6210\u4EA7\u4E1A\u94FE\u7EC4\u5408\uFF0C\u68C0\u67E5\u89C4\u5219\u662F\u5426\u53EA\u5BF9\u5355\u7968\u6709\u6548\u3002" : "Then test a basket to see whether the rule generalizes."
+      ]
+    };
+  }
+  const panels = terminalPanels(result);
+  const metrics = terminalMetrics(result);
+  const target = terminalTarget(result);
+  const kpi = recordValue2(result.kpi);
+  const simKpi = recordValue2(result.sim_kpi);
+  const trades = panels?.trades?.rows ?? result.sim_trades ?? [];
+  const signals = panels?.signals?.rows ?? result.signals ?? [];
+  const totalReturn = numberValue2(metrics.total_return_pct ?? simKpi.total_return_pct);
+  const maxDrawdown = Math.abs(numberValue2(metrics.max_drawdown_pct ?? simKpi.max_drawdown_pct) ?? 0);
+  const winRate = numberValue2(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate);
+  const sharpe = numberValue2(metrics.sharpe ?? simKpi.sharpe);
+  const excess = numberValue2(metrics.excess_return_pct);
+  const tradeCount = numberValue2(metrics.filled_trades ?? simKpi.filled_trades) ?? trades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0).length;
+  const signalCount = numberValue2(metrics.signal_count ?? kpi.total) ?? signals.length;
+  const freshness = stringValue2(target.freshness) ?? result.freshness;
+  const warnings = uniqueText(result.warnings ?? []);
+  const issues = uniqueText([
+    freshness && freshness !== "fresh" ? `${zh ? "\u6570\u636E\u65B0\u9C9C\u5EA6" : "Freshness"}: ${freshnessLabel(freshness, locale)}` : "",
+    result.partial ? zh ? "\u4EC5\u8FD4\u56DE\u90E8\u5206\u6570\u636E" : "Partial data returned" : "",
+    result.last_upstream_error ? zh ? `\u4E0A\u6E38\u5F02\u5E38\uFF1A${result.last_upstream_error}` : `Upstream: ${result.last_upstream_error}` : "",
+    signalCount === 0 ? zh ? "\u6CA1\u6709\u4FE1\u53F7\u6837\u672C" : "No signal sample" : "",
+    tradeCount === 0 ? zh ? "\u6CA1\u6709\u6210\u4EA4\u6837\u672C" : "No filled trades" : "",
+    tradeCount > 0 && tradeCount < 8 ? zh ? "\u6210\u4EA4\u6837\u672C\u504F\u5C11" : "Too few trades" : "",
+    totalReturn !== void 0 && totalReturn < 0 ? zh ? "\u7B56\u7565\u6536\u76CA\u4E3A\u8D1F" : "Negative strategy return" : "",
+    maxDrawdown > 20 ? zh ? `\u6700\u5927\u56DE\u64A4\u504F\u5927 ${formatDrawdown(maxDrawdown)}` : `High drawdown ${formatDrawdown(maxDrawdown)}` : "",
+    sharpe !== void 0 && sharpe < 0.8 ? zh ? `Sharpe \u4E0D\u8DB3 ${formatNumber(sharpe, 2)}` : `Low Sharpe ${formatNumber(sharpe, 2)}` : "",
+    excess !== void 0 && excess < 0 ? zh ? `\u672A\u8DD1\u8D62\u57FA\u51C6 ${formatPercent(excess)}` : `Under benchmark ${formatPercent(excess)}` : "",
+    ...warnings
+  ]);
+  const hasHardIssue = signalCount === 0 || tradeCount === 0 || totalReturn !== void 0 && totalReturn < 0;
+  const tone = hasHardIssue ? "failed" : issues.length ? "warning" : "success";
+  const actions = uniqueText([
+    freshness && freshness !== "fresh" ? zh ? "\u5148\u8865\u9F50\u6700\u65B0K\u7EBF\u6216\u6362\u6570\u636E\u6E90\uFF0C\u518D\u5224\u65AD\u7B56\u7565\u3002" : "Refresh bars or switch data source before judging." : "",
+    tradeCount < 8 ? zh ? "\u6269\u5927\u6807\u7684\u7BEE\u5B50\u6216\u62C9\u957F\u533A\u95F4\uFF0C\u907F\u514D\u7528\u8584\u6837\u672C\u7814\u53D1\u3002" : "Widen the basket or range before optimizing." : "",
+    maxDrawdown > 20 ? zh ? "\u4F18\u5148\u626B\u63CF\u6B62\u635F\u3001\u79FB\u52A8\u6B62\u76C8\u3001\u5747\u7EBF\u79BB\u573A\uFF0C\u5148\u538B\u56DE\u64A4\u3002" : "Scan stop loss, trailing stop, and MA exits to reduce drawdown." : "",
+    excess !== void 0 && excess < 0 ? zh ? "\u628A\u540C\u4E00\u4E3B\u7EBF\u5F3A\u52BF\u80A1\u4E00\u8D77\u56DE\u6D4B\uFF0C\u786E\u8BA4\u662F\u4E0D\u662F\u9009\u80A1\u5F31\u4E8E\u57FA\u51C6\u3002" : "Backtest stronger peers in the same theme to separate selection from rule weakness." : "",
+    sharpe !== void 0 && sharpe >= 1 && tradeCount >= 8 ? zh ? "\u8FDB\u5165\u53C2\u6570\u626B\u63CF\uFF0C\u68C0\u67E5\u6536\u76CA\u662F\u5426\u5BF9\u5355\u4E00\u53C2\u6570\u8FC7\u654F\u3002" : "Run parameter scans and check sensitivity." : "",
+    tone === "success" ? zh ? "\u7528\u4EA7\u4E1A\u94FE\u7EC4\u5408\u590D\u9A8C\uFF0C\u82E5\u4ECD\u7A33\u5B9A\u518D\u6C89\u6DC0\u4E3A\u5019\u9009\u7B56\u7565\u3002" : "Re-test on a basket, then promote if stable." : ""
+  ]);
+  return {
+    tone,
+    statusLabel: zh ? tone === "success" ? "\u53EF\u7EE7\u7EED\u7814\u53D1" : tone === "warning" ? "\u8C28\u614E\u63A8\u8FDB" : "\u5148\u6DD8\u6C70/\u91CD\u5199" : tone === "success" ? "Researchable" : tone === "warning" ? "Proceed carefully" : "Rewrite first",
+    headline: zh ? `\u6536\u76CA ${formatPercent(totalReturn)} \xB7 \u56DE\u64A4 ${formatDrawdown(maxDrawdown)} \xB7 \u8D85\u989D ${formatPercent(excess)}` : `Return ${formatPercent(totalReturn)} \xB7 DD ${formatDrawdown(maxDrawdown)} \xB7 Excess ${formatPercent(excess)}`,
+    detail: zh ? "\u7814\u53D1\u5224\u65AD\u4F18\u5148\u770B\u6837\u672C\u539A\u5EA6\u3001\u56DE\u64A4\u3001\u8D85\u989D\u6536\u76CA\u548C\u6570\u636E\u5065\u5EB7\uFF1B\u5355\u7968\u597D\u770B\u4F46\u8D85\u989D\u4E3A\u8D1F\u65F6\u4E0D\u80FD\u76F4\u63A5\u5347\u7EA7\u4E3A\u7B56\u7565\u3002" : "Research judgment prioritizes sample depth, drawdown, excess return, and data health.",
+    cards: [
+      { label: zh ? "\u6536\u76CA" : "Return", value: formatPercent(totalReturn), tone: classifyMetricTone(totalReturn) },
+      { label: zh ? "\u56DE\u64A4" : "Drawdown", value: formatDrawdown(maxDrawdown), tone: maxDrawdown <= 15 ? "up" : "down" },
+      { label: zh ? "\u80DC\u7387" : "WinRate", value: formatPercent(winRate), tone: classifyMetricTone(winRate, 50) },
+      { label: zh ? "\u6210\u4EA4" : "Trades", value: formatNumber(tradeCount, 0), tone: tradeCount >= 8 ? "up" : "down" },
+      { label: "Sharpe", value: formatNumber(sharpe, 2), tone: classifyMetricTone(sharpe, 1) },
+      { label: zh ? "\u8D85\u989D" : "Excess", value: formatPercent(excess), tone: classifyMetricTone(excess) }
+    ],
+    flow: [
+      { label: zh ? "\u76D8\u4E2D\u89C2\u5BDF" : "Intraday", value: signalCount > 0 ? zh ? `${signalCount}\u4E2A\u4FE1\u53F7` : `${signalCount} signals` : zh ? "\u65E0\u4FE1\u53F7" : "No signal", tone: signalCount > 0 ? "success" : "failed" },
+      { label: zh ? "\u76D8\u540E\u9A8C\u8BC1" : "Post-close", value: tradeCount > 0 ? zh ? `${tradeCount}\u7B14\u6210\u4EA4` : `${tradeCount} trades` : zh ? "\u65E0\u6210\u4EA4" : "No trades", tone: tradeCount >= 8 ? "success" : tradeCount > 0 ? "warning" : "failed" },
+      { label: zh ? "\u7814\u53D1\u63A8\u8FDB" : "Research", value: tone === "success" ? zh ? "\u53EF\u626B\u63CF\u53C2\u6570" : "Scan params" : zh ? "\u5148\u4FEE\u7EA6\u675F" : "Fix constraints", tone }
+    ],
+    issues,
+    actions: actions.length ? actions : [zh ? "\u6253\u5F00\u4EA4\u6613\u660E\u7EC6\uFF0C\u786E\u8BA4\u6536\u76CA\u4E0D\u662F\u5C11\u6570\u5F02\u5E38\u6210\u4EA4\u8D21\u732E\u3002" : "Review trades and check that returns are not one-off outliers."]
+  };
+}
+function useElementSize() {
+  const ref = (0, import_react2.useRef)(null);
+  const [size, setSize] = (0, import_react2.useState)({ width: 0, height: 0 });
+  (0, import_react2.useEffect)(() => {
+    const element = ref.current;
+    if (!element) return;
+    const update = () => {
+      setSize({ width: element.clientWidth, height: element.clientHeight });
+    };
+    update();
+    const observer = new ResizeObserver((entries) => {
+      const rect2 = entries[0]?.contentRect;
+      if (!rect2) {
+        update();
+        return;
+      }
+      setSize({ width: rect2.width, height: rect2.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size];
+}
+function buildBatchBody(codes, freq, signalType, simParams) {
+  const body = { codes, freq, lookback: BATCH_BACKTEST_LOOKBACK_BARS };
+  if (signalType === "all" || signalType === "macd" || signalType === "czsc") {
+    body.signal_group = signalType;
+  } else {
+    body.signal_group = "all";
+    body.factor = signalType;
+  }
+  const numericKeys = [
+    "stop_loss",
+    "trail_stop",
+    "max_hold",
+    "slippage",
+    "take_profit",
+    "ma_exit_period",
+    "profit_drawdown",
+    "atr_exit_period",
+    "atr_exit_mult"
+  ];
+  numericKeys.forEach((key) => {
+    const value = simParams[key];
+    if (!value?.trim()) return;
+    const parsed = Number(value);
+    body[key] = Number.isFinite(parsed) ? parsed : value;
+  });
+  return body;
 }
 function chartStyles() {
   return {
@@ -31874,12 +33022,29 @@ function signalSide(signal) {
   const text2 = String(signal.type ?? "").toLowerCase();
   return text2.includes("\u5356") || text2.includes("sell") || text2.includes("exit") ? "sell" : "buy";
 }
-function createSignalOverlays(chart, data, signals) {
+function createSignalOverlays(chart, data, signals, tradeMarkers = [], activeDateWindow = null, onSelectMarker) {
   chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
   if (data.length === 0) return;
   const dataByTimestamp = new Map(data.map((item) => [item.timestamp, item]));
+  if (activeDateWindow) {
+    const eventBar = nearestKLineData(data, activeDateWindow.anchorTime);
+    if (eventBar) {
+      chart.createOverlay({
+        name: BACKTEST_MARKER_OVERLAY,
+        groupId: BACKTEST_MARKER_GROUP,
+        lock: true,
+        points: [{ timestamp: eventBar.timestamp, value: eventBar.close }],
+        extendData: {
+          label: activeDateWindow.shortLabel,
+          color: tradingDeskTheme.chart.gold,
+          side: "sell",
+          kind: "date-preset"
+        }
+      });
+    }
+  }
   signals.slice(-80).forEach((signal) => {
-    const rawTime = numberValue2(signal.dt);
+    const rawTime = numberValue2(signal.dt ?? signal.time);
     if (!rawTime) return;
     const timestamp = rawTime < 1e10 ? rawTime * 1e3 : rawTime;
     const price = numberValue2(signal.price) ?? dataByTimestamp.get(timestamp)?.close;
@@ -31892,7 +33057,38 @@ function createSignalOverlays(chart, data, signals) {
       extendData: {
         label: signalLabel(signal),
         color: signalColor(signal),
-        side: signalSide(signal)
+        side: signalSide(signal),
+        kind: "signal",
+        sourceIndex: signal.index ?? signals.indexOf(signal)
+      },
+      onClick: (event) => {
+        onSelectMarker?.(recordValue2(event.overlay.extendData));
+        return true;
+      }
+    });
+  });
+  tradeMarkers.slice(-160).forEach((marker) => {
+    const rawTime = numberValue2(marker.time);
+    const price = numberValue2(marker.price);
+    if (!rawTime || price === void 0) return;
+    const timestamp = rawTime < 1e10 ? rawTime * 1e3 : rawTime;
+    const kind = stringValue2(marker.kind) ?? "";
+    const isExit = kind === "exit";
+    chart.createOverlay({
+      name: BACKTEST_MARKER_OVERLAY,
+      groupId: BACKTEST_MARKER_GROUP,
+      lock: true,
+      points: [{ timestamp, value: price }],
+      extendData: {
+        label: isExit ? "EXIT" : "ENTRY",
+        color: isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up,
+        side: isExit ? "sell" : "buy",
+        kind: "trade",
+        tradeIndex: numberValue2(marker.trade_index)
+      },
+      onClick: (event) => {
+        onSelectMarker?.(recordValue2(event.overlay.extendData));
+        return true;
       }
     });
   });
@@ -31917,7 +33113,8 @@ function BacktestWorkbench({
   onOpenRun,
   onOpenRecord
 }) {
-  const baseUrl = trimTrailingSlash2(signalsWebBaseUrl);
+  const baseUrl = trimTrailingSlash2(signalsWebBaseUrl) || urlFromBacktestDashboard(dashboard);
+  const codeInputRef = (0, import_react2.useRef)(null);
   const chartContainerRef = (0, import_react2.useRef)(null);
   const chartRef = (0, import_react2.useRef)(null);
   const resizeObserverRef = (0, import_react2.useRef)(null);
@@ -31927,10 +33124,16 @@ function BacktestWorkbench({
   const [signalType, setSignalType] = (0, import_react2.useState)("all");
   const [tab, setTab] = (0, import_react2.useState)("perf");
   const [result, setResult] = (0, import_react2.useState)(null);
+  const [batchResult, setBatchResult] = (0, import_react2.useState)(null);
   const [scan, setScan] = (0, import_react2.useState)(null);
+  const [selectedSignalIndex, setSelectedSignalIndex] = (0, import_react2.useState)(null);
+  const [selectedTradeIndex, setSelectedTradeIndex] = (0, import_react2.useState)(null);
+  const [selectedDatePresetKey, setSelectedDatePresetKey] = (0, import_react2.useState)(null);
   const [loading, setLoading] = (0, import_react2.useState)(false);
   const [scanLoading, setScanLoading] = (0, import_react2.useState)(false);
   const [error, setError] = (0, import_react2.useState)(null);
+  const [symbolCatalog, setSymbolCatalog] = (0, import_react2.useState)([]);
+  const [localHistory, setLocalHistory] = (0, import_react2.useState)(() => readBacktestHistoryEntries());
   const [simParams, setSimParams] = (0, import_react2.useState)({
     stop_loss: "5",
     trail_stop: "50",
@@ -31949,12 +33152,92 @@ function BacktestWorkbench({
     scan_values2: "",
     scan_metric: "sharpe"
   });
-  const klineData = (0, import_react2.useMemo)(() => toKLineData(result?.ohlcv), [result]);
-  const signals = result?.signals ?? [];
-  const trades = result?.sim_trades ?? [];
+  const terminalPanelData = terminalPanels(result);
+  const isMultiMode = batchResult?.terminal?.version === "backtest-terminal.v1" && batchResult.terminal.mode === "multi";
+  const terminalChartData = terminalChart(result);
+  const klineData = (0, import_react2.useMemo)(() => toKLineData(terminalChartData?.ohlcv ?? result?.ohlcv), [result, terminalChartData]);
+  const signals = terminalPanelData?.signals?.rows ?? result?.signals ?? [];
+  const trades = terminalPanelData?.trades?.rows ?? result?.sim_trades ?? [];
+  const tradeMarkers = terminalChartData?.trade_markers ?? terminalChartData?.entry_exit_markers ?? [];
+  const datePresets = terminalChartData?.date_presets ?? result?.date_presets ?? [];
+  const datePresetWindows = (0, import_react2.useMemo)(() => buildDatePresetWindows(datePresets, klineData), [datePresets, klineData]);
+  const activeDateWindow = (0, import_react2.useMemo)(
+    () => datePresetWindows.find((item) => item.key === selectedDatePresetKey) ?? null,
+    [datePresetWindows, selectedDatePresetKey]
+  );
+  const visibleKlineData = (0, import_react2.useMemo)(() => filterKLineDataForDateWindow(klineData, activeDateWindow), [activeDateWindow, klineData]);
+  const visibleSignals = (0, import_react2.useMemo)(() => filterSignalsForDateWindow(signals, activeDateWindow), [activeDateWindow, signals]);
+  const visibleTrades = (0, import_react2.useMemo)(() => filterTradesForDateWindow(trades, activeDateWindow), [activeDateWindow, trades]);
+  const visibleTradeMarkers = (0, import_react2.useMemo)(() => filterTradeMarkersForDateWindow(tradeMarkers, activeDateWindow), [activeDateWindow, tradeMarkers]);
   const filledTrades = trades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
+  const visibleFilledTrades = visibleTrades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
+  const targetInfo = terminalTarget(result);
+  const metrics = terminalMetrics(result);
+  const displaySymbol = stringValue2(targetInfo.symbol) ?? result?.symbol ?? result?.code ?? code;
+  const displayName = stringValue2(targetInfo.name);
+  const displayFreq = stringValue2(targetInfo.freq) ?? result?.freq ?? freq;
   const dataSourceLabel = backtestDataSourceLabel(result, locale);
   const dataHealthLabel = dataHealthText(result, locale);
+  const selectedCodes = (0, import_react2.useMemo)(() => parseCodeList(code), [code]);
+  const isBatchView = selectedCodes.length > 1 || isMultiMode;
+  const resultSymbolOptions = (0, import_react2.useMemo)(() => symbolOptionsFromBacktestOutputs(result, batchResult), [batchResult, result]);
+  const dashboardHistory = (0, import_react2.useMemo)(() => dashboardBacktestHistoryEntries(dashboard), [dashboard]);
+  const restorableHistory = (0, import_react2.useMemo)(
+    () => mergeBacktestHistoryEntries([...localHistory, ...dashboardHistory]),
+    [dashboardHistory, localHistory]
+  );
+  const symbolOptions = (0, import_react2.useMemo)(
+    () => uniqueSymbolOptions([...symbolOptionsForPicker(dashboard), ...symbolCatalog, ...resultSymbolOptions]),
+    [dashboard, resultSymbolOptions, symbolCatalog]
+  );
+  const selectedDisplay = (0, import_react2.useMemo)(() => selectedSymbolDisplay(selectedCodes, symbolOptions, locale), [locale, selectedCodes, symbolOptions]);
+  const chartTitle = selectedDisplay.short || [displaySymbol, displayName].filter(Boolean).join(" \xB7 ");
+  const chartTitleFull = selectedDisplay.full || chartTitle;
+  const researchSummary = (0, import_react2.useMemo)(
+    () => buildStrategyResearchSummary({
+      result,
+      batchResult,
+      error,
+      loading,
+      selectedCodes,
+      freq,
+      locale
+    }),
+    [batchResult, error, freq, loading, locale, result, selectedCodes]
+  );
+  const displayedSignalCount = activeDateWindow ? visibleSignals.length : numberValue2(metrics.signal_count) ?? signals.length;
+  const displayedTradeCount = activeDateWindow ? visibleFilledTrades.length : numberValue2(metrics.filled_trades) ?? filledTrades.length;
+  const rememberSymbolOptions = (0, import_react2.useCallback)((nextOptions) => {
+    if (!nextOptions.length) return;
+    setSymbolCatalog((previous) => {
+      const merged = uniqueSymbolOptions([...previous, ...nextOptions]);
+      return symbolOptionsEqual(previous, merged) ? previous : merged;
+    });
+  }, []);
+  const rememberBacktestHistory = (0, import_react2.useCallback)((entry) => {
+    if (!entry) return;
+    setLocalHistory((previous) => {
+      const next = mergeBacktestHistoryEntries([entry, ...previous]);
+      writeBacktestHistoryEntries(next);
+      return next;
+    });
+  }, []);
+  const setCodeList = (0, import_react2.useCallback)((codes) => {
+    setCode(selectedSymbolText(parseCodeList(codes.join(","))));
+  }, []);
+  const toggleSymbolCode = (0, import_react2.useCallback)((nextCode) => {
+    const normalized = normalizeSymbolCode(nextCode);
+    if (!normalized) return;
+    const current = parseCodeList(code);
+    const exists = current.some((item) => item.toUpperCase() === normalized.toUpperCase());
+    setCodeList(exists ? current.filter((item) => item.toUpperCase() !== normalized.toUpperCase()) : [...current, normalized]);
+  }, [code, setCodeList]);
+  const selectDatePreset = (0, import_react2.useCallback)((key) => {
+    setSelectedDatePresetKey(key);
+    setSelectedSignalIndex(null);
+    setSelectedTradeIndex(null);
+    if (key && (tab === "perf" || tab === "scan" || tab === "risk")) setTab("signals");
+  }, [tab]);
   const updateSimParam = (0, import_react2.useCallback)((key, value) => {
     setSimParams((previous) => ({ ...previous, [key]: value }));
   }, []);
@@ -31963,21 +33246,86 @@ function BacktestWorkbench({
   }, []);
   const runAnalyze = (0, import_react2.useCallback)(async () => {
     if (!baseUrl || !code.trim()) return;
-    const hadResult = Boolean(result);
+    const codeList = parseCodeList(code);
+    if (codeList.length === 0) {
+      setError(locale === "zh-CN" ? "\u6CA1\u6709\u8BC6\u522B\u5230\u6709\u6548\u4EE3\u7801\u3002\u8BF7\u8F93\u5165 6 \u4F4D\u4EE3\u7801\uFF0C\u6216\u4ECE\u5DF2\u9009\u6C60\u52FE\u9009\u6807\u7684\u3002" : "No valid symbol code found. Type a code or pick symbols from the pool.");
+      return;
+    }
+    const normalizedCodeText = selectedSymbolText(codeList);
+    if (normalizedCodeText !== code.trim()) setCode(normalizedCodeText);
+    const multiMode = codeList.length > 1;
+    if (!multiMode && isBacktestUnsupportedBoardCode(codeList[0] ?? "")) {
+      setError(locale === "zh-CN" ? `\u5F53\u524D\u56DE\u6D4B\u6682\u4E0D\u652F\u6301\u5317\u4EA4\u6240/\u65B0\u4E09\u677F\u6807\u7684\uFF1A${codeList[0]}\u3002\u8BF7\u9009\u62E9\u6CAA\u6DF1\u6216 HK \u6807\u7684\u3002` : `${codeList[0]} is not supported by the current backtest data path. Pick an SH/SZ or HK symbol.`);
+      return;
+    }
+    if (multiMode && codeList.length > MAX_BACKTEST_BATCH_CODES) {
+      setError(locale === "zh-CN" ? `\u6279\u91CF\u56DE\u6D4B\u6700\u591A\u652F\u6301 ${MAX_BACKTEST_BATCH_CODES} \u53EA\uFF1B\u8BF7\u5148\u7F29\u5C0F\u5DF2\u9009\u6C60\u3002` : `Batch backtest supports up to ${MAX_BACKTEST_BATCH_CODES} symbols. Narrow the selected pool first.`);
+      return;
+    }
+    const hadResult = Boolean(result || batchResult);
     recordObservationEvent("backtest.analyze.submit", {
       code: code.trim(),
+      codes: codeList,
       freq,
       signal_type: signalType,
-      had_result: hadResult
+      had_result: hadResult,
+      mode: multiMode ? "multi" : "single"
     });
     setLoading(true);
     setError(null);
     try {
-      const params = buildParams(code.trim(), freq, signalType, simParams);
+      if (multiMode) {
+        const data2 = await fetchJson(
+          baseUrl,
+          "/api/backtest/batch",
+          3e5,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildBatchBody(codeList, freq, signalType, simParams))
+          }
+        );
+        setBatchResult(data2);
+        setResult(null);
+        setScan(null);
+        setSelectedSignalIndex(null);
+        setSelectedTradeIndex(null);
+        setSelectedDatePresetKey(null);
+        setTab("perf");
+        rememberBacktestHistory(createBacktestHistoryEntry({
+          batchResult: data2,
+          codes: codeList,
+          freq,
+          signalType
+        }));
+        const summary = recordValue2(data2.summary);
+        recordObservationEvent("backtest.batch.success", {
+          code_count: codeList.length,
+          total_stocks: summary.total_stocks,
+          ok_stocks: summary.ok_stocks,
+          total_signals: summary.total_signals,
+          total_trades: summary.total_trades,
+          terminal_version: data2.terminal?.version,
+          terminal_mode: data2.terminal?.mode
+        });
+        return;
+      }
+      const params = buildParams(codeList[0] ?? code.trim(), freq, signalType, simParams);
       const data = await fetchJson(baseUrl, `/api/backtest/analyze?${params.toString()}`);
       setResult(data);
+      setBatchResult(null);
       setScan(null);
+      setSelectedSignalIndex(null);
+      setSelectedTradeIndex(null);
+      setSelectedDatePresetKey(null);
       if (!hadResult) setTab("perf");
+      rememberBacktestHistory(createBacktestHistoryEntry({
+        result: data,
+        codes: codeList,
+        freq,
+        signalType
+      }));
+      const metrics2 = recordValue2(data.terminal?.metrics);
       recordObservationEvent("backtest.analyze.success", {
         code: data.code ?? code.trim(),
         symbol: data.symbol,
@@ -31990,12 +33338,13 @@ function BacktestWorkbench({
         derived_from: data.derived_from,
         partial: data.partial,
         last_upstream_error: data.last_upstream_error,
-        signals: data.signals?.length ?? 0,
-        trades: data.sim_trades?.length ?? 0
+        signals: numberValue2(metrics2.signal_count) ?? data.signals?.length ?? 0,
+        trades: numberValue2(metrics2.filled_trades) ?? data.sim_trades?.length ?? 0,
+        terminal_version: data.terminal?.version
       });
     } catch (rawError) {
       const apiError = rawError;
-      setError(apiError.message || (locale === "zh-CN" ? "\u56DE\u6D4B\u5206\u6790\u5931\u8D25\u3002" : "Backtest analysis failed."));
+      setError(compactApiError(apiError, locale, locale === "zh-CN" ? "\u56DE\u6D4B\u5206\u6790\u5931\u8D25\u3002" : "Backtest analysis failed."));
       recordObservationEvent("backtest.analyze.error", {
         code: code.trim(),
         freq,
@@ -32009,11 +33358,16 @@ function BacktestWorkbench({
     } finally {
       setLoading(false);
     }
-  }, [baseUrl, code, freq, locale, result, signalType, simParams]);
+  }, [baseUrl, batchResult, code, freq, locale, rememberBacktestHistory, result, signalType, simParams]);
   const runScan = (0, import_react2.useCallback)(async () => {
     if (!baseUrl || !code.trim()) return;
+    const codeList = parseCodeList(code);
+    if (codeList.length === 0) {
+      setError(locale === "zh-CN" ? "\u6CA1\u6709\u8BC6\u522B\u5230\u6709\u6548\u4EE3\u7801\u3002\u8BF7\u8F93\u5165 6 \u4F4D\u4EE3\u7801\uFF0C\u6216\u4ECE\u5DF2\u9009\u6C60\u52FE\u9009\u6807\u7684\u3002" : "No valid symbol code found. Type a code or pick a symbol from the pool.");
+      return;
+    }
     recordObservationEvent("backtest.scan.submit", {
-      code: code.trim(),
+      code: codeList[0] ?? code.trim(),
       freq,
       signal_type: signalType,
       scan_params: scanParams
@@ -32021,7 +33375,7 @@ function BacktestWorkbench({
     setScanLoading(true);
     setError(null);
     try {
-      const params = buildParams(code.trim(), freq, signalType, simParams);
+      const params = buildParams(codeList[0] ?? code.trim(), freq, signalType, simParams);
       Object.entries(scanParams).forEach(([key, value]) => {
         if (value.trim()) params.set(key, value);
       });
@@ -32038,7 +33392,7 @@ function BacktestWorkbench({
       });
     } catch (rawError) {
       const apiError = rawError;
-      setError(apiError.message || (locale === "zh-CN" ? "\u53C2\u6570\u626B\u63CF\u5931\u8D25\u3002" : "Parameter scan failed."));
+      setError(compactApiError(apiError, locale, locale === "zh-CN" ? "\u53C2\u6570\u626B\u63CF\u5931\u8D25\u3002" : "Parameter scan failed."));
       recordObservationEvent("backtest.scan.error", {
         code: code.trim(),
         freq,
@@ -32053,10 +33407,122 @@ function BacktestWorkbench({
   }, [baseUrl, code, freq, locale, scanParams, signalType, simParams]);
   const exportCsv = (0, import_react2.useCallback)(() => {
     if (!baseUrl || !code.trim()) return;
-    const params = buildParams(code.trim(), freq, signalType, simParams);
+    const codeList = parseCodeList(code);
+    if (!codeList.length) return;
+    const params = buildParams(codeList[0] ?? code.trim(), freq, signalType, simParams);
     window.open(`${baseUrl}/api/backtest/export?${params.toString()}`, "_blank", "noopener,noreferrer");
   }, [baseUrl, code, freq, signalType, simParams]);
+  const handleMarkerSelect = (0, import_react2.useCallback)((marker) => {
+    if (marker.kind === "signal" && marker.sourceIndex !== void 0) {
+      setSelectedSignalIndex(marker.sourceIndex);
+      setTab("signals");
+      return;
+    }
+    if (marker.kind === "trade" && marker.tradeIndex !== void 0) {
+      setSelectedTradeIndex(marker.tradeIndex);
+      setTab("trades");
+    }
+  }, []);
+  const drillIntoBatchSymbol = (0, import_react2.useCallback)((nextCode) => {
+    const normalized = normalizeSymbolCode(nextCode);
+    if (!normalized) return;
+    setCode(normalized);
+    setBatchResult(null);
+    setResult(null);
+    setScan(null);
+    setSelectedSignalIndex(null);
+    setSelectedTradeIndex(null);
+    setSelectedDatePresetKey(null);
+    setTab("perf");
+  }, []);
+  const restoreBacktestHistory = (0, import_react2.useCallback)((entry) => {
+    const codes = entry.codes.length ? entry.codes : parseCodeList(code);
+    if (codes.length) setCode(selectedSymbolText(codes));
+    setFreq(entry.freq || "daily");
+    if (entry.signalType && ["all", "macd", "czsc", "gap", "trend_breakout", "vol_contraction", "candle_run", "candle_accel"].includes(entry.signalType)) {
+      setSignalType(entry.signalType);
+    }
+    if (entry.mode === "multi" && entry.batchResult) {
+      setBatchResult(entry.batchResult);
+      setResult(null);
+    } else if (entry.result) {
+      setResult(entry.result);
+      setBatchResult(null);
+    }
+    setScan(null);
+    setError(null);
+    setSelectedSignalIndex(null);
+    setSelectedTradeIndex(null);
+    setSelectedDatePresetKey(null);
+    setTab("perf");
+    recordObservationEvent("backtest.history.restore", {
+      id: entry.id,
+      mode: entry.mode,
+      codes: entry.codes,
+      freq: entry.freq
+    });
+  }, [code]);
   (0, import_react2.useEffect)(() => {
+    if (!selectedDatePresetKey) return;
+    if (datePresetWindows.some((item) => item.key === selectedDatePresetKey)) return;
+    setSelectedDatePresetKey(null);
+    setSelectedSignalIndex(null);
+    setSelectedTradeIndex(null);
+  }, [datePresetWindows, selectedDatePresetKey]);
+  (0, import_react2.useEffect)(() => {
+    const onKeyDown = (event) => {
+      const target = event.target;
+      const tagName = target?.tagName.toLowerCase();
+      const editing = tagName === "input" || tagName === "textarea" || tagName === "select" || Boolean(target?.isContentEditable);
+      const interactive = editing || tagName === "button";
+      if (event.key === "/" && !editing) {
+        event.preventDefault();
+        codeInputRef.current?.focus();
+        codeInputRef.current?.select();
+        return;
+      }
+      if (event.key === "Escape") {
+        setSelectedSignalIndex(null);
+        setSelectedTradeIndex(null);
+        if (editing) target?.blur();
+        return;
+      }
+      if (interactive) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void runAnalyze();
+        return;
+      }
+      const tabByKey = {
+        "1": "perf",
+        "2": "trades",
+        "3": "signals",
+        "4": "scan",
+        "5": "risk"
+      };
+      const nextTab = tabByKey[event.key];
+      if (nextTab) {
+        event.preventDefault();
+        setTab(nextTab);
+        return;
+      }
+      const freqByKey = { d: "daily", w: "weekly", m: "monthly" };
+      const nextFreq = freqByKey[event.key.toLowerCase()];
+      if (nextFreq) {
+        event.preventDefault();
+        setFreq(nextFreq);
+        recordObservationEvent("backtest.freq.hotkey", {
+          previous: freq,
+          next: nextFreq,
+          code: code.trim()
+        });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [code, freq, runAnalyze]);
+  (0, import_react2.useEffect)(() => {
+    if (isBatchView) return;
     if (!chartContainerRef.current) return;
     ensureMarkerOverlay();
     const chart = init(chartContainerRef.current, {
@@ -32091,28 +33557,35 @@ function BacktestWorkbench({
       chartRef.current = null;
       dispose(chart);
     };
-  }, [locale]);
+  }, [isBatchView, locale]);
   (0, import_react2.useEffect)(() => {
+    if (isBatchView) return;
     const chart = chartRef.current;
     if (!chart) return;
     chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
-    if (klineData.length === 0) {
+    if (visibleKlineData.length === 0) {
       chart.clearData();
       return;
     }
-    chart.applyNewData(klineData);
-    createSignalOverlays(chart, klineData, signals);
-    chart.scrollToRealTime();
+    chart.applyNewData(visibleKlineData);
+    createSignalOverlays(chart, visibleKlineData, visibleSignals, visibleTradeMarkers, activeDateWindow, handleMarkerSelect);
+    if (activeDateWindow) {
+      chart.scrollToTimestamp(activeDateWindow.anchorTime, 300);
+    } else {
+      chart.scrollToRealTime();
+    }
     chart.resize();
-  }, [klineData, signals]);
+  }, [activeDateWindow, handleMarkerSelect, isBatchView, visibleKlineData, visibleSignals, visibleTradeMarkers]);
   if (!baseUrl) {
-    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: rootStyle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...warningStyle, margin: 9 }, children: locale === "zh-CN" ? "\u4FE1\u53F7\u5B9E\u65F6\u5165\u53E3\u672A\u914D\u7F6E\uFF0C\u5F53\u524D\u663E\u793A\u964D\u7EA7\u961F\u5217\u3002" : "Signals live endpoint is not configured. Showing the degraded queue." }),
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...rootStyle, gridTemplateRows: "auto minmax(0, 1fr)" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...warningStyle, margin: 9 }, children: locale === "zh-CN" ? "Signals \u670D\u52A1\u672A\u8FDE\u63A5\uFF0C\u5148\u67E5\u770B\u672C\u5730\u5386\u53F2\u56DE\u6D4B\u4E0E\u5F85\u5904\u7406\u4EFB\u52A1\u3002" : "Signals service is not connected. Showing local history and pending backtests." }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         FallbackBacktest,
         {
           locale,
           dashboard,
+          historyEntries: restorableHistory,
+          onRestoreHistory: restoreBacktestHistory,
           onOpenRun,
           onOpenRecord
         }
@@ -32129,14 +33602,18 @@ function BacktestWorkbench({
           void runAnalyze();
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "Signals \u56DE\u6D4B" : "Signals Backtest" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u6807\u7684\u7BEE\u5B50" : "Symbol basket" }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
             "input",
             {
-              "aria-label": locale === "zh-CN" ? "\u80A1\u7968\u4EE3\u7801" : "Symbol",
+              ref: codeInputRef,
+              "aria-label": locale === "zh-CN" ? "\u6807\u7684\u4EE3\u7801\u5217\u8868" : "Symbol list",
+              name: "backtest-symbols",
+              autoComplete: "off",
+              spellCheck: false,
               style: inputStyle,
               value: code,
-              placeholder: "002759 / 600519 / 09988\u2026",
+              placeholder: locale === "zh-CN" ? "\u8F93\u5165\u4EE3\u7801\uFF0C\u9017\u53F7\u5206\u9694\u2026" : "Type symbols, comma separated\u2026",
               onChange: (event) => setCode(event.target.value)
             }
           ),
@@ -32188,100 +33665,1202 @@ function BacktestWorkbench({
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "submit", style: buttonStyle(true, loading), disabled: loading, children: loading ? locale === "zh-CN" ? "\u5206\u6790\u4E2D" : "Running" : locale === "zh-CN" ? "\u8FD0\u884C" : "Run" }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: error ?? (result ? `${result.symbol ?? result.code ?? code} \xB7 ${signals.length} signals \xB7 ${filledTrades.length} trades` + (dataSourceLabel ? ` \xB7 ${dataSourceLabel}` : "") : locale === "zh-CN" ? "\u8F93\u5165\u4EE3\u7801\u540E\u8FD0\u884C\u589E\u5F3A\u56DE\u6D4B" : "Enter a symbol to run enhanced backtest") }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false, !result), disabled: !result, onClick: exportCsv, children: "CSV" })
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "submit", style: buttonStyle(true, loading), disabled: loading, children: loading ? locale === "zh-CN" ? "\u5206\u6790\u4E2D" : "Running" : locale === "zh-CN" ? "\u8FD0\u884C\u56DE\u6D4B" : "Run" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, title: error ?? void 0, children: error ?? (batchResult ? locale === "zh-CN" ? `${numberValue2(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0}\u6807\u7684 \xB7 ${numberValue2(batchResult.summary?.total_signals) ?? 0}\u4FE1\u53F7 \xB7 ${numberValue2(batchResult.summary?.total_trades) ?? 0}\u7B14\u4EA4\u6613` : `${numberValue2(batchResult.summary?.total_stocks) ?? batchResult.stocks?.length ?? 0} symbols \xB7 ${numberValue2(batchResult.summary?.total_signals) ?? 0} signals \xB7 ${numberValue2(batchResult.summary?.total_trades) ?? 0} trades` : result ? `${locale === "zh-CN" ? `${displaySymbol} \xB7 ${displayedSignalCount}\u4FE1\u53F7 \xB7 ${displayedTradeCount}\u7B14\u4EA4\u6613` : `${displaySymbol} \xB7 ${displayedSignalCount} signals \xB7 ${displayedTradeCount} trades`}${dataSourceLabel ? ` \xB7 ${dataSourceLabel}` : ""}` : locale === "zh-CN" ? "\u4ECE\u4E0B\u65B9\u9009\u62E9\u52A8\u6001\u4EA7\u4E1A\u94FE\u7EC4\u5408\u6216\u52FE\u9009\u591A\u53EA\u6807\u7684" : "Enter one symbol for single backtest, multiple symbols for portfolio review") }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false, !result || Boolean(batchResult)), disabled: !result || Boolean(batchResult), onClick: exportCsv, children: locale === "zh-CN" ? "\u5BFC\u51FA" : "CSV" })
         ]
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      SymbolBasketBar,
+      {
+        locale,
+        baseUrl,
+        selectedCodes,
+        options: symbolOptions,
+        onApplyBasket: (codes) => setCodeList(codes),
+        onToggleCode: toggleSymbolCode,
+        onSymbolOptionsSeen: rememberSymbolOptions,
+        onClearCodes: () => {
+          setCodeList([]);
+          setBatchResult(null);
+          setResult(null);
+          setSelectedDatePresetKey(null);
+        },
+        onRemoveCode: (codeToRemove) => {
+          setCodeList(selectedCodes.filter((item) => item.toUpperCase() !== codeToRemove.toUpperCase()));
+        }
       }
     ),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mainGridStyle, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: sideStyle, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u6A21\u62DF\u53C2\u6570" : "Simulation", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ParamGrid, { params: simParams, onChange: updateSimParam }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u65E5\u671F\u6807\u7B7E" : "Date presets", children: result?.date_presets?.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: result.date_presets.slice(0, 12).map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-          "button",
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+          Panel,
           {
-            type: "button",
-            style: buttonStyle(false),
-            onClick: () => {
-              const chart = chartRef.current;
-              const time = numberValue2(item.time);
-              if (chart && time) chart.scrollToTimestamp(time * 1e3, 300);
-            },
-            children: String(item.label ?? item.date ?? item.key ?? "").split("\u2014")[0].trim()
-          },
-          item.key ?? item.label ?? item.date
-        )) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u8FD0\u884C\u540E\u663E\u793A\u4E8B\u4EF6\u6807\u7B7E\u3002" : "Run to show event presets." }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u964D\u7EA7\u961F\u5217" : "Fallback queue", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FallbackRows, { dashboard, onOpenRun, onOpenRecord }) })
+            title: isBatchView ? locale === "zh-CN" ? "\u6837\u672C\u4E0E\u53C2\u6570" : "Sample and params" : locale === "zh-CN" ? "\u6A21\u62DF\u53C2\u6570" : "Simulation",
+            children: [
+              isBatchView ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 7 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u6837\u672C" : "Current sample" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, lineHeight: 1.35 }, children: selectedDisplay.full || emptyDisplay })
+              ] }) }) : null,
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ParamGrid, { params: simParams, onChange: updateSimParam })
+            ]
+          }
+        ),
+        isBatchView ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          BatchSamplePanel,
+          {
+            locale,
+            batchResult,
+            selectedCodes
+          }
+        ) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Panel, { title: locale === "zh-CN" ? "\u65E5\u671F\u6807\u7B7E" : "Date presets", children: [
+          datePresetWindows.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                style: buttonStyle(!activeDateWindow),
+                onClick: () => selectDatePreset(null),
+                title: locale === "zh-CN" ? "\u663E\u793A\u5B8C\u6574\u56DE\u6D4B\u533A\u95F4" : "Show full backtest range",
+                children: locale === "zh-CN" ? "\u5168\u90E8" : "All"
+              }
+            ),
+            datePresetWindows.slice(0, 12).map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                style: buttonStyle(activeDateWindow?.key === item.key),
+                title: `${item.displayRange} \xB7 ${item.label}`,
+                onClick: () => {
+                  recordObservationEvent("backtest.date-preset.select", {
+                    key: item.key,
+                    label: item.shortLabel,
+                    from: dateKey(item.from),
+                    to: dateKey(item.to),
+                    code: code.trim(),
+                    freq
+                  });
+                  selectDatePreset(item.key);
+                },
+                children: item.shortLabel
+              },
+              item.key
+            ))
+          ] }) : result && datePresets.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u7B56\u7565\u533A\u95F4\u6CA1\u6709\u5339\u914D\u7684\u4E8B\u4EF6\u6807\u7B7E\u3002" : "No event presets match this backtest range." }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u8FD0\u884C\u540E\u663E\u793A\u4E8B\u4EF6\u6807\u7B7E\u3002" : "Run to show event presets." }),
+          activeDateWindow ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+            activeDateWindow.displayRange,
+            " \xB7 ",
+            activeDateWindow.barCount,
+            locale === "zh-CN" ? "\u6839K\u7EBF" : " bars"
+          ] }) : null
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u56DE\u6D4B\u8BB0\u5F55" : "Backtest records", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          BacktestHistoryRows,
+          {
+            locale,
+            entries: restorableHistory,
+            onRestore: restoreBacktestHistory
+          }
+        ) }),
+        !isBatchView && !result ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5F85\u5904\u7406\u7EBF\u7D22" : "Pending signals", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FallbackRows, { dashboard, onOpenRun, onOpenRecord }) }) : null
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: chartPanelStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: isBatchView ? { ...chartPanelStyle, padding: 0, gap: 0, overflow: "hidden" } : chartPanelStyle, children: isBatchView ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        MultiBacktestReport,
+        {
+          locale,
+          terminal: batchResult?.terminal,
+          onSelectCode: drillIntoBatchSymbol
+        }
+      ) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: chartHeaderStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: [result?.freq ?? freq, dataSourceLabel].filter(Boolean).join(" \xB7 ") }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: result?.symbol ?? result?.code ?? code })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: [freqLabel(displayFreq, locale), dataSourceLabel].filter(Boolean).join(" \xB7 ") }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, title: chartTitleFull, children: chartTitle })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }, children: [
             dataSourceLabel ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(isFallbackDataSource(result) ? "warning" : "success"), children: dataSourceLabel }) : null,
-            result?.freshness ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(result.freshness === "fresh" ? "success" : "warning"), children: result.freshness }) : null,
+            stringValue2(targetInfo.freshness) ?? result?.freshness ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle((stringValue2(targetInfo.freshness) ?? result?.freshness) === "fresh" ? "success" : "warning"), children: freshnessLabel(stringValue2(targetInfo.freshness) ?? result?.freshness, locale) }) : null,
             (result?.warnings ?? []).slice(0, 2).map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("warning"), children: item }, item)),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(error ? "failed" : loading ? "running" : result ? "success" : "open"), children: error ? "error" : loading ? "running" : result ? "ready" : "idle" })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(error ? "failed" : loading ? "running" : result ? "success" : "open"), children: runStatusLabel(error, loading, Boolean(result), locale) })
           ] })
         ] }),
         dataHealthLabel ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, padding: "0 2px", minHeight: 16 }, children: dataHealthLabel }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricStrip, { result }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricStrip, { result, locale }),
+        activeDateWindow ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: datePresetFocusStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u4E8B\u4EF6\u533A\u95F4\u8BE6\u60C5" : "Event detail range" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: [
+              activeDateWindow.shortLabel,
+              " \xB7 ",
+              activeDateWindow.displayRange
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+              activeDateWindow.barCount,
+              locale === "zh-CN" ? "\u6839K\u7EBF" : " bars",
+              " \xB7 ",
+              visibleSignals.length,
+              locale === "zh-CN" ? "\u4E2A\u4FE1\u53F7" : " signals",
+              " \xB7 ",
+              visibleFilledTrades.length,
+              locale === "zh-CN" ? "\u7B14\u4EA4\u6613" : " trades"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              type: "button",
+              style: buttonStyle(false),
+              onClick: () => selectDatePreset(null),
+              children: locale === "zh-CN" ? "\u56DE\u5230\u5168\u90E8" : "All"
+            }
+          )
+        ] }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: chartShellStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { ref: chartContainerRef, style: { width: "100%", height: "100%" } }),
-          !result || klineData.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+          !result || visibleKlineData.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
             position: "absolute",
             inset: 0,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             color: terminalTheme.mutedStrong,
-            background: result ? "rgba(8, 11, 18, 0.86)" : "transparent"
+            background: result ? tradingDeskTheme.alpha.overlay : "transparent"
           }, children: loading ? locale === "zh-CN" ? "\u6B63\u5728\u62C9\u53D6 Signals \u56DE\u6D4B\u6570\u636E\u3002" : "Loading Signals backtest data." : locale === "zh-CN" ? "\u8FD0\u884C\u5206\u6790\u540E\u663E\u793A K\u7EBF\u3001\u4FE1\u53F7\u3001MACD \u4E0E\u6210\u4EA4\u3002" : "Run analysis to show candles, signals, MACD, and trades." }) : null
         ] })
-      ] }),
+      ] }) }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: sideStyle, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...panelStyle, gap: 7 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }, children: ["perf", "trades", "signals", "scan"].map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-          "button",
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(StrategyResearchPanel, { summary: researchSummary, locale }),
+        isBatchView ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          BatchResearchDrilldownPanel,
           {
-            type: "button",
-            style: buttonStyle(tab === item),
-            onClick: () => {
-              recordObservationEvent("backtest.tab.click", {
-                previous: tab,
-                next: item,
-                code: code.trim(),
-                freq
-              });
-              setTab(item);
-            },
-            children: item
-          },
-          item
-        )) }) }),
-        tab === "perf" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u7EE9\u6548\u603B\u89C8" : "Performance", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(KpiPanel, { kpi: result?.kpi, simKpi: result?.sim_kpi }) }) : tab === "trades" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4EA4\u6613\u660E\u7EC6" : "Trades", meta: String(filledTrades.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(TradeTable, { trades }) }) : tab === "signals" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4FE1\u53F7\u8BE6\u60C5" : "Signals", meta: String(signals.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(SignalTable, { signals }) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u53C2\u6570\u626B\u63CF" : "Parameter scan", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-          ScanControls,
-          {
-            params: scanParams,
-            loading: scanLoading,
-            scan,
-            onChange: updateScanParam,
-            onRun: () => {
-              void runScan();
-            }
+            locale,
+            batchResult,
+            onSelectCode: drillIntoBatchSymbol
           }
-        ) })
+        ) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...panelStyle, gap: 7 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }, children: ["perf", "trades", "signals", "scan", "risk"].map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              type: "button",
+              style: buttonStyle(tab === item),
+              onClick: () => {
+                recordObservationEvent("backtest.tab.click", {
+                  previous: tab,
+                  next: item,
+                  code: code.trim(),
+                  freq
+                });
+                setTab(item);
+              },
+              children: backtestTabLabel(item, locale)
+            },
+            item
+          )) }) }),
+          tab === "perf" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u7EE9\u6548\u603B\u89C8" : "Performance", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(KpiPanel, { result }) }) : tab === "trades" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4EA4\u6613\u660E\u7EC6" : "Trades", meta: String(visibleFilledTrades.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            TradeTable,
+            {
+              trades: visibleTrades,
+              selectedIndex: selectedTradeIndex,
+              onSelect: (index, rawTime) => {
+                setSelectedTradeIndex(index);
+                setTab("trades");
+                const chart = chartRef.current;
+                const time = normalizeTimestampMs(rawTime);
+                if (chart && time) chart.scrollToTimestamp(time, 300);
+              }
+            }
+          ) }) : tab === "signals" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4FE1\u53F7\u8BE6\u60C5" : "Signals", meta: String(visibleSignals.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            SignalTable,
+            {
+              signals: visibleSignals,
+              selectedIndex: selectedSignalIndex,
+              onSelect: (index, rawTime) => {
+                setSelectedSignalIndex(index);
+                setTab("signals");
+                const chart = chartRef.current;
+                const time = numberValue2(rawTime);
+                if (chart && time) chart.scrollToTimestamp(time < 1e10 ? time * 1e3 : time, 300);
+              }
+            }
+          ) }) : tab === "scan" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u53C2\u6570\u626B\u63CF" : "Parameter scan", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            ScanControls,
+            {
+              params: scanParams,
+              loading: scanLoading,
+              scan,
+              onChange: updateScanParam,
+              onRun: () => {
+                void runScan();
+              }
+            }
+          ) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u98CE\u63A7\u6458\u8981" : "Risk", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(RiskPanel, { result }) })
+        ] })
       ] })
     ] })
   ] });
 }
+function StrategyResearchPanel({
+  summary,
+  locale,
+  compact = false
+}) {
+  const issueLimit = compact ? 3 : 4;
+  const actionLimit = compact ? 2 : 3;
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...researchPanelStyle, padding: compact ? "8px 10px" : researchPanelStyle.padding }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: researchHeaderStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u7B56\u7565\u7814\u53D1\u5224\u5B9A" : "Strategy research" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: compact ? 14 : 15, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: summary.headline })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(summary.tone), children: summary.statusLabel })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: summary.detail }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: researchFlowStyle, children: summary.flow.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: researchPillStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: statusBadgeStyle(item.tone).color, fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: item.value })
+    ] }, item.label)) }),
+    compact ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...metricGridStyle2, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }, children: summary.cards.slice(0, 6).map((card) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: card.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor(card.tone), fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }, children: card.value })
+    ] }, card.label)) }),
+    summary.issues.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: researchIssueRowStyle, children: summary.issues.slice(0, issueLimit).map((issue) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(summary.tone === "failed" ? "failed" : "warning"), children: issue }, issue)) }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("ul", { style: researchActionStyle, children: summary.actions.slice(0, actionLimit).map((action) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("li", { style: { ...mutedStyle, color: terminalTheme.text, lineHeight: 1.35 }, children: action }, action)) })
+  ] });
+}
+function batchRankingRows(batchResult) {
+  const rows = batchResult?.terminal?.panels?.ranking?.rows;
+  return Array.isArray(rows) ? rows.map(recordValue2) : [];
+}
+function batchSignalRows(batchResult) {
+  const rows = batchResult?.terminal?.panels?.signals?.rows;
+  return Array.isArray(rows) ? rows.map(recordValue2) : [];
+}
+function recordSymbolLabel(row) {
+  const code = normalizeSymbolCode(stringValue2(row.code) ?? stringValue2(row.symbol) ?? "");
+  const name = stringValue2(row.name) ?? stringValue2(row.stock_name);
+  if (!code) return name ?? emptyDisplay;
+  return name && name.toUpperCase() !== code.toUpperCase() ? `${code} ${name}` : code;
+}
+function BatchSamplePanel({
+  locale,
+  batchResult,
+  selectedCodes
+}) {
+  const zh = locale === "zh-CN";
+  const summary = recordValue2(batchResult?.summary);
+  const metrics = recordValue2(batchResult?.terminal?.metrics);
+  const target = recordValue2(batchResult?.terminal?.target);
+  const totalStocks = numberValue2(summary.total_stocks) ?? selectedCodes.length;
+  const okStocks = numberValue2(summary.ok_stocks);
+  const failedStocks = okStocks === void 0 ? void 0 : Math.max(0, totalStocks - okStocks);
+  const cards = [
+    { label: zh ? "\u5468\u671F" : "Freq", value: freqLabel(target.freq, locale) || emptyDisplay },
+    { label: zh ? "\u622A\u81F3" : "As of", value: stringValue2(target.as_of) ?? emptyDisplay },
+    { label: zh ? "\u65B0\u9C9C\u5EA6" : "Freshness", value: freshnessLabel(target.freshness, locale) || emptyDisplay },
+    { label: zh ? "\u6210\u529F/\u5931\u8D25" : "OK/failed", value: failedStocks === void 0 ? `${formatNumber(totalStocks, 0)} / --` : `${formatNumber(okStocks, 0)} / ${formatNumber(failedStocks, 0)}` },
+    { label: zh ? "\u6210\u4EA4/\u6807\u7684" : "Trades/symbol", value: totalStocks ? formatNumber((numberValue2(metrics.filled_trades) ?? 0) / totalStocks, 1) : emptyDisplay },
+    { label: zh ? "\u5747\u56DE\u64A4" : "Avg DD", value: formatDrawdown(metrics.max_drawdown_pct) }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(Panel, { title: zh ? "\u6837\u672C\u8BC1\u636E" : "Sample evidence", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }, children: cards.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }, children: item.value })
+    ] }, item.label)) }),
+    batchResult?.warnings?.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: researchIssueRowStyle, children: batchResult.warnings.slice(0, 3).map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("warning"), children: item }, item)) }) : null
+  ] });
+}
+function BatchResearchDrilldownPanel({
+  locale,
+  batchResult,
+  onSelectCode
+}) {
+  const zh = locale === "zh-CN";
+  const rankingRows = batchRankingRows(batchResult);
+  const signalRows = batchSignalRows(batchResult);
+  const topRow = rankingRows[0];
+  const worstDrawdownRow = rankingRows.reduce((worst, row) => {
+    const value = Math.abs(numberValue2(row.max_drawdown_pct) ?? 0);
+    const worstValue = Math.abs(numberValue2(worst?.max_drawdown_pct) ?? 0);
+    return !worst || value > worstValue ? row : worst;
+  }, null);
+  const bestSignal = signalRows.reduce((best, row) => {
+    const value = numberValue2(row.avg_trade_return_pct ?? row.avg_t10_pct);
+    if (value === void 0) return best;
+    const bestValue = numberValue2(best?.avg_trade_return_pct ?? best?.avg_t10_pct);
+    return !best || bestValue === void 0 || value > bestValue ? row : best;
+  }, null);
+  const drillButtons = [
+    topRow ? { label: zh ? "\u4E0B\u94BB\u7B2C\u4E00\u540D" : "Open top", row: topRow, meta: formatPercent(topRow.range_return_pct) } : null,
+    worstDrawdownRow ? { label: zh ? "\u4E0B\u94BB\u6700\u5927\u56DE\u64A4" : "Open worst DD", row: worstDrawdownRow, meta: formatDrawdown(worstDrawdownRow.max_drawdown_pct) } : null
+  ].filter((item) => Boolean(item));
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: zh ? "\u6279\u91CF\u7814\u53D1\u52A8\u4F5C" : "Batch research actions", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 7 }, children: [
+    drillButtons.map((item) => {
+      const code = normalizeSymbolCode(stringValue2(item.row.code) ?? "");
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "button",
+        {
+          type: "button",
+          style: { ...rowStyle, width: "100%", cursor: code ? "pointer" : "default", textAlign: "left" },
+          disabled: !code,
+          onClick: () => onSelectCode(code),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: item.label }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: recordSymbolLabel(item.row) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor("return_pct", item.meta), fontWeight: 800 }, children: item.meta })
+          ]
+        },
+        `${item.label}-${code}`
+      );
+    }),
+    bestSignal ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u4F18\u5148\u9A8C\u8BC1\u4FE1\u53F7\u65CF" : "Signal family to verify" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: String(bestSignal.signal_type ?? emptyDisplay) }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+        zh ? "\u6210\u4EA4\u5747\u5229" : "Avg trade",
+        " ",
+        formatPercent(bestSignal.avg_trade_return_pct),
+        " \xB7 T+10 ",
+        formatPercent(bestSignal.avg_t10_pct)
+      ] })
+    ] }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: zh ? "\u6279\u91CF\u5148\u627E\u5171\u6027\u548C\u5931\u8D25\u6837\u672C\uFF0C\u518D\u9009\u4EE3\u8868\u5355\u7968\u505A\u4EA4\u6613\u660E\u7EC6\u4E0E\u53C2\u6570\u626B\u63CF\u3002" : "Use batch for repeatability and failure samples, then scan representative single symbols." })
+  ] }) });
+}
+function SymbolBasketBar({
+  locale,
+  baseUrl,
+  selectedCodes,
+  options,
+  onApplyBasket,
+  onToggleCode,
+  onSymbolOptionsSeen,
+  onClearCodes,
+  onRemoveCode
+}) {
+  const [query, setQuery] = (0, import_react2.useState)("");
+  const [boardOptions, setBoardOptions] = (0, import_react2.useState)([]);
+  const [boardLabel, setBoardLabel] = (0, import_react2.useState)("");
+  const [boardMatches, setBoardMatches] = (0, import_react2.useState)([]);
+  const [selectedBoardName, setSelectedBoardName] = (0, import_react2.useState)("");
+  const [selectedCandidateCode, setSelectedCandidateCode] = (0, import_react2.useState)("");
+  const [dynamicBaskets, setDynamicBaskets] = (0, import_react2.useState)([]);
+  const [basketLoading, setBasketLoading] = (0, import_react2.useState)(false);
+  const [basketMessage, setBasketMessage] = (0, import_react2.useState)("");
+  const [candidateExpanded, setCandidateExpanded] = (0, import_react2.useState)(false);
+  const [selectedExpanded, setSelectedExpanded] = (0, import_react2.useState)(false);
+  const [lookupLoading, setLookupLoading] = (0, import_react2.useState)(false);
+  const [lookupMessage, setLookupMessage] = (0, import_react2.useState)("");
+  const selectedSet = new Set(selectedCodes.map((item) => item.toUpperCase()));
+  const dynamicOptions = (0, import_react2.useMemo)(() => uniqueSymbolOptions(dynamicBaskets.flatMap((basket) => basket.codes)), [dynamicBaskets]);
+  const baseOptions = (0, import_react2.useMemo)(
+    () => uniqueSymbolOptions([...directSymbolOptionsFromQuery(query), ...dynamicOptions, ...options]),
+    [dynamicOptions, options, query]
+  );
+  const mergedOptions = uniqueSymbolOptions([...boardOptions, ...baseOptions]);
+  const optionByCode = new Map(mergedOptions.map((option) => [symbolOptionKey(option), option]));
+  const selectedNameLookupKey = selectedCodes.map((code) => {
+    const normalized = normalizeSymbolCode(code);
+    const option = optionByCode.get(normalized.toUpperCase());
+    return `${normalized}:${option && hasReadableSymbolName(option) ? option.name : ""}`;
+  }).join("|");
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredBaskets = dynamicBaskets.filter((basket) => basketMatches(basket, normalizedQuery));
+  const orderedBoardOptions = (0, import_react2.useMemo)(() => orderBacktestCandidateOptions(boardOptions), [boardOptions]);
+  const boardBacktestReadyCodes = orderedBoardOptions.filter((option) => !isBacktestUnsupportedBoardCode(option.code)).map((option) => option.code);
+  const candidateCodes = boardBacktestReadyCodes.slice(0, MAX_BACKTEST_BATCH_CODES);
+  const unsupportedCandidateCount = orderedBoardOptions.length - boardBacktestReadyCodes.length;
+  const batchLimitHiddenCount = Math.max(0, boardBacktestReadyCodes.length - candidateCodes.length);
+  const localCandidateOptions = (normalizedQuery ? symbolOptionsMatchingQuery(query, mergedOptions) : mergedOptions).slice(0, 28);
+  const candidateOptions = boardOptions.length ? orderedBoardOptions : localCandidateOptions;
+  const displayBoardMatches = boardMatches.length ? boardMatches : boardLabel ? [{ name: boardLabel, kind: "board", total: boardOptions.length }] : [];
+  const candidateLabel = boardOptions.length ? locale === "zh-CN" ? "\u6210\u5206\u80A1" : "Constituents" : normalizedQuery ? locale === "zh-CN" ? "\u5339\u914D\u6807\u7684" : "Matched symbols" : locale === "zh-CN" ? "\u5019\u9009\u6807\u7684" : "Symbols";
+  const visibleSelectedCodes = selectedExpanded ? selectedCodes : selectedCodes.slice(0, 6);
+  const hiddenSelectedCount = Math.max(0, selectedCodes.length - visibleSelectedCodes.length);
+  const showCandidateChips = Boolean(boardOptions.length || normalizedQuery);
+  const candidatePreviewLimit = showCandidateChips ? boardOptions.length ? candidateExpanded ? 18 : 6 : candidateExpanded ? 18 : 5 : 0;
+  const visibleCandidateOptions = candidateOptions.slice(0, candidatePreviewLimit);
+  const hiddenCandidateCount = Math.max(0, candidateOptions.length - visibleCandidateOptions.length);
+  const loadDynamicBaskets = (0, import_react2.useCallback)(async (search = "") => {
+    if (!baseUrl) return [];
+    setBasketLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "8");
+      if (search.trim()) params.set("query", search.trim());
+      const data = await fetchJson(baseUrl, `/api/cluster/baskets?${params.toString()}`, 12e4);
+      const baskets = normalizeDynamicBaskets(data.baskets);
+      setDynamicBaskets(baskets);
+      onSymbolOptionsSeen(baskets.flatMap((basket) => basket.codes));
+      setBasketMessage(baskets.length ? locale === "zh-CN" ? `\u52A8\u6001\u7EC4\u5408 ${baskets.length} \u4E2A \xB7 ${baskets[0]?.source ?? "Signals"}` : `${baskets.length} dynamic baskets \xB7 ${baskets[0]?.source ?? "Signals"}` : locale === "zh-CN" ? "\u6CA1\u6709\u52A8\u6001\u4EA7\u4E1A\u94FE\u7EC4\u5408\u3002" : "No dynamic chain baskets.");
+      return baskets;
+    } catch (rawError) {
+      const apiError = rawError;
+      setBasketMessage(compactApiError(apiError, locale, locale === "zh-CN" ? "\u52A8\u6001\u7EC4\u5408\u52A0\u8F7D\u5931\u8D25\u3002" : "Dynamic baskets failed to load."));
+      return [];
+    } finally {
+      setBasketLoading(false);
+    }
+  }, [baseUrl, locale, onSymbolOptionsSeen]);
+  (0, import_react2.useEffect)(() => {
+    void loadDynamicBaskets();
+  }, [loadDynamicBaskets]);
+  (0, import_react2.useEffect)(() => {
+    if (!baseUrl || !selectedCodes.length) return;
+    const missingCodes = selectedCodes.map(normalizeSymbolCode).filter(Boolean).filter((code) => {
+      const option = optionByCode.get(code.toUpperCase());
+      return !option || !hasReadableSymbolName(option);
+    }).slice(0, 6);
+    if (!missingCodes.length) return;
+    let cancelled = false;
+    void Promise.allSettled(missingCodes.map(async (code) => {
+      const data = await fetchJson(
+        baseUrl,
+        `/api/stock/resolve/${encodeURIComponent(code)}`,
+        SYMBOL_NAME_LOOKUP_TIMEOUT_MS
+      );
+      return symbolOptionFromLookupPayload(data, code);
+    })).then((results) => {
+      if (cancelled) return;
+      const resolved = results.map((result) => result.status === "fulfilled" ? result.value : null).filter((option) => Boolean(option && hasReadableSymbolName(option)));
+      if (resolved.length) onSymbolOptionsSeen(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, onSymbolOptionsSeen, selectedCodes, selectedNameLookupKey]);
+  (0, import_react2.useEffect)(() => {
+    if (candidateOptions.some((option) => option.code === selectedCandidateCode)) return;
+    setSelectedCandidateCode(candidateOptions[0]?.code ?? "");
+  }, [candidateOptions, selectedCandidateCode]);
+  const loadBoard = (0, import_react2.useCallback)(async (name) => {
+    const board = (name ?? query).trim();
+    if (!board) return;
+    const localMatches = symbolOptionsMatchingQuery(board, baseOptions).slice(0, 28);
+    setLookupLoading(true);
+    setLookupMessage("");
+    try {
+      const data = await fetchJson(
+        baseUrl,
+        `/api/cluster/stocks?board=${encodeURIComponent(board)}`,
+        12e4
+      );
+      const rows = Array.isArray(data.stocks) ? data.stocks : [];
+      const matches = Array.isArray(data.matches) ? data.matches.filter((match) => stringValue2(match.name)) : [];
+      const resolvedBoard = stringValue2(data.resolved_board) ?? stringValue2(data.board) ?? board;
+      const nextSelectedBoard = matches.some((match) => stringValue2(match.name) === resolvedBoard) ? resolvedBoard : stringValue2(matches[0]?.name) ?? resolvedBoard;
+      const nextOptions = uniqueSymbolOptions(rows.map((row) => {
+        const code = normalizeSymbolCode(row.code ?? row.symbol ?? "");
+        const knownOption = baseOptions.find((option) => option.code.toUpperCase() === code.toUpperCase());
+        const rawName = stringValue2(row.name);
+        return {
+          code,
+          name: rawName && rawName !== code ? rawName : knownOption?.name ?? code,
+          group: resolvedBoard
+        };
+      }).filter((option) => option.code));
+      if (nextOptions.length === 0) {
+        setBoardLabel("");
+        setBoardMatches(matches);
+        setSelectedBoardName(stringValue2(matches[0]?.name) ?? "");
+        setBoardOptions([]);
+        setSelectedCandidateCode("");
+        setCandidateExpanded(false);
+        if (localMatches.length) {
+          setLookupMessage(locale === "zh-CN" ? `\u627E\u5230${localMatches.length}\u4E2A\u5339\u914D\u6807\u7684\uFF0C\u53EF\u5728\u4E0B\u65B9\u76F4\u63A5\u52FE\u9009\u3002` : `${localMatches.length} matching symbols. Toggle them below.`);
+        } else {
+          setLookupMessage(data.error || (matches.length ? locale === "zh-CN" ? `\u627E\u5230${matches.length}\u4E2A\u5339\u914D\u6765\u6E90\uFF0C\u9009\u62E9\u540E\u70B9\u201C\u8F7D\u5165\u6210\u5206\u80A1\u201D\u3002` : `${matches.length} matching sources. Pick one and load.` : locale === "zh-CN" ? "\u6CA1\u6709\u627E\u5230\u6210\u5206\u80A1\uFF0C\u6362\u4E00\u4E2A\u4EA7\u4E1A\u94FE\u3001\u677F\u5757\u540D\u6216\u80A1\u7968\u4EE3\u7801\u8BD5\u8BD5\u3002" : "No constituents found. Try another chain, board name, or symbol code."));
+        }
+        return;
+      }
+      setBoardLabel(resolvedBoard);
+      setBoardMatches(matches);
+      setSelectedBoardName(nextSelectedBoard);
+      const orderedOptions = orderBacktestCandidateOptions(nextOptions).slice(0, 60);
+      const readyCount = orderedOptions.filter((option) => !isBacktestUnsupportedBoardCode(option.code)).length;
+      const unsupportedCount = orderedOptions.length - readyCount;
+      const batchCount = Math.min(readyCount, MAX_BACKTEST_BATCH_CODES);
+      const limitedCount = Math.max(0, readyCount - MAX_BACKTEST_BATCH_CODES);
+      setBoardOptions(orderedOptions);
+      onSymbolOptionsSeen(nextOptions);
+      setSelectedCandidateCode(orderedOptions.find((option) => !isBacktestUnsupportedBoardCode(option.code))?.code ?? orderedOptions[0]?.code ?? "");
+      setCandidateExpanded(false);
+      setLookupMessage(locale === "zh-CN" ? [
+        `${resolvedBoard} \xB7 ${numberValue2(data.total) ?? nextOptions.length}\u53EA\u6210\u5206\u80A1`,
+        batchCount ? `\u6279\u91CF\u9ED8\u8BA4\u53D6\u524D${batchCount}\u53EA\u53EF\u56DE\u6D4B\u6807\u7684` : "\u5F53\u524D\u6CA1\u6709\u53EF\u6279\u91CF\u56DE\u6D4B\u6807\u7684",
+        unsupportedCount ? `\u8DF3\u8FC7${unsupportedCount}\u53EA\u6682\u4E0D\u652F\u6301\u6807\u7684` : "",
+        limitedCount ? `\u53E6\u6709${limitedCount}\u53EA\u53EF\u624B\u52A8\u52FE\u9009` : ""
+      ].filter(Boolean).join("\uFF0C") + "\u3002" : [
+        `${resolvedBoard} \xB7 ${numberValue2(data.total) ?? nextOptions.length} constituents`,
+        batchCount ? `batch uses the first ${batchCount} supported symbols` : "no batch-ready symbols",
+        unsupportedCount ? `${unsupportedCount} unsupported symbols skipped` : "",
+        limitedCount ? `${limitedCount} more can be toggled manually` : ""
+      ].filter(Boolean).join(", ") + ".");
+    } catch (rawError) {
+      const apiError = rawError;
+      setBoardOptions([]);
+      setBoardLabel("");
+      setBoardMatches([]);
+      setSelectedBoardName("");
+      setSelectedCandidateCode("");
+      setCandidateExpanded(false);
+      setLookupMessage(localMatches.length ? locale === "zh-CN" ? `\u6210\u5206\u80A1\u63A5\u53E3\u6682\u4E0D\u53EF\u7528\uFF1B\u5DF2\u627E\u5230${localMatches.length}\u4E2A\u672C\u5730\u5339\u914D\u6807\u7684\uFF0C\u53EF\u76F4\u63A5\u52FE\u9009\u3002` : `Board lookup is unavailable. ${localMatches.length} local symbols are available below.` : compactApiError(apiError, locale, locale === "zh-CN" ? "\u677F\u5757\u641C\u7D22\u5931\u8D25\u3002" : "Board lookup failed."));
+    } finally {
+      setLookupLoading(false);
+    }
+  }, [baseOptions, baseUrl, locale, onSymbolOptionsSeen, query]);
+  const lookupBoard = (0, import_react2.useCallback)(async () => {
+    const search = query.trim();
+    if (!search) return;
+    const [baskets] = await Promise.all([
+      loadDynamicBaskets(search),
+      loadBoard(search)
+    ]);
+    if (baskets.length === 1) {
+      const codes = baskets[0]?.codes.map((item) => item.code) ?? [];
+      if (codes.length) {
+        onApplyBasket(codes);
+        setSelectedExpanded(false);
+        setLookupMessage(locale === "zh-CN" ? `\u5DF2\u8F7D\u5165\u300C${baskets[0]?.label}\u300D\u9996\u9009\u7EC4\u5408\uFF0C\u53EF\u76F4\u63A5\u8FD0\u884C\u56DE\u6D4B\u3002` : `Loaded ${baskets[0]?.label}. Ready to run.`);
+      }
+    }
+  }, [loadBoard, loadDynamicBaskets, locale, onApplyBasket, query]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: basketBarStyle, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u641C\u7D22" : "Search" }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: basketSearchStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "input",
+        {
+          "aria-label": locale === "zh-CN" ? "\u641C\u7D22\u4EA7\u4E1A\u94FE\u3001\u677F\u5757\u6216\u6807\u7684" : "Search chain, board, or symbol",
+          name: "backtest-board-search",
+          autoComplete: "off",
+          spellCheck: false,
+          style: { ...inputStyle, height: 28, fontFamily: fontStacks.ui, flex: "1 1 230px" },
+          value: query,
+          placeholder: locale === "zh-CN" ? "\u7535\u89E3\u6DB2 / \u534A\u5BFC\u4F53\u8BBE\u5907 / \u5149\u6A21\u5757 / \u4EE3\u7801 / \u540D\u79F0\u2026" : "Chain, board, concept, code, or name\u2026",
+          onChange: (event) => {
+            setQuery(event.target.value);
+            setBoardOptions([]);
+            setBoardLabel("");
+            setBoardMatches([]);
+            setSelectedBoardName("");
+            setSelectedCandidateCode("");
+            setLookupMessage("");
+            setCandidateExpanded(false);
+          },
+          onKeyDown: (event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void lookupBoard();
+            }
+          }
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "button",
+        {
+          type: "button",
+          style: buttonStyle(false, lookupLoading || basketLoading || !query.trim()),
+          disabled: lookupLoading || basketLoading || !query.trim(),
+          onClick: () => void lookupBoard(),
+          children: lookupLoading || basketLoading ? locale === "zh-CN" ? "\u641C\u7D22\u4E2D" : "Loading" : locale === "zh-CN" ? "\u641C\u7D22/\u8F7D\u5165" : "Search"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "select",
+        {
+          "aria-label": locale === "zh-CN" ? "\u5339\u914D\u6765\u6E90" : "Matched source",
+          style: { ...selectStyle, height: 28, flex: "1 1 210px" },
+          disabled: displayBoardMatches.length === 0,
+          value: selectedBoardName,
+          onChange: (event) => {
+            const nextBoard = event.target.value;
+            setSelectedBoardName(nextBoard);
+            if (nextBoard) void loadBoard(nextBoard);
+          },
+          children: displayBoardMatches.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("option", { value: "", children: locale === "zh-CN" ? "\u5148\u641C\u7D22\u6765\u6E90" : "Search a source first" }) : displayBoardMatches.map((match) => {
+            const name = stringValue2(match.name) ?? "";
+            const total = numberValue2(match.total);
+            return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("option", { value: name, children: locale === "zh-CN" ? `${name} \xB7 ${boardKindLabel(match.kind, locale)}${total === void 0 ? "" : ` \xB7 ${formatNumber(total, 0)}\u53EA`}` : `${name} \xB7 ${boardKindLabel(match.kind, locale)}${total === void 0 ? "" : ` \xB7 ${formatNumber(total, 0)}`}` }, `${name}-${String(match.kind ?? "")}`);
+          })
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false, candidateCodes.length === 0), disabled: candidateCodes.length === 0, onClick: () => onApplyBasket([...selectedCodes, ...candidateCodes]), children: locale === "zh-CN" ? batchLimitHiddenCount ? `\u52A0\u5165\u524D${candidateCodes.length}\u53EA` : unsupportedCandidateCount ? "\u52A0\u5165\u53EF\u56DE\u6D4B" : "\u5168\u52A0\u5165\u7BEE\u5B50" : batchLimitHiddenCount ? `Add first ${candidateCodes.length}` : unsupportedCandidateCount ? "Add supported" : "Add all" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false, candidateCodes.length === 0), disabled: candidateCodes.length === 0, onClick: () => onApplyBasket(candidateCodes), children: locale === "zh-CN" ? batchLimitHiddenCount ? `\u66FF\u6362\u524D${candidateCodes.length}\u53EA` : unsupportedCandidateCount ? "\u66FF\u6362\u53EF\u56DE\u6D4B" : "\u66FF\u6362\u4E3A\u6210\u5206\u80A1" : batchLimitHiddenCount ? `Replace first ${candidateCodes.length}` : unsupportedCandidateCount ? "Replace supported" : "Replace" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, title: [lookupMessage, basketMessage].filter(Boolean).join(" \xB7 "), children: lookupMessage || basketMessage || (boardLabel ? `${boardLabel} \xB7 ${boardOptions.length}` : "") })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u6837\u672C\u6765\u6E90" : "Sample source" }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chipRowStyle, children: filteredBaskets.length ? filteredBaskets.slice(0, 6).map((basket) => {
+      const basketCodes = basket.codes.map((item) => item.code);
+      const active = sameCodeSet(selectedCodes, basketCodes);
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "button",
+        {
+          type: "button",
+          "aria-pressed": active,
+          style: buttonStyle(active),
+          onClick: () => onApplyBasket(basketCodes),
+          title: [basket.source, basket.description].filter(Boolean).join(" \xB7 "),
+          children: basket.label
+        },
+        basket.id
+      );
+    }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, whiteSpace: "nowrap" }, children: basketLoading ? locale === "zh-CN" ? "\u6B63\u5728\u52A0\u8F7D\u52A8\u6001\u4EA7\u4E1A\u94FE\u7EC4\u5408\u2026" : "Loading dynamic chain baskets\u2026" : locale === "zh-CN" ? "\u6CA1\u6709\u5339\u914D\u7684\u52A8\u6001\u7EC4\u5408\uFF1B\u641C\u7D22\u540E\u4F1A\u7528\u677F\u5757\u6210\u5206\u80A1\u515C\u5E95\u3002" : "No dynamic basket matches. Search falls back to constituents." }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u5DF2\u9009\u6C60" : "Selected" }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: chipRowStyle, children: [
+      selectedCodes.length ? visibleSelectedCodes.map((item) => {
+        const option = optionByCode.get(item.toUpperCase());
+        return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+          "button",
+          {
+            type: "button",
+            style: buttonStyle(true),
+            onClick: () => onRemoveCode(item),
+            title: locale === "zh-CN" ? `${symbolLabel(item, option)} \xB7 \u70B9\u51FB\u79FB\u9664` : `${symbolLabel(item, option)} \xB7 click to remove`,
+            children: [
+              symbolLabel(item, option),
+              " \xD7"
+            ]
+          },
+          `selected-${item}`
+        );
+      }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, whiteSpace: "nowrap" }, children: locale === "zh-CN" ? "\u9009\u62E9\u7EC4\u5408\u3001\u641C\u7D22\u677F\u5757\uFF0C\u6216\u52FE\u9009\u5339\u914D\u6807\u7684\u3002" : "Pick a basket, search a board, or toggle symbols." }),
+      hiddenSelectedCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false), onClick: () => setSelectedExpanded(true), children: locale === "zh-CN" ? `\u5C55\u5F00 ${hiddenSelectedCount} \u53EA` : `Show ${hiddenSelectedCount} more` }) : selectedExpanded && selectedCodes.length > 6 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false), onClick: () => setSelectedExpanded(false), children: locale === "zh-CN" ? "\u6536\u8D77\u5DF2\u9009" : "Collapse" }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "button",
+        {
+          type: "button",
+          style: buttonStyle(false, selectedCodes.length === 0),
+          disabled: selectedCodes.length === 0,
+          onClick: () => {
+            setSelectedExpanded(false);
+            onClearCodes();
+          },
+          children: locale === "zh-CN" ? "\u6E05\u7A7A" : "Clear"
+        }
+      )
+    ] }),
+    showCandidateChips ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: candidateLabel }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: candidateExpanded ? chipRowStyle : compactChipRowStyle, children: [
+        boardOptions.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "select",
+            {
+              "aria-label": locale === "zh-CN" ? "\u6210\u5206\u80A1\u9009\u62E9" : "Constituent picker",
+              style: { ...selectStyle, height: 28, flex: "0 1 260px" },
+              value: selectedCandidateCode,
+              onChange: (event) => setSelectedCandidateCode(event.target.value),
+              children: orderedBoardOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("option", { value: option.code, children: symbolLabel(option.code, option) }, `candidate-option-${option.code}`))
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              type: "button",
+              style: buttonStyle(false, !selectedCandidateCode),
+              disabled: !selectedCandidateCode,
+              onClick: () => onToggleCode(selectedCandidateCode),
+              children: selectedSet.has(selectedCandidateCode.toUpperCase()) ? locale === "zh-CN" ? "\u79FB\u51FA\u7BEE\u5B50" : "Remove" : locale === "zh-CN" ? "\u52A0\u5165\u7BEE\u5B50" : "Add selected"
+            }
+          )
+        ] }) : null,
+        visibleCandidateOptions.map((option) => {
+          const active = selectedSet.has(option.code.toUpperCase());
+          const unsupported = isBacktestUnsupportedBoardCode(option.code);
+          return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              type: "button",
+              "aria-pressed": active,
+              style: buttonStyle(active),
+              onClick: () => onToggleCode(option.code),
+              title: locale === "zh-CN" ? `${option.group} \xB7 ${unsupported ? "\u5F53\u524D\u56DE\u6D4B\u6682\u4E0D\u652F\u6301\u6279\u91CF\u8FD0\u884C \xB7 " : ""}\u70B9\u51FB${active ? "\u79FB\u51FA" : "\u52A0\u5165"}\u6807\u7684\u7BEE\u5B50` : `${option.group} \xB7 ${unsupported ? "not supported by batch backtest \xB7 " : ""}click to ${active ? "remove" : "add"}`,
+              children: symbolLabel(option.code, option)
+            },
+            `${option.group}-${option.code}`
+          );
+        }),
+        showCandidateChips && hiddenCandidateCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(false), onClick: () => setCandidateExpanded((previous) => !previous), children: candidateExpanded ? locale === "zh-CN" ? "\u6536\u8D77\u5019\u9009" : "Collapse" : locale === "zh-CN" ? `\u5C55\u5F00 ${hiddenCandidateCount} \u53EA` : `Show ${hiddenCandidateCount} more` }) : null,
+        !showCandidateChips ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, whiteSpace: "nowrap" }, children: locale === "zh-CN" ? "\u9ED8\u8BA4\u6536\u8D77\u5019\u9009\uFF1B\u641C\u7D22\u4EA7\u4E1A\u94FE\u3001\u677F\u5757\u3001\u80A1\u7968\u4EE3\u7801\u6216\u540D\u79F0\u540E\u518D\u663E\u793A\u3002" : "Symbols stay collapsed by default. Search to reveal candidates." }) : candidateOptions.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, whiteSpace: "nowrap" }, children: normalizedQuery ? locale === "zh-CN" ? "\u6CA1\u6709\u5339\u914D\u6807\u7684\uFF0C\u8BD5\u8BD5\u677F\u5757\u540D\u3001\u80A1\u7968\u4EE3\u7801\u6216\u80A1\u7968\u540D\u79F0\u3002" : "No symbol matches. Try a board name, code, or stock name." : locale === "zh-CN" ? "\u641C\u7D22\u677F\u5757\u540E\u663E\u793A\u53EF\u52FE\u9009\u6210\u5206\u80A1\u3002" : "Search a board to show selectable constituents." }) : unsupportedCandidateCount > 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, whiteSpace: "nowrap" }, children: locale === "zh-CN" ? `\u5DF2\u5C06${unsupportedCandidateCount}\u53EA\u6682\u4E0D\u652F\u6301\u56DE\u6D4B\u7684\u6807\u7684\u6392\u5230\u540E\u9762\u3002` : `${unsupportedCandidateCount} unsupported symbols are shown after supported ones.` }) : null
+      ] })
+    ] }) : null
+  ] });
+}
+function MultiBacktestReport({
+  locale,
+  terminal,
+  onSelectCode
+}) {
+  const [reportRef, reportSize] = useElementSize();
+  const [expandedKline, setExpandedKline] = (0, import_react2.useState)(null);
+  const density = multiReportDensity(reportSize.width, reportSize.height);
+  (0, import_react2.useEffect)(() => {
+    setExpandedKline(null);
+  }, [terminal]);
+  (0, import_react2.useEffect)(() => {
+    if (!expandedKline) return void 0;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setExpandedKline(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [expandedKline]);
+  if (!terminal) {
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { ref: reportRef, style: { ...multiReportStyle(density), justifyContent: "center" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u591A\u6807\u7684\u7ED3\u679C\u3002" }) });
+  }
+  const panels = terminal.panels ?? {};
+  const rankingRows = panels.ranking?.rows ?? [];
+  const overviewRows = panels.interval_overview?.rows ?? [];
+  const signalRows = Array.isArray(panels.signals?.rows) ? panels.signals.rows.map(recordValue2) : [];
+  const chartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? [];
+  const scriptCards = panels.scripts?.cards ?? [];
+  const metrics = recordValue2(terminal.metrics);
+  const target = recordValue2(terminal.target);
+  const kpiItems = [
+    { label: locale === "zh-CN" ? "\u6807\u7684\u6570" : "Symbols", value: rankingRows.length, tone: "neutral" },
+    { label: locale === "zh-CN" ? "\u4FE1\u53F7\u6570" : "Signals", value: formatNumber(metrics.signal_count, 0), tone: "neutral" },
+    { label: locale === "zh-CN" ? "\u6210\u4EA4\u6570" : "Trades", value: formatNumber(metrics.filled_trades, 0), tone: "neutral" },
+    { label: locale === "zh-CN" ? "\u80DC\u7387" : "WinRate", value: formatPercent(metrics.win_rate), tone: (numberValue2(metrics.win_rate) ?? 0) >= 50 ? "up" : "down" },
+    { label: locale === "zh-CN" ? "\u5E73\u5747\u6536\u76CA" : "Avg Ret", value: formatPercent(metrics.total_return_pct), tone: (numberValue2(metrics.total_return_pct) ?? 0) >= 0 ? "up" : "down" },
+    { label: locale === "zh-CN" ? "5\u65E5\u6CE2\u5E45" : "5D Range", value: formatPercent(metrics.median_5d_high_low_pct), tone: "warning" },
+    { label: locale === "zh-CN" ? "\u5E73\u5747\u56DE\u64A4" : "Avg DD", value: formatDrawdown(metrics.max_drawdown_pct), tone: "down" }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { ref: reportRef, style: multiReportStyle(density), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: multiHeaderStyle(density), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u591A\u6807\u7684\u590D\u76D8" : "Multi-symbol review" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: String(target.name ?? (locale === "zh-CN" ? "\u591A\u6807\u7684\u56DE\u6D4B" : "Signals Batch")) }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [freqLabel(target.freq, locale), target.as_of ? `${locale === "zh-CN" ? "\u622A\u81F3" : "as of"} ${target.as_of}` : "", freshnessLabel(target.freshness, locale)].filter(Boolean).join(" \xB7 ") })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: multiKpiGridStyle(density), children: kpiItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor(item.tone), fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }, children: String(item.value) })
+      ] }, item.label)) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: multiBandStyle(density), children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u6392\u540D\u4E0E\u9510\u8BC4" : "Ranking", style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MultiRankingTable, { rows: rankingRows, density, onSelectCode }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u539F\u59CB\u533A\u95F4\u6982\u89C8" : "Interval overview", style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(IntervalOverviewTable, { rows: overviewRows, density }) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5168\u90E8\u4FE1\u53F7\u6536\u76CA\u62C6\u89E3" : "Signal return breakdown", meta: signalRows.length ? String(signalRows.length) : void 0, style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BatchSignalBreakdownTable, { rows: signalRows, density }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u591A\u80A1\u7968 K\u7EBF\u590D\u76D8" : "Multi-symbol candles", style: multiPanelStyle(density), children: chartItems.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: multiChartsGridStyle(density, chartItems.length), children: chartItems.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      MiniKlineCard,
+      {
+        item,
+        density,
+        onExpand: () => setExpandedKline(item)
+      },
+      `${String(item.code ?? index)}-${index}`
+    )) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u591A\u6807\u7684\u56FE\u8868\u3002" }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u89C4\u5219\u9510\u8BC4 / \u4EA4\u6613\u5458\u7ED3\u8BBA" : "Rule review cards", style: multiPanelStyle(density), children: scriptCards.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: scriptGridStyle(density, scriptCards.length), children: scriptCards.map((card, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ReviewScriptCard, { card, density }, `${String(card.code ?? index)}-${index}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u9510\u8BC4\u5361\u7247\u3002" }) }),
+    expandedKline ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      ExpandedKlineOverlay,
+      {
+        item: expandedKline,
+        density,
+        onClose: () => setExpandedKline(null)
+      }
+    ) : null
+  ] });
+}
+function MultiRankingTable({
+  rows,
+  density,
+  onSelectCode
+}) {
+  if (rows.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u6392\u540D\u7ED3\u679C\u3002" });
+  const fullHeaders = [
+    ["rank", "\u6392\u540D"],
+    ["code", "\u4EE3\u7801"],
+    ["name", "\u80A1\u7968"],
+    ["benchmark_symbol", "\u5BF9\u6807\u6307\u6570"],
+    ["strength_grade", "\u5F3A\u5F31"],
+    ["range_return_pct", "\u533A\u95F4\u6536\u76CA"],
+    ["max_drawdown_pct", "\u6700\u5927\u56DE\u64A4"],
+    ["median_5d_high_low_pct", "5\u65E5\u9AD8\u4F4E\u5E45"],
+    ["up_bar_ratio_pct", "\u4E0A\u6DA8K\u5360\u6BD4"],
+    ["relative_excess_pct", "\u76F8\u5BF9\u8D85\u989D"],
+    ["current_character", "\u5F53\u524D\u6027\u8D28"],
+    ["trade_difficulty", "\u4EA4\u6613\u96BE\u5EA6"],
+    ["review_level", "\u9510\u8BC4\u6863\u4F4D"],
+    ["review_conclusion", "\u9510\u8BC4\u7ED3\u8BBA"]
+  ];
+  const compactHeaders = fullHeaders.filter(([key]) => [
+    "rank",
+    "code",
+    "name",
+    "range_return_pct",
+    "max_drawdown_pct",
+    "median_5d_high_low_pct",
+    "trade_difficulty",
+    "review_level",
+    "review_conclusion"
+  ].includes(key));
+  const headers = density === "compact" ? compactHeaders : fullHeaders;
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: reportTableWrapStyle("ranking", density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: reportTableStyleFor("ranking", density), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: headers.map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, width: key === "review_conclusion" ? 210 : void 0, whiteSpace: "nowrap" }, children: label }, key)) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: rows.map((row, index) => {
+      const code = String(row.code ?? "");
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "tr",
+        {
+          style: { borderTop: `1px solid ${terminalTheme.border}`, cursor: code ? "pointer" : "default" },
+          onClick: () => {
+            if (code) onSelectCode(code);
+          },
+          children: headers.map(([key]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: cellToneColor(key, row[key]), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: formatReportCell(key, row[key]) }, key))
+        },
+        `${code}-${index}`
+      );
+    }) })
+  ] }) });
+}
+function IntervalOverviewTable({ rows, density }) {
+  if (rows.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u533A\u95F4\u6982\u89C8\u3002" });
+  const headers = [
+    ["code", "\u4EE3\u7801"],
+    ["name", "\u80A1\u7968"],
+    ["bar_count", "K\u7EBF\u6570"],
+    ["range_return_pct", "\u533A\u95F4\u6536\u76CA"],
+    ["max_drawdown_pct", "\u6700\u5927\u56DE\u64A4"],
+    ["max_runup_pct", "\u6700\u5927\u6D6E\u76C8"],
+    ["median_5d_high_low_pct", "5\u65E5\u9AD8\u4F4E\u5E45"],
+    ["volatility_pct", "\u6CE2\u52A8\u7387"],
+    ["up_bar_ratio_pct", "\u4E0A\u6DA8K\u5360\u6BD4"]
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: reportTableWrapStyle("overview", density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: reportTableStyleFor("overview", density), children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: headers.map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: "nowrap" }, children: label }, key)) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: rows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { borderTop: `1px solid ${terminalTheme.border}` }, children: headers.map(([key]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: cellToneColor(key, row[key]), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: formatReportCell(key, row[key]) }, key)) }, `${String(row.code ?? index)}-${index}`)) })
+  ] }) });
+}
+function BatchSignalBreakdownTable({ rows, density }) {
+  if (rows.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u8FD0\u884C\u201C\u5168\u90E8\u4FE1\u53F7\u201D\u540E\u663E\u793A\u5404\u4FE1\u53F7\u7C7B\u578B\u7684 T+5/T+10\u3001MFE/MAE \u548C\u6210\u4EA4\u6536\u76CA\u3002" });
+  const topBy = (key, direction = "max") => rows.reduce((best, row) => {
+    const value = numberValue2(row[key]);
+    if (value === void 0) return best;
+    if (!best) return row;
+    const bestValue = numberValue2(best[key]);
+    if (bestValue === void 0) return row;
+    return direction === "max" ? value > bestValue ? row : best : value < bestValue ? row : best;
+  }, null);
+  const summaryItems = [
+    { label: "\u8986\u76D6\u6700\u5E7F", row: topBy("signal_count"), key: "signal_count", format: (value) => formatNumber(value, 0) },
+    { label: "T+10\u6700\u5F3A", row: topBy("avg_t10_pct"), key: "avg_t10_pct", format: formatPercent },
+    { label: "\u6210\u4EA4\u5747\u5229", row: topBy("avg_trade_return_pct"), key: "avg_trade_return_pct", format: formatPercent },
+    { label: "\u56DE\u64A4\u538B\u529B", row: topBy("avg_mae_pct", "min"), key: "avg_mae_pct", format: formatPercent }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: density === "compact" ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 6 }, children: summaryItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...metricCardStyle, padding: "6px 8px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor(item.key, item.row?.[item.key]), fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: item.row ? item.format(item.row[item.key]) : emptyDisplay }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(item.row?.signal_type ?? emptyDisplay) })
+    ] }, item.label)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: signalBreakdownWrapStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: { ...reportTableStyle, minWidth: density === "compact" ? 820 : 1060 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: ["\u4FE1\u53F7\u7C7B\u578B", "\u6837\u672C", "\u80DC\u7387", "\u524D\u77BB\u6536\u76CA", "\u6D6E\u76C8/\u56DE\u64A4", "\u6210\u4EA4", "\u6700\u4F73\u6807\u7684"].map((label) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 8, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: "nowrap" }, children: label }, label)) }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: rows.map((row, index) => {
+        const signalType = String(row.signal_type ?? "unknown");
+        return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: `1px solid ${terminalTheme.border}` }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, overflow: "hidden" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: signalType }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+              formatNumber(row.symbol_count, 0),
+              " \u6807\u7684"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, color: terminalTheme.textStrong, whiteSpace: "nowrap" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+              formatNumber(row.evaluated_count, 0),
+              " / ",
+              formatNumber(row.signal_count, 0)
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+              "\u6210\u4EA4 ",
+              formatNumber(row.trade_count, 0)
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 8, color: cellToneColor("win_rate_pct", row.win_rate), whiteSpace: "nowrap", fontWeight: 800 }, children: formatUnsignedPercent(row.win_rate) }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, whiteSpace: "nowrap" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_t5_pct", row.avg_t5_pct), fontWeight: 800 }, children: [
+              "T+5 ",
+              formatPercent(row.avg_t5_pct)
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_t10_pct", row.avg_t10_pct) }, children: [
+              "T+10 ",
+              formatPercent(row.avg_t10_pct)
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, whiteSpace: "nowrap" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_mfe_pct", row.avg_mfe_pct), fontWeight: 800 }, children: [
+              "MFE ",
+              formatPercent(row.avg_mfe_pct)
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_mae_pct", row.avg_mae_pct) }, children: [
+              "MAE ",
+              formatPercent(row.avg_mae_pct)
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, whiteSpace: "nowrap" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor("avg_trade_return_pct", row.avg_trade_return_pct), fontWeight: 800 }, children: formatPercent(row.avg_trade_return_pct) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+              "\u80DC\u7387 ",
+              formatUnsignedPercent(row.trade_win_rate)
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 8, color: terminalTheme.textStrong, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(row.best_symbol ?? emptyDisplay) })
+        ] }, `${signalType}-${index}`);
+      }) })
+    ] }) })
+  ] });
+}
+function MiniKlineCard({
+  item,
+  density,
+  onExpand
+}) {
+  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv : []);
+  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue2) : [];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+    "button",
+    {
+      type: "button",
+      style: {
+        ...metricCardStyle,
+        padding: density === "compact" ? 8 : 10,
+        display: "flex",
+        flexDirection: "column",
+        gap: density === "compact" ? 6 : 8,
+        width: "100%",
+        appearance: "none",
+        fontFamily: fontStacks.ui,
+        color: terminalTheme.text,
+        cursor: "zoom-in",
+        textAlign: "left"
+      },
+      onClick: onExpand,
+      "aria-label": `\u653E\u5927K\u7EBF ${String(item.name ?? item.code ?? "")}`,
+      title: "\u70B9\u51FB\u653E\u5927K\u7EBF",
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(item.name ?? item.code ?? "\u6807\u7684") }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: String(item.code ?? item.symbol ?? "") })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor((numberValue2(item.range_return_pct) ?? 0) >= 0 ? "up" : "down"), fontWeight: 800 }, children: formatPercent(item.range_return_pct) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MiniKlineSvg, { rows, regimes, density })
+      ]
+    }
+  );
+}
+function MiniKlineSvg({
+  rows,
+  regimes,
+  density,
+  variant = "mini"
+}) {
+  const width = variant === "expanded" ? 980 : 320;
+  const height = variant === "expanded" ? density === "compact" ? 360 : 430 : density === "compact" ? 126 : 150;
+  if (rows.length === 0) {
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0K\u7EBF\u3002" });
+  }
+  const highs = rows.map((row) => row.high);
+  const lows = rows.map((row) => row.low);
+  const maxPrice = Math.max(...highs);
+  const minPrice = Math.min(...lows);
+  const priceSpan = Math.max(maxPrice - minPrice, 1e-4);
+  const xStep = width / Math.max(rows.length - 1, 1);
+  const candleWidth = Math.max(2, Math.min(7, xStep * 0.56));
+  const yFor = (price) => 12 + (maxPrice - price) / priceSpan * (height - 30);
+  const points = rows.map((row, index) => `${index * xStep},${yFor(row.close)}`).join(" ");
+  const firstDate = new Date(rows[0].timestamp).toISOString().slice(5, 10);
+  const lastDate = new Date(rows[rows.length - 1].timestamp).toISOString().slice(5, 10);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("svg", { viewBox: `0 0 ${width} ${height}`, style: { width: "100%", aspectRatio: `${width} / ${height}`, display: "block" }, role: "img", "aria-label": variant === "expanded" ? "expanded kline" : "mini kline", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("rect", { x: "0", y: "0", width, height, fill: terminalTheme.chartPanel }),
+    [0, 1, 2, 3].map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      "line",
+      {
+        x1: "0",
+        x2: width,
+        y1: 14 + item * ((height - 34) / 3),
+        y2: 14 + item * ((height - 34) / 3),
+        stroke: tradingDeskTheme.chart.gridHorizontal,
+        strokeWidth: "1"
+      },
+      item
+    )),
+    regimes.map((regime, index) => {
+      const start = numberValue2(regime.start_index) ?? 0;
+      const end = numberValue2(regime.end_index) ?? start;
+      const tone = String(regime.tone ?? "");
+      const x = Math.max(0, start * xStep);
+      const rectWidth = Math.max(8, (end - start + 1) * xStep);
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("g", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          "rect",
+          {
+            x,
+            y: "0",
+            width: Math.min(rectWidth, width - x),
+            height: height - 18,
+            fill: tone === "down" ? tradingDeskTheme.market.down : tradingDeskTheme.market.up,
+            fillOpacity: "0.08"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: x + 4, y: variant === "expanded" ? 22 : 13, fill: terminalTheme.mutedStrong, fontSize: variant === "expanded" ? 16 : 9, children: String(regime.label ?? "") })
+      ] }, `${String(regime.label ?? index)}-${index}`);
+    }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("polyline", { points, fill: "none", stroke: tradingDeskTheme.chart.line, strokeWidth: variant === "expanded" ? 1.8 : 1.1, opacity: "0.55" }),
+    rows.map((row, index) => {
+      const x = index * xStep;
+      const openY = yFor(row.open);
+      const closeY = yFor(row.close);
+      const highY = yFor(row.high);
+      const lowY = yFor(row.low);
+      const up = row.close >= row.open;
+      const color = up ? tradingDeskTheme.market.up : tradingDeskTheme.market.down;
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("g", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("line", { x1: x, x2: x, y1: highY, y2: lowY, stroke: color, strokeWidth: variant === "expanded" ? 1.4 : 1 }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          "rect",
+          {
+            x: x - candleWidth / 2,
+            y: Math.min(openY, closeY),
+            width: candleWidth,
+            height: Math.max(1, Math.abs(openY - closeY)),
+            fill: color,
+            rx: "0.8"
+          }
+        )
+      ] }, `${row.timestamp}-${index}`);
+    }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: "0", y: height - 3, fill: terminalTheme.muted, fontSize: variant === "expanded" ? 14 : 9, children: firstDate }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: width, y: height - 3, fill: terminalTheme.muted, fontSize: variant === "expanded" ? 14 : 9, textAnchor: "end", children: lastDate })
+  ] });
+}
+function ExpandedKlineOverlay({
+  item,
+  density,
+  onClose
+}) {
+  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv : []);
+  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue2) : [];
+  const stats = [
+    ["\u533A\u95F4\u6536\u76CA", "range_return_pct"],
+    ["\u6700\u5927\u56DE\u64A4", "max_drawdown_pct"],
+    ["\u6700\u5927\u6D6E\u76C8", "max_runup_pct"],
+    ["\u6CE2\u52A8\u7387", "volatility_pct"],
+    ["5\u65E5\u9AD8\u4F4E\u5E45", "median_5d_high_low_pct"],
+    ["\u4E0A\u6DA8K\u5360\u6BD4", "up_bar_ratio_pct"],
+    ["K\u7EBF\u6570", "bar_count"],
+    ["\u663E\u793AK\u7EBF", "visible_bar_count"]
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    "div",
+    {
+      style: {
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        background: tradingDeskTheme.alpha.overlay,
+        display: "grid",
+        placeItems: "center",
+        padding: density === "compact" ? 12 : 24
+      },
+      children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "div",
+        {
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": "\u653E\u5927K\u7EBF",
+          style: {
+            ...panelStyle,
+            width: "min(1480px, 96vw)",
+            maxHeight: "92vh",
+            overflow: "auto",
+            boxShadow: tradingDeskTheme.shadows.island,
+            border: `1px solid ${terminalTheme.borderStrong}`
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: "\u653E\u5927K\u7EBF \xB7 ESC" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: String(item.name ?? item.code ?? "\u6807\u7684") }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: String(item.code ?? item.symbol ?? "") })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", "aria-label": "\u5173\u95ED\u653E\u5927K\u7EBF", style: buttonStyle(false), onClick: onClose, children: "\xD7" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 6 }, children: stats.map(([label, key]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: label }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor(key, item[key]), fontWeight: 800 }, children: key === "visible_bar_count" ? formatNumber(rows.length, 0) : key === "bar_count" ? formatNumber(item[key] ?? rows.length, 0) : formatReportCell(key, item[key]) })
+            ] }, key)) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MiniKlineSvg, { rows, regimes, density, variant: "expanded" })
+          ]
+        }
+      )
+    }
+  );
+}
+function ReviewScriptCard({ card, density }) {
+  const stats = Array.isArray(card.stats) ? card.stats.map(recordValue2) : [];
+  const tone = String(card.tone ?? "") === "down" ? "down" : "up";
+  const compact = density === "compact";
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+    ...metricCardStyle,
+    borderColor: tone === "down" ? tradingDeskTheme.alpha.errorBorder : tradingDeskTheme.alpha.infoBorder,
+    boxShadow: `inset 3px 0 ${tone === "down" ? tradingDeskTheme.market.down : tradingDeskTheme.market.up}`,
+    display: "flex",
+    flexDirection: "column",
+    gap: compact ? 7 : 9,
+    padding: compact ? 9 : 12
+  }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: "\u89C4\u5219\u9510\u8BC4" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: compact ? 16 : 18, fontWeight: 900 }, children: String(card.name ?? card.code ?? "") })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { textAlign: "right" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: String(card.code ?? "") }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: "\u968F\u56DE\u6D4B\u5237\u65B0" })
+      ] })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }, children: stats.slice(0, 4).map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...metricCardStyle, padding: 7 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: String(item.label ?? "") }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor(String(item.label ?? ""), item.value), fontWeight: 800 }, children: String(item.unit) === "%" ? formatPercent(item.value) : String(item.value ?? emptyDisplay) })
+    ] }, `${String(item.label ?? index)}-${index}`)) }),
+    compact ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ScriptLine, { title: "\u5B9A\u4F4D", text: String(card.positioning ?? "") }),
+    compact ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ScriptLine, { title: "\u4EA4\u6613\u96BE\u5EA6", text: String(card.difficulty ?? "") }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ScriptLine, { title: "\u4E00\u53E5\u8BDD", text: String(card.one_liner ?? ""), strong: true })
+  ] });
+}
+function ScriptLine({ title, text: text2, strong = false }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { borderTop: `1px solid ${terminalTheme.border}`, paddingTop: 8 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: title }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: strong ? terminalTheme.textStrong : terminalTheme.text, fontSize: 13, lineHeight: 1.55, fontWeight: strong ? 800 : 500 }, children: text2 || emptyDisplay })
+  ] });
+}
+function formatReportCell(key, value) {
+  if (key.includes("pct") || key.includes("return") || key.includes("drawdown") || key.includes("ratio")) return formatPercent(value);
+  if (key === "rank" || key === "bar_count" || key.endsWith("_count") || key === "trade_count" || key === "signal_count") return formatNumber(value, 0);
+  if (key === "sharpe") return formatNumber(value, 2);
+  return String(value ?? emptyDisplay);
+}
+function cellToneColor(key, value) {
+  const numeric = numberValue2(value);
+  if (key.includes("drawdown")) return tradingDeskTheme.market.down;
+  if (numeric !== void 0 && (key.includes("return") || key.includes("excess") || key.includes("pct"))) {
+    return numeric >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down;
+  }
+  return terminalTheme.textStrong;
+}
 function Panel({
   title,
   meta,
+  style,
   children
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: panelStyle, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...panelStyle, ...style }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: 13, fontWeight: 800 }, children: title }),
       meta ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: meta }) : null
@@ -32289,20 +34868,22 @@ function Panel({
     children
   ] });
 }
-function MetricStrip({ result }) {
+function MetricStrip({ result, locale }) {
   const kpi = result?.kpi ?? {};
   const simKpi = result?.sim_kpi ?? {};
+  const metrics = terminalMetrics(result);
+  const pnlValue = numberValue2(metrics.total_return_pct ?? simKpi.total_return_pct);
   const items = [
-    { label: "Signals", value: formatNumber(kpi.total, 0) },
-    { label: "Win T10", value: formatPercent(kpi.win_rate) },
-    { label: "Expect", value: formatPercent(kpi.expectancy) },
-    { label: "Trades", value: formatNumber(simKpi.filled_trades, 0) },
-    { label: "Return", value: formatPercent(simKpi.total_return_pct) },
-    { label: "DD", value: formatPercent(simKpi.max_drawdown_pct) }
+    { label: locale === "zh-CN" ? "\u6536\u76CA" : "PnL", value: formatPercent(metrics.total_return_pct ?? simKpi.total_return_pct), tone: (pnlValue ?? 0) >= 0 ? "up" : "down" },
+    { label: locale === "zh-CN" ? "\u56DE\u64A4" : "DD", value: formatDrawdown(metrics.max_drawdown_pct ?? simKpi.max_drawdown_pct), tone: "down" },
+    { label: locale === "zh-CN" ? "\u80DC\u7387" : "WinRate", value: formatPercent(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate), tone: (numberValue2(metrics.win_rate ?? simKpi.win_rate ?? kpi.win_rate) ?? 0) >= 50 ? "up" : "down" },
+    { label: locale === "zh-CN" ? "\u6210\u4EA4" : "Trades", value: formatNumber(metrics.filled_trades ?? simKpi.filled_trades, 0), tone: "neutral" },
+    { label: locale === "zh-CN" ? "\u590F\u666E" : "Sharpe", value: formatNumber(metrics.sharpe ?? simKpi.sharpe, 2), tone: (numberValue2(metrics.sharpe ?? simKpi.sharpe) ?? 0) >= 1 ? "up" : "neutral" },
+    { label: locale === "zh-CN" ? "\u8D85\u989D" : "Excess", value: formatPercent(metrics.excess_return_pct), tone: (numberValue2(metrics.excess_return_pct) ?? 0) >= 0 ? "up" : "down" }
   ];
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 6 }, children: items.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }, children: item.value })
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor(item.tone), fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }, children: item.value })
   ] }, item.label)) });
 }
 function ParamGrid({
@@ -32332,26 +34913,40 @@ function ParamGrid({
     )
   ] }, key)) });
 }
-function KpiPanel({
-  kpi,
-  simKpi
-}) {
+function KpiPanel({ result }) {
+  const kpi = result?.kpi;
+  const simKpi = result?.sim_kpi;
+  const metrics = terminalMetrics(result);
+  if (Object.keys(metrics).length > 0) {
+    const metricRows = (key) => (Array.isArray(metrics[key]) ? metrics[key] : []).map((item) => recordValue2(item)).map((item) => ({
+      label: stringValue2(item.label) ?? stringValue2(item.key) ?? "",
+      value: formatMetricValue(item.value, stringValue2(item.unit)),
+      tone: stringValue2(item.tone)
+    }));
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflow: "auto" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u7EE9\u6548", items: metricRows("performance") }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u98CE\u9669", items: metricRows("risk") }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u4EA4\u6613\u8D28\u91CF", items: metricRows("trade_quality") }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u6267\u884C\u4F53\u9A8C", items: metricRows("execution") }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u4FE1\u53F7\u8D28\u91CF", items: metricRows("signal_quality") })
+    ] });
+  }
   if (!kpi && !simKpi) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u8FD0\u884C\u540E\u663E\u793A\u7EE9\u6548\u3002" });
   const signalItems = [
-    ["\u603B\u4FE1\u53F7", kpi?.total],
-    ["\u5DF2\u8BC4\u4F30", kpi?.evaluated],
-    ["\u80DC\u7387", formatPercent(kpi?.win_rate)],
-    ["\u671F\u671B", formatPercent(kpi?.expectancy)],
-    ["T+10", formatPercent(kpi?.avg_return_t10)],
-    ["MFE/MAE", `${formatPercent(kpi?.avg_mfe)} / ${formatPercent(kpi?.avg_mae)}`]
+    { label: "\u603B\u4FE1\u53F7", value: kpi?.total },
+    { label: "\u5DF2\u8BC4\u4F30", value: kpi?.evaluated },
+    { label: "\u80DC\u7387", value: formatPercent(kpi?.win_rate), tone: (numberValue2(kpi?.win_rate) ?? 0) >= 50 ? "up" : "down" },
+    { label: "\u671F\u671B", value: formatPercent(kpi?.expectancy), tone: (numberValue2(kpi?.expectancy) ?? 0) >= 0 ? "up" : "down" },
+    { label: "T+10", value: formatPercent(kpi?.avg_return_t10), tone: (numberValue2(kpi?.avg_return_t10) ?? 0) >= 0 ? "up" : "down" },
+    { label: "MFE/MAE", value: `${formatPercent(kpi?.avg_mfe)} / ${formatPercent(kpi?.avg_mae)}` }
   ];
   const simItems = [
-    ["\u6210\u4EA4", simKpi?.filled_trades],
-    ["\u80DC\u7387", formatPercent(simKpi?.win_rate)],
-    ["\u603B\u6536\u76CA", formatPercent(simKpi?.total_return_pct)],
-    ["Sharpe", formatNumber(simKpi?.sharpe, 2)],
-    ["\u76C8\u4E8F\u6BD4", formatNumber(simKpi?.profit_factor, 2)],
-    ["\u6700\u5927\u56DE\u64A4", formatPercent(simKpi?.max_drawdown_pct)]
+    { label: "\u6210\u4EA4", value: simKpi?.filled_trades },
+    { label: "\u80DC\u7387", value: formatPercent(simKpi?.win_rate), tone: (numberValue2(simKpi?.win_rate) ?? 0) >= 50 ? "up" : "down" },
+    { label: "\u603B\u6536\u76CA", value: formatPercent(simKpi?.total_return_pct), tone: (numberValue2(simKpi?.total_return_pct) ?? 0) >= 0 ? "up" : "down" },
+    { label: "Sharpe", value: formatNumber(simKpi?.sharpe, 2), tone: (numberValue2(simKpi?.sharpe) ?? 0) >= 1 ? "up" : "neutral" },
+    { label: "\u76C8\u4E8F\u6BD4", value: formatNumber(simKpi?.profit_factor, 2), tone: (numberValue2(simKpi?.profit_factor) ?? 0) >= 1 ? "up" : "down" },
+    { label: "\u6700\u5927\u56DE\u64A4", value: formatDrawdown(simKpi?.max_drawdown_pct), tone: "down" }
   ];
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflow: "auto" }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u4FE1\u53F7\u8D28\u91CF", items: signalItems }),
@@ -32361,13 +34956,17 @@ function KpiPanel({
 function MetricGroup({ title, items }) {
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 7 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: title }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: metricGridStyle2, children: items.map(([label, value]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: metricGridStyle2, children: items.map(({ label, value, tone }) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: label }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: String(value ?? "N/A") })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor(tone), fontWeight: 800 }, children: String(value ?? emptyDisplay) })
     ] }, label)) })
   ] });
 }
-function SignalTable({ signals }) {
+function SignalTable({
+  signals,
+  selectedIndex,
+  onSelect
+}) {
   if (signals.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u4FE1\u53F7\u3002" });
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: [
@@ -32377,20 +34976,38 @@ function SignalTable({ signals }) {
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "T+10" })
     ] }) }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: signals.slice().reverse().map((signal, index) => {
-      const returnT10 = numberValue2(signal.eval?.return_t10);
-      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: `1px solid ${terminalTheme.border}` }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono }, children: signal.date_str ?? "" }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: signal.type ?? signal.group ?? "Signal" }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [signal.group, signal.ma_status, signal.volume_status].filter(Boolean).join(" \xB7 ") })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono }, children: formatNumber(signal.price) }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (returnT10 ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down }, children: formatPercent(returnT10) })
-      ] }, `${signal.dt ?? index}-${signal.type ?? "signal"}`);
+      const sourceIndex = signal.index ?? signals.length - index - 1;
+      const returnT10 = numberValue2(signal.eval?.return_t10 ?? signal.return_t10);
+      const rowActive = selectedIndex === sourceIndex;
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "tr",
+        {
+          style: {
+            borderTop: `1px solid ${terminalTheme.border}`,
+            background: rowActive ? tradingDeskTheme.alpha.accentSurface : "transparent",
+            cursor: "pointer"
+          },
+          onClick: () => onSelect(sourceIndex, signal.dt ?? signal.time),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono }, children: signal.date_str ?? signal.date ?? "" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: signal.type ?? signal.group ?? "\u4FE1\u53F7" }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [signal.group, signal.ma_status, signal.volume_status].filter(Boolean).join(" \xB7 ") })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono }, children: formatNumber(signal.price) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (returnT10 ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down }, children: formatPercent(returnT10) })
+          ]
+        },
+        `${signal.dt ?? signal.time ?? index}-${signal.type ?? "signal"}`
+      );
     }) })
   ] }) });
 }
-function TradeTable({ trades }) {
+function TradeTable({
+  trades,
+  selectedIndex,
+  onSelect
+}) {
   const filled = trades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
   if (filled.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u6210\u4EA4\u8BB0\u5F55\u3002" });
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: [
@@ -32399,20 +35016,82 @@ function TradeTable({ trades }) {
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u5165/\u51FA" }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u51C0\u5229" })
     ] }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: filled.slice().reverse().map((trade, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: `1px solid ${terminalTheme.border}` }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: trade.signal_type ?? "Signal" }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: trade.signal_date })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: terminalTheme.mono }, children: [
-        formatNumber(trade.entry_price),
-        " / ",
-        formatNumber(trade.exit_price),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: trade.exit_reason ?? "" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (trade.net_return_pct ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down, fontWeight: 800 }, children: formatPercent(trade.net_return_pct) })
-    ] }, `${trade.signal_date ?? index}-${trade.signal_type ?? "trade"}`)) })
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: filled.slice().reverse().map((trade, index) => {
+      const sourceIndex = trade.index ?? filled.length - index - 1;
+      const rowActive = selectedIndex === sourceIndex;
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "tr",
+        {
+          style: {
+            borderTop: `1px solid ${terminalTheme.border}`,
+            background: rowActive ? tradingDeskTheme.alpha.accentSurface : "transparent",
+            cursor: "pointer"
+          },
+          onClick: () => onSelect(sourceIndex, tradeTimestampsMs(trade)[0]),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: trade.signal_type ?? "\u4FE1\u53F7" }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: trade.signal_date })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: terminalTheme.mono }, children: [
+              formatNumber(trade.entry_price),
+              " / ",
+              formatNumber(trade.exit_price),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: trade.exit_reason ?? "" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (trade.net_return_pct ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down, fontWeight: 800 }, children: formatPercent(trade.net_return_pct) })
+          ]
+        },
+        `${trade.id ?? trade.signal_date ?? index}-${trade.signal_type ?? "trade"}`
+      );
+    }) })
   ] }) });
+}
+function RiskPanel({ result }) {
+  const terminal = terminalOf(result);
+  if (!terminal) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u8FD0\u884C\u540E\u663E\u793A\u98CE\u63A7\u6458\u8981\u3002" });
+  const risk = recordValue2(terminal.panels?.risk);
+  const config = recordValue2(terminal.panels?.config);
+  const dataHealth = recordValue2(config.data_health);
+  const assumptions = recordValue2(terminal.trade_assumptions ?? risk.assumptions);
+  const bands = Array.isArray(risk.bands) ? risk.bands.map((item) => recordValue2(item)) : [];
+  const skipReasons = recordValue2(risk.skip_reasons);
+  const riskMetrics = Array.isArray(terminal.metrics?.risk) ? terminal.metrics?.risk : [];
+  const metricRows = riskMetrics.map((item) => ({
+    label: item.label ?? item.key ?? "",
+    value: formatMetricValue(item.value, item.unit),
+    tone: item.tone
+  }));
+  const assumptionRows = [
+    { label: "\u521D\u59CB\u8D44\u91D1", value: formatNumber(assumptions.initial_capital, 0) },
+    { label: "\u4ED3\u4F4D", value: formatNumber(assumptions.position_size, 2) },
+    { label: "\u4F63\u91D1", value: formatPercent(assumptions.commission_pct) },
+    { label: "\u5370\u82B1\u7A0E", value: formatPercent(assumptions.stamp_tax_pct) },
+    { label: "\u6ED1\u70B9", value: formatPercent(assumptions.slippage_pct) },
+    { label: "\u624B\u6570", value: formatNumber(assumptions.lot_size, 0) },
+    { label: "\u6700\u957F\u6301\u4ED3", value: `${formatNumber(assumptions.max_hold_days, 0)}D` }
+  ];
+  const bandRows = bands.length ? bands.map((item) => ({
+    label: stringValue2(item.label) ?? stringValue2(item.key) ?? "",
+    value: [
+      numberValue2(item.price) === void 0 ? "" : formatNumber(item.price, 3),
+      numberValue2(item.pct) === void 0 ? "" : formatPercent(item.pct)
+    ].filter(Boolean).join(" / ") || emptyDisplay,
+    tone: numberValue2(item.pct) !== void 0 && (numberValue2(item.pct) ?? 0) < 0 ? "down" : "up"
+  })) : [{ label: "\u98CE\u63A7\u7EBF", value: "\u672A\u542F\u7528" }];
+  const healthRows = [
+    { label: "\u6570\u636E\u6E90", value: dataHealth.data_source_detail ?? dataHealth.data_source ?? emptyDisplay },
+    { label: "\u65B0\u9C9C\u5EA6", value: freshnessLabel(dataHealth.freshness, "zh-CN") || emptyDisplay },
+    { label: "\u622A\u81F3", value: dataHealth.as_of ?? emptyDisplay },
+    { label: "K\u7EBF", value: dataHealth.bar_count ?? emptyDisplay }
+  ];
+  const skipRows = Object.keys(skipReasons).length ? Object.entries(skipReasons).map(([label, value]) => ({ label, value })) : [{ label: "\u8DF3\u8FC7\u539F\u56E0", value: "\u65E0" }];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflow: "auto" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u98CE\u9669\u6307\u6807", items: metricRows }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u4EA4\u6613\u5047\u8BBE", items: assumptionRows }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u6B62\u635F/\u6B62\u76C8\u5E26", items: bandRows }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricGroup, { title: "\u914D\u7F6E\u4E0E\u6570\u636E\u5065\u5EB7", items: [...healthRows, ...skipRows] })
+  ] });
 }
 function ScanControls({
   params,
@@ -32421,6 +35100,9 @@ function ScanControls({
   onChange,
   onRun
 }) {
+  const scanPanel = recordValue2(scan?.terminal?.panels?.scan);
+  const bestParams = Object.keys(recordValue2(scanPanel.best_params)).length ? recordValue2(scanPanel.best_params) : scan?.best_params;
+  const scanRows = Array.isArray(scanPanel.rows) ? scanPanel.rows : scan?.scan_results;
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("select", { style: selectStyle, value: params.scan_param, onChange: (event) => onChange("scan_param", event.target.value), children: [
@@ -32438,11 +35120,11 @@ function ScanControls({
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(true, loading), disabled: loading, onClick: onRun, children: loading ? "\u626B\u63CF\u4E2D" : "\u8FD0\u884C\u626B\u63CF" })
     ] }),
-    scan?.best_params ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: warningStyle, children: [
+    bestParams ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: warningStyle, children: [
       "\u6700\u4F18\u53C2\u6570\uFF1A",
-      Object.entries(scan.best_params).map(([key, value]) => `${key}=${String(value)}`).join(", ")
+      Object.entries(bestParams).map(([key, value]) => `${key}=${String(value)}`).join(", ")
     ] }) : null,
-    scan?.scan_results?.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: scan.scan_results.slice(0, 18).map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: index === 0 ? "none" : `1px solid ${terminalTheme.border}` }, children: [
+    scanRows?.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: scanRows.slice(0, 18).map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: index === 0 ? "none" : `1px solid ${terminalTheme.border}` }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.textStrong }, children: Object.values(recordValue2(row.params)).join(" / ") }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: terminalTheme.mono }, children: [
         "Sharpe ",
@@ -32454,6 +35136,46 @@ function ScanControls({
       ] })
     ] }, index)) }) }) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u5C55\u5F00\u626B\u63CF\u53C2\u6570\u540E\u8FD0\u884C\u3002" })
   ] });
+}
+function historyEntryTitle(entry, locale) {
+  if (entry.mode === "multi") {
+    const count = entry.codes.length;
+    return locale === "zh-CN" ? `\u591A\u6807\u7684\u56DE\u6D4B${count ? ` \xB7 ${count}\u53EA` : ""}` : `Multi-symbol backtest${count ? ` \xB7 ${count}` : ""}`;
+  }
+  return entry.title;
+}
+function historyEntryMeta(entry, locale) {
+  const date = entry.createdAt ? entry.createdAt.slice(5, 16).replace("T", " ") : "";
+  return [
+    entry.meta,
+    freqLabel(entry.freq, locale),
+    date
+  ].filter(Boolean).join(" \xB7 ");
+}
+function BacktestHistoryRows({
+  locale,
+  entries,
+  onRestore
+}) {
+  if (entries.length === 0) {
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u6682\u65E0\u53EF\u590D\u539F\u56DE\u6D4B\u3002" : "No restorable backtest yet." });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: compactListStyle, children: entries.slice(0, BACKTEST_HISTORY_LIMIT).map((entry) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+    "button",
+    {
+      type: "button",
+      style: { ...rowStyle, width: "100%", cursor: "pointer", textAlign: "left" },
+      onClick: () => onRestore(entry),
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: historyEntryTitle(entry, locale) }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: historyEntryMeta(entry, locale) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("success"), children: locale === "zh-CN" ? "\u590D\u539F" : "Restore" })
+      ]
+    },
+    entry.id
+  )) });
 }
 function FallbackRows({
   dashboard,
@@ -32473,7 +35195,7 @@ function FallbackRows({
     }))
   ];
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: compactListStyle, children: [
-    rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u964D\u7EA7\u961F\u5217\u3002" }) : rows.slice(0, 8).map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u5F85\u5904\u7406\u56DE\u6D4B\u3002" }) : rows.slice(0, 8).map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       "button",
       {
         type: "button",
@@ -32506,10 +35228,15 @@ function FallbackRows({
 function FallbackBacktest({
   locale,
   dashboard,
+  historyEntries,
+  onRestoreHistory,
   onOpenRun,
   onOpenRecord
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mainGridStyle, gridTemplateColumns: "1fr" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u56DE\u6D4B\u961F\u5217" : "Backtest queue", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FallbackRows, { dashboard, onOpenRun, onOpenRecord }) }) });
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...mainGridStyle, gridTemplateColumns: "1fr" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u56DE\u6D4B\u8BB0\u5F55" : "Backtest records", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BacktestHistoryRows, { locale, entries: historyEntries, onRestore: onRestoreHistory }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5F85\u5904\u7406\u7EBF\u7D22" : "Pending signals", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FallbackRows, { dashboard, onOpenRun, onOpenRecord }) })
+  ] });
 }
 
 // electron/src/renderer/workspaces/StrategyChartTerminal.tsx
@@ -32638,9 +35365,14 @@ function signalScopeLabel(signal, currentFreq = "") {
 
 // electron/src/renderer/workspaces/StrategyChartTerminal.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
-var WATCHLIST_TAB_KEYS = ["macro_indices", "sector_boards", "buy_candidates", "watch_stocks", "focus_stocks"];
+var WATCHLIST_TAB_KEYS = ["major_indices", "industry_etfs", "sector_boards", "buy_candidates", "watch_stocks", "focus_stocks"];
 var STOCK_WATCHLIST_TABS = ["buy_candidates", "watch_stocks", "focus_stocks", "risk_stocks"];
 var OPPORTUNITY_FUNNEL_TABS = ["buy_candidates", "watch_stocks", "focus_stocks"];
+var SHELL_REQUEST_TIMEOUT_MS = 12e3;
+var SYMBOL_REQUEST_TIMEOUT_MS = 45e3;
+var SYMBOL_DATA_CACHE_TTL_MS = 6e4;
+var RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 8;
+var RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS = 12e3;
 var TRADE_ROLE_FILTERS = [
   { key: "all", zh: "\u5168\u90E8", en: "All" },
   { key: "left_attack", zh: "\u4F4E\u5438\u8FDB\u653B", en: "Left attack" },
@@ -32656,7 +35388,7 @@ var FREQ_OPTIONS = [
   { value: "daily", label: "\u65E5" },
   { value: "weekly", label: "\u5468" }
 ];
-var DEFAULT_TERMINAL_FREQ = "30min";
+var DEFAULT_TERMINAL_FREQ = "daily";
 var DEFAULT_AVAILABLE_FREQS = FREQ_OPTIONS.map((option) => option.value);
 var WATCHLIST_RANGE_COLUMNS = [
   { key: "5d", label: "5\u65E5", aliases: ["5d", "5\u65E5", "week", "1w", "1week", "weekly"] },
@@ -32692,7 +35424,7 @@ var MA_COLORS = [
   tradingDeskTheme.chart.gold,
   tradingDeskTheme.colors.textStrong
 ];
-var FIBONACCI_MA_PERIODS = [8, 13, 21, 34, 55, 89];
+var KEY_MA_PERIODS = [5, 8, 10, 13, 20, 21];
 var MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange];
 var signalOverlayRegistered = false;
 var volumeSignalOverlayRegistered = false;
@@ -33142,6 +35874,30 @@ var targetButtonStyle = {
   fontSize: 11,
   transition: interaction.transition
 };
+var timeframeMarketRowStyle = (active) => ({
+  ...targetButtonStyle,
+  borderColor: active ? terminalTheme2.accent : terminalTheme2.border,
+  background: active ? terminalTheme2.accentSoft : terminalTheme2.panelSoft,
+  padding: "5px 6px"
+});
+var timeframeMarketTopLineStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 6,
+  minWidth: 0
+};
+var timeframeMarketMetricStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(54px, 0.8fr) minmax(58px, 0.8fr) minmax(72px, 1fr)",
+  gap: 5,
+  alignItems: "center",
+  minWidth: 0
+};
+var timeframeMarketSublineStyle = {
+  ...mutedTwoLineStyle,
+  fontSize: 10
+};
 var chainDrawerStyle = {
   borderTop: `1px solid ${terminalTheme2.border}`,
   borderBottom: `1px solid ${terminalTheme2.borderMuted}`,
@@ -33180,6 +35936,35 @@ var chainContextHeroStyle = {
   display: "flex",
   flexDirection: "column",
   gap: 5
+};
+var sectorTargetFocusStyle = {
+  border: `1px solid ${terminalTheme2.accent}`,
+  borderRadius: 5,
+  background: terminalTheme2.accentSoft,
+  padding: 6,
+  display: "flex",
+  flexDirection: "column",
+  gap: 5
+};
+var sectorTargetGroupRailStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 4,
+  minWidth: 0
+};
+var chainVizTargetPreviewStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  minWidth: 0,
+  color: terminalTheme2.muted,
+  fontSize: 9,
+  lineHeight: 1.15
+};
+var chainVizTargetNameStyle = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
 };
 var chartModeSummaryStyle = {
   display: "flex",
@@ -33304,6 +36089,50 @@ var watchlistSubStyle = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap"
+};
+var watchlistSignalCellStyle = {
+  ...watchlistCellStyle,
+  padding: "5px 4px",
+  color: terminalTheme2.textStrong,
+  fontFamily: fontStacks.ui,
+  lineHeight: 1.25,
+  overflow: "visible",
+  textOverflow: "clip",
+  whiteSpace: "normal"
+};
+var watchlistSignalStackStyle = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  gap: 2,
+  minWidth: 0
+};
+var watchlistSignalMainStyle = {
+  minWidth: 0,
+  maxWidth: "100%",
+  color: terminalTheme2.textStrong,
+  fontSize: 10.5,
+  fontWeight: 800,
+  lineHeight: 1.25,
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: 2,
+  overflow: "hidden",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word"
+};
+var watchlistSignalDetailStyle = {
+  minWidth: 0,
+  maxWidth: "100%",
+  color: terminalTheme2.muted,
+  fontSize: 9,
+  lineHeight: 1.2,
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: 2,
+  overflow: "hidden",
+  overflowWrap: "anywhere",
+  wordBreak: "break-word"
 };
 var stockWatchlistNameCellStyle = {
   ...watchlistNameCellStyle,
@@ -33877,6 +36706,28 @@ var decisionExplainLabelStyle = {
   fontWeight: 850,
   lineHeight: 1.25
 };
+var tradeActionStripStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))",
+  gap: 5,
+  minWidth: 0
+};
+var tradeActionCellStyle = {
+  border: `1px solid ${terminalTheme2.border}`,
+  borderRadius: 5,
+  background: terminalTheme2.panelSoft,
+  padding: "5px 6px",
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: 4
+};
+var tradeActionLabelStyle = {
+  color: terminalTheme2.mutedStrong,
+  fontSize: 9,
+  fontWeight: 850,
+  lineHeight: 1.15
+};
 var signalBadgeRowStyle = {
   display: "flex",
   gap: 3,
@@ -33884,6 +36735,11 @@ var signalBadgeRowStyle = {
   alignItems: "center",
   minWidth: 0,
   overflow: "hidden"
+};
+var contextSignalBadgeRowStyle = {
+  ...signalBadgeRowStyle,
+  flexWrap: "wrap",
+  maxHeight: 34
 };
 var stockDecisionBadgeStackStyle = {
   display: "flex",
@@ -34267,6 +37123,37 @@ function firstNumberValue(...values) {
 function compactText2(value, fallback = "") {
   return stringValue3(value) ?? (typeof value === "number" ? String(value) : fallback);
 }
+function meaningfulSignalText(value) {
+  const text2 = compactText2(value);
+  const normalized = text2.toLowerCase();
+  return text2 && !["\u65E0", "\u6682\u65E0", "none", "n/a", "na", "null"].includes(normalized) ? text2 : "";
+}
+function timeframeBadgeDisplayLabel(value, locale = "zh-CN") {
+  const text2 = compactText2(value);
+  const normalized = text2.toLowerCase();
+  if (["weekly", "week", "1w", "w", "\u5468", "\u5468\u7EBF"].includes(normalized)) {
+    return locale === "zh-CN" ? "\u5468\u7EBF" : "Weekly";
+  }
+  if (["daily", "day", "1d", "d", "\u65E5", "\u65E5\u7EBF"].includes(normalized)) {
+    return locale === "zh-CN" ? "\u65E5\u7EBF" : "Daily";
+  }
+  if (["30m", "30min", "30\u5206\u949F", "f30"].includes(normalized)) {
+    return locale === "zh-CN" ? "30\u5206\u949F" : "30m";
+  }
+  if (["15m", "15min", "15\u5206\u949F", "f15"].includes(normalized)) {
+    return locale === "zh-CN" ? "15\u5206\u949F" : "15m";
+  }
+  if (["5m", "5min", "5\u5206\u949F", "f5"].includes(normalized)) {
+    return locale === "zh-CN" ? "5\u5206\u949F" : "5m";
+  }
+  return text2;
+}
+function signalBadgeDisplayLabel(badge, locale) {
+  const label = timeframeBadgeDisplayLabel(badge.label, locale);
+  if (badge.side === "sell") return locale === "zh-CN" ? `${label}\u5356\u70B9` : `${label} sell`;
+  if (badge.side === "buy") return locale === "zh-CN" ? `${label}\u4E70\u70B9` : `${label} buy`;
+  return label;
+}
 function localizedPair(pair, locale, fallback = "") {
   if (!pair) return fallback;
   return locale === "zh-CN" ? pair[0] : pair[1];
@@ -34526,12 +37413,6 @@ function decisionSourceLabel(source, locale) {
   if (match) return locale === "zh-CN" ? match[1][0] : match[1][1];
   return source || (locale === "zh-CN" ? "\u672A\u77E5\u6765\u6E90" : "Unknown source");
 }
-function decisionStageTone(stage) {
-  if (stage === "risk_first") return "warning";
-  if (stage === "entry_ready") return "success";
-  if (stage === "watch_preheat") return "running";
-  return "open";
-}
 function decisionActionFallback(stage, missingGates, locale) {
   if (stage === "risk_first") return locale === "zh-CN" ? "\u6682\u4E0D\u53C2\u4E0E" : "Skip now";
   if (stage === "entry_ready") return locale === "zh-CN" ? "\u4E70\u70B9\u6C60\u590D\u6838" : "Review entry pool";
@@ -34577,7 +37458,7 @@ function rawDecisionStage(row, stageHint) {
     return "watch_preheat";
   }
   if (stageHint === "buy_candidates") return "strategy_candidate";
-  if (stageHint === "macro_indices" || stageHint === "sector_boards") return "context";
+  if (stageHint === "major_indices" || stageHint === "industry_etfs" || stageHint === "macro_indices" || stageHint === "sector_boards") return "context";
   return compactText2(row.symbol) || compactText2(row.code) ? "strategy_candidate" : "context";
 }
 function rawSourceKeys(row) {
@@ -34788,6 +37669,10 @@ function normalizeCacheStatus(value) {
     mode: compactText2(cacheStatus.mode, "unavailable"),
     updated_at: compactText2(cacheStatus.updated_at),
     trade_date: compactText2(cacheStatus.trade_date),
+    recovery_state: compactText2(cacheStatus.recovery_state),
+    critical_blocker: recordValue4(cacheStatus.critical_blocker),
+    daily_coverage_date: compactText2(cacheStatus.daily_coverage_date),
+    terminal_ready_date: compactText2(cacheStatus.terminal_ready_date),
     error: compactText2(cacheStatus.error),
     live_low_latency: {
       modules: Array.isArray(recordValue4(cacheStatus.live_low_latency).modules) ? recordValue4(cacheStatus.live_low_latency).modules : [],
@@ -34812,7 +37697,8 @@ function cacheProgressColor(value, status) {
   if (normalized.includes("error") || normalized.includes("degraded") || normalized.includes("stale")) {
     return palette.error;
   }
-  if (normalized.includes("running") || normalized.includes("partial")) return tradingDeskTheme.colors.auroraGold;
+  if (normalized.includes("running")) return tradingDeskTheme.colors.auroraBlue;
+  if (normalized.includes("partial")) return tradingDeskTheme.colors.auroraGold;
   if (value < 100) return tradingDeskTheme.colors.auroraBlue;
   return palette.success;
 }
@@ -34941,6 +37827,57 @@ function cacheStatusLabel(value, fallback) {
   if (text2 === "pending") return "PENDING";
   return text2.toUpperCase();
 }
+function recoveryStateLabel(value, locale) {
+  const state = compactText2(value).toLowerCase();
+  if (state === "waiting_for_source" || state === "source_blocked" || state === "partial/source_blocked") {
+    return locale === "zh-CN" ? "\u6E90\u963B\u585E" : "SOURCE";
+  }
+  if (state === "old_cache_readable") return locale === "zh-CN" ? "\u65E7\u7F13\u5B58\u53EF\u8BFB" : "OLD CACHE";
+  if (state === "postmarket_running") return locale === "zh-CN" ? "\u6062\u590D\u4E2D" : "RUNNING";
+  if (state === "terminal_ready") return locale === "zh-CN" ? "\u7EC8\u7AEF\u6C60\u5DF2\u5237\u65B0" : "TERMINAL READY";
+  return "";
+}
+function mongoCoverageState(cacheStatusInput, locale) {
+  const cacheStatus = normalizeCacheStatus(cacheStatusInput);
+  const freqs = cacheStatus.mongo_stock_cache.freqs.map((item) => recordValue4(item));
+  const mongoSummary = recordValue4(cacheStatus.mongo_stock_cache.summary);
+  const dailyCache = firstRecord(freqs, "freq", "\u65E5\u7EBF");
+  const dailySymbols = numberValue3(dailyCache.symbols) ?? 0;
+  const dailyToday = numberValue3(dailyCache.today_symbols) ?? 0;
+  const coverageDate = compactText2(recordValue4(cacheStatus).daily_coverage_date) || compactText2(mongoSummary.daily_coverage_date) || compactText2(dailyCache.coverage_date);
+  const tradeDate = compactText2(cacheStatus.trade_date);
+  const isCurrent = Boolean(!tradeDate || !coverageDate || coverageDate === tradeDate);
+  const progress = dailySymbols ? dailyToday / dailySymbols * 100 : 0;
+  const minuteFreqs = freqs.filter((row) => ["5\u5206\u949F", "15\u5206\u949F", "30\u5206\u949F", "60\u5206\u949F"].includes(compactText2(row.freq))).map((row) => `${compactText2(row.freq)} ${countText(row.today_symbols)}`).join(" \xB7 ");
+  const minuteUniverseTotal = numberValue3(mongoSummary.minute_universe_total) ?? 0;
+  const minuteUniverseCached = numberValue3(mongoSummary.minute_universe_cached) ?? 0;
+  const minuteUniversePending = numberValue3(mongoSummary.minute_universe_pending) ?? 0;
+  const minuteUniverseError = numberValue3(mongoSummary.minute_universe_error) ?? 0;
+  const postRun = recordValue4(cacheStatus.postmarket_backfill.run);
+  const postSummary = recordValue4(cacheStatus.postmarket_backfill.summary);
+  const postRunStatus = compactText2(postRun.status, compactText2(postSummary.status)).toLowerCase();
+  const postCriticalStatus = compactText2(postSummary.critical_status).toLowerCase();
+  const recoveryState = compactText2(recordValue4(cacheStatus).recovery_state) || compactText2(postSummary.recovery_state) || compactText2(postRun.recovery_state);
+  const backfillActive = ["running", "partial"].includes(postRunStatus) || ["running", "partial"].includes(postCriticalStatus) || recoveryState === "postmarket_running";
+  const currentCoveragePending = isCurrent && (minuteUniversePending > 0 || dailySymbols > 0 && dailyToday < dailySymbols);
+  const detail = locale === "zh-CN" ? isCurrent ? `\u5F53\u65E5\u65E5\u7EBF ${countText(dailyToday)}/${countText(dailySymbols)}` : `\u65E7\u7F13\u5B58\u53EF\u8BFB ${coverageDate || "-"} ${countText(dailyToday)}/${countText(dailySymbols)}` : isCurrent ? `current daily ${countText(dailyToday)}/${countText(dailySymbols)}` : `old cache readable ${coverageDate || "-"} ${countText(dailyToday)}/${countText(dailySymbols)}`;
+  const subdetail = locale === "zh-CN" ? minuteUniverseTotal ? `\u5206\u949F\u5019\u9009 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} \xB7 \u5F85 ${countText(minuteUniversePending)} \xB7 \u5931\u8D25 ${countText(minuteUniverseError)}` : `\u5206\u949F\u8986\u76D6\uFF1A${minuteFreqs || "0"}` : minuteUniverseTotal ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} \xB7 pending ${countText(minuteUniversePending)} \xB7 failed ${countText(minuteUniverseError)}` : `minute coverage: ${minuteFreqs || "0"}`;
+  const status = !cacheStatus.available ? "degraded" : minuteUniverseError > 0 ? "degraded" : !isCurrent ? "partial" : currentCoveragePending ? backfillActive ? "running" : "partial" : "ok";
+  const datePrefix = coverageDate ? `${coverageDate} ` : "";
+  return {
+    coverageDate,
+    tradeDate,
+    isCurrent,
+    dailySymbols,
+    dailyToday,
+    progress,
+    status,
+    statusLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    compactLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    detail,
+    subdetail
+  };
+}
 function cacheReasonLabel(reason, locale) {
   const zh = locale === "zh-CN";
   if (reason === "index_minute_unsupported") return zh ? "\u8BE5\u5E02\u573A\u672A\u63A5\u5165\u6307\u6570\u5206\u949F\u7F13\u5B58" : "index minute cache is not connected for this market";
@@ -35002,7 +37939,6 @@ function chartCacheNotReadyMessage(symbolData, locale) {
 function trimTrailingSlash3(value) {
   return value?.trim().replace(/\/+$/, "") ?? "";
 }
-var DEFAULT_SIGNALS_WEB_BASE_URL = "http://127.0.0.1:8011";
 function urlFromDashboard(dashboard) {
   const terminalLink = dashboard.deep_links.find((link) => link.link_id === "signals-terminal");
   return trimTrailingSlash3(terminalLink?.url);
@@ -35064,6 +38000,16 @@ function marketLabel(session, locale = "zh-CN") {
 function shouldUseLiveRefresh(session) {
   return Boolean(session?.a_live || session?.hk_live || session?.us_live);
 }
+function shellGroupCount(shell) {
+  const groups = shell?.watchlist_groups ?? {};
+  return Object.values(groups).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0);
+}
+function shellNeedsWarmRefresh(shell) {
+  if (!shell) return true;
+  const cache = recordValue4(shell.cache);
+  const cacheStatus = compactText2(cache.status).toLowerCase();
+  return Boolean(cache.building) || cacheStatus === "building" || shellGroupCount(shell) === 0;
+}
 async function fetchJson2(baseUrl, path, signal, source, action, request) {
   return observedFetchJson(baseUrl, path, {
     signal,
@@ -35072,7 +38018,7 @@ async function fetchJson2(baseUrl, path, signal, source, action, request) {
     method: request?.method,
     headers: request?.headers,
     body: request?.body,
-    timeoutMs: 45e3
+    timeoutMs: request?.timeoutMs ?? SYMBOL_REQUEST_TIMEOUT_MS
   });
 }
 function chartStyles2() {
@@ -35155,15 +38101,9 @@ function chartStyles2() {
   };
 }
 function maPeriodsForChart(freq, targetKind) {
-  if (compactText2(targetKind).toLowerCase() === "index") return FIBONACCI_MA_PERIODS;
-  const normalized = String(freq ?? "").toLowerCase();
-  if (normalized.includes("week") || normalized === "w" || normalized === "1w") {
-    return [5, 10, 20, 50];
-  }
-  if (normalized.includes("day") || normalized === "d" || normalized === "1d" || normalized === "daily") {
-    return [5, 10, 20, 60];
-  }
-  return [5, 10, 20, 60];
+  void freq;
+  void targetKind;
+  return KEY_MA_PERIODS;
 }
 function maIndicatorStyles(periods) {
   return {
@@ -35767,25 +38707,17 @@ function movingAverageLevel(data, period) {
   const sum = window2.reduce((total, item) => total + item.close, 0);
   return sum / period;
 }
-function isDailyFreq(freq) {
-  return normalizeSignalFreq(freq) === "daily";
-}
 function derivedMaKeyLevels(data, freq, targetKind) {
   const normalized = normalizeSignalFreq(freq);
-  const basePeriods = normalized === "weekly" ? [20, 50] : normalized === "30min" ? [20, 60] : normalized === "daily" ? [50, 200] : [];
-  const periods = Array.from(/* @__PURE__ */ new Set([
-    ...compactText2(targetKind).toLowerCase() === "index" ? FIBONACCI_MA_PERIODS : [],
-    ...basePeriods
-  ]));
-  return periods.map((period) => {
+  void targetKind;
+  return KEY_MA_PERIODS.map((period) => {
     const value = movingAverageLevel(data, period);
     if (value === void 0) return null;
     const close = latestClose(data);
-    const isFibIndexMa = compactText2(targetKind).toLowerCase() === "index" && FIBONACCI_MA_PERIODS.includes(period);
     return {
-      name: `${displayFreqLabel(normalized)}${isFibIndexMa ? "Fib MA" : "MA"}${period}`,
+      name: `${displayFreqLabel(normalized)}MA${period}`,
       value,
-      role: isFibIndexMa ? "\u6307\u6570Fibonacci\u5747\u7EBF" : normalized === "daily" && period === 200 ? "\u957F\u671F\u8D8B\u52BF\u538B\u529B/\u652F\u6491" : "\u9636\u6BB5\u5E95\u90E8/\u6210\u672C\u7EBF",
+      role: "\u5173\u952E\u5747\u7EBF",
       position: close !== void 0 && close >= value ? "\u4E0B\u65B9" : "\u4E0A\u65B9",
       distance_pct: close !== void 0 && value > 0 ? (value - close) / close * 100 : null,
       timeframe: normalized
@@ -36588,7 +39520,7 @@ function initialTargetFrom(shell, dashboard) {
   return {
     label: shellTarget.label,
     kind: shellTarget.kind ?? "index",
-    freq: shellTarget.freq ?? DEFAULT_TERMINAL_FREQ
+    freq: DEFAULT_TERMINAL_FREQ
   };
 }
 function availableFreqs(symbolData) {
@@ -36596,11 +39528,17 @@ function availableFreqs(symbolData) {
   return Array.isArray(freqs) && freqs.length > 0 ? freqs : DEFAULT_AVAILABLE_FREQS;
 }
 function terminalListTargetFreq(value, fallback) {
-  const normalized = compactText2(value);
-  if (normalized && normalized !== "daily" && normalized !== "weekly") return normalized;
-  const fallbackFreq = compactText2(fallback);
-  if (fallbackFreq && fallbackFreq !== "daily" && fallbackFreq !== "weekly") return fallbackFreq;
+  const normalized = normalizeSignalFreq(compactText2(value));
+  if (normalized) return normalized;
+  const fallbackFreq = normalizeSignalFreq(compactText2(fallback));
+  if (fallbackFreq) return fallbackFreq;
   return DEFAULT_TERMINAL_FREQ;
+}
+function symbolDataCacheKey(target) {
+  const label = compactText2(target.label).trim().toUpperCase();
+  const kind = compactText2(target.kind, "auto").trim().toLowerCase();
+  const freq = normalizeSignalFreq(compactText2(target.freq).trim()) || DEFAULT_TERMINAL_FREQ;
+  return `${kind}|${label}|${freq}`;
 }
 function formatNumber2(value, digits = 2) {
   const number = numberValue3(value);
@@ -36625,6 +39563,89 @@ function formatPercent2(value) {
   const number = typeof value === "string" ? numberValue3(value.replace("%", "").replace("+", "").trim()) : numberValue3(value);
   if (number === void 0) return "N/A";
   return `${number > 0 ? "+" : ""}${number.toFixed(2)}%`;
+}
+function latestPeriodChangePct(data) {
+  const latest = data[data.length - 1];
+  const previous = data[data.length - 2];
+  if (!latest || !previous || previous.close === 0) return void 0;
+  return (latest.close - previous.close) / previous.close * 100;
+}
+function compactMarketTimeLabel(value) {
+  const text2 = compactText2(value);
+  if (!text2) return "";
+  return text2.replace("T", " ").replace(/\.\d+$/, "").replace(/:\d{2}$/, "");
+}
+function timeframeSnapshotStatusLabel(status, locale) {
+  const zh = locale === "zh-CN";
+  if (status === "ready") return zh ? "\u53EF\u7528" : "Ready";
+  if (status === "stale") return zh ? "\u9648\u65E7" : "Stale";
+  if (status === "loading") return zh ? "\u52A0\u8F7D" : "Loading";
+  if (status === "error") return zh ? "\u5931\u8D25" : "Error";
+  return zh ? "\u65E0K\u7EBF" : "No bars";
+}
+function timeframeSnapshotBadgeTone(status) {
+  if (status === "ready") return "success";
+  if (status === "stale" || status === "empty") return "warning";
+  if (status === "loading") return "running";
+  if (status === "error") return "error";
+  return "open";
+}
+function loadingTimeframeSnapshot(freq, locale) {
+  return {
+    freq: normalizeSignalFreq(freq) || freq,
+    label: displayFreqLabel(freq),
+    status: "loading",
+    latestPrice: "N/A",
+    periodChange: "N/A",
+    volume: "N/A",
+    amount: "N/A",
+    bars: "0",
+    signal: "",
+    statusText: locale === "zh-CN" ? "\u8BFB\u53D6\u4E2D" : "Loading"
+  };
+}
+function errorTimeframeSnapshot(freq, message, locale) {
+  return {
+    ...loadingTimeframeSnapshot(freq, locale),
+    status: "error",
+    statusText: message || (locale === "zh-CN" ? "\u8BFB\u53D6\u5931\u8D25" : "Failed to load")
+  };
+}
+function marketSnapshotFromSymbolData(symbolData, freq, locale = "zh-CN") {
+  const normalizedFreq = normalizeSignalFreq(symbolData?.target?.effective_freq ?? symbolData?.target?.requested_freq ?? freq) || freq;
+  const chart = recordValue4(symbolData?.chart);
+  const meta = recordValue4(chart.meta);
+  const summary = recordValue4(symbolData?.summary);
+  const data = toKLineData2(chart);
+  const latest = data[data.length - 1];
+  const statusFromMeta = compactText2(meta.cache_status).toLowerCase();
+  const loadStatus = compactText2(meta.load_status).toLowerCase();
+  const isStale = booleanValue2(meta.is_stale) || statusFromMeta === "stale";
+  const status = data.length > 0 ? isStale ? "stale" : "ready" : ["triggered", "running", "pending"].includes(loadStatus) ? "loading" : "empty";
+  const latestPrice = firstNumberValue(latest?.close, summary.latest_price);
+  const latestVolumeValue = firstNumberValue(latest?.volume, summary.day_volume, summary.daily_volume, summary.latest_daily_volume);
+  const latestAmountValue = firstNumberValue(latest?.turnover, summary.day_amount, summary.daily_amount, summary.latest_daily_amount);
+  const periodChange = latestPeriodChangePct(data);
+  const signal = compactText2(recordValue4(summary.current_timeframe_ma).summary) || compactText2(summary.latest_signal) || compactText2(recordValue4(summary.ma_acceptance).summary);
+  const cacheNotice = status === "empty" || status === "loading" ? chartCacheNotReadyMessage(symbolData, locale) : "";
+  const statusText = [
+    cacheNotice,
+    compactText2(meta.collection) || compactText2(meta.source),
+    compactMarketTimeLabel(meta.latest_bar_time) || compactMarketTimeLabel(meta.data_as_of),
+    status === "stale" ? compactText2(meta.stale_reason) || (locale === "zh-CN" ? "\u7F13\u5B58\u9648\u65E7" : "stale cache") : ""
+  ].filter(Boolean).join(" \xB7 ");
+  return {
+    freq: normalizedFreq,
+    label: displayFreqLabel(normalizedFreq),
+    status,
+    latestPrice: formatNumber2(latestPrice),
+    periodChange: formatPercent2(periodChange),
+    volume: formatAStockVolume(latestVolumeValue),
+    amount: formatTurnoverAmount(latestAmountValue),
+    bars: countText(numberValue3(meta.bars) ?? data.length),
+    signal,
+    statusText
+  };
 }
 function maAcceptanceMetricChips(acceptance) {
   const primary = acceptance.primary;
@@ -36883,6 +39904,78 @@ function traderCanActSummary(row, locale) {
   if (row.decision.stage === "strategy_candidate") return locale === "zh-CN" ? "\u4E0D\u80FD\u52A8\uFF0C\u53EA\u662F\u7EBF\u7D22\u3002" : "No action; clue only.";
   return locale === "zh-CN" ? "\u5148\u76EF\u76D8\uFF0C\u7B4930m\u627F\u63A5\u548C5m/15m\u4E0B\u5355\u786E\u8BA4\u3002" : "Watch first; wait for 30m and 5m/15m confirmation.";
 }
+function strategyTradeActionPlanFromState(input, locale = "zh-CN") {
+  const zh = locale === "zh-CN";
+  const targetKind = compactText2(input.targetKind).toLowerCase();
+  const stage = compactText2(input.decisionStage);
+  const role = compactText2(input.tradeRole);
+  const identity = compactText2(input.identity);
+  const confirmation = compactText2(input.confirmation);
+  const invalidation = compactText2(input.invalidation);
+  const hasEvidence = input.hasEvidence ?? Boolean(compactText2(input.evidence) || confirmation || invalidation);
+  const isIndex = targetKind.includes("index") || targetKind.includes("\u6307\u6570");
+  if (stage === "risk_first" || role === "risk_first") {
+    return {
+      action: zh ? "\u5FFD\u7565" : "Skip",
+      tone: "warning",
+      reason: identity || (zh ? "\u6682\u4E0D\u53C2\u4E0E" : "Skip-now"),
+      next: zh ? "\u975E\u6301\u4ED3\u4E0D\u5904\u7406\uFF1B\u7B49\u91CD\u65B0\u8F6C\u5165\u7EBF\u7D22\u6C60\u3002" : "Do nothing unless held; wait for a clue reset.",
+      postmarket: zh ? "\u76D8\u540E\u53EA\u590D\u6838\u98CE\u9669\u56E0\u5B50\uFF0C\u4E0D\u8FDB\u4E70\u70B9\u6837\u672C\u3002" : "Review risk factors only; keep it out of entry samples."
+    };
+  }
+  if (stage === "entry_ready" || role === "left_attack" || role === "right_attack") {
+    return {
+      action: zh ? "\u770B" : "Review",
+      tone: "success",
+      reason: identity || (zh ? "\u4E70\u70B9\u6C60" : "Entry pool"),
+      next: confirmation || (zh ? "\u590D\u6838\u4F4D\u7F6E\u3001\u4ED3\u4F4D\u548C\u5931\u6548\u6761\u4EF6\u3002" : "Review level, sizing, and invalidation."),
+      postmarket: zh ? "\u76D8\u540E\u56DE\u6D4B\u540C\u7C7B\u4E70\u70B9\u7684 T+5/T+10 \u548C\u6700\u5927\u56DE\u64A4\u3002" : "Backtest similar entries for T+5/T+10 and max drawdown."
+    };
+  }
+  if (stage === "watch_preheat" || role === "watch") {
+    return {
+      action: zh ? "\u7B49" : "Wait",
+      tone: "running",
+      reason: identity || (zh ? "\u76EF\u76D8\u6C60" : "Watch pool"),
+      next: confirmation || (zh ? "\u7B4930m\u627F\u63A5\u548C5m/15m\u4E0B\u5355\u786E\u8BA4\u3002" : "Wait for 30m support and 5m/15m execution confirmation."),
+      postmarket: zh ? "\u76D8\u540E\u5E76\u5165\u540C\u4E3B\u9898\u6279\u91CF\u56DE\u6D4B\uFF0C\u9A8C\u8BC1\u80DC\u7387\u548C\u56DE\u64A4\u3002" : "Add to same-theme batch backtest for win rate and drawdown."
+    };
+  }
+  if (stage === "strategy_candidate" || role === "clue") {
+    return {
+      action: zh ? "\u7B49" : "Wait",
+      tone: "open",
+      reason: identity || (zh ? "\u7EBF\u7D22\u6C60" : "Clue pool"),
+      next: confirmation || (zh ? "\u5148\u7B49\u6765\u6E90\u5EF6\u7EED\u3001\u627F\u63A5\u548C\u6267\u884C\u5468\u671F\u4E70\u70B9\u3002" : "Wait for source persistence, support, and execution trigger."),
+      postmarket: zh ? "\u76D8\u540E\u4F5C\u4E3A\u5019\u9009\u6837\u672C\u505A\u6279\u91CF\u56DE\u6D4B\uFF0C\u4E0D\u76F4\u63A5\u4EA4\u6613\u3002" : "Use it as a postmarket batch-backtest sample, not a direct trade."
+    };
+  }
+  if (isIndex) {
+    return {
+      action: zh ? "\u770B\u5927\u76D8" : "Read market",
+      tone: "open",
+      reason: identity || (zh ? "\u80CC\u666F\u951A\u70B9" : "Market anchor"),
+      next: confirmation || (zh ? "\u770B30m\u65B9\u5411\u3001\u65E5\u7EBF\u4F4D\u7F6E\u548C\u4E3B\u7EBF\u627F\u63A5\u3002" : "Read 30m direction, daily position, and theme follow-through."),
+      postmarket: zh ? "\u76D8\u540E\u590D\u6838\u6307\u6570\u73AF\u5883\u5BF9\u7B56\u7565\u80DC\u7387\u7684\u5F71\u54CD\u3002" : "Review how the index regime affected strategy hit rate."
+    };
+  }
+  if (!hasEvidence) {
+    return {
+      action: zh ? "\u5FFD\u7565" : "Skip",
+      tone: "warning",
+      reason: identity || (zh ? "\u65E0\u673A\u4F1A\u6C60\u8BC1\u636E" : "No pool evidence"),
+      next: zh ? "\u4E0D\u5360\u7528\u76D8\u4E2D\u6CE8\u610F\u529B\uFF0C\u7B49\u91CD\u65B0\u5165\u6C60\u3002" : "Do not spend intraday attention until it re-enters a pool.",
+      postmarket: zh ? "\u4E0D\u7528\u56DE\u6D4B\uFF0C\u9664\u975E\u91CD\u65B0\u51FA\u73B0\u6765\u6E90\u6216\u6280\u672F\u4FE1\u53F7\u3002" : "No backtest unless a source or technical signal returns."
+    };
+  }
+  return {
+    action: zh ? "\u7B49" : "Wait",
+    tone: "running",
+    reason: identity || (zh ? "\u6C60\u5916\u89C2\u5BDF" : "Off-pool watch"),
+    next: confirmation || (zh ? "\u7B49\u5165\u6C60\u6765\u6E90\u300130m\u627F\u63A5\u548C5m/15m\u4E0B\u5355\u786E\u8BA4\u3002" : "Wait for pool source, 30m support, and 5m/15m confirmation."),
+    postmarket: zh ? "\u76D8\u540E\u53EA\u505A\u89C2\u5BDF\u6837\u672C\uFF0C\u4E0D\u76F4\u63A5\u6267\u884C\u3002" : "Keep as an observation sample after close; no direct action."
+  };
+}
 function stockRowsForTradeRole(rows, activeTab, activeRole, suppressClimax) {
   if (!STOCK_WATCHLIST_TABS.includes(activeTab)) return rows;
   return rows.filter((row) => {
@@ -36928,6 +40021,17 @@ function watchlistRowSignalLine(row, locale) {
   if (summary && summary !== (locale === "zh-CN" ? "\u6682\u65E0" : "None")) return summary;
   const opposite = technicalSignalSummary(row, side === "right" ? "left" : "right", locale);
   return opposite && opposite !== (locale === "zh-CN" ? "\u6682\u65E0" : "None") ? opposite : row.signal || row.rankReason || row.explanation;
+}
+function watchlistSignalDetailLine(row) {
+  const currentTimeframeMa = recordValue4(row.raw.current_timeframe_ma);
+  const detail = [
+    row.raw.signal_detail,
+    currentTimeframeMa.summary,
+    currentTimeframeMa.details,
+    row.raw.explanation,
+    row.raw.reason
+  ].map(meaningfulSignalText).find((value) => value && value !== row.signal);
+  return detail || "";
 }
 function sourceConfidenceAlias(source) {
   const normalized = source.toLowerCase();
@@ -37054,8 +40158,18 @@ function chartFormulaLabel(symbolData, locale) {
   if (Object.keys(formula).length === 0) return "";
   return locale === "zh-CN" ? `\u516C\u5F0F O=${compactText2(formula.open)} H=${compactText2(formula.high)} L=${compactText2(formula.low)} C=${compactText2(formula.close)}` : `Formula O=${compactText2(formula.open)} H=${compactText2(formula.high)} L=${compactText2(formula.low)} C=${compactText2(formula.close)}`;
 }
+function formatCodeName(code, name) {
+  if (!code) return name;
+  if (!name || name.toUpperCase() === code.toUpperCase()) return code;
+  return `${code} ${name}`;
+}
+function stockIdentityDisplay(row) {
+  const code = compactText2(row.symbol) || compactText2(row.code) || compactText2(row.raw_code) || compactText2(row.ts_code) || compactText2(row.ticker);
+  const name = compactText2(row.name) || compactText2(row.stock_name) || compactText2(row.display_name) || compactText2(row.label);
+  return formatCodeName(code, name);
+}
 function labelForTarget(row) {
-  return stringValue3(row.label) ?? stringValue3(row.name) ?? stringValue3(row.symbol) ?? stringValue3(row.code) ?? "";
+  return stockIdentityDisplay(row) || (stringValue3(row.label) ?? stringValue3(row.name) ?? stringValue3(row.symbol) ?? stringValue3(row.code) ?? "");
 }
 function targetMatchesSearchValue(row, value) {
   const normalized = value.toLowerCase();
@@ -37123,20 +40237,28 @@ function timeframeSignalBadges2(row) {
   });
 }
 function signalForWatchlist(row, kind) {
-  const badges = timeframeSignalBadges2(row);
-  if (badges.length > 0) return badges.map((item) => item.label).join("/");
+  const currentTimeframeMa = recordValue4(row.current_timeframe_ma);
+  const explicitSignal = [
+    row.latest_signal,
+    row.signal_detail,
+    currentTimeframeMa.summary,
+    currentTimeframeMa.label
+  ].map(meaningfulSignalText).find(Boolean);
+  if (explicitSignal) return explicitSignal;
   const stackedSignals = [
-    compactText2(row.daily_latest_signal),
-    compactText2(row.f30_latest_signal),
-    compactText2(row.f15_latest_signal)
-  ].filter((value) => value && value !== "\u65E0");
+    meaningfulSignalText(row.daily_latest_signal),
+    meaningfulSignalText(row.f30_latest_signal),
+    meaningfulSignalText(row.f15_latest_signal)
+  ].filter(Boolean);
   if (stackedSignals.length > 0) return stackedSignals.slice(0, 2).join("/");
   const evidenceSignal = compactText2(recordValue4(row.signal_evidence).signal_type);
   if (evidenceSignal) return evidenceSignal;
+  const badges = timeframeSignalBadges2(row);
+  if (badges.length > 0) return badges.map((item) => signalBadgeDisplayLabel(item, "zh-CN")).join("/");
   if (kind === "industry" || kind === "concept") {
-    return compactText2(row.latest_signal) || compactText2(row.leader) || compactText2(recordValue4(row.carrier).name) || compactText2(row.source);
+    return meaningfulSignalText(row.latest_signal) || meaningfulSignalText(row.leader) || compactText2(recordValue4(row.carrier).name) || compactText2(row.source);
   }
-  return compactText2(row.latest_signal) || compactText2(row.signal) || compactText2(row.reason) || compactText2(row.direction);
+  return meaningfulSignalText(row.latest_signal) || meaningfulSignalText(row.signal) || compactText2(row.reason) || compactText2(row.direction);
 }
 function latestValueForWatchlist(row) {
   const value = row.latest_price ?? row.last_price ?? row.price ?? row.close ?? row.latest ?? row.current_price ?? row.value;
@@ -37200,11 +40322,11 @@ function toWatchlistRow(row, fallbackKind, index, rangeColumns, stageHint) {
     label,
     name,
     code,
-    typeLabel: watchlistTypeLabel(kind),
+    typeLabel: compactText2(row.display_type_label) || watchlistTypeLabel(kind),
     latest: latestValueForWatchlist(row),
     dayChange,
     rangeValues,
-    signal: signalBadges.length > 0 ? signalBadges.map((item) => item.label).join("/") : signalForWatchlist(row, kind),
+    signal: signalForWatchlist(row, kind),
     signalBadges,
     tags: tagsForWatchlist(row, kind),
     lane: compactText2(row.lane),
@@ -37411,6 +40533,30 @@ function chainContextFromSymbolSummary(symbolData) {
 function candidateStockLabel(row) {
   return compactText2(row.symbol) || compactText2(row.code) || compactText2(row.raw_code) || compactText2(row.label) || compactText2(row.name);
 }
+function candidateTargetFromRow(row, freq = DEFAULT_TERMINAL_FREQ) {
+  const label = candidateStockLabel(row);
+  if (!label) return null;
+  return { label, kind: kindForTarget(row, "stock"), freq };
+}
+function effectiveChartTarget(effectiveTarget, fallback) {
+  if (!effectiveTarget) return null;
+  const effectiveKind = compactText2(effectiveTarget.kind, fallback.kind);
+  const keepsLogicalLabel = ["index", "industry", "concept"].includes(effectiveKind);
+  return {
+    label: keepsLogicalLabel ? compactText2(effectiveTarget.label, fallback.label) : compactText2(effectiveTarget.symbol) || compactText2(effectiveTarget.label) || fallback.label,
+    kind: effectiveKind,
+    freq: compactText2(effectiveTarget.effective_freq, fallback.freq)
+  };
+}
+function uniqueChartTargets(targets) {
+  const seen = /* @__PURE__ */ new Set();
+  return targets.filter((target) => {
+    const key = symbolDataCacheKey(target);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 function uniqueCandidateRows(rows) {
   const seen = /* @__PURE__ */ new Set();
   const output = [];
@@ -37421,6 +40567,13 @@ function uniqueCandidateRows(rows) {
     output.push(row);
   });
   return output;
+}
+function sectorTargetRowsForContext(row) {
+  const groups = candidateGroupsFromRow(row);
+  const groupedRows = candidateGroupOrder.flatMap((key) => groups[key] ?? []);
+  const raw = "raw" in recordValue4(row) ? recordValue4(recordValue4(row).raw) : recordValue4(row);
+  const previewRows = Array.isArray(raw.focus_stocks_preview) ? raw.focus_stocks_preview.map((item) => recordValue4(item)).filter((item) => Object.keys(item).length > 0) : [];
+  return uniqueCandidateRows(previewRows.length > 0 ? previewRows : groupedRows);
 }
 function chartModeFromTarget(target, symbolData) {
   const meta = recordValue4(symbolData?.chart?.meta);
@@ -37508,7 +40661,7 @@ function StrategyChartTerminal({
   aiFactorStrategySignals = [],
   onOpenRecord
 }) {
-  const baseUrl = trimTrailingSlash3(signalsWebBaseUrl) || urlFromDashboard(dashboard) || DEFAULT_SIGNALS_WEB_BASE_URL;
+  const baseUrl = trimTrailingSlash3(signalsWebBaseUrl) || urlFromDashboard(dashboard);
   const chartContainerRef = (0, import_react3.useRef)(null);
   const chartRef = (0, import_react3.useRef)(null);
   const resizeObserverRef = (0, import_react3.useRef)(null);
@@ -37519,9 +40672,12 @@ function StrategyChartTerminal({
   const activeWatchlistTabRef = (0, import_react3.useRef)("sector_boards");
   const silentSymbolRefreshInFlightRef = (0, import_react3.useRef)(false);
   const manualSymbolAbortRef = (0, import_react3.useRef)(null);
+  const timeframeSnapshotKeyRef = (0, import_react3.useRef)("");
   const dashboardRef = (0, import_react3.useRef)(dashboard);
   const searchInputRef = (0, import_react3.useRef)(null);
   const lastChartUpdateSilentRef = (0, import_react3.useRef)(false);
+  const symbolDataCacheRef = (0, import_react3.useRef)(/* @__PURE__ */ new Map());
+  const prefetchSymbolKeysRef = (0, import_react3.useRef)(/* @__PURE__ */ new Set());
   const autoCollapsedForFocusRef = (0, import_react3.useRef)(false);
   const [shell, setShell] = (0, import_react3.useState)(null);
   const [target, setTarget] = (0, import_react3.useState)(() => initialTargetFrom(null, dashboard));
@@ -37550,6 +40706,7 @@ function StrategyChartTerminal({
   const [aiReviewStatus, setAiReviewStatus] = (0, import_react3.useState)("idle");
   const [aiError, setAiError] = (0, import_react3.useState)("");
   const lastAiRankingHashRef = (0, import_react3.useRef)("");
+  const [timeframeSnapshots, setTimeframeSnapshots] = (0, import_react3.useState)({});
   const [viewportWidth, setViewportWidth] = (0, import_react3.useState)(() => typeof window === "undefined" ? 1600 : window.innerWidth);
   const [viewportHeight, setViewportHeight] = (0, import_react3.useState)(() => typeof window === "undefined" ? 1e3 : window.innerHeight);
   const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = (0, import_react3.useState)(false);
@@ -37560,6 +40717,8 @@ function StrategyChartTerminal({
   const signals = (0, import_react3.useMemo)(() => signalsFromSymbolData(symbolData), [symbolData]);
   const referenceChartSignals = (0, import_react3.useMemo)(() => referenceSignalsForIndexChart(symbolData), [symbolData]);
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq;
+  const activeTargetKind = compactText2(symbolData?.target?.kind, target.kind);
+  const timeframeSnapshotSymbol = activeTargetKind === "stock" ? compactText2(symbolData?.target?.symbol) || target.label : "";
   const aiFactorChartSignals = (0, import_react3.useMemo)(
     () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq, symbolData, target),
     [aiFactorStrategySignals, currentFreq, klineData, symbolData, target]
@@ -37701,6 +40860,16 @@ function StrategyChartTerminal({
   const groupedWatchlistRows = (0, import_react3.useMemo)(() => {
     const groups = shell?.watchlist_groups ?? {};
     const macroRows = Array.isArray(groups.macro_indices) && groups.macro_indices.length > 0 ? groups.macro_indices : indexTargets;
+    const macroRowGroup = (row) => compactText2(recordValue4(row).macro_group);
+    const macroRowKind = (row) => compactText2(recordValue4(row).target_kind) || kindForTarget(recordValue4(row), "index");
+    const majorRows = Array.isArray(groups.major_indices) ? groups.major_indices : macroRows.filter((row) => {
+      const group = macroRowGroup(row);
+      return group === "major_indices" || !group && macroRowKind(row) !== "stock";
+    });
+    const industryEtfRows = Array.isArray(groups.industry_etfs) ? groups.industry_etfs : macroRows.filter((row) => {
+      const group = macroRowGroup(row);
+      return group === "industry_etfs" || !group && macroRowKind(row) === "stock";
+    });
     const sectorRows = Array.isArray(groups.sector_boards) && groups.sector_boards.length > 0 ? groups.sector_boards : clusterRows;
     const candidateRows = Array.isArray(groups.buy_candidates) ? groups.buy_candidates : [];
     const focusRows = Array.isArray(groups.focus_stocks) ? groups.focus_stocks : [];
@@ -37716,6 +40885,8 @@ function StrategyChartTerminal({
       rangeColumns: visibleRangeColumns
     });
     return {
+      major_indices: buildRowsForGroup(majorRows, "index", visibleRangeColumns, "major_indices"),
+      industry_etfs: buildRowsForGroup(industryEtfRows, "stock", visibleRangeColumns, "industry_etfs"),
       macro_indices: buildRowsForGroup(macroRows, "index", visibleRangeColumns, "macro_indices"),
       sector_boards: buildRowsForGroup(sectorRows, "industry", visibleRangeColumns, "sector_boards"),
       buy_candidates: buildRowsForGroup(candidateRows, "stock", visibleRangeColumns, "buy_candidates"),
@@ -37728,6 +40899,8 @@ function StrategyChartTerminal({
   const visibleGroupedWatchlistRows = (0, import_react3.useMemo)(() => {
     if (optimisticDeletedManualClueKeys.size === 0) return groupedWatchlistRows;
     return {
+      major_indices: groupedWatchlistRows.major_indices,
+      industry_etfs: groupedWatchlistRows.industry_etfs,
       macro_indices: groupedWatchlistRows.macro_indices,
       sector_boards: groupedWatchlistRows.sector_boards,
       buy_candidates: groupedWatchlistRows.buy_candidates.filter((row) => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
@@ -37803,7 +40976,7 @@ function StrategyChartTerminal({
     [activeDecisionRow, aiReviewsByKey]
   );
   const focusGroupMeta = recordValue4(recordValue4(shell?.watchlist_groups_meta).focus_stocks);
-  const activeWatchlistEmptyText = activeWatchlistTab === "focus_stocks" ? compactText2(focusGroupMeta.empty_reason) ? `${locale === "zh-CN" ? "\u4E70\u70B9\u6C60\u4E3A\u7A7A" : "Entry pool empty"}: ${compactText2(focusGroupMeta.empty_reason)}` : locale === "zh-CN" ? "\u4E70\u70B9\u6C60\u4E3A\u7A7A\uFF0C\u5148\u770B\u76EF\u76D8\u6C60\u3002" : "Entry pool empty. Check the watch pool." : activeWatchlistTab === "risk_stocks" ? locale === "zh-CN" ? "\u6682\u65E0\u6682\u4E0D\u53C2\u4E0E\u6807\u7684\u3002" : "No skip-now names." : activeWatchlistTab === "watch_stocks" ? locale === "zh-CN" ? "\u6682\u65E0\u76EF\u76D8\u6807\u7684\u3002" : "No watch-pool names." : activeWatchlistTab === "buy_candidates" ? compactText2(recordValue4(recordValue4(shell?.watchlist_groups_meta).buy_candidates).empty_reason) || (locale === "zh-CN" ? "\u6682\u65E0\u7EBF\u7D22\u3002" : "No clues.") : locale === "zh-CN" ? "\u7B49\u5F85 Signals shell\u3002" : "Waiting for Signals shell.";
+  const activeWatchlistEmptyText = activeWatchlistTab === "focus_stocks" ? traderFacingEmptyReason(focusGroupMeta.empty_reason, locale) ? `${locale === "zh-CN" ? "\u4E70\u70B9\u6C60\u4E3A\u7A7A" : "Entry pool empty"}: ${traderFacingEmptyReason(focusGroupMeta.empty_reason, locale)}` : locale === "zh-CN" ? "\u4E70\u70B9\u6C60\u4E3A\u7A7A\uFF0C\u5148\u770B\u76EF\u76D8\u6C60\u3002" : "Entry pool empty. Check the watch pool." : activeWatchlistTab === "risk_stocks" ? locale === "zh-CN" ? "\u6682\u65E0\u6682\u4E0D\u53C2\u4E0E\u6807\u7684\u3002" : "No skip-now names." : activeWatchlistTab === "watch_stocks" ? locale === "zh-CN" ? "\u6682\u65E0\u76EF\u76D8\u6807\u7684\u3002" : "No watch-pool names." : activeWatchlistTab === "buy_candidates" ? traderFacingEmptyReason(recordValue4(recordValue4(shell?.watchlist_groups_meta).buy_candidates).empty_reason, locale) || (locale === "zh-CN" ? "\u6682\u65E0\u7EBF\u7D22\u3002" : "No clues.") : locale === "zh-CN" ? "\u6682\u65E0\u53EF\u7528\u8BC1\u636E\uFF0C\u7B49\u5F85\u673A\u4F1A\u6C60\u5237\u65B0\u3002" : "No evidence yet; waiting for opportunity pools.";
   const visibleWatchlistEmptyText = activeWatchlistRows.length === 0 && activeWatchlistBaseRows.length > 0 ? locale === "zh-CN" ? `\u5F53\u524D\u4EA4\u6613\u89D2\u8272\u300C${tradeRoleLabel(activeTradeRole, locale)}\u300D\u4E0B\u6CA1\u6709\u6807\u7684\u3002` : `No names for ${tradeRoleLabel(activeTradeRole, locale)}.` : activeWatchlistEmptyText;
   const latestSignal = symbolData ? compactText2(symbolData.summary?.latest_signal) : compactText2(dashboard.chart_context?.latest_signal ?? "");
   const summaryTitle = compactText2(symbolData?.summary?.title) || compactText2(symbolData?.target?.label) || target.label;
@@ -37825,8 +40998,7 @@ function StrategyChartTerminal({
     [displayVolumeInWanHands, klineData]
   );
   const activeChartMode = chartModeFromTarget(target, symbolData);
-  const targetKindForMa = compactText2(symbolData?.target?.kind, target.kind);
-  const isIndexPriceChart = targetKindForMa.toLowerCase() === "index" && chartMeta.is_price_kline !== false;
+  const targetKindForMa = activeTargetKind;
   const symbolChainContext = (0, import_react3.useMemo)(() => chainContextFromSymbolSummary(symbolData), [symbolData]);
   const chainContext = selectedChainContext ?? symbolChainContext;
   const primaryValueLabel = chartMeta.is_price_kline === false ? locale === "zh-CN" ? "\u70ED\u5EA6\u6536\u76D8" : "Heat close" : locale === "zh-CN" ? "\u6700\u65B0\u4EF7" : "Last";
@@ -37864,6 +41036,111 @@ function StrategyChartTerminal({
   );
   const chartLoadStatus = compactText2(chartMeta.load_status);
   const chartLoadRetrySeconds = numberValue3(chartMeta.load_retry_after_seconds) ?? numberValue3(chartMeta.load_eta_seconds);
+  const timeframeSnapshotRows = (0, import_react3.useMemo)(
+    () => FREQ_OPTIONS.map((option) => {
+      const key = normalizeSignalFreq(option.value) || option.value;
+      return timeframeSnapshots[key] ?? loadingTimeframeSnapshot(option.value, locale);
+    }),
+    [locale, timeframeSnapshots]
+  );
+  const visibleBoardPrefetchTargets = (0, import_react3.useMemo)(
+    () => activeWatchlistTab === "sector_boards" ? uniqueChartTargets(
+      activeWatchlistRows.slice(0, 4).flatMap((row) => sectorTargetRowsForContext(row.raw)).map((row) => candidateTargetFromRow(row)).filter((item) => Boolean(item))
+    ).slice(0, RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT) : [],
+    [activeWatchlistRows, activeWatchlistTab]
+  );
+  const rightPanelPrefetchTargets = (0, import_react3.useMemo)(
+    () => uniqueChartTargets([
+      ...sectorTargetRowsForContext(chainContext).map((row) => candidateTargetFromRow(row)).filter((item) => Boolean(item)),
+      ...visibleBoardPrefetchTargets
+    ]).slice(0, RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT),
+    [chainContext, visibleBoardPrefetchTargets]
+  );
+  const rightPanelPrefetchKey = (0, import_react3.useMemo)(
+    () => rightPanelPrefetchTargets.map(symbolDataCacheKey).join(","),
+    [rightPanelPrefetchTargets]
+  );
+  const rememberSymbolData = (0, import_react3.useCallback)((requestTarget, nextSymbolData, cachedAt = Date.now()) => {
+    const cache = symbolDataCacheRef.current;
+    const entry = { data: nextSymbolData, cachedAt };
+    cache.set(symbolDataCacheKey(requestTarget), entry);
+    const effectiveTarget = effectiveChartTarget(nextSymbolData.target, requestTarget);
+    if (effectiveTarget) cache.set(symbolDataCacheKey(effectiveTarget), entry);
+    while (cache.size > 80) {
+      const oldestKey = cache.keys().next().value;
+      if (!oldestKey) break;
+      cache.delete(oldestKey);
+    }
+  }, []);
+  const applySymbolData = (0, import_react3.useCallback)((nextSymbolData, requestTarget, options = {}) => {
+    lastChartUpdateSilentRef.current = Boolean(options.silent);
+    setSymbolData(nextSymbolData);
+    setBooting(false);
+    setBootAttempt(0);
+    setLastUpdated(new Date(options.cachedAt ?? Date.now()));
+    const effectiveTarget = nextSymbolData.target;
+    if (effectiveTarget) {
+      const requested = compactText2(effectiveTarget.requested_freq, requestTarget.freq);
+      const effective = compactText2(effectiveTarget.effective_freq, requestTarget.freq);
+      if (requested && effective && requested !== effective) {
+        recordObservationEvent("strategy.freq.fallback", {
+          requested_freq: requested,
+          effective_freq: effective,
+          target: requestTarget.label,
+          kind: requestTarget.kind,
+          silent: Boolean(options.silent),
+          level: "warning"
+        });
+      }
+      const nextEffectiveTarget = effectiveChartTarget(effectiveTarget, requestTarget);
+      if (nextEffectiveTarget) {
+        setTarget((previous) => nextEffectiveTarget.label === previous.label && nextEffectiveTarget.kind === previous.kind && nextEffectiveTarget.freq === previous.freq ? previous : nextEffectiveTarget);
+      }
+    }
+  }, []);
+  const prefetchSymbolData = (0, import_react3.useCallback)(async (nextTarget, options = {}) => {
+    if (!baseUrl) return;
+    const cacheKey = symbolDataCacheKey(nextTarget);
+    const cached = symbolDataCacheRef.current.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt <= SYMBOL_DATA_CACHE_TTL_MS) return;
+    if (prefetchSymbolKeysRef.current.has(cacheKey)) return;
+    prefetchSymbolKeysRef.current.add(cacheKey);
+    try {
+      const nextSymbolData = await fetchJson2(
+        baseUrl,
+        `/api/workbench/symbol/${encodeURIComponent(nextTarget.label)}?${new URLSearchParams({
+          kind: nextTarget.kind || "auto",
+          freq: nextTarget.freq || DEFAULT_TERMINAL_FREQ
+        }).toString()}`,
+        options.signal,
+        "strategy.symbol-prefetch",
+        options.reason ?? "right-panel-prefetch",
+        { timeoutMs: RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS }
+      );
+      rememberSymbolData(nextTarget, nextSymbolData);
+    } catch {
+      if (options.signal?.aborted) return;
+    } finally {
+      prefetchSymbolKeysRef.current.delete(cacheKey);
+    }
+  }, [baseUrl, rememberSymbolData]);
+  (0, import_react3.useEffect)(() => {
+    if (!baseUrl || rightPanelPrefetchTargets.length === 0) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    void (async () => {
+      for (const nextTarget of rightPanelPrefetchTargets) {
+        if (cancelled || controller.signal.aborted) return;
+        await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: "visible-right-panel" });
+        await new Promise((resolve) => window.setTimeout(resolve, 80));
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [baseUrl, prefetchSymbolData, rightPanelPrefetchKey]);
   const loadShell = (0, import_react3.useCallback)(
     async (signal) => {
       if (!baseUrl) return null;
@@ -37874,7 +41151,9 @@ function StrategyChartTerminal({
           baseUrl,
           "/api/workbench/shell",
           signal,
-          "strategy.shell"
+          "strategy.shell",
+          void 0,
+          { timeoutMs: SHELL_REQUEST_TIMEOUT_MS }
         );
         if (shellLoadedRef.current && activeWatchlistTabRef.current === "sector_boards") setPendingListUpdate(true);
         shellLoadedRef.current = true;
@@ -37895,6 +41174,20 @@ function StrategyChartTerminal({
       activeRequestRef.current = requestId;
       if (!options.silent) setLoading(true);
       setError(null);
+      const cacheKey = symbolDataCacheKey(nextTarget);
+      const cached = symbolDataCacheRef.current.get(cacheKey);
+      const cacheAgeMs = cached ? Date.now() - cached.cachedAt : Number.POSITIVE_INFINITY;
+      const hasFreshCache = Boolean(cached && cacheAgeMs <= SYMBOL_DATA_CACHE_TTL_MS);
+      if (!options.silent && cached && hasFreshCache) {
+        applySymbolData(cached.data, nextTarget, { cachedAt: cached.cachedAt });
+        setLoading(false);
+        recordObservationEvent("strategy.symbol.cache-hit", {
+          target: nextTarget.label,
+          kind: nextTarget.kind,
+          freq: nextTarget.freq,
+          age_ms: Math.round(cacheAgeMs)
+        });
+      }
       try {
         const nextSymbolData = await fetchJson2(
           baseUrl,
@@ -37907,37 +41200,11 @@ function StrategyChartTerminal({
           options.silent ? "background-refresh" : "load-symbol"
         );
         if (requestId !== activeRequestRef.current) return;
-        lastChartUpdateSilentRef.current = Boolean(options.silent);
-        setSymbolData(nextSymbolData);
-        setBooting(false);
-        setBootAttempt(0);
-        setLastUpdated(/* @__PURE__ */ new Date());
-        const effectiveTarget = nextSymbolData.target;
-        if (effectiveTarget) {
-          const requested = compactText2(effectiveTarget.requested_freq, nextTarget.freq);
-          const effective = compactText2(effectiveTarget.effective_freq, nextTarget.freq);
-          if (requested && effective && requested !== effective) {
-            recordObservationEvent("strategy.freq.fallback", {
-              requested_freq: requested,
-              effective_freq: effective,
-              target: nextTarget.label,
-              kind: nextTarget.kind,
-              silent: Boolean(options.silent),
-              level: "warning"
-            });
-          }
-          setTarget((previous) => {
-            const effectiveKind = compactText2(effectiveTarget.kind, previous.kind);
-            const keepsLogicalLabel = ["index", "industry", "concept"].includes(effectiveKind);
-            return {
-              label: keepsLogicalLabel ? compactText2(effectiveTarget.label, previous.label) : compactText2(effectiveTarget.symbol) || compactText2(effectiveTarget.label) || previous.label,
-              kind: effectiveKind,
-              freq: compactText2(effectiveTarget.effective_freq, previous.freq)
-            };
-          });
-        }
+        rememberSymbolData(nextTarget, nextSymbolData);
+        applySymbolData(nextSymbolData, nextTarget, { silent: options.silent });
       } catch (rawError) {
         if (options.signal?.aborted) return;
+        if (cached && hasFreshCache) return;
         const apiError = rawError;
         if (apiError.status === 503) {
           const session = recordValue4(apiError.payload?.session);
@@ -37954,8 +41221,77 @@ function StrategyChartTerminal({
         if (requestId === activeRequestRef.current) setLoading(false);
       }
     },
-    [baseUrl, locale]
+    [applySymbolData, baseUrl, locale, rememberSymbolData]
   );
+  (0, import_react3.useEffect)(() => {
+    if (!baseUrl || !timeframeSnapshotSymbol) {
+      timeframeSnapshotKeyRef.current = "";
+      setTimeframeSnapshots({});
+      return;
+    }
+    const requestKey = timeframeSnapshotSymbol.trim().toUpperCase();
+    timeframeSnapshotKeyRef.current = requestKey;
+    const controller = new AbortController();
+    const currentSnapshotFreq = normalizeSignalFreq(currentFreq) || DEFAULT_TERMINAL_FREQ;
+    setTimeframeSnapshots(Object.fromEntries(
+      FREQ_OPTIONS.map((option) => {
+        const key = normalizeSignalFreq(option.value) || option.value;
+        return [
+          key,
+          key === currentSnapshotFreq && symbolData ? marketSnapshotFromSymbolData(symbolData, key, locale) : loadingTimeframeSnapshot(option.value, locale)
+        ];
+      })
+    ));
+    const pendingFreqs = FREQ_OPTIONS.map((option) => normalizeSignalFreq(option.value) || option.value).filter((freq) => freq !== currentSnapshotFreq);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const freq of pendingFreqs) {
+          if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return;
+          try {
+            const nextData = await fetchJson2(
+              baseUrl,
+              `/api/workbench/symbol/${encodeURIComponent(timeframeSnapshotSymbol)}?${new URLSearchParams({
+                kind: "stock",
+                freq
+              }).toString()}`,
+              controller.signal,
+              "strategy.timeframe-market",
+              "load-snapshot",
+              { timeoutMs: 15e3 }
+            );
+            if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return;
+            setTimeframeSnapshots((previous) => ({
+              ...previous,
+              [freq]: marketSnapshotFromSymbolData(nextData, freq, locale)
+            }));
+          } catch (rawError) {
+            if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return;
+            const apiError = rawError;
+            setTimeframeSnapshots((previous) => ({
+              ...previous,
+              [freq]: errorTimeframeSnapshot(freq, apiError.message, locale)
+            }));
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 120));
+        }
+      })();
+    }, 700);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [baseUrl, locale, timeframeSnapshotSymbol]);
+  (0, import_react3.useEffect)(() => {
+    if (!symbolData || !timeframeSnapshotSymbol) return;
+    const freq = normalizeSignalFreq(currentFreq) || currentFreq;
+    setTimeframeSnapshots((previous) => {
+      if (Object.keys(previous).length === 0) return previous;
+      return {
+        ...previous,
+        [freq]: marketSnapshotFromSymbolData(symbolData, freq, locale)
+      };
+    });
+  }, [currentFreq, locale, symbolData, timeframeSnapshotSymbol]);
   (0, import_react3.useEffect)(() => {
     dashboardRef.current = dashboard;
   }, [dashboard]);
@@ -38009,22 +41345,12 @@ function StrategyChartTerminal({
       });
       setTarget(fallbackTarget);
       setSearchDraft(fallbackTarget.label);
-      const shellResult = loadShell(controller.signal);
-      const symbolResult = loadSymbol(fallbackTarget, { signal: controller.signal });
-      const [shellOutcome, symbolOutcome] = await Promise.allSettled([shellResult, symbolResult]);
+      void loadShell(controller.signal).catch(() => void 0);
+      const symbolOutcome = await Promise.allSettled([loadSymbol(fallbackTarget, { signal: controller.signal })]);
       if (controller.signal.aborted) return;
-      if (shellOutcome.status === "fulfilled" && shellOutcome.value) {
-        const shellTarget = initialTargetFrom(shellOutcome.value, dashboardRef.current);
-        if (shellTarget.label !== fallbackTarget.label || shellTarget.kind !== fallbackTarget.kind) {
-          recordObservationEvent("strategy.init-target.resolved", {
-            target: shellTarget,
-            fallback_target: fallbackTarget,
-            reason: "shell-loaded-after-fast-target"
-          });
-        }
-      }
-      if (shellOutcome.status === "rejected" && symbolOutcome.status === "rejected") {
-        const apiError = shellOutcome.reason;
+      const symbolResult = symbolOutcome[0];
+      if (symbolResult?.status === "rejected") {
+        const apiError = symbolResult.reason;
         setError(apiError.message || (locale === "zh-CN" ? "Signals \u7EC8\u7AEF\u521D\u59CB\u5316\u5931\u8D25\u3002" : "Failed to initialize Signals terminal."));
       }
       setLoading(false);
@@ -38032,10 +41358,9 @@ function StrategyChartTerminal({
     return () => controller.abort();
   }, [baseUrl, loadShell, loadSymbol, locale]);
   (0, import_react3.useEffect)(() => {
-    if (!baseUrl || !target.label) return;
+    if (!baseUrl) return;
     const controllers = /* @__PURE__ */ new Set();
-    const shellRefreshMs = liveRefresh ? 6e4 : 12e4;
-    const symbolRefreshMs = liveRefresh ? 15e3 : 6e4;
+    const shellRefreshMs = shellNeedsWarmRefresh(shell) ? 1e4 : liveRefresh ? 6e4 : 12e4;
     const refreshShell = () => {
       const controller = new AbortController();
       controllers.add(controller);
@@ -38043,6 +41368,17 @@ function StrategyChartTerminal({
         controllers.delete(controller);
       });
     };
+    const shellTimer = window.setInterval(refreshShell, shellRefreshMs);
+    return () => {
+      window.clearInterval(shellTimer);
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
+    };
+  }, [baseUrl, liveRefresh, loadShell, shell]);
+  (0, import_react3.useEffect)(() => {
+    if (!baseUrl || !target.label) return;
+    const controllers = /* @__PURE__ */ new Set();
+    const symbolRefreshMs = liveRefresh ? 15e3 : 6e4;
     const refreshSymbol = () => {
       const controller = new AbortController();
       controllers.add(controller);
@@ -38050,15 +41386,13 @@ function StrategyChartTerminal({
         controllers.delete(controller);
       });
     };
-    const shellTimer = window.setInterval(refreshShell, shellRefreshMs);
     const symbolTimer = window.setInterval(refreshSymbol, symbolRefreshMs);
     return () => {
-      window.clearInterval(shellTimer);
       window.clearInterval(symbolTimer);
       controllers.forEach((controller) => controller.abort());
       controllers.clear();
     };
-  }, [baseUrl, liveRefresh, loadShell, loadSymbol, target]);
+  }, [baseUrl, liveRefresh, loadSymbol, target.label, target.kind, target.freq]);
   (0, import_react3.useEffect)(() => {
     if (!baseUrl || !booting || !target.label) return;
     const controller = new AbortController();
@@ -38169,12 +41503,18 @@ function StrategyChartTerminal({
   }, [chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences, selectChartCallout, selectedChartCallout?.calloutId]);
   const selectTarget = (0, import_react3.useCallback)(
     (next, source = "strategy.target.select") => {
+      const targetChanged = compactText2(next.label) !== compactText2(target.label) || compactText2(next.kind) !== compactText2(target.kind);
       recordObservationEvent(source, {
         previous: target,
         next
       });
       if (!["industry", "concept"].includes(compactText2(next.kind).toLowerCase())) {
         setSelectedChainContext(null);
+      }
+      if (targetChanged) {
+        setSymbolData(null);
+        setSelectedChartCalloutId("");
+        setTimeframeSnapshots({});
       }
       manualSymbolAbortRef.current?.abort();
       const controller = new AbortController();
@@ -38187,11 +41527,18 @@ function StrategyChartTerminal({
   );
   const selectCandidateTarget = (0, import_react3.useCallback)(
     (row, source = "strategy.chain-drawer.stock-click") => {
-      const label = candidateStockLabel(row);
-      if (!label) return;
-      selectTarget({ label, kind: kindForTarget(row, "stock"), freq: target.freq }, source);
+      const nextTarget = candidateTargetFromRow(row);
+      if (!nextTarget) return;
+      selectTarget(nextTarget, source);
     },
-    [selectTarget, target.freq]
+    [selectTarget]
+  );
+  const prefetchCandidateTarget = (0, import_react3.useCallback)(
+    (row) => {
+      const nextTarget = candidateTargetFromRow(row);
+      if (nextTarget) void prefetchSymbolData(nextTarget, { reason: "right-panel-hover" });
+    },
+    [prefetchSymbolData]
   );
   const activateWatchlistRow = (0, import_react3.useCallback)(
     (row, source = "strategy.watchlist.click") => {
@@ -38216,7 +41563,7 @@ function StrategyChartTerminal({
         {
           label: row.targetLabel || row.label,
           kind: row.targetKind || row.kind,
-          freq: terminalListTargetFreq(row.targetFreq, target.freq)
+          freq: DEFAULT_TERMINAL_FREQ
         },
         source
       );
@@ -38295,14 +41642,14 @@ function StrategyChartTerminal({
       const isIndex = indexTargets.some((row) => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value);
       const shouldAddManualClue = shouldAddManualClueForSearch(value, isIndex);
       selectTarget(
-        { label: value, kind: isIndex ? "index" : "auto", freq: target.freq || DEFAULT_TERMINAL_FREQ },
+        { label: value, kind: isIndex ? "index" : "auto", freq: DEFAULT_TERMINAL_FREQ },
         "strategy.search.submit"
       );
       if (shouldAddManualClue) {
-        void addManualClueFromSearch(value, target.freq || DEFAULT_TERMINAL_FREQ);
+        void addManualClueFromSearch(value, DEFAULT_TERMINAL_FREQ);
       }
     },
-    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget, target.freq]
+    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget]
   );
   const refreshNow = (0, import_react3.useCallback)(() => {
     if (!target.label) return;
@@ -38829,7 +42176,7 @@ function StrategyChartTerminal({
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: indicatorLegendStyle, children: [
               activeMaPeriods.map((period, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: indicatorLegendItemStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: MA_COLORS[index % MA_COLORS.length] } }),
-                chartMeta.is_price_kline === false ? `\u70ED\u5EA6MA${period}` : isIndexPriceChart ? `Fib MA${period}` : `MA${period}`
+                chartMeta.is_price_kline === false ? `\u70ED\u5EA6MA${period}` : `MA${period}`
               ] }, `ma-${period}`)),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: indicatorLegendItemStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up } }),
@@ -38843,10 +42190,6 @@ function StrategyChartTerminal({
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: tradingDeskTheme.alpha.textBorderStrong } }),
                 chartMeta.is_price_kline === false ? "\u70ED\u5EA6\u52A8\u91CF0" : "MACD 0"
               ] }),
-              isDailyFreq(currentFreq) ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: indicatorLegendItemStyle, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: tradingDeskTheme.chart.line } }),
-                "MA50/200\u5173\u952E\u4F4D"
-              ] }) : null,
               /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: indicatorLegendItemStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up } }),
                 locale === "zh-CN" ? `\u80CC\u79BB ${divergences.length}` : `Divergence ${divergences.length}`
@@ -38903,9 +42246,19 @@ function StrategyChartTerminal({
             locale,
             context: chainContext,
             symbolData,
-            onSelect: (row) => selectCandidateTarget(row, "strategy.chain-context.stock-click")
+            onSelect: (row) => selectCandidateTarget(row, "strategy.chain-context.stock-click"),
+            onPrefetch: prefetchCandidateTarget
           }
         ),
+        timeframeSnapshotSymbol ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          TimeframeMarketPanel,
+          {
+            locale,
+            rows: timeframeSnapshotRows,
+            currentFreq,
+            onSelectFreq: (freq) => selectTarget({ ...target, freq }, "strategy.timeframe-market.click")
+          }
+        ) : null,
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
           StrategyDecisionPanel,
           {
@@ -38938,7 +42291,7 @@ function StrategyChartTerminal({
             children: signals.length === 0 && chartCallouts.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u6807\u7684\u6682\u65E0\u81EA\u5B9A\u4E49\u4FE1\u53F7\u3001\u80CC\u79BB\u6216\u5173\u952E\u5747\u7EBF\u4F4D\u3002" : "No custom signals, divergences, or key levels." }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
               maAcceptance ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { ...signalBlockStyle, borderTop: 0, paddingTop: 0 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u5747\u7EBF\u6590\u6CE2\u90A3\u5951\u627F\u63A5" : "Fibonacci MA acceptance" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u5173\u952E\u5747\u7EBF\u627F\u63A5" : "Key MA acceptance" }),
                   /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: shortMaAcceptanceLabel(maAcceptance) })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
@@ -38968,6 +42321,7 @@ function StrategyChartTerminal({
                 ] }),
                 referenceCandidateSignalRows.map((candidate, index) => {
                   const label = candidateStockLabel(candidate);
+                  const displayLabel = stockIdentityDisplay(candidate) || label;
                   const badges = timeframeSignalBadges2(candidate);
                   const referenceSignals = Array.isArray(candidate.reference_signals) ? candidate.reference_signals : [];
                   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
@@ -38981,8 +42335,8 @@ function StrategyChartTerminal({
                       children: [
                         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 }, children: [
                           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
-                            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: compactText2(candidate.name) || label || "N/A" }),
-                            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [label, compactText2(candidate.relation), compactText2(candidate.latest_signal)].filter(Boolean).join(" \xB7 ") })
+                            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: displayLabel || "N/A" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [displayLabel, compactText2(candidate.relation), compactText2(candidate.latest_signal)].filter(Boolean).join(" \xB7 ") })
                           ] }),
                           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: miniNeutralSignalBadgeStyle, children: compactText2(candidate.reference_signal_count) || referenceSignals.length || badges.length })
                         ] }),
@@ -38990,7 +42344,7 @@ function StrategyChartTerminal({
                           "span",
                           {
                             style: badge.side === "sell" ? miniSellSignalBadgeStyle : badge.side === "buy" ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle,
-                            children: badge.side === "sell" ? `\u5356${badge.label}` : badge.label
+                            children: signalBadgeDisplayLabel(badge, locale)
                           },
                           `${label || index}-${badge.side}-${badge.label}`
                         )) }),
@@ -39190,6 +42544,55 @@ function Panel2({
     children
   ] });
 }
+function TimeframeMarketPanel({
+  locale,
+  rows,
+  currentFreq,
+  onSelectFreq
+}) {
+  const readyRows = rows.filter((row) => row.status === "ready" || row.status === "stale").length;
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    Panel2,
+    {
+      title: locale === "zh-CN" ? "\u5404\u5468\u671F\u884C\u60C5" : "Timeframes",
+      meta: `${readyRows}/${rows.length}`,
+      children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: compactListStyle2, children: rows.map((row) => {
+        const active = normalizeSignalFreq(row.freq) === normalizeSignalFreq(currentFreq);
+        return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+          "button",
+          {
+            type: "button",
+            style: timeframeMarketRowStyle(active),
+            onClick: () => onSelectFreq(row.freq),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: timeframeMarketTopLineStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...miniNeutralSignalBadgeStyle, flex: "0 0 auto" }, children: row.label }),
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: rowTitleStyle, children: row.latestPrice }),
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...monoTextStyle, ...percentTone(row.periodChange) }, children: row.periodChange })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: statusBadgeStyle(timeframeSnapshotBadgeTone(row.status)), children: timeframeSnapshotStatusLabel(row.status, locale) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: timeframeMarketMetricStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: monoTextStyle, children: [
+                  "VOL ",
+                  row.volume
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: monoTextStyle, children: [
+                  "AMT ",
+                  row.amount
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedLineStyle, children: locale === "zh-CN" ? `K\u7EBF ${row.bars}` : `${row.bars} bars` })
+              ] }),
+              [row.signal, row.statusText].filter(Boolean).length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: timeframeMarketSublineStyle, children: [row.signal, row.statusText].filter(Boolean).join(" \xB7 ") }) : null
+            ]
+          },
+          `timeframe-market-${row.freq}`
+        );
+      }) })
+    }
+  );
+}
 function ChartCalloutDetailsPanel({
   locale,
   callouts,
@@ -39363,8 +42766,6 @@ function CacheMonitorStrip({
   const postSummary = recordValue4(cacheStatus.postmarket_backfill.summary);
   const postRun = recordValue4(cacheStatus.postmarket_backfill.run);
   const tasks = cacheStatus.postmarket_backfill.tasks.map((item) => recordValue4(item));
-  const freqs = cacheStatus.mongo_stock_cache.freqs.map((item) => recordValue4(item));
-  const mongoSummary = recordValue4(cacheStatus.mongo_stock_cache.summary);
   const blockers = cacheStatus.blockers.map((item) => recordValue4(item));
   const providerHealth = (Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : []).map((item) => recordValue4(item));
   const liveModules = cacheStatus.live_low_latency.modules.map((item) => recordValue4(item));
@@ -39416,6 +42817,12 @@ function CacheMonitorStrip({
   const postPct = percentValue(postSummary.critical_progress_pct ?? postSummary.progress_pct);
   const postRawStatus = compactText2(postRun.status, compactText2(postSummary.status, "pending"));
   const postStatus = compactText2(postSummary.critical_status, postRawStatus);
+  const recoveryState = compactText2(recordValue4(cacheStatus).recovery_state) || compactText2(postSummary.recovery_state) || compactText2(postRun.recovery_state);
+  const cacheCriticalBlocker = recordValue4(recordValue4(cacheStatus).critical_blocker);
+  const criticalBlocker = Object.keys(cacheCriticalBlocker).length > 0 ? cacheCriticalBlocker : Object.keys(recordValue4(postSummary.critical_blocker)).length > 0 ? recordValue4(postSummary.critical_blocker) : recordValue4(postRun.critical_blocker);
+  const recoveryLabel = recoveryStateLabel(recoveryState, locale);
+  const sourceBlocked = ["waiting_for_source", "source_blocked", "partial/source_blocked"].includes(recoveryState);
+  const postCellStatus = sourceBlocked ? "degraded" : postStatus;
   const postEta = compactDuration(postSummary.eta_seconds, locale);
   const optionalStatusCounts = recordValue4(postSummary.optional_status_counts);
   const optionalTotal = numberValue3(postSummary.optional_task_count) ?? 0;
@@ -39425,28 +42832,19 @@ function CacheMonitorStrip({
   const optionalTailLine = optionalTotal ? locale === "zh-CN" ? `HK\u540E\u53F0 ${countText(optionalDone)}/${countText(optionalTotal)} \xB7 \u8FD0\u884C ${countText(optionalRunning)} \xB7 \u5F85 ${countText(optionalPending)}` : `HK tail ${countText(optionalDone)}/${countText(optionalTotal)} \xB7 running ${countText(optionalRunning)} \xB7 pending ${countText(optionalPending)}` : "";
   const stockDailyLine = stockShardTasks.length ? `${countText(stockShardDone)}/${countText(stockShardTasks.length)} shard \xB7 ${countText(stockShardProcessed)}/${countText(stockShardTotal)}` : `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText2(stockDailySummary.latest_symbol)}`;
   const boardCursorLine = boardShardTasks.length ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard \xB7 ${countText(boardShardProcessed)}/${countText(boardShardTotal)}` : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`;
-  const postDetail = postStatus === "ok" && postRawStatus === "running" && optionalTailLine ? locale === "zh-CN" ? `\u4E3B\u94FE\u5B8C\u6210 \xB7 ${optionalTailLine}` : `critical path done \xB7 ${optionalTailLine}` : locale === "zh-CN" ? `\u9636\u6BB5 ${compactText2(postRun.phase, "\u7B49\u5F85")} \xB7 ${postEta || "ETA \u8BA1\u7B97\u4E2D"}` : `phase ${compactText2(postRun.phase, "pending")} \xB7 ${postEta || "ETA pending"}`;
+  const blockerDetail = `${compactText2(criticalBlocker.provider, "eastmoney")} \xB7 ${compactText2(criticalBlocker.endpoint, compactText2(criticalBlocker.module, "fullmarket_spot_snapshot"))}`;
+  const postDetail = sourceBlocked && Object.keys(criticalBlocker).length > 0 ? blockerDetail : postStatus === "ok" && postRawStatus === "running" && optionalTailLine ? locale === "zh-CN" ? `\u4E3B\u94FE\u5B8C\u6210 \xB7 ${optionalTailLine}` : `critical path done \xB7 ${optionalTailLine}` : locale === "zh-CN" ? `\u9636\u6BB5 ${compactText2(postRun.phase, "\u7B49\u5F85")} \xB7 ${postEta || "ETA \u8BA1\u7B97\u4E2D"}` : `phase ${compactText2(postRun.phase, "pending")} \xB7 ${postEta || "ETA pending"}`;
   const postSubdetail = locale === "zh-CN" ? `\u65E5\u7EBF ${stockDailyLine} \xB7 \u677F\u5757 ${boardCursorLine}${optionalTailLine ? ` \xB7 ${optionalTailLine}` : ""}` : `daily ${stockDailyLine} \xB7 boards ${boardCursorLine}${optionalTailLine ? ` \xB7 ${optionalTailLine}` : ""}`;
-  const dailyCache = firstRecord(freqs, "freq", "\u65E5\u7EBF");
-  const dailySymbols = numberValue3(dailyCache.symbols) ?? 0;
-  const dailyToday = numberValue3(dailyCache.today_symbols) ?? 0;
-  const mongoPct = dailySymbols ? dailyToday / dailySymbols * 100 : 0;
-  const minuteFreqs = freqs.filter((row) => ["5\u5206\u949F", "15\u5206\u949F", "30\u5206\u949F", "60\u5206\u949F"].includes(compactText2(row.freq))).map((row) => `${compactText2(row.freq)} ${countText(row.today_symbols)}`).join(" \xB7 ");
-  const minuteUniverseTotal = numberValue3(mongoSummary.minute_universe_total) ?? 0;
-  const minuteUniverseCached = numberValue3(mongoSummary.minute_universe_cached) ?? 0;
-  const minuteUniversePending = numberValue3(mongoSummary.minute_universe_pending) ?? 0;
-  const minuteUniverseError = numberValue3(mongoSummary.minute_universe_error) ?? 0;
-  const mongoDetail = locale === "zh-CN" ? `\u4ECA\u65E5\u65E5\u7EBF ${countText(dailyToday)}/${countText(dailySymbols)}` : `today daily ${countText(dailyToday)}/${countText(dailySymbols)}`;
-  const mongoSubdetail = locale === "zh-CN" ? minuteUniverseTotal ? `\u5206\u949F\u5019\u9009 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} \xB7 \u5F85 ${countText(minuteUniversePending)} \xB7 \u5931\u8D25 ${countText(minuteUniverseError)}` : `\u5206\u949F\u8986\u76D6\uFF1A${minuteFreqs || "0"}` : minuteUniverseTotal ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} \xB7 pending ${countText(minuteUniversePending)} \xB7 failed ${countText(minuteUniverseError)}` : `minute coverage: ${minuteFreqs || "0"}`;
-  const mongoStatus = !cacheStatus.available ? "degraded" : minuteUniverseError > 0 ? "degraded" : minuteUniversePending > 0 || dailySymbols > 0 && dailyToday < dailySymbols ? "partial" : "ok";
+  const mongoCoverage = mongoCoverageState(cacheStatus, locale);
+  const mongoStatus = mongoCoverage.status;
   const sourceSummary = sourceMonitorSummary(providerHealth, blockers, locale, cacheStatus.available);
   const refreshSeconds = cacheRefreshSeconds(cacheStatus);
   const updatedAt = compactClock(cacheStatus.updated_at, locale);
-  const monitorStatus = sourceSummary.status === "error" || sourceSummary.status === "degraded" || liveStatus === "degraded" ? "degraded" : sourceSummary.status === "partial" || liveStatus === "partial" ? "partial" : "ok";
+  const monitorStatus = sourceSummary.status === "error" || sourceSummary.status === "degraded" || liveStatus === "degraded" || mongoStatus === "degraded" || postCellStatus === "degraded" ? "degraded" : sourceSummary.status === "partial" || liveStatus === "partial" || mongoStatus === "partial" ? "partial" : "ok";
   const monitorColor = monitorStatus === "ok" ? palette.success : monitorStatus === "partial" ? tradingDeskTheme.colors.auroraGold : palette.error;
   const toggleLabel = compact ? locale === "zh-CN" ? "\u5C55\u5F00" : "Expand" : locale === "zh-CN" ? "\u6536\u8D77" : "Collapse";
   if (compact) {
-    const summaryLine = locale === "zh-CN" ? `\u76D8\u4E2D ${liveStatusLabel} \xB7 \u76D8\u540E ${cacheStatusLabel(postStatus, "pending")} \xB7 Mongo ${countText(dailyToday)}/${countText(dailySymbols)} \xB7 \u7F51\u7EDC\u6E90 ${sourceSummary.statusLabel}` : `live ${liveStatusLabel} \xB7 post ${cacheStatusLabel(postStatus, "pending")} \xB7 mongo ${countText(dailyToday)}/${countText(dailySymbols)} \xB7 sources ${sourceSummary.statusLabel}`;
+    const summaryLine = locale === "zh-CN" ? `\u76D8\u4E2D ${liveStatusLabel} \xB7 \u76D8\u540E ${recoveryLabel || cacheStatusLabel(postStatus, "pending")} \xB7 Mongo ${mongoCoverage.compactLabel} \xB7 \u7F51\u7EDC\u6E90 ${sourceSummary.statusLabel}` : `live ${liveStatusLabel} \xB7 post ${recoveryLabel || cacheStatusLabel(postStatus, "pending")} \xB7 mongo ${mongoCoverage.compactLabel} \xB7 sources ${sourceSummary.statusLabel}`;
     return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: cacheMonitorStripStyle, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: cacheMonitorToolbarStyle, children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: cacheMonitorToolbarTitleStyle, children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: cacheStatusDotStyle(monitorColor) }),
@@ -39484,8 +42882,8 @@ function CacheMonitorStrip({
           title: locale === "zh-CN" ? "\u76D8\u540E\u5168\u91CF" : "Postmarket",
           value: `${Math.round(postPct)}%`,
           progress: postPct,
-          status: postStatus,
-          statusLabel: cacheStatusLabel(postStatus, "pending"),
+          status: postCellStatus,
+          statusLabel: recoveryLabel || cacheStatusLabel(postStatus, "pending"),
           detail: postDetail,
           subdetail: postSubdetail
         }
@@ -39494,12 +42892,12 @@ function CacheMonitorStrip({
         CacheMonitorCell,
         {
           title: locale === "zh-CN" ? "Mongo \u8986\u76D6" : "Mongo coverage",
-          value: `${Math.round(mongoPct)}%`,
-          progress: mongoPct,
+          value: `${Math.round(mongoCoverage.progress)}%`,
+          progress: mongoCoverage.progress,
           status: mongoStatus,
-          statusLabel: `${countText(dailyToday)}/${countText(dailySymbols)}`,
-          detail: mongoDetail,
-          subdetail: mongoSubdetail
+          statusLabel: mongoCoverage.statusLabel,
+          detail: mongoCoverage.detail,
+          subdetail: mongoCoverage.subdetail
         }
       ),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
@@ -39550,19 +42948,29 @@ function watchlistPoolCountText(tab, visibleCount, groupMeta) {
 function watchlistPanelMeta(tab, locale) {
   const zh = locale === "zh-CN";
   const meta = {
-    ai_focus: ["approved_factors + terminal_stock_pool", "\u5DF2\u6279\u51C6\u56E0\u5B50\u89C2\u5BDF\uFF1A\u4ECE\u5019\u9009\u6C60\u964D\u566A\u6392\u5E8F\uFF0C\u53F3\u4FA7\u9010\u7968\u590D\u6838", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167\u6DA8\u8DCC\u5E45", "approved_factors + terminal_stock_pool", "approved factor watch: rank and review candidates", "Day=realtime quote change"],
-    macro_indices: ["index_bars", "\u5B8F\u89C2\u65B9\u5411/\u6307\u6570\u5173\u952E\u4F4D", "\u65E5\u6DA8\u5E45=\u6307\u6570\u5F53\u65E5\u6DA8\u8DCC\u5E45", "index_bars", "market direction/key levels", "Day=latest index change"],
-    sector_boards: ["chain_heat_snapshots", "\u4EA7\u4E1A\u94FE\u5F02\u52A8\u96F7\u8FBE\uFF1A\u6E90\u677F\u5757 -> \u8BED\u4E49\u8DEF\u7531 -> \u94FE\u4E3B\u786E\u8BA4", "\u9A71\u52A8\u6DA8\u5E45=\u6E90\u884C\u4E1A/\u6982\u5FF5\u6DA8\u8DCC\u5E45\uFF1B\u786E\u8BA4=\u94FE\u4E3B/\u5F39\u6027\u662F\u5426\u8DDF\u968F", "chain_heat_snapshots", "chain event radar: source board -> semantic route -> representative confirmation", "Driver=source board/concept change; confirmation=representative follow-through"],
-    focus_stocks: ["terminal_stock_pool.focus_stocks", "\u4E70\u70B9\u6C60\uFF1A\u4F4E\u5438\u8FDB\u653B/\u53F3\u4FA7\u8FDB\u653B\uFF0C\u5FC5\u987B\u6709\u4E70\u70B9\u8D28\u91CF\u548C\u5747\u7EBF\u786E\u8BA4", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167\u6DA8\u8DCC\u5E45", "terminal_stock_pool.focus_stocks", "entry pool: left/right attack with setup quality and MA confirmation", "Day=realtime quote change"],
-    risk_stocks: ["terminal_stock_pool.risk_stocks", "\u6682\u4E0D\u53C2\u4E0E\uFF1A\u53EA\u4F5C\u5254\u9664\u4F9D\u636E\uFF0C\u975E\u6301\u4ED3\u4E0D\u63A8\u98CE\u9669\u52A8\u4F5C", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167\u6DA8\u8DCC\u5E45", "terminal_stock_pool.risk_stocks", "skip now: exclusion only; no non-held risk action", "Day=realtime quote change"],
-    watch_stocks: ["terminal_stock_pool.watch_stocks", "\u76EF\u76D8\u6C60\uFF1A\u4E70\u70B9\u6216\u5747\u7EBF\u5171\u632F\u8FD8\u5DEE\u4E00\u73AF", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167\u6DA8\u8DCC\u5E45", "terminal_stock_pool.watch_stocks", "watch pool: setup or MA confirmation still missing", "Day=realtime quote change"],
-    buy_candidates: ["terminal_manual_clues + terminal_stock_pool.clue_stocks", "\u7EBF\u7D22\u6C60\uFF1A\u7528\u6237\u63A2\u7D22\u6216\u7CFB\u7EDF\u6765\u6E90\uFF0C\u8FD8\u6CA1\u6709\u786C\u6280\u672F\u4E70\u70B9", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167\u6DA8\u8DCC\u5E45", "terminal_manual_clues + terminal_stock_pool.clue_stocks", "clue pool: user exploration or system sourced, no hard technical entry yet", "Day=realtime quote change"]
+    ai_focus: ["\u56E0\u5B50\u89C2\u5BDF", "\u964D\u566A\u6392\u5E8F\u540E\u9010\u7968\u590D\u6838", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167", "Factor watch", "ranked candidates for single-name review", "Day=realtime quote"],
+    major_indices: ["\u5927\u76D8\u6307\u6570", "\u5E02\u573A\u65B9\u5411\u548C\u98CE\u9669\u504F\u597D\u951A\u70B9", "\u65E5\u6DA8\u5E45=\u6307\u6570\u5F53\u65E5\u6DA8\u8DCC\u5E45", "Major indices", "broad-market direction and risk appetite", "Day=latest index change"],
+    industry_etfs: ["\u884C\u4E1AETF", "\u4E3B\u9898\u5F3A\u5F31\u548C\u8DE8\u5E02\u573A\u98CE\u9669\u504F\u597D", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167", "Industry ETFs", "theme strength and cross-market risk appetite", "Day=realtime quote"],
+    macro_indices: ["\u5B8F\u89C2\u65B9\u5411", "\u6307\u6570\u5173\u952E\u4F4D\u548C\u73AF\u5883\u5224\u65AD", "\u65E5\u6DA8\u5E45=\u6307\u6570\u5F53\u65E5\u6DA8\u8DCC\u5E45", "Macro direction", "index key levels and regime read", "Day=latest index change"],
+    sector_boards: ["\u4EA7\u4E1A\u94FE\u5F02\u52A8", "\u6E90\u677F\u5757 -> \u94FE\u4E3B\u786E\u8BA4 -> \u5F39\u6027\u8DDF\u968F", "\u6DA8\u5E45=\u6E90\u884C\u4E1A/\u6982\u5FF5", "Chain heat", "source board -> leader confirmation -> elastic follow-through", "Change=source board/concept"],
+    focus_stocks: ["\u4E70\u70B9\u6C60", "\u4F4E\u5438/\u53F3\u4FA7\u8FDB\u653B\uFF0C\u5148\u590D\u6838\u4F4D\u7F6E\u548C\u5931\u6548\u6761\u4EF6", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167", "Entry pool", "left/right attack; review level and invalidation first", "Day=realtime quote"],
+    risk_stocks: ["\u6682\u4E0D\u53C2\u4E0E", "\u53EA\u4F5C\u5254\u9664\u4F9D\u636E\uFF0C\u975E\u6301\u4ED3\u4E0D\u63A8\u98CE\u9669\u52A8\u4F5C", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167", "Skip now", "exclusion only; no non-held risk action", "Day=realtime quote"],
+    watch_stocks: ["\u76EF\u76D8\u6C60", "\u4E70\u70B9\u6216\u5747\u7EBF\u5171\u632F\u8FD8\u5DEE\u4E00\u73AF", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167", "Watch pool", "setup or MA confirmation still missing", "Day=realtime quote"],
+    buy_candidates: ["\u7EBF\u7D22\u6C60", "\u6709\u6765\u6E90\u4F46\u8FD8\u4E0D\u662F\u786C\u4E70\u70B9", "\u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167", "Clue pool", "sourced clue, not a hard entry yet", "Day=realtime quote"]
   };
   const item = meta[tab];
   if (!item) {
-    return zh ? `\u6765\u6E90 terminal_stock_pool \xB7 \u7528\u9014 ${watchlistStockTabLabel(tab, locale)} \xB7 \u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167\u6DA8\u8DCC\u5E45 \xB7 \u533A\u95F4=\u5386\u53F2\u6536\u76CA` : `Source terminal_stock_pool \xB7 Use ${watchlistStockTabLabel(tab, locale)} \xB7 Day=realtime quote change \xB7 Range=historical return`;
+    return zh ? `\u8BC1\u636E ${watchlistStockTabLabel(tab, locale)} \xB7 \u5224\u65AD \u5148\u5206\u6C60\u518D\u9010\u7968\u590D\u6838 \xB7 \u65E5\u6DA8\u5E45=\u5B9E\u65F6\u5FEB\u7167 \xB7 \u533A\u95F4=\u5386\u53F2\u6536\u76CA` : `Evidence ${watchlistStockTabLabel(tab, locale)} \xB7 Read pool first, then review names \xB7 Day=realtime quote \xB7 Range=historical return`;
   }
-  return zh ? `\u6765\u6E90 ${item[0]} \xB7 \u7528\u9014 ${item[1]} \xB7 ${item[2]} \xB7 \u533A\u95F4=\u5386\u53F2\u6536\u76CA` : `Source ${item[3]} \xB7 Use ${item[4]} \xB7 ${item[5]} \xB7 Range=historical return`;
+  return zh ? `\u8BC1\u636E ${item[0]} \xB7 \u5224\u65AD ${item[1]} \xB7 ${item[2]} \xB7 \u533A\u95F4=\u5386\u53F2\u6536\u76CA` : `Evidence ${item[3]} \xB7 Read ${item[4]} \xB7 ${item[5]} \xB7 Range=historical return`;
+}
+function traderFacingEmptyReason(value, locale) {
+  const text2 = compactText2(value);
+  if (!text2) return "";
+  if (/signals shell/i.test(text2) || text2.includes("Signals shell")) {
+    return locale === "zh-CN" ? "\u673A\u4F1A\u6C60\u8FD8\u5728\u5237\u65B0\uFF0C\u5148\u770B\u5927\u76D8\u548C\u5DF2\u7F13\u5B58\u56FE\u8868\u3002" : "Opportunity pools are refreshing; read the market and cached charts first.";
+  }
+  return text2;
 }
 function WatchlistTabbedTable({
   locale,
@@ -39590,7 +42998,8 @@ function WatchlistTabbedTable({
   onDeleteManualClue
 }) {
   const primaryTabs = [
-    { key: "macro_indices", label: locale === "zh-CN" ? "\u6307\u6570" : "Index", count: groups.macro_indices.length },
+    { key: "major_indices", label: locale === "zh-CN" ? "\u5927\u76D8\u6307\u6570" : "Major", count: groups.major_indices.length },
+    { key: "industry_etfs", label: locale === "zh-CN" ? "\u884C\u4E1AETF" : "ETF", count: groups.industry_etfs.length },
     { key: "sector_boards", label: locale === "zh-CN" ? "\u677F\u5757" : "Boards", count: groups.sector_boards.length }
   ];
   const panelMeta = watchlistPanelMeta(activeTab, locale);
@@ -39727,7 +43136,7 @@ function WatchlistTabbedTable({
 }
 function watchlistGridTemplate(activeTab, rangeColumnCount) {
   const stockTab = activeTab === "ai_focus" || activeTab === "focus_stocks" || activeTab === "buy_candidates" || activeTab === "risk_stocks" || activeTab === "watch_stocks";
-  const rangeWidth = stockTab ? 72 : 68;
+  const rangeWidth = stockTab ? 72 : 64;
   const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, ${rangeWidth}px)` : "";
   if (activeTab === "sector_boards") {
     return `minmax(100px, 1fr) 50px 60px 62px${rangeColumns}`;
@@ -39735,7 +43144,7 @@ function watchlistGridTemplate(activeTab, rangeColumnCount) {
   if (stockTab) {
     return `minmax(176px, 1.5fr) 56px 58px minmax(78px, 0.7fr)${rangeColumns}`;
   }
-  return `minmax(96px, 1fr) 48px 52px 54px${rangeColumns}`;
+  return `minmax(104px, 1fr) 46px 52px minmax(96px, 0.95fr)${rangeColumns}`;
 }
 function watchlistRangeHeaderLabel(column) {
   if (column.key === "ytd") {
@@ -39791,6 +43200,22 @@ function watchlistHeaders(activeTab, locale) {
       locale === "zh-CN" ? "\u6700\u65B0" : "Last",
       locale === "zh-CN" ? "\u65E5\u6DA8\u5E45" : "Day",
       locale === "zh-CN" ? "\u80CC\u666F" : "Context"
+    ];
+  }
+  if (activeTab === "major_indices") {
+    return [
+      locale === "zh-CN" ? "\u5927\u76D8\u6307\u6570" : "Major index",
+      locale === "zh-CN" ? "\u6700\u65B0" : "Last",
+      locale === "zh-CN" ? "\u65E5\u6DA8\u5E45" : "Day",
+      locale === "zh-CN" ? "\u4FE1\u53F7" : "Signal"
+    ];
+  }
+  if (activeTab === "industry_etfs") {
+    return [
+      locale === "zh-CN" ? "\u884C\u4E1AETF" : "Industry ETF",
+      locale === "zh-CN" ? "\u6700\u65B0" : "Last",
+      locale === "zh-CN" ? "\u65E5\u6DA8\u5E45" : "Day",
+      locale === "zh-CN" ? "\u4FE1\u53F7" : "Signal"
     ];
   }
   return [
@@ -40032,6 +43457,8 @@ function ChainHeatVisualization({
     const domains = chainDomainLabels(row);
     const sectorTitle = sectorTitleForWatchlist(row, locale);
     const sectorStatus = sectorStatusForWatchlist(row, locale);
+    const targetRows = sectorTargetRowsForContext(row);
+    const targetPreview = targetRows.map((item) => stockIdentityDisplay(item) || candidateStockLabel(item)).filter(Boolean).slice(0, 3).join(" / ");
     return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
       "button",
       {
@@ -40073,7 +43500,11 @@ function ChainHeatVisualization({
               "30m ",
               formatNumber2(row.raw.momentum_30m)
             ] })
-          ] })
+          ] }),
+          targetRows.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: chainVizTargetPreviewStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...miniNeutralSignalBadgeStyle, flex: "0 0 auto" }, children: locale === "zh-CN" ? `\u6807\u7684 ${targetRows.length}` : `${targetRows.length} names` }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: chainVizTargetNameStyle, children: targetPreview })
+          ] }) : null
         ]
       },
       `chain-viz-${row.id}`
@@ -40152,6 +43583,7 @@ function WatchlistTable({
       const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : "";
       const contextLine = stockDecision ? stockContextLine(row, locale) : "";
       const displayBadges = stockDecision ? stockDisplayBadges(row) : [];
+      const signalDetailLine = stockDecision ? "" : watchlistSignalDetailLine(row);
       const stageBadgeStyle = row.decision.opportunitySide === "risk" ? miniSellSignalBadgeStyle : row.decision.opportunitySide === "right" ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle;
       const manualClue = rowIsManualClue(row);
       return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_react3.default.Fragment, { children: [
@@ -40180,6 +43612,9 @@ function WatchlistTable({
               activeTab === "sector_boards" && chainChangeExplain ? chainChangeExplain : "",
               activeTab === "sector_boards" ? `${locale === "zh-CN" ? "\u5F53\u65E5\u9886\u6DA8" : "Top mover"}: ${sectorLeaderForWatchlist(row)}` : "",
               activeTab === "sector_boards" ? `${locale === "zh-CN" ? "\u94FE\u4E3B/\u5F39\u6027" : "Core/elastic"}: ${sectorCarrierForWatchlist(row, locale)}` : "",
+              !stockDecision && row.signal ? `${locale === "zh-CN" ? "\u4FE1\u53F7" : "Signal"}: ${row.signal}` : "",
+              !stockDecision && signalDetailLine ? `${locale === "zh-CN" ? "\u8BF4\u660E" : "Detail"}: ${signalDetailLine}` : "",
+              !stockDecision && row.signalBadges.length > 0 ? `${locale === "zh-CN" ? "\u5468\u671F" : "Timeframes"}: ${row.signalBadges.map((badge) => signalBadgeDisplayLabel(badge, locale)).join(" / ")}` : "",
               stockDecision && traderRead ? `${locale === "zh-CN" ? "\u8BFB\u6CD5" : "Read"}: ${traderRead}` : "",
               stockDecision && evidenceLine ? `${locale === "zh-CN" ? "\u8BC1\u636E" : "Evidence"}: ${evidenceLine}` : "",
               row.rankReason ? `${locale === "zh-CN" ? "\u6392\u5E8F" : "Rank"}: ${row.rankReason}` : "",
@@ -40225,17 +43660,21 @@ function WatchlistTable({
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...watchlistCellStyle, ...activeTab === "sector_boards" ? percentTone(firstMetric) : {} }, children: firstMetric }),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...watchlistCellStyle, ...activeTab === "sector_boards" ? {} : percentTone(secondMetric) }, children: secondMetric }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: watchlistCellStyle, children: activeTab === "sector_boards" ? sectorCarrierForWatchlist(row, locale) : activeTab === "ai_focus" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedTwoLineStyle, children: row.rankReason || row.traderAction || actionLabel }) : stockDecision ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: stockDecisionBadgeStackStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: activeTab === "sector_boards" || activeTab === "ai_focus" || stockDecision ? watchlistCellStyle : watchlistSignalCellStyle, children: activeTab === "sector_boards" ? sectorCarrierForWatchlist(row, locale) : activeTab === "ai_focus" ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedTwoLineStyle, children: row.rankReason || row.traderAction || actionLabel }) : stockDecision ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: stockDecisionBadgeStackStyle, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: stageBadgeStyle, children: actionLabel }),
                 displayBadges.filter((badge) => ["risk", "hot", "wait"].includes(badge.tone)).slice(0, 2).map((badge) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: stockDisplayBadgeStyle(badge.tone), children: badge.label }, `${row.id}-action-${badge.tone}-${badge.label}`))
-              ] }) : row.signalBadges.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: signalBadgeRowStyle, children: row.signalBadges.slice(0, 4).map((badge) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-                "span",
-                {
-                  style: badge.side === "sell" ? miniSellSignalBadgeStyle : badge.side === "buy" ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle,
-                  children: badge.label
-                },
-                `${row.id}-${badge.side}-${badge.label}`
-              )) }) : row.signal || "N/A" }),
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: watchlistSignalStackStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: watchlistSignalMainStyle, children: row.signal || "N/A" }),
+                signalDetailLine ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: watchlistSignalDetailStyle, children: signalDetailLine }) : null,
+                row.signalBadges.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: contextSignalBadgeRowStyle, children: row.signalBadges.slice(0, 4).map((badge) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+                  "span",
+                  {
+                    style: badge.side === "sell" ? miniSellSignalBadgeStyle : badge.side === "buy" ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle,
+                    children: signalBadgeDisplayLabel(badge, locale)
+                  },
+                  `${row.id}-${badge.side}-${badge.label}`
+                )) }) : null
+              ] }) }),
               row.rangeValues.map((value, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...watchlistCellStyle, ...percentTone(value) }, children: value }, `${row.id}-range-${index}`))
             ]
           }
@@ -40250,6 +43689,28 @@ function WatchlistTable({
         ) : null
       ] }, row.id);
     })
+  ] });
+}
+function TradeActionStrip({
+  locale,
+  plan
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: tradeActionStripStyle, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: tradeActionCellStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: tradeActionLabelStyle, children: locale === "zh-CN" ? "\u52A8\u4F5C" : "Action" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 5, minWidth: 0 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: statusBadgeStyle(plan.tone), children: plan.action }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: mutedLineStyle, title: plan.reason, children: plan.reason })
+      ] })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: tradeActionCellStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: tradeActionLabelStyle, children: locale === "zh-CN" ? "\u4E0B\u4E00\u786E\u8BA4" : "Next check" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, title: plan.next, children: plan.next })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: tradeActionCellStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: tradeActionLabelStyle, children: locale === "zh-CN" ? "\u76D8\u540E" : "Post-close" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, title: plan.postmarket, children: plan.postmarket })
+    ] })
   ] });
 }
 function StrategyDecisionPanel({
@@ -40273,28 +43734,50 @@ function StrategyDecisionPanel({
       compactText2(summary.conclusion) ? `${locale === "zh-CN" ? "\u56FE\u8868" : "Chart"} ${compactText2(summary.conclusion)}` : ""
     ].filter(Boolean).join(" \xB7 ");
     const dayChange = formatPercent2(summary.day_change_pct ?? summary.daily_change_pct ?? summary.gain_pct);
+    const position = chainText || compactText2(summary.conclusion) || (locale === "zh-CN" ? "\u6C60\u5916\u89C2\u5BDF" : "Off-pool watch");
+    const targetIdentity = stockIdentityDisplay({
+      symbol: summary.symbol,
+      code: summary.code,
+      raw_code: summary.raw_code,
+      name: summary.name,
+      stock_name: summary.stock_name,
+      display_name: summary.display_name,
+      label: compactText2(summary.title) || target.label
+    }) || target.label;
+    const isIndexTarget = target.kind.toLowerCase().includes("index") || target.kind.includes("\u6307\u6570");
+    const actionPlan2 = strategyTradeActionPlanFromState({
+      targetKind: target.kind,
+      identity,
+      confirmation: isIndexTarget ? "" : locale === "zh-CN" ? "\u8FD8\u5DEE\u5165\u6C60\u6765\u6E90\u300130m\u627F\u63A5\u548C5m/15m\u4E0B\u5355\u786E\u8BA4\u3002" : "Needs pool source, 30m support, and 5m/15m confirmation.",
+      evidence,
+      hasEvidence: Boolean(evidence || chainText || compactText2(summary.conclusion))
+    }, locale);
+    const canActText = isIndexTarget ? locale === "zh-CN" ? "\u53EA\u4F5C\u5E02\u573A\u73AF\u5883\u5224\u65AD\uFF0C\u4E0D\u4F5C\u4E3A\u5355\u7968\u4E70\u5356\u3002" : "Market context only, not a single-name entry." : actionPlan2.action === (locale === "zh-CN" ? "\u5FFD\u7565" : "Skip") ? locale === "zh-CN" ? "\u4E0D\u5904\u7406\uFF0C\u7B49\u91CD\u65B0\u8FDB\u5165\u7EBF\u7D22\u6C60\u6216\u51FA\u73B0\u6280\u672F\u4FE1\u53F7\u3002" : "No action; wait for a clue reset or technical signal." : locale === "zh-CN" ? "\u4E0D\u80FD\u76F4\u63A5\u6267\u884C\uFF1B\u6CA1\u8FDB\u5165\u7EBF\u7D22\u6C60/\u76EF\u76D8\u6C60/\u4E70\u70B9\u6C60\u524D\uFF0C\u53EA\u770B\u56FE\u8868\u8BC1\u636E\u3002" : "No direct action; wait for clue, watch, or entry state.";
+    const invalidationText = isIndexTarget ? locale === "zh-CN" ? "30m\u8F6C\u5F31\u3001\u65E5\u7EBF\u5173\u952E\u4F4D\u8DCC\u7834\u6216\u4E3B\u7EBF\u7EE7\u7EED\u9000\u6F6E\u3002" : "30m weakens, daily key level breaks, or themes keep fading." : locale === "zh-CN" ? "\u56DE\u8E29\u7834\u4F4D\u3001\u53F3\u4FA7\u4E0D\u4FEE\u590D\u6216\u4E3B\u7EBF\u7EE7\u7EED\u9000\u6F6E\u3002" : "Breakdown, no right-side repair, or theme continues fading.";
     return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
       Panel2,
       {
         title: locale === "zh-CN" ? "\u5355\u7968\u4EA4\u6613\u89E3\u91CA" : "Single-name trade read",
         meta: locale === "zh-CN" ? "\u4E0D\u5728\u673A\u4F1A\u6C60" : "outside pool",
+        actions: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: statusBadgeStyle(actionPlan2.tone), children: actionPlan2.action }),
         children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: decisionExplainHeroStyle, children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 6, minWidth: 0 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: compactText2(summary.title) || target.label }),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: targetIdentity }),
                 /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [compactText2(summary.subtitle), identity, chainText].filter(Boolean).join(" \xB7 ") })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...monoTextStyle, textAlign: "right", ...percentTone(dayChange) }, children: dayChange })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: read })
           ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(TradeActionStrip, { locale, plan: actionPlan2 }),
           [
             [locale === "zh-CN" ? "\u4EA4\u6613\u8EAB\u4EFD" : "Trade identity", identity],
-            [locale === "zh-CN" ? "\u73B0\u5728\u4F4D\u7F6E" : "Position now", chainText || compactText2(summary.conclusion) || (locale === "zh-CN" ? "\u6C60\u5916\u89C2\u5BDF" : "Off-pool watch")],
-            [locale === "zh-CN" ? "\u80FD\u4E0D\u80FD\u52A8" : "Actionable?", locale === "zh-CN" ? "\u4E0D\u80FD\u76F4\u63A5\u6267\u884C\uFF1B\u6CA1\u8FDB\u5165\u7EBF\u7D22\u6C60/\u76EF\u76D8\u6C60/\u4E70\u70B9\u6C60\u524D\uFF0C\u53EA\u770B\u56FE\u8868\u8BC1\u636E\u3002" : "No direct action; wait for clue, watch, or entry state."],
-            [locale === "zh-CN" ? "\u8FD8\u5DEE\u4EC0\u4E48" : "Missing", locale === "zh-CN" ? "\u8FD8\u5DEE\u5165\u6C60\u6765\u6E90\u300130m\u627F\u63A5\u548C5m/15m\u4E0B\u5355\u786E\u8BA4\u3002" : "Needs pool source, 30m support, and 5m/15m confirmation."],
-            [locale === "zh-CN" ? "\u5931\u6548\u6761\u4EF6" : "Invalidates", locale === "zh-CN" ? "\u56DE\u8E29\u7834\u4F4D\u3001\u53F3\u4FA7\u4E0D\u4FEE\u590D\u6216\u4E3B\u7EBF\u7EE7\u7EED\u9000\u6F6E\u3002" : "Breakdown, no right-side repair, or theme continues fading."],
+            [locale === "zh-CN" ? "\u73B0\u5728\u4F4D\u7F6E" : "Position now", position],
+            [locale === "zh-CN" ? "\u80FD\u4E0D\u80FD\u52A8" : "Actionable?", canActText],
+            [locale === "zh-CN" ? "\u8FD8\u5DEE\u4EC0\u4E48" : "Missing", actionPlan2.next],
+            [locale === "zh-CN" ? "\u5931\u6548\u6761\u4EF6" : "Invalidates", invalidationText],
             [locale === "zh-CN" ? "\u8BC1\u636E\u6765\u6E90" : "Evidence", evidence || (locale === "zh-CN" ? "\u56FE\u8868\u7F13\u5B58\u548C\u4E2A\u80A1\u5206\u6790" : "Chart cache and stock analysis")]
           ].map(([label, value]) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: decisionExplainRowStyle, children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: decisionExplainLabelStyle, children: label }),
@@ -40327,18 +43810,30 @@ function StrategyDecisionPanel({
   const primaryLevels = keyLevels.slice(0, 3);
   const primarySignals = signals.slice(-2).reverse();
   const latestDivergence = divergences.slice(-1)[0];
+  const tradeRole = stockTradeRoleForRow(row);
+  const rowIdentity = formatCodeName(row.code, row.name);
+  const actionPlan = strategyTradeActionPlanFromState({
+    targetKind: row.targetKind,
+    decisionStage: row.decision.stage,
+    tradeRole,
+    identity: identityDetail,
+    confirmation: confirmationDetail,
+    invalidation: invalidates,
+    evidence: evidenceDetail,
+    hasEvidence: true
+  }, locale);
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
     Panel2,
     {
       title: locale === "zh-CN" ? "\u5355\u7968\u4EA4\u6613\u89E3\u91CA" : "Single-name trade read",
       meta: opportunity,
-      actions: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: statusBadgeStyle(decisionStageTone(decision.stage)), children: action }),
+      actions: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: statusBadgeStyle(actionPlan.tone), children: actionPlan.action }),
       children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: decisionExplainHeroStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 6, minWidth: 0 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: row.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [row.code, opportunity, timeframeSummary].filter(Boolean).join(" \xB7 ") })
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: rowIdentity }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedLineStyle, children: [opportunity, timeframeSummary, action].filter(Boolean).join(" \xB7 ") })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...monoTextStyle, textAlign: "right", ...percentTone(row.dayChange) }, children: row.dayChange })
           ] }),
@@ -40351,6 +43846,7 @@ function StrategyDecisionPanel({
           ] }, `${row.id}-${step.key}`)) }),
           traderRead ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: traderRead }) : null
         ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(TradeActionStrip, { locale, plan: actionPlan }),
         [
           [locale === "zh-CN" ? "\u4EA4\u6613\u8EAB\u4EFD" : "Trade identity", [identityDetail, lineage].filter(Boolean).join(" \xB7 ")],
           [locale === "zh-CN" ? "\u73B0\u5728\u4F4D\u7F6E" : "Position now", positionDetail || setupExplanation || opportunity],
@@ -40435,6 +43931,7 @@ function ChainTargetDrawer({
       ] }),
       section.rows.slice(0, 6).map((candidate, index) => {
         const label = candidateStockLabel(candidate);
+        const displayLabel = stockIdentityDisplay(candidate) || label;
         const risk = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.map((item) => compactText2(item)).filter(Boolean).slice(0, 2).join("/") : "";
         const relation = compactText2(candidate.chain_relation_type);
         return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
@@ -40452,8 +43949,8 @@ function ChainTargetDrawer({
             onClick: () => onSelect(candidate),
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { minWidth: 0 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: compactText2(candidate.name) || label || "N/A" }),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: watchlistSubStyle, children: [label, relation ? candidateGroupLabel(relation, locale) : compactText2(candidate.leader_tier), compactText2(candidate.chain_role) || compactText2(candidate.relation)].filter(Boolean).join(" \xB7 ") })
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: displayLabel || "N/A" }),
+                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: watchlistSubStyle, children: [displayLabel, relation ? candidateGroupLabel(relation, locale) : compactText2(candidate.leader_tier), compactText2(candidate.chain_role) || compactText2(candidate.relation)].filter(Boolean).join(" \xB7 ") })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...monoTextStyle, textAlign: "right", ...percentTone(formatPercent2(candidate.day_change_pct)) }, children: formatPercent2(candidate.day_change_pct) }),
               /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: { ...monoTextStyle, textAlign: "right" }, children: compactText2(candidate.latest_signal) || compactText2(candidate.attention_score ? `\u5173\u6CE8 ${formatNumber2(candidate.attention_score, 0)}` : "") || (risk ? riskFlagLabel(risk, locale) : "\u89C2\u5BDF") })
@@ -40469,7 +43966,8 @@ function ChainContextRail({
   locale,
   context,
   symbolData,
-  onSelect
+  onSelect,
+  onPrefetch
 }) {
   const source = Object.keys(context).length > 0 ? context : recordValue4(symbolData?.summary?.mapping_chain);
   const groups = candidateGroupsFromRow(source);
@@ -40492,14 +43990,21 @@ function ChainContextRail({
   ].map((item) => compactText2(item)).filter(Boolean);
   const hasContext = Object.keys(source).length > 0 || candidates.length > 0;
   if (!hasContext) return null;
+  const chainTitle = [compactText2(source.chain_name), compactText2(source.node_name), compactText2(mapping.chain_name), compactText2(mapping.node_name)].filter(Boolean).slice(0, 2).join(" -> ") || compactText2(symbolData?.summary?.title) || "Chain";
+  const isSectorContext = compactText2(source.source) === "chain_heat_snapshots" || compactText2(source.domain) === "chain_heat" || compactText2(source.domain) === "theme_heat" || candidates.length > 0;
+  const panelTitle = isSectorContext ? locale === "zh-CN" ? "\u677F\u5757\u6807\u7684" : "Sector targets" : locale === "zh-CN" ? "\u4EA7\u4E1A\u94FE\u4E0A\u4E0B\u6587" : "Chain context";
+  const panelMeta = [
+    candidates.length > 0 ? `${candidates.length}` : "",
+    compactText2(source.phase) || compactText2(mapping.mapping_status) || compactText2(viewpoint.status) || "context"
+  ].filter(Boolean).join(" \xB7 ");
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
     Panel2,
     {
-      title: locale === "zh-CN" ? "\u4EA7\u4E1A\u94FE\u4E0A\u4E0B\u6587" : "Chain context",
-      meta: compactText2(source.phase) || compactText2(mapping.mapping_status) || compactText2(viewpoint.status) || "context",
+      title: panelTitle,
+      meta: panelMeta,
       children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: chainContextHeroStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: [compactText2(source.chain_name), compactText2(source.node_name), compactText2(mapping.chain_name), compactText2(mapping.node_name)].filter(Boolean).slice(0, 2).join(" -> ") || compactText2(symbolData?.summary?.title) || "Chain" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: chainTitle }),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: [
             compactText2(source.trading_signal || source.latest_signal),
             compactText2(source.trader_action),
@@ -40524,6 +44029,73 @@ function ChainContextRail({
               formatNumber2(source.momentum_30m)
             ] })
           ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: sectorTargetFocusStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u677F\u5757\u5185\u6807\u7684" : "Names in this sector" }),
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: candidates.length })
+          ] }),
+          candidateSections.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: sectorTargetGroupRailStyle, children: candidateSections.map((section) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { style: { ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }, children: [
+            section.label,
+            " ",
+            section.rows.length
+          ] }, `sector-target-pill-${section.key}`)) }) : null,
+          candidateSections.length > 0 ? candidateSections.map((section) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: section.label }),
+              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }, children: section.rows.length })
+            ] }),
+            section.rows.slice(0, section.key === "leaders" ? 3 : 4).map((candidate, index) => {
+              const displayLabel = stockIdentityDisplay(candidate) || candidateStockLabel(candidate);
+              const relation = compactText2(candidate.chain_relation_type);
+              const score = compactText2(candidate.attention_score) || compactText2(candidate.weight_score) || compactText2(candidate.elasticity_score) || compactText2(candidate.trend_score);
+              return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+                "button",
+                {
+                  type: "button",
+                  style: chainLifecycleButtonStyle,
+                  onMouseEnter: () => onPrefetch?.(candidate),
+                  onFocus: () => onPrefetch?.(candidate),
+                  onClick: () => onSelect(candidate),
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: displayLabel || "N/A" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }, children: relation ? candidateGroupLabel(relation, locale) : compactText2(candidate.leader_tier) || "\u89C2\u5BDF" })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: [
+                      displayLabel,
+                      compactText2(candidate.chain_role) || compactText2(candidate.relation),
+                      `\u6DA8\u5E45 ${formatPercent2(candidate.day_change_pct)}`,
+                      compactText2(candidate.latest_signal),
+                      score ? `\u5173\u6CE8 ${formatNumber2(score, 0)}` : ""
+                    ].filter(Boolean).join(" \xB7 ") })
+                  ]
+                },
+                `${section.key}-${candidateStockLabel(candidate) || index}-${index}`
+              );
+            })
+          ] }, `chain-context-${section.key}`)) : candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => {
+            const score = compactText2(candidate.attention_score) || compactText2(candidate.score);
+            const displayLabel = stockIdentityDisplay(candidate) || candidateStockLabel(candidate);
+            return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+              "button",
+              {
+                type: "button",
+                style: targetButtonStyle,
+                onMouseEnter: () => onPrefetch?.(candidate),
+                onFocus: () => onPrefetch?.(candidate),
+                onClick: () => onSelect(candidate),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: displayLabel || "N/A" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: miniNeutralSignalBadgeStyle, children: compactText2(candidate.leader_tier) || compactText2(candidate.chain_role) || "\u89C2\u5BDF" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: [displayLabel, compactText2(candidate.latest_signal), `\u6DA8\u5E45 ${formatPercent2(candidate.day_change_pct)}`, score ? `\u5173\u6CE8 ${formatNumber2(score, 0)}` : "", compactText2(candidate.why_watch)].filter(Boolean).join(" \xB7 ") })
+                ]
+              },
+              `${candidateStockLabel(candidate) || index}-${index}`
+            );
+          }) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u6682\u65E0\u6807\u7684\u5206\u7EC4\u3002" : "No target groups." })
         ] }),
         (Object.keys(activeDriver).length > 0 || driverCandidates.length > 0) && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: signalBlockStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
@@ -40553,52 +44125,6 @@ function ChainContextRail({
               ] })
             ] }, `${compactText2(item.chain_id)}-${compactText2(item.node_id)}-${index}`);
           })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: signalBlockStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: locale === "zh-CN" ? "\u4EA7\u4E1A\u94FE\u6807\u7684" : "Chain targets" }),
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: candidates.length })
-          ] }),
-          candidateSections.length > 0 ? candidateSections.map((section) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: compactListStyle2, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { children: section.label }),
-              /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }, children: section.rows.length })
-            ] }),
-            section.rows.slice(0, section.key === "leaders" ? 3 : 4).map((candidate, index) => {
-              const relation = compactText2(candidate.chain_relation_type);
-              return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-                "button",
-                {
-                  type: "button",
-                  style: chainLifecycleButtonStyle,
-                  onClick: () => onSelect(candidate),
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, minWidth: 0 }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: compactText2(candidate.name) || candidateStockLabel(candidate) || "N/A" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: { ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }, children: relation ? candidateGroupLabel(relation, locale) : compactText2(candidate.leader_tier) || "\u89C2\u5BDF" })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: [candidateStockLabel(candidate), compactText2(candidate.chain_role) || compactText2(candidate.relation), `\u6DA8\u5E45 ${formatPercent2(candidate.day_change_pct)}`, compactText2(candidate.latest_signal)].filter(Boolean).join(" \xB7 ") })
-                  ]
-                },
-                `${section.key}-${candidateStockLabel(candidate) || index}-${index}`
-              );
-            })
-          ] }, `chain-context-${section.key}`)) : candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
-            "button",
-            {
-              type: "button",
-              style: targetButtonStyle,
-              onClick: () => onSelect(candidate),
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8 }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: rowTitleStyle, children: compactText2(candidate.name) || candidateStockLabel(candidate) || "N/A" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { style: miniNeutralSignalBadgeStyle, children: compactText2(candidate.leader_tier) || compactText2(candidate.chain_role) || "\u89C2\u5BDF" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: mutedTwoLineStyle, children: [candidateStockLabel(candidate), compactText2(candidate.latest_signal), `\u6DA8\u5E45 ${formatPercent2(candidate.day_change_pct)}`, compactText2(candidate.why_watch)].filter(Boolean).join(" \xB7 ") })
-              ]
-            },
-            `${candidateStockLabel(candidate) || index}-${index}`
-          )) : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { style: emptyStateDarkStyle, children: locale === "zh-CN" ? "\u6682\u65E0\u6807\u7684\u5206\u7EC4\u3002" : "No target groups." })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: signalBlockStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { style: candidateGroupHeaderStyle, children: [
@@ -40684,7 +44210,7 @@ function TargetRows({
               "span",
               {
                 style: badge.side === "sell" ? miniSellSignalBadgeStyle : badge.side === "buy" ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle,
-                children: badge.side === "sell" ? `\u5356${badge.label}` : badge.label
+                children: signalBadgeDisplayLabel(badge, locale)
               },
               `${section.key}-${label || index}-${badge.side}-${badge.label}`
             )) }) : null,
@@ -40992,7 +44518,9 @@ function toSignalsBacktestVM(dashboard) {
     backtest_jobs: dashboard.backtest_jobs,
     pending_backlog_preview: dashboard.pending_backlog_preview,
     review_runs: dashboard.review_runs,
-    buy_candidates: dashboard.buy_candidates
+    buy_candidates: dashboard.buy_candidates,
+    chart_context: dashboard.chart_context,
+    deep_links: dashboard.deep_links
   };
 }
 function toSignalsFactoryVM(dashboard) {
@@ -41594,6 +45122,68 @@ function formatRemainingTime(locale, seconds) {
   if (locale === "zh-CN") return `${minutes}:${String(rest).padStart(2, "0")} \u540E\u8FC7\u671F`;
   return `Expires in ${minutes}:${String(rest).padStart(2, "0")}`;
 }
+function clusterNodeTone(status) {
+  if (status === "online") return "open";
+  if (status === "degraded") return "running";
+  if (status === "offline") return "degraded";
+  return "info";
+}
+function clusterStatusLabel(locale, status) {
+  const zh = {
+    unknown: "\u672A\u63A2\u6D4B",
+    online: "\u5728\u7EBF",
+    degraded: "\u964D\u7EA7",
+    offline: "\u79BB\u7EBF"
+  };
+  if (locale === "zh-CN") return zh[status];
+  return humanizeTokenLocale(locale, status);
+}
+function WeChatClusterPanel({
+  locale,
+  clusterStatus,
+  onRefreshCluster
+}) {
+  const nodes = clusterStatus?.nodes ?? [];
+  const bindings = clusterStatus?.bindings ?? [];
+  const boundCount = bindings.filter((binding) => binding.state === "bound").length;
+  const pendingCount = bindings.filter((binding) => binding.state === "qr_pending").length;
+  return /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+    WeChatSection,
+    {
+      title: locale === "zh-CN" ? "\u96C6\u7FA4" : "Cluster",
+      subtitle: locale === "zh-CN" ? `${nodes.length} \u8282\u70B9 / ${boundCount} \u8D26\u53F7 / ${pendingCount} \u626B\u7801` : `${nodes.length} nodes / ${boundCount} accounts / ${pendingCount} scans`,
+      children: /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: utilityStyles.stackedList, children: [
+        nodes.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: wechatMutedTextStyle, children: locale === "zh-CN" ? "\u8FD8\u6CA1\u6709\u914D\u7F6E\u5FAE\u4FE1 worker \u8282\u70B9\u3002" : "No WeChat worker nodes configured." }) : nodes.map((node) => /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: wechatRowStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: queueLeadStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: queueTitleStyle, children: node.node_id }),
+            /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: wechatMutedTextStyle, children: formatModeMeta([
+              node.ssh_host,
+              `${node.active_accounts}/${node.capacity}`,
+              node.pending_scans > 0 ? locale === "zh-CN" ? `${node.pending_scans} \u4E2A\u626B\u7801\u4E2D` : `${node.pending_scans} pending scans` : void 0,
+              node.draining ? locale === "zh-CN" ? "drain \u4E2D" : "draining" : void 0
+            ]) }),
+            node.last_error && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("div", { style: wechatMutedTextStyle, children: node.last_error })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: statusBadgeStyle(clusterNodeTone(node.status)), children: clusterStatusLabel(locale, node.status) })
+        ] }, node.node_id)),
+        /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: utilityStyles.buttonCluster, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+            "button",
+            {
+              type: "button",
+              style: wechatButtonStyle(),
+              onClick: () => {
+                void onRefreshCluster();
+              },
+              children: locale === "zh-CN" ? "\u5237\u65B0\u8282\u70B9" : "Refresh nodes"
+            }
+          ),
+          clusterStatus?.updated_at && /* @__PURE__ */ (0, import_jsx_runtime7.jsx)("span", { style: statusBadgeStyle("info"), children: formatTime(clusterStatus.updated_at) })
+        ] })
+      ] })
+    }
+  );
+}
 function WeChatBindingPanel({
   locale,
   bindingStatus,
@@ -42168,6 +45758,7 @@ function WeChatWorkspace({
   sessions,
   sourceStatus,
   bindingStatus,
+  clusterStatus,
   routeReceipts,
   pluginDevIssues,
   search,
@@ -42193,6 +45784,7 @@ function WeChatWorkspace({
   onOpenLinkedWorkItem,
   onOpenAttachment,
   onCreateBindingSession,
+  onRefreshCluster,
   onCompleteBindingSession,
   onRevokeBinding,
   onRouteMessage,
@@ -42254,6 +45846,14 @@ function WeChatWorkspace({
   }
   return /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: workspaceRootStyle(splitDetail), children: [
     /* @__PURE__ */ (0, import_jsx_runtime7.jsxs)("div", { style: listColumnStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
+        WeChatClusterPanel,
+        {
+          locale,
+          clusterStatus,
+          onRefreshCluster
+        }
+      ),
       /* @__PURE__ */ (0, import_jsx_runtime7.jsx)(
         WeChatBindingPanel,
         {
@@ -45112,6 +48712,7 @@ function App() {
   const [weclawSessions, setWeclawSessions] = (0, import_react6.useState)([]);
   const [weclawSessionSourceStatus, setWeclawSessionSourceStatus] = (0, import_react6.useState)(null);
   const [wechatBindingStatus, setWechatBindingStatus] = (0, import_react6.useState)(null);
+  const [wechatClusterStatus, setWechatClusterStatus] = (0, import_react6.useState)(null);
   const [wechatRouteReceipts, setWechatRouteReceipts] = (0, import_react6.useState)([]);
   const [pluginDevIssues, setPluginDevIssues] = (0, import_react6.useState)([]);
   const [locale, setLocale] = (0, import_react6.useState)(() => {
@@ -45281,12 +48882,14 @@ function App() {
     }
   }, []);
   const loadWechatRuntime = (0, import_react6.useCallback)(async () => {
-    const [bindingResult, receiptResult, issueResult] = await Promise.allSettled([
+    const [bindingResult, clusterResult, receiptResult, issueResult] = await Promise.allSettled([
       window.longclawWechat.getBindingStatus(),
+      window.longclawWechat.getClusterStatus(),
       window.longclawPluginDev.listReceipts(),
       window.longclawPluginDev.listIssues()
     ]);
     if (bindingResult.status === "fulfilled") setWechatBindingStatus(bindingResult.value);
+    if (clusterResult.status === "fulfilled") setWechatClusterStatus(clusterResult.value);
     if (receiptResult.status === "fulfilled") setWechatRouteReceipts(receiptResult.value);
     if (issueResult.status === "fulfilled") setPluginDevIssues(issueResult.value);
   }, []);
@@ -46581,6 +50184,14 @@ function App() {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [locale]);
+  const refreshWechatCluster = (0, import_react6.useCallback)(async () => {
+    try {
+      setWechatClusterStatus(await window.longclawWechat.probeClusterNodes());
+      setActionMessage(locale === "zh-CN" ? "\u5DF2\u5237\u65B0\u5FAE\u4FE1\u96C6\u7FA4\u8282\u70B9\u3002" : "WeChat cluster nodes refreshed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [locale]);
   const createLocalWechatBindingSession = (0, import_react6.useCallback)(async () => {
     try {
       setWechatBindingStatus(await window.longclawWechat.createLocalBindingSession());
@@ -47059,6 +50670,7 @@ function App() {
                     sessions: weclawSessions,
                     sourceStatus: weclawSessionSourceStatus,
                     bindingStatus: wechatBindingStatus,
+                    clusterStatus: wechatClusterStatus,
                     routeReceipts: wechatRouteReceipts,
                     pluginDevIssues,
                     search: wechatSearch,
@@ -47092,6 +50704,7 @@ function App() {
                     onOpenLinkedWorkItem: openWeclawLinkedWorkItem,
                     onOpenAttachment: openArtifact,
                     onCreateBindingSession: createWechatBindingSession,
+                    onRefreshCluster: refreshWechatCluster,
                     onCreateLocalBindingSession: createLocalWechatBindingSession,
                     onCompleteBindingSession: completeWechatBindingSession,
                     onRevokeBinding: revokeWechatBinding,
