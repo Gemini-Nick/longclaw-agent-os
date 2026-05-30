@@ -385,8 +385,10 @@ const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_sto
 const SHELL_REQUEST_TIMEOUT_MS = 12_000
 const SYMBOL_REQUEST_TIMEOUT_MS = 45_000
 const SYMBOL_DATA_CACHE_TTL_MS = 60_000
-const RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 8
+const RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 3
 const RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS = 12_000
+const RIGHT_PANEL_SYMBOL_PREFETCH_DELAY_MS = 2_500
+const TIMEFRAME_SNAPSHOT_DELAY_MS = 2_000
 const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
   { key: 'all', zh: '全部', en: 'All' },
   { key: 'left_attack', zh: '低吸进攻', en: 'Left attack' },
@@ -7026,6 +7028,7 @@ export function StrategyChartTerminal({
   const shellLoadedRef = useRef(false)
   const activeWatchlistTabRef = useRef<WatchlistTabKey>('sector_boards')
   const silentSymbolRefreshInFlightRef = useRef(false)
+  const manualSymbolLoadingRef = useRef(false)
   const manualSymbolAbortRef = useRef<AbortController | null>(null)
   const timeframeSnapshotKeyRef = useRef('')
   const dashboardRef = useRef(dashboard)
@@ -7574,21 +7577,24 @@ export function StrategyChartTerminal({
   }, [baseUrl, rememberSymbolData])
 
   useEffect(() => {
-    if (!baseUrl || rightPanelPrefetchTargets.length === 0) return
+    if (!baseUrl || rightPanelPrefetchTargets.length === 0 || loading || booting || !symbolData) return
     const controller = new AbortController()
     let cancelled = false
-    void (async () => {
-      for (const nextTarget of rightPanelPrefetchTargets) {
-        if (cancelled || controller.signal.aborted) return
-        await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: 'visible-right-panel' })
-        await new Promise(resolve => window.setTimeout(resolve, 80))
-      }
-    })()
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const nextTarget of rightPanelPrefetchTargets) {
+          if (cancelled || controller.signal.aborted) return
+          await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: 'visible-right-panel' })
+          await new Promise(resolve => window.setTimeout(resolve, 80))
+        }
+      })()
+    }, RIGHT_PANEL_SYMBOL_PREFETCH_DELAY_MS)
     return () => {
       cancelled = true
+      window.clearTimeout(timer)
       controller.abort()
     }
-  }, [baseUrl, prefetchSymbolData, rightPanelPrefetchKey])
+  }, [baseUrl, booting, loading, prefetchSymbolData, rightPanelPrefetchKey, rightPanelPrefetchTargets, symbolData])
 
   const loadShell = useCallback(
     async (signal?: AbortSignal) => {
@@ -7618,11 +7624,14 @@ export function StrategyChartTerminal({
   const loadSymbol = useCallback(
     async (nextTarget: ChartTarget, options: { signal?: AbortSignal; silent?: boolean } = {}) => {
       if (!baseUrl) return
-      if (options.silent && silentSymbolRefreshInFlightRef.current) return
+      if (options.silent && (silentSymbolRefreshInFlightRef.current || manualSymbolLoadingRef.current)) return
       if (options.silent) silentSymbolRefreshInFlightRef.current = true
       const requestId = activeRequestRef.current + 1
       activeRequestRef.current = requestId
-      if (!options.silent) setLoading(true)
+      if (!options.silent) {
+        manualSymbolLoadingRef.current = true
+        setLoading(true)
+      }
       setError(null)
       const cacheKey = symbolDataCacheKey(nextTarget)
       const cached = symbolDataCacheRef.current.get(cacheKey)
@@ -7630,6 +7639,7 @@ export function StrategyChartTerminal({
       const hasFreshCache = Boolean(cached && cacheAgeMs <= SYMBOL_DATA_CACHE_TTL_MS)
       if (!options.silent && cached && hasFreshCache) {
         applySymbolData(cached.data, nextTarget, { cachedAt: cached.cachedAt })
+        manualSymbolLoadingRef.current = false
         setLoading(false)
         recordObservationEvent('strategy.symbol.cache-hit', {
           target: nextTarget.label,
@@ -7637,6 +7647,7 @@ export function StrategyChartTerminal({
           freq: nextTarget.freq,
           age_ms: Math.round(cacheAgeMs),
         })
+        return
       }
       try {
         const nextSymbolData = await fetchJson<WorkbenchSymbolData>(
@@ -7668,6 +7679,7 @@ export function StrategyChartTerminal({
         setError(apiError.message || (locale === 'zh-CN' ? 'Signals 图表数据加载失败。' : 'Failed to load Signals chart data.'))
       } finally {
         if (options.silent) silentSymbolRefreshInFlightRef.current = false
+        if (!options.silent && requestId === activeRequestRef.current) manualSymbolLoadingRef.current = false
         if (requestId === activeRequestRef.current) setLoading(false)
       }
     },
@@ -7680,6 +7692,7 @@ export function StrategyChartTerminal({
       setTimeframeSnapshots({})
       return
     }
+    if (loading || booting) return
     const requestKey = timeframeSnapshotSymbol.trim().toUpperCase()
     timeframeSnapshotKeyRef.current = requestKey
     const controller = new AbortController()
@@ -7716,6 +7729,7 @@ export function StrategyChartTerminal({
               { timeoutMs: 15_000 },
             )
             if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+            rememberSymbolData({ label: timeframeSnapshotSymbol, kind: 'stock', freq }, nextData)
             setTimeframeSnapshots(previous => ({
               ...previous,
               [freq]: marketSnapshotFromSymbolData(nextData, freq, locale),
@@ -7731,13 +7745,13 @@ export function StrategyChartTerminal({
           await new Promise(resolve => window.setTimeout(resolve, 120))
         }
       })()
-    }, 700)
+    }, TIMEFRAME_SNAPSHOT_DELAY_MS)
 
     return () => {
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [baseUrl, locale, timeframeSnapshotSymbol])
+  }, [baseUrl, booting, currentFreq, loading, locale, rememberSymbolData, symbolData, timeframeSnapshotSymbol])
 
   useEffect(() => {
     if (!symbolData || !timeframeSnapshotSymbol) return
@@ -7849,6 +7863,7 @@ export function StrategyChartTerminal({
     const controllers = new Set<AbortController>()
     const symbolRefreshMs = liveRefresh ? 15_000 : 60_000
     const refreshSymbol = () => {
+      if (manualSymbolLoadingRef.current) return
       const controller = new AbortController()
       controllers.add(controller)
       void loadSymbol(target, { signal: controller.signal, silent: true })
