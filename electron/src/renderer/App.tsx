@@ -1873,13 +1873,14 @@ export default function App() {
   const activeLaunchIdRef = useRef<string | null>(null)
   const workModeTouchedRef = useRef(false)
 
-  const viewportTier = getViewportTier(viewportWidth)
-  const shellLayout = useMemo(
-    () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, Boolean(selected)),
-    [selected, threadSidebarOpen, viewportTier, viewportWidth],
-  )
   const isFullBleedPackPage = page === 'strategy' || page === 'ai_factor_factory' || page === 'backtest'
   const isWeChatPage = page === 'wechat'
+  const detailPaneEnabled = !isWeChatPage && page !== 'backtest'
+  const viewportTier = getViewportTier(viewportWidth)
+  const shellLayout = useMemo(
+    () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, detailPaneEnabled && Boolean(selected)),
+    [detailPaneEnabled, selected, threadSidebarOpen, viewportTier, viewportWidth],
+  )
   const hideContextSidebar = isFullBleedPackPage || page === 'execution' || page === 'factory' || page === 'wechat'
   const wechatBound = wechatBindingStatus?.state === 'bound'
   const wechatIdentityReady = wechatBindingStatus?.identity_status === 'ilink_verified'
@@ -2904,6 +2905,12 @@ export default function App() {
       setSelected(null)
     }
   }, [page, selected, selectedWeclawSessionId])
+
+  useEffect(() => {
+    if (page === 'backtest' && selected) {
+      setSelected(null)
+    }
+  }, [page, selected])
 
   useEffect(() => {
     if (page === 'wechat') return
@@ -4259,7 +4266,7 @@ export default function App() {
             </div>
           </div>
 
-          {!isWeChatPage && (
+          {detailPaneEnabled && (
           <aside aria-label={t(locale, 'section.detail.drawer')} style={shellLayout.detailPane}>
             {selected ? (
               <div style={pageStackStyle}>

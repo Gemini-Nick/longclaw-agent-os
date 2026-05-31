@@ -31482,10 +31482,25 @@ var BACKTEST_MARKER_GROUP = "longclaw-backtest-markers";
 var DATE_PRESET_BEFORE_DAYS = 30;
 var DATE_PRESET_AFTER_DAYS = 60;
 var MS_PER_DAY = 864e5;
+var EXPANDED_EVENT_CONTEXT_BARS = 24;
+var EXPANDED_EVENT_MIN_BARS = 48;
+var EXPANDED_EVENT_MAX_BARS = 96;
 var MARKET_DATE_TZ_OFFSET_MS = 8 * 60 * 60 * 1e3;
 var MARKET_DATE_TIME_ZONE = "Asia/Shanghai";
-var BACKTEST_HISTORY_STORAGE_KEY = "longclaw.backtestWorkbench.history.v1";
-var BACKTEST_HISTORY_LIMIT = 8;
+var BACKTEST_HISTORY_SCHEMA_VERSION = "backtest-history.v2";
+var BACKTEST_HISTORY_STORAGE_KEY_V1 = "longclaw.backtestWorkbench.history.v1";
+var BACKTEST_HISTORY_STORAGE_KEY = "longclaw.backtestWorkbench.history.v2";
+var BACKTEST_HISTORY_DELETED_STORAGE_KEY = "longclaw.backtestWorkbench.history.deleted.v2";
+var BACKTEST_HISTORY_MIGRATED_STORAGE_KEY = "longclaw.backtestWorkbench.history.migrated.v2";
+var BACKTEST_HISTORY_LIMIT = 50;
+var BACKTEST_MA_PERIODS = [5, 10, 20, 60];
+var BACKTEST_MA_COLORS = [
+  tradingDeskTheme.chart.orange,
+  tradingDeskTheme.chart.line,
+  tradingDeskTheme.chart.violet,
+  tradingDeskTheme.chart.gold
+];
+var BACKTEST_MACD_PARAMS = [12, 26, 9];
 var markerRegistered = false;
 var terminalTheme = tradingDeskTheme.colors;
 var emptyDisplay = "--";
@@ -31595,17 +31610,6 @@ var chartShellStyle = {
   background: terminalTheme.chartPanel,
   overflow: "hidden"
 };
-var datePresetFocusStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
-  alignItems: "center",
-  gap: 8,
-  border: `1px solid ${terminalTheme.border}`,
-  borderRadius: 5,
-  background: terminalTheme.panelInset,
-  padding: "7px 8px",
-  minHeight: 0
-};
 var inputStyle = {
   height: 30,
   minWidth: 0,
@@ -31651,6 +31655,158 @@ var rowStyle = {
   background: terminalTheme.panelSoft,
   padding: "7px 8px",
   minWidth: 0
+};
+var historyRestoreButtonStyle = {
+  flex: 1,
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "stretch",
+  justifyContent: "center",
+  border: "none",
+  background: "transparent",
+  color: "inherit",
+  padding: 0,
+  cursor: "pointer",
+  textAlign: "left",
+  fontFamily: fontStacks.ui
+};
+var historyRestoreSurfaceStyle = {
+  ...historyRestoreButtonStyle,
+  gap: 6,
+  borderRadius: 5,
+  padding: "1px 0"
+};
+var iconButtonStyle = {
+  width: 32,
+  height: 32,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.control,
+  color: terminalTheme.mutedStrong,
+  cursor: "pointer",
+  padding: 0,
+  flex: "0 0 auto"
+};
+var historyChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
+  borderRadius: tradingDeskTheme.radius.pill,
+  background: tradingDeskTheme.alpha.infoSurface,
+  color: tradingDeskTheme.colors.infoText,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  maxWidth: 64,
+  minHeight: 20,
+  padding: "2px 7px",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
+};
+var historyCardStyle = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 34px",
+  alignItems: "stretch",
+  gap: 8,
+  border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
+  borderRadius: 6,
+  background: "linear-gradient(135deg, rgba(18, 27, 39, 0.98), rgba(12, 18, 27, 0.96))",
+  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.infoBorder}, 0 8px 20px rgba(0, 0, 0, 0.12)`,
+  padding: "8px 7px 8px 8px",
+  minWidth: 0
+};
+var historyTitleLineStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  minWidth: 0
+};
+var historyTitleTextStyle = {
+  color: terminalTheme.textStrong,
+  fontSize: 14,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap"
+};
+var historyCountBadgeStyle = {
+  ...historyChipStyle,
+  flex: "0 0 auto",
+  color: tradingDeskTheme.chart.line,
+  padding: "2px 7px"
+};
+var historyMetaRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "2px 6px",
+  minWidth: 0
+};
+var historyMetaTokenStyle = {
+  ...mutedStyle,
+  fontSize: 11,
+  whiteSpace: "nowrap",
+  wordBreak: "keep-all",
+  overflowWrap: "normal"
+};
+var historySignalLineStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  minWidth: 0,
+  color: terminalTheme.text,
+  fontSize: 11,
+  lineHeight: 1.25
+};
+var historySignalNameStyle = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontWeight: 800
+};
+var historySignalMetricStyle = {
+  flex: "0 0 auto",
+  fontFamily: fontStacks.mono,
+  fontWeight: 800
+};
+var historyChipRowStyle = {
+  display: "flex",
+  gap: 4,
+  minWidth: 0,
+  maxHeight: 20,
+  overflow: "hidden"
+};
+var historyActionColumnStyle = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 6,
+  flex: "0 0 auto"
+};
+var historyRestoreActionStyle = {
+  ...iconButtonStyle,
+  border: `1px solid rgba(89, 217, 142, 0.34)`,
+  background: "rgba(89, 217, 142, 0.11)",
+  color: palette.success,
+  appearance: "none"
+};
+var historyDeleteActionStyle = {
+  ...iconButtonStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
+  background: terminalTheme.panelInset,
+  color: terminalTheme.mutedStrong,
+  appearance: "none"
 };
 var compactListStyle = {
   display: "flex",
@@ -32012,6 +32168,142 @@ function boardKindLabel(kind, locale) {
     chain: "\u4EA7\u4E1A\u94FE"
   }[raw.toLowerCase()] ?? raw;
 }
+var GENERIC_MULTI_HISTORY_TITLE = /^(多标的回测|多标的回测复盘|Multi-symbol backtest|Signals Batch)(\s*[·-]\s*\d+\s*(只|symbols?)?)?$/i;
+var HISTORY_GROUP_NOISE_LABELS = /* @__PURE__ */ new Set([
+  "\u6279\u91CF\u7ED3\u679C",
+  "\u6279\u91CF\u6392\u540D",
+  "\u533A\u95F4\u6982\u89C8",
+  "\u6279\u91CFK\u7EBF",
+  "\u4EA4\u6613\u5458\u7ED3\u8BBA",
+  "\u5F53\u524D\u56FE\u8868",
+  "\u540D\u79F0\u67E5\u8BE2",
+  "\u76F4\u63A5\u8F93\u5165",
+  "\u89C2\u5BDF\u6C60",
+  "\u5F85\u590D\u76D8"
+]);
+var BACKTEST_COMMONALITY_HINTS = [
+  {
+    label: "\u534A\u5BFC\u4F53\u8BBE\u5907",
+    codes: [
+      "688478",
+      "688072",
+      "688729",
+      "688082",
+      "688012",
+      "603690",
+      "002371",
+      "301369",
+      "603061",
+      "300604",
+      "688419",
+      "301297",
+      "688605",
+      "688652",
+      "301629",
+      "688037",
+      "003043",
+      "688200",
+      "688147",
+      "688120",
+      "688361",
+      "688409"
+    ],
+    names: ["\u6676\u5347\u80A1\u4EFD", "\u62D3\u8346\u79D1\u6280", "\u5C79\u5510\u80A1\u4EFD", "\u76DB\u7F8E\u4E0A\u6D77", "\u4E2D\u5FAE\u516C\u53F8", "\u81F3\u7EAF\u79D1\u6280", "\u5317\u65B9\u534E\u521B", "\u957F\u5DDD\u79D1\u6280"]
+  },
+  {
+    label: "\u94F6\u884C/\u5238\u5546/\u4FDD\u9669",
+    codes: ["601398", "601211", "601318", "600030", "601688", "600837", "601166", "600036"],
+    names: ["\u5DE5\u5546\u94F6\u884C", "\u56FD\u6CF0\u6D77\u901A", "\u56FD\u6CF0\u541B\u5B89", "\u4E2D\u56FD\u5E73\u5B89", "\u4E2D\u4FE1\u8BC1\u5238", "\u534E\u6CF0\u8BC1\u5238", "\u62DB\u5546\u94F6\u884C"]
+  },
+  {
+    label: "\u5730\u4EA7/\u57FA\u5EFA/\u5EFA\u6750",
+    codes: ["000002", "601668", "600585", "600019", "600048", "601800", "000877", "000401"],
+    names: ["\u4E07\u79D1", "\u4E2D\u56FD\u5EFA\u7B51", "\u6D77\u87BA\u6C34\u6CE5", "\u5B9D\u94A2\u80A1\u4EFD", "\u4FDD\u5229\u53D1\u5C55", "\u4E2D\u56FD\u4EA4\u5EFA", "\u5929\u5C71\u80A1\u4EFD"]
+  },
+  {
+    label: "\u98DF\u54C1\u996E\u6599/\u96F6\u552E\u6D88\u8D39",
+    codes: ["600519", "600887", "300999", "600754", "000858", "600809", "601888", "000568"],
+    names: ["\u8D35\u5DDE\u8305\u53F0", "\u4F0A\u5229\u80A1\u4EFD", "\u91D1\u9F99\u9C7C", "\u9526\u6C5F\u9152\u5E97", "\u4E94\u7CAE\u6DB2", "\u5C71\u897F\u6C7E\u9152", "\u4E2D\u56FD\u4E2D\u514D"]
+  },
+  {
+    label: "\u65B0\u80FD\u6E90\u8F66/\u9502\u7535",
+    codes: ["300750", "002594", "002466", "002709", "603799", "002812", "300014"],
+    names: ["\u5B81\u5FB7\u65F6\u4EE3", "\u6BD4\u4E9A\u8FEA", "\u5929\u9F50\u9502\u4E1A", "\u8D63\u950B\u9502\u4E1A", "\u534E\u53CB\u94B4\u4E1A", "\u6069\u6377\u80A1\u4EFD", "\u4EBF\u7EAC\u9502\u80FD"]
+  }
+];
+function cleanCommonalityLabel(value) {
+  const raw = stringValue2(value)?.trim();
+  if (!raw) return "";
+  const withoutSource = raw.replace(/^自建产业链图谱\s*[·-]\s*/u, "").trim();
+  const parts = withoutSource.split(/[·｜|]/u).map((item) => item.trim()).filter(Boolean);
+  const label = parts.length >= 2 && /产业链$/u.test(parts[0] ?? "") ? parts[parts.length - 1] ?? withoutSource : withoutSource;
+  const compact = label.replace(/\s+/g, "").replace(/复盘$/u, "").replace(/回测$/u, "");
+  return HISTORY_GROUP_NOISE_LABELS.has(compact) ? "" : compact;
+}
+function commonalityRowsFromBatchResult(batchResult) {
+  const panels = batchResult?.terminal?.panels ?? {};
+  const chart = batchResult?.terminal?.chart ?? {};
+  const groups = [
+    batchResult?.stocks,
+    panels.ranking?.rows,
+    panels.interval_overview?.rows,
+    panels.multi_charts?.items,
+    chart.multi_charts,
+    panels.scripts?.cards
+  ];
+  return groups.flatMap((group) => Array.isArray(group) ? group.map(recordValue2) : []);
+}
+function commonalityLabelFromSymbolOptions(codes, options = []) {
+  const codeSet = new Set(codes.map(normalizeSymbolCode).filter(Boolean));
+  if (!codeSet.size) return "";
+  const counts = /* @__PURE__ */ new Map();
+  options.forEach((option) => {
+    if (!codeSet.has(normalizeSymbolCode(option.code))) return;
+    const label = cleanCommonalityLabel(option.group);
+    if (!label) return;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+  const [bestLabel, bestCount = 0] = [...counts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
+  const threshold = Math.min(codeSet.size, Math.max(2, Math.ceil(codeSet.size * 0.5)));
+  return bestLabel && bestCount >= threshold ? bestLabel : "";
+}
+function commonalityLabelFromHints(codes, rows) {
+  const normalizedCodes = codes.map(normalizeSymbolCode).filter(Boolean);
+  const codeSet = new Set(normalizedCodes);
+  if (!codeSet.size) return "";
+  const rowText = rows.map((row) => [
+    row.code,
+    row.symbol,
+    row.name,
+    row.stock_name,
+    row.title
+  ].map((item) => String(item ?? "")).join(" ")).join(" ");
+  const best = BACKTEST_COMMONALITY_HINTS.map((hint) => {
+    const matchedCodes = hint.codes.filter((code) => codeSet.has(normalizeSymbolCode(code))).length;
+    const matchedNames = hint.names.filter((name) => rowText.includes(name)).length;
+    const coverage = matchedCodes / Math.max(codeSet.size, 1);
+    return { hint, matchedCodes, matchedNames, coverage, score: matchedCodes * 4 + matchedNames };
+  }).filter((item) => item.matchedCodes >= Math.min(2, codeSet.size) && item.coverage >= 0.5 || codeSet.size <= 2 && item.matchedCodes === codeSet.size || item.matchedNames >= Math.min(2, codeSet.size)).sort((left, right) => right.score - left.score)[0];
+  return best?.hint.label ?? "";
+}
+function commonalityLabelForCodes(codes, rows = [], context = {}) {
+  return commonalityLabelFromSymbolOptions(codes, context.symbolOptions) || commonalityLabelFromHints(codes, rows);
+}
+function historyEntryCommonalityLabel(entry, locale, context = {}) {
+  if (entry.mode !== "multi") return "";
+  const storedTitle = entry.title.trim();
+  if (storedTitle && !GENERIC_MULTI_HISTORY_TITLE.test(storedTitle)) {
+    return cleanCommonalityLabel(storedTitle) || storedTitle;
+  }
+  const rows = commonalityRowsFromBatchResult(entry.batchResult);
+  const label = commonalityLabelForCodes(entry.codes, rows, context);
+  if (label) return label;
+  if (entry.codes.length <= 2) {
+    const names = rows.map((row) => stringValue2(row.name) ?? stringValue2(row.stock_name)).filter((item) => Boolean(item)).slice(0, 2);
+    if (names.length === entry.codes.length) return names.join("/");
+  }
+  return locale === "zh-CN" ? "\u591A\u6807\u7684\u7EC4\u5408" : "Multi-symbol basket";
+}
 function buttonStyle(active = false, disabled = false) {
   return {
     height: 30,
@@ -32131,6 +32423,15 @@ function createBacktestHistoryEntry(input) {
   const createdAt = input.createdAt ?? (/* @__PURE__ */ new Date()).toISOString();
   const freq = input.freq || "daily";
   const signalType = input.signalType || "all";
+  const base = {
+    schema_version: BACKTEST_HISTORY_SCHEMA_VERSION,
+    createdAt,
+    deletedAt: null,
+    freq,
+    signalType,
+    simParams: input.simParams,
+    rendererState: input.rendererState
+  };
   if (input.batchResult && isRecoverableBatchResult(input.batchResult)) {
     const codes = resultCodesFromBatch(input.batchResult, input.codes ?? []);
     const summary = recordValue2(input.batchResult.summary);
@@ -32138,19 +32439,25 @@ function createBacktestHistoryEntry(input) {
     const totalStocks = numberValue2(summary.total_stocks) ?? codes.length;
     const totalSignals = numberValue2(summary.total_signals) ?? numberValue2(metrics.signal_count);
     const totalTrades = numberValue2(summary.total_trades) ?? numberValue2(metrics.filled_trades);
+    const maxDrawdownPct = numberValue2(metrics.max_drawdown_pct ?? summary.max_drawdown_pct);
     return {
+      ...base,
       id: `multi:${freq}:${codes.join(",")}:${createdAt}`,
-      title: `\u591A\u6807\u7684\u56DE\u6D4B\u590D\u76D8`,
+      title: `\u591A\u6807\u7684\u56DE\u6D4B \xB7 ${formatNumber(totalStocks, 0)}\u53EA`,
       meta: [
         `${formatNumber(totalStocks, 0)}\u6807\u7684`,
         totalSignals === void 0 ? "" : `${formatNumber(totalSignals, 0)}\u4FE1\u53F7`,
         totalTrades === void 0 ? "" : `${formatNumber(totalTrades, 0)}\u6210\u4EA4`
       ].filter(Boolean).join(" \xB7 "),
       mode: "multi",
-      createdAt,
       codes,
-      freq,
-      signalType,
+      summary: {
+        totalStocks,
+        totalSignals,
+        totalTrades,
+        maxDrawdownPct,
+        dataQuality: stringValue2(input.batchResult.terminal?.market_snapshot?.freshness ?? summary.freshness)
+      },
       batchResult: input.batchResult
     };
   }
@@ -32160,38 +32467,105 @@ function createBacktestHistoryEntry(input) {
     const metrics = terminalMetrics(input.result);
     const displayCode = codes[0] ?? normalizeSymbolCode(input.result.code ?? input.result.symbol ?? "");
     const displayName = stringValue2(target.name);
+    const signalCount = numberValue2(metrics.signal_count) ?? input.result.signals?.length ?? 0;
+    const tradeCount = numberValue2(metrics.filled_trades) ?? input.result.sim_trades?.length ?? 0;
     return {
+      ...base,
       id: `single:${freq}:${displayCode}:${createdAt}`,
-      title: [displayCode, displayName].filter(Boolean).join(" ") || "\u5355\u7968\u56DE\u6D4B",
+      title: compactSymbolTitle(displayCode, displayName) || "\u5355\u7968\u56DE\u6D4B",
       meta: [
-        `${formatNumber(numberValue2(metrics.signal_count) ?? input.result.signals?.length ?? 0, 0)}\u4FE1\u53F7`,
-        `${formatNumber(numberValue2(metrics.filled_trades) ?? input.result.sim_trades?.length ?? 0, 0)}\u6210\u4EA4`
+        `${formatNumber(signalCount, 0)}\u4FE1\u53F7`,
+        `${formatNumber(tradeCount, 0)}\u6210\u4EA4`
       ].join(" \xB7 "),
       mode: "single",
-      createdAt,
       codes: displayCode ? [displayCode] : codes,
-      freq,
-      signalType,
+      summary: {
+        totalStocks: 1,
+        totalSignals: signalCount,
+        totalTrades: tradeCount,
+        totalReturnPct: numberValue2(metrics.total_return_pct),
+        maxDrawdownPct: numberValue2(metrics.max_drawdown_pct),
+        dataQuality: stringValue2(target.freshness ?? input.result.freshness)
+      },
       result: input.result
     };
   }
   return null;
 }
-function isBacktestHistoryEntry(value) {
+function compactSymbolTitle(code, name) {
+  const normalizedCode = normalizeSymbolCode(code);
+  const normalizedName = normalizeSymbolCode(name ?? "");
+  if (!normalizedCode) return name ?? "";
+  if (!name || normalizedCode === normalizedName) return normalizedCode;
+  return `${normalizedCode} ${name}`;
+}
+function stringRecord(value) {
+  const record = recordValue2(value);
+  const entries = Object.entries(record).map(([key, item]) => [key, stringValue2(item)]).filter((entry) => Boolean(entry[1]));
+  return entries.length ? Object.fromEntries(entries) : void 0;
+}
+function rendererStateValue(value) {
+  const record = recordValue2(value);
+  const tab = stringValue2(record.tab);
+  const state = {};
+  if (tab && isBacktestTab(tab)) state.tab = tab;
+  if (record.selectedDatePresetKey === null || typeof record.selectedDatePresetKey === "string") {
+    state.selectedDatePresetKey = record.selectedDatePresetKey;
+  }
+  const selectedSignalIndex = numberValue2(record.selectedSignalIndex);
+  const selectedTradeIndex = numberValue2(record.selectedTradeIndex);
+  if (selectedSignalIndex !== void 0) state.selectedSignalIndex = selectedSignalIndex;
+  if (selectedTradeIndex !== void 0) state.selectedTradeIndex = selectedTradeIndex;
+  if (record.selectedBatchCode === null || typeof record.selectedBatchCode === "string") {
+    state.selectedBatchCode = record.selectedBatchCode;
+  }
+  if (record.selectedBatchSignalType === null || typeof record.selectedBatchSignalType === "string") {
+    state.selectedBatchSignalType = record.selectedBatchSignalType;
+  }
+  return Object.keys(state).length ? state : void 0;
+}
+function isBacktestTab(value) {
+  return ["perf", "trades", "signals", "scan", "risk"].includes(value);
+}
+function normalizeBacktestHistoryEntry(value) {
   const record = recordValue2(value);
   const mode = stringValue2(record.mode);
-  return Boolean(
-    stringValue2(record.id) && (mode === "single" || mode === "multi") && (isRecoverableBatchResult(record.batchResult) || isRecoverableSingleResult(record.result))
-  );
+  if (record.deletedAt || record.deleted_at) return null;
+  if (!stringValue2(record.id) || mode !== "single" && mode !== "multi") return null;
+  const batchResult = record.batchResult ?? record.batch_result;
+  const singleResult = record.result ?? record.backtest_result;
+  if (!isRecoverableBatchResult(batchResult) && !isRecoverableSingleResult(singleResult)) return null;
+  const createdAt = stringValue2(record.createdAt ?? record.created_at) ?? "";
+  return {
+    id: stringValue2(record.id) ?? "",
+    sourceKey: stringValue2(record.sourceKey ?? record.source_key),
+    schema_version: stringValue2(record.schema_version) ?? BACKTEST_HISTORY_SCHEMA_VERSION,
+    title: stringValue2(record.title) ?? (mode === "multi" ? "\u591A\u6807\u7684\u56DE\u6D4B" : "\u5355\u7968\u56DE\u6D4B"),
+    meta: stringValue2(record.meta) ?? "",
+    mode,
+    createdAt,
+    deletedAt: null,
+    codes: parseCodeList(Array.isArray(record.codes) ? record.codes.join(",") : stringValue2(record.codes) ?? ""),
+    freq: stringValue2(record.freq) ?? "daily",
+    signalType: stringValue2(record.signalType ?? record.signal_type),
+    simParams: stringRecord(record.simParams ?? record.sim_params),
+    rendererState: rendererStateValue(record.rendererState ?? record.renderer_state),
+    summary: recordValue2(record.summary),
+    result: isRecoverableSingleResult(singleResult) ? singleResult : void 0,
+    batchResult: isRecoverableBatchResult(batchResult) ? batchResult : void 0
+  };
 }
 function parseBacktestHistoryEntries(value) {
-  const rows = Array.isArray(value) ? value : [];
-  return rows.filter(isBacktestHistoryEntry).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const record = recordValue2(value);
+  const rows = Array.isArray(value) ? value : Array.isArray(record.items) ? record.items : [];
+  return rows.map(normalizeBacktestHistoryEntry).filter((entry) => Boolean(entry)).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 function readBacktestHistoryEntries() {
   if (typeof window === "undefined") return [];
   try {
-    return parseBacktestHistoryEntries(JSON.parse(window.localStorage.getItem(BACKTEST_HISTORY_STORAGE_KEY) ?? "[]"));
+    const v2 = parseBacktestHistoryEntries(JSON.parse(window.localStorage.getItem(BACKTEST_HISTORY_STORAGE_KEY) ?? "[]"));
+    const v1 = parseBacktestHistoryEntries(JSON.parse(window.localStorage.getItem(BACKTEST_HISTORY_STORAGE_KEY_V1) ?? "[]"));
+    return mergeBacktestHistoryEntries([...v2, ...v1]);
   } catch {
     return [];
   }
@@ -32214,6 +32588,33 @@ function mergeBacktestHistoryEntries(entries) {
   });
   return [...byId.values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, BACKTEST_HISTORY_LIMIT);
 }
+function readDeletedBacktestHistoryIds() {
+  if (typeof window === "undefined") return /* @__PURE__ */ new Set();
+  try {
+    const rows = JSON.parse(window.localStorage.getItem(BACKTEST_HISTORY_DELETED_STORAGE_KEY) ?? "[]");
+    return new Set(Array.isArray(rows) ? rows.map((item) => String(item)).filter(Boolean) : []);
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function backtestHistoryDeleteKeys(entry) {
+  return [entry.id, entry.sourceKey].map((item) => String(item ?? "").trim()).filter(Boolean);
+}
+function isBacktestHistoryEntryDeleted(entry, deletedKeys) {
+  return backtestHistoryDeleteKeys(entry).some((key) => deletedKeys.has(key));
+}
+function writeDeletedBacktestHistoryIds(ids) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BACKTEST_HISTORY_DELETED_STORAGE_KEY, JSON.stringify([...ids].slice(-BACKTEST_HISTORY_LIMIT)));
+  } catch {
+  }
+}
+function backtestRecordSourceKey(record) {
+  const metadata = recordValue2(record.metadata);
+  const sourceId = stringValue2(record.job_id) ?? stringValue2(record.history_id) ?? stringValue2(record.run_id) ?? stringValue2(record.id) ?? stringValue2(metadata.job_id) ?? stringValue2(metadata.history_id) ?? stringValue2(metadata.run_id) ?? stringValue2(metadata.id);
+  return sourceId ? `dashboard:${sourceId}` : void 0;
+}
 function backtestHistoryEntryFromRecord(title, record) {
   const metadata = recordValue2(record.metadata);
   const batchResult = record.batchResult ?? record.batch_result ?? metadata.batchResult ?? metadata.batch_result ?? metadata.result;
@@ -32231,9 +32632,13 @@ function backtestHistoryEntryFromRecord(title, record) {
     codes,
     freq,
     signalType: stringValue2(metadata.signal_type) ?? stringValue2(metadata.signal_group),
-    createdAt: stringValue2(record.updated_at) ?? stringValue2(metadata.created_at) ?? stringValue2(metadata.updated_at)
+    createdAt: stringValue2(record.updated_at) ?? stringValue2(record.created_at) ?? stringValue2(metadata.created_at) ?? stringValue2(metadata.updated_at)
   });
-  return entry ? { ...entry, title: entry.mode === "multi" ? entry.title : title || entry.title } : null;
+  return entry ? {
+    ...entry,
+    sourceKey: backtestRecordSourceKey(record),
+    title: entry.mode === "multi" ? entry.title : title || entry.title
+  } : null;
 }
 function dashboardBacktestHistoryEntries(dashboard) {
   return dashboard.backtest_jobs.map((job) => backtestHistoryEntryFromRecord(String(job.job_id ?? job.symbol ?? "Backtest"), job)).filter((entry) => Boolean(entry));
@@ -32375,6 +32780,9 @@ function signalTimestampMs(signal) {
 function tradeTimestampsMs(trade) {
   return [trade.signal_date, trade.entry_date, trade.exit_date].map(parseDateTimestampMs).filter((item) => item !== void 0);
 }
+function recordTimestampMs(record) {
+  return normalizeTimestampMs(record.time ?? record.timestamp ?? record.dt) ?? parseDateTimestampMs(record.date ?? record.date_str ?? record.signal_date ?? record.entry_date ?? record.exit_date);
+}
 function filterSignalsForDateWindow(signals, window2) {
   if (!window2) return signals;
   return signals.filter((signal) => timestampInDateWindow(signalTimestampMs(signal), window2));
@@ -32383,13 +32791,568 @@ function filterTradesForDateWindow(trades, window2) {
   if (!window2) return trades;
   return trades.filter((trade) => tradeTimestampsMs(trade).some((timestamp) => timestampInDateWindow(timestamp, window2)));
 }
-function filterKLineDataForDateWindow(data, window2) {
-  if (!window2) return data;
-  return data.filter((item) => timestampInDateWindow(item.timestamp, window2));
+function buildDatePresetDetailRows(signals, trades, window2) {
+  const detailSignals = filterSignalsForDateWindow(signals, window2);
+  const detailTrades = filterTradesForDateWindow(trades, window2);
+  const detailFilledTrades = detailTrades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
+  return {
+    signals: detailSignals,
+    trades: detailTrades,
+    filledTrades: detailFilledTrades
+  };
 }
-function filterTradeMarkersForDateWindow(markers, window2) {
-  if (!window2) return markers;
-  return markers.filter((marker) => timestampInDateWindow(normalizeTimestampMs(marker.time), window2));
+var EXIT_REASON_LABELS = {
+  stop_loss: "\u6B62\u635F",
+  trail_stop: "\u79FB\u52A8\u6B62\u76C8",
+  time_exit: "\u65F6\u95F4\u6B62\u635F",
+  signal_exit: "\u4FE1\u53F7\u51FA\u573A",
+  data_end: "\u6570\u636E\u7EC8\u70B9",
+  take_profit: "\u56FA\u5B9A\u6B62\u76C8",
+  ma_exit: "\u5747\u7EBF\u79BB\u573A",
+  profit_drawdown: "\u5229\u6DA6\u56DE\u64A4",
+  batch_exit: "\u5206\u6279\u6B62\u76C8",
+  atr_trail: "ATR\u8FFD\u8E2A"
+};
+var SIGNAL_TYPE_LABELS = {
+  breakout_20d: "\u7A81\u7834 \xB7 20\u65E5\u65B0\u9AD8",
+  "breakout_20d_buy": "\u7A81\u7834 \xB7 20\u65E5\u65B0\u9AD8",
+  breakout_200d: "\u7A81\u7834 \xB7 200\u65E5\u65B0\u9AD8",
+  "200\u65E5\u65B0\u9AD8\u7A81\u7834": "\u7A81\u7834 \xB7 200\u65E5\u65B0\u9AD8",
+  b_\u96F6\u4E0B\u4F01\u7A33: "MACD \xB7 B\u96F6\u4E0B\u4F01\u7A33",
+  a_\u96F6\u4E0A\u56DE\u8E29: "MACD \xB7 A\u96F6\u4E0A\u56DE\u8E29",
+  candlerun_3: "K\u7EBF \xB7 \u8FDE\u7EED\u9633\u7EBF3",
+  candleaccel_3: "K\u7EBF \xB7 \u52A0\u901F\u9633\u7EBF3",
+  trend_buy: "\u7F20\u8BBA \xB7 \u8D8B\u52BF\u4E70",
+  \u4E00\u4E70: "\u7F20\u8BBA \xB7 \u4E00\u4E70",
+  \u4E8C\u4E70: "\u7F20\u8BBA \xB7 \u4E8C\u4E70",
+  \u4E09\u4E70: "\u7F20\u8BBA \xB7 \u4E09\u4E70",
+  \u4E00\u5356: "\u7F20\u8BBA \xB7 \u4E00\u5356",
+  \u4E8C\u5356: "\u7F20\u8BBA \xB7 \u4E8C\u5356",
+  \u4E09\u5356: "\u7F20\u8BBA \xB7 \u4E09\u5356",
+  \u80CC\u9A70\u4E70: "\u7F20\u8BBA \xB7 \u80CC\u9A70\u4E70",
+  \u80CC\u9A70\u5356: "\u7F20\u8BBA \xB7 \u80CC\u9A70\u5356",
+  \u8D8B\u52BF\u4E70: "\u7F20\u8BBA \xB7 \u8D8B\u52BF\u4E70",
+  \u8D8B\u52BF\u5356: "\u7F20\u8BBA \xB7 \u8D8B\u52BF\u5356",
+  \u8DF3\u7A7A\u4E70\u70B9: "\u7F3A\u53E3 \xB7 \u8DF3\u7A7A\u4E70\u70B9",
+  \u5934\u80A9\u9876: "\u5F62\u6001 \xB7 \u5934\u80A9\u9876",
+  \u5934\u80A9\u5E95: "\u5F62\u6001 \xB7 \u5934\u80A9\u5E95"
+};
+var FILL_TYPE_LABELS = {
+  open_fill: "\u5F00\u76D8",
+  trigger_fill: "\u89E6\u53D1"
+};
+function exitReasonLabel(value) {
+  const raw = stringValue2(value);
+  if (!raw) return emptyDisplay;
+  return EXIT_REASON_LABELS[raw.toLowerCase()] ?? raw;
+}
+function signalTypeLabel(value) {
+  const raw = stringValue2(value);
+  if (!raw) return emptyDisplay;
+  const trimmed = raw.trim();
+  const normalized = trimmed.toLowerCase();
+  return SIGNAL_TYPE_LABELS[normalized] ?? SIGNAL_TYPE_LABELS[trimmed] ?? trimmed.replace(/_/g, " ");
+}
+function fillTypeLabel(value) {
+  const raw = stringValue2(value);
+  if (!raw) return emptyDisplay;
+  return FILL_TYPE_LABELS[raw.toLowerCase()] ?? raw;
+}
+function formatHoldingDays(value) {
+  const days = numberValue2(value);
+  return days === void 0 ? emptyDisplay : `${formatNumber(days, 0)}\u65E5`;
+}
+function normalizeSignalComparable(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+function normalizedSignalVariants(value) {
+  const raw = stringValue2(value);
+  if (!raw) return [];
+  const variants = /* @__PURE__ */ new Set();
+  const add = (candidate) => {
+    const normalized = normalizeSignalComparable(candidate);
+    if (normalized) variants.add(normalized);
+  };
+  const addWithShortName = (candidate) => {
+    const text2 = stringValue2(candidate);
+    if (!text2) return;
+    add(text2);
+    const short = text2.split(/[·:：/｜|]/).map((item) => item.trim()).filter(Boolean).at(-1);
+    add(short);
+  };
+  addWithShortName(raw);
+  addWithShortName(signalTypeLabel(raw));
+  return Array.from(variants);
+}
+function signalFamilyMatches(left, right) {
+  const leftVariants = normalizedSignalVariants(left);
+  const rightVariants = new Set(normalizedSignalVariants(right));
+  return leftVariants.some((item) => rightVariants.has(item));
+}
+function signalDateKey(signal) {
+  const text2 = stringValue2(signal.date_str ?? signal.date);
+  if (text2) {
+    const match = text2.match(/\d{4}-\d{1,2}-\d{1,2}/);
+    if (match) return dateKey(parseDateTimestampMs(match[0]) ?? signalTimestampMs(signal) ?? 0);
+    return text2;
+  }
+  const timestamp = signalTimestampMs(signal);
+  return timestamp === void 0 ? "" : dateKey(timestamp);
+}
+function signalDisplayDate(signal) {
+  return signalDateKey(signal) || emptyDisplay;
+}
+function tradeOutcomeForSignal(signal, trades) {
+  const date = signalDateKey(signal);
+  if (!date) return null;
+  const filled = trades.filter((trade2) => trade2.entry_price !== null && trade2.entry_price !== void 0);
+  const sameDateTrades = filled.filter((trade2) => stringValue2(trade2.signal_date) === date);
+  const exactTypeTrade = sameDateTrades.find((trade2) => {
+    const tradeTypes = [trade2.signal_type, trade2.signal_group].filter((item) => stringValue2(item));
+    return tradeTypes.some((type) => [signal.type, signal.group].some((signalType) => signalFamilyMatches(type, signalType)));
+  });
+  const trade = exactTypeTrade ?? sameDateTrades[0];
+  if (!trade) return null;
+  return {
+    trade,
+    holdingDays: numberValue2(trade.holding_days),
+    netReturnPct: numberValue2(trade.net_return_pct ?? trade.return_pct),
+    exitReason: stringValue2(trade.exit_reason)
+  };
+}
+function miniMarkerKind(marker) {
+  const text2 = String(marker.kind ?? marker.side ?? marker.type ?? "").toLowerCase();
+  if (text2.includes("signal") || text2.includes("\u4FE1\u53F7")) return "signal";
+  return text2.includes("exit") || text2.includes("sell") || text2.includes("\u5356") || text2.includes("\u5E73") ? "exit" : "entry";
+}
+function miniMarkerSide(marker, kind) {
+  const text2 = String(marker.side ?? marker.type ?? marker.label ?? "").toLowerCase();
+  if (kind === "exit" || text2.includes("sell") || text2.includes("\u5356") || text2.includes("\u5E73")) return "sell";
+  return "buy";
+}
+function tradeMarkersFromChartItem(item) {
+  const markers = Array.isArray(item.trade_markers) ? item.trade_markers : item.entry_exit_markers;
+  return Array.isArray(markers) ? markers.map(recordValue2) : [];
+}
+function signalMarkersFromChartItem(item) {
+  const markers = Array.isArray(item.signal_markers) ? item.signal_markers : [];
+  return markers.map(recordValue2);
+}
+function buildMiniKlineTradeMarkers(markers, rows) {
+  if (!markers.length || !rows.length) return [];
+  const first = rows[0]?.timestamp;
+  const last = rows[rows.length - 1]?.timestamp;
+  if (first === void 0 || last === void 0) return [];
+  return markers.map((marker) => {
+    const timestamp = recordTimestampMs(marker);
+    if (timestamp === void 0 || timestamp < first - MS_PER_DAY || timestamp > last + MS_PER_DAY) return null;
+    const markerDateKey = dateKey(timestamp);
+    const exactDateIndex = rows.findIndex((row) => dateKey(row.timestamp) === markerDateKey);
+    const nearestIndex = exactDateIndex >= 0 ? exactDateIndex : rows.reduce((bestIndex, row, index) => {
+      const best = rows[bestIndex];
+      return !best || Math.abs(row.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? index : bestIndex;
+    }, 0);
+    const price = numberValue2(marker.price) ?? rows[nearestIndex]?.close;
+    if (price === void 0) return null;
+    const evalData = recordValue2(marker.eval);
+    const kind = miniMarkerKind(marker);
+    return {
+      index: nearestIndex,
+      timestamp,
+      price,
+      kind,
+      side: miniMarkerSide(marker, kind),
+      label: stringValue2(marker.label),
+      group: stringValue2(marker.group),
+      sourceIndex: numberValue2(marker.source_index),
+      tradeIndex: numberValue2(marker.trade_index),
+      signalType: stringValue2(marker.signal_type ?? marker.type),
+      exitReason: stringValue2(marker.exit_reason),
+      returnPct: numberValue2(marker.return_pct ?? marker.return_t10 ?? evalData.return_t10 ?? marker.return_t5 ?? evalData.return_t5),
+      confidence: numberValue2(marker.confidence)
+    };
+  }).filter((item) => Boolean(item));
+}
+function miniTradeMarkerId(marker) {
+  return [
+    marker.kind,
+    marker.timestamp,
+    marker.price,
+    marker.sourceIndex ?? "",
+    marker.tradeIndex ?? "",
+    marker.signalType ?? marker.exitReason ?? marker.label ?? ""
+  ].join(":");
+}
+function signalFamilyLabel(row) {
+  return stringValue2(row?.signal_type) ?? stringValue2(row?.type) ?? stringValue2(row?.group) ?? stringValue2(row?.label) ?? "";
+}
+function miniMarkerMatchesSignalFamily(marker, signalType) {
+  return [
+    marker.signalType,
+    marker.group,
+    marker.label
+  ].some((item) => signalFamilyMatches(item, signalType));
+}
+function chartItemCode(item) {
+  return normalizeSymbolCode(stringValue2(item.code) ?? stringValue2(item.symbol) ?? "");
+}
+function chartItemName(item) {
+  return stringValue2(item.name) ?? stringValue2(item.stock_name) ?? chartItemCode(item);
+}
+function chartItemLabel(item) {
+  const code = chartItemCode(item);
+  const name = chartItemName(item);
+  return code && name && normalizeSymbolCode(name) !== code ? `${code} ${name}` : code || name || emptyDisplay;
+}
+var preparedBatchChartItemCache = /* @__PURE__ */ new WeakMap();
+function addSignalFamilyVariants(target, ...values) {
+  values.forEach((value) => {
+    normalizedSignalVariants(value).forEach((item) => target.add(item));
+  });
+}
+function prepareBatchChartItem(item) {
+  const rawOhlcv = item.ohlcv;
+  const rawRegimes = item.regimes;
+  const rawSignalMarkers = item.signal_markers;
+  const rawTradeMarkers = item.trade_markers ?? item.entry_exit_markers;
+  const cached = preparedBatchChartItemCache.get(item);
+  if (cached && cached.rawOhlcv === rawOhlcv && cached.rawRegimes === rawRegimes && cached.rawSignalMarkers === rawSignalMarkers && cached.rawTradeMarkers === rawTradeMarkers) {
+    return cached.prepared;
+  }
+  const rows = toKLineData(Array.isArray(rawOhlcv) ? rawOhlcv : []);
+  const regimes = Array.isArray(rawRegimes) ? rawRegimes.map(recordValue2) : [];
+  const signalMarkers = buildMiniKlineTradeMarkers(signalMarkersFromChartItem(item), rows);
+  const tradeMarkers = buildMiniKlineTradeMarkers(tradeMarkersFromChartItem(item), rows);
+  const markers = [...signalMarkers, ...tradeMarkers].sort((left, right) => left.timestamp - right.timestamp || left.index - right.index);
+  const signalFamilies = /* @__PURE__ */ new Set();
+  markers.forEach((marker) => addSignalFamilyVariants(signalFamilies, marker.signalType, marker.group, marker.label));
+  const code = chartItemCode(item);
+  const name = chartItemName(item);
+  const prepared = {
+    item,
+    code,
+    name,
+    label: chartItemLabel(item),
+    rows,
+    regimes,
+    signalMarkers,
+    tradeMarkers,
+    markers,
+    signalFamilies,
+    dateRange: batchKlineDateRangeLabel(item, rows),
+    fullDateRange: batchKlineDateRangeLabel(item, rows, false),
+    filledTradeCount: numberValue2(item.filled_trade_count) ?? tradeMarkers.filter((marker) => marker.kind === "entry").length
+  };
+  preparedBatchChartItemCache.set(item, {
+    rawOhlcv,
+    rawRegimes,
+    rawSignalMarkers,
+    rawTradeMarkers,
+    prepared
+  });
+  return prepared;
+}
+function preparedChartMatchesSignalFamily(item, signalType) {
+  const variants = normalizedSignalVariants(signalType);
+  return variants.some((variant) => item.signalFamilies.has(variant));
+}
+function preparedChartItemForCode(items, code) {
+  const normalized = normalizeSymbolCode(code ?? "");
+  if (!normalized) return null;
+  return items.find((item) => item.code.toUpperCase() === normalized.toUpperCase()) ?? null;
+}
+function codeFromSignalFamilyBestSymbol(row) {
+  return normalizeSymbolCode(extractSymbolCandidates(String(row.best_symbol ?? row.best_code ?? row.code ?? "")).at(0) ?? "");
+}
+function signalFamilyKlineTarget(row, items) {
+  const signalType = signalFamilyLabel(row);
+  const matchedItems = signalType ? items.filter((item) => preparedChartMatchesSignalFamily(item, signalType)) : [];
+  const bestCode = codeFromSignalFamilyBestSymbol(row);
+  return preparedChartItemForCode(items, bestCode) ?? matchedItems[0] ?? null;
+}
+function pairedMiniTradeMarkers(markers, selectedMarker) {
+  if (!selectedMarker) return [];
+  if (selectedMarker.tradeIndex !== void 0) {
+    const paired = markers.filter((marker) => marker.tradeIndex === selectedMarker.tradeIndex);
+    if (paired.length) return paired;
+  }
+  return [selectedMarker];
+}
+function miniTradeEventGroups(markers) {
+  const groups = /* @__PURE__ */ new Map();
+  markers.forEach((marker) => {
+    const keyedTrade = marker.tradeIndex !== void 0;
+    const key = keyedTrade ? `trade:${marker.tradeIndex}` : `${marker.kind}:${miniTradeMarkerId(marker)}`;
+    const existing = groups.get(key);
+    const group = existing ?? {
+      key,
+      kind: keyedTrade ? "trade" : marker.kind === "signal" ? "signal" : "marker",
+      timestamp: marker.timestamp,
+      markers: []
+    };
+    group.markers.push(marker);
+    group.timestamp = Math.min(group.timestamp, marker.timestamp);
+    if (marker.kind === "entry") group.entry = marker;
+    if (marker.kind === "exit") group.exit = marker;
+    if (marker.kind === "signal") group.signal = marker;
+    if (marker.returnPct !== void 0) group.resultPct = marker.returnPct;
+    groups.set(key, group);
+  });
+  return Array.from(groups.values()).map((group) => {
+    const orderedMarkers = [...group.markers].sort((left, right) => left.timestamp - right.timestamp || left.index - right.index);
+    const entry = group.entry ?? orderedMarkers.find((marker) => marker.kind === "entry");
+    const exit = group.exit ?? orderedMarkers.find((marker) => marker.kind === "exit");
+    const signal = group.signal ?? orderedMarkers.find((marker) => marker.kind === "signal");
+    return {
+      ...group,
+      markers: orderedMarkers,
+      entry,
+      exit,
+      signal,
+      kind: entry || exit ? "trade" : signal ? "signal" : "marker",
+      timestamp: entry?.timestamp ?? signal?.timestamp ?? orderedMarkers[0]?.timestamp ?? group.timestamp,
+      resultPct: exit?.returnPct ?? entry?.returnPct ?? signal?.returnPct ?? group.resultPct
+    };
+  }).sort((left, right) => left.timestamp - right.timestamp || left.key.localeCompare(right.key));
+}
+function preferredMiniTradeEventMarker(group) {
+  return group.exit ?? group.entry ?? group.signal ?? group.markers[0] ?? null;
+}
+function shortKlineDate(timestamp) {
+  return dateKey(timestamp).slice(5);
+}
+function miniTradeEventGroupTitle(group) {
+  if (group.entry && group.exit) return `${shortKlineDate(group.entry.timestamp)} \u4E70 \u2192 ${shortKlineDate(group.exit.timestamp)} \u5356`;
+  if (group.entry) return `${shortKlineDate(group.entry.timestamp)} \u4E70\u5165`;
+  if (group.exit) return `${shortKlineDate(group.exit.timestamp)} \u79BB\u573A`;
+  if (group.signal) return `${shortKlineDate(group.signal.timestamp)} ${group.signal.side === "sell" ? "\u5356\u51FA\u4FE1\u53F7" : "\u4E70\u5165\u4FE1\u53F7"}`;
+  return group.markers[0] ? shortKlineDate(group.markers[0].timestamp) : emptyDisplay;
+}
+function miniTradeEventGroupSubtitle(group) {
+  const marker = group.entry ?? group.signal ?? group.exit ?? group.markers[0];
+  return marker ? miniTradeMarkerOverlayLabel(marker) : emptyDisplay;
+}
+function markerWindowFromPairedMarkers(rows, markers) {
+  return buildMarkerCenteredKlineWindow(rows, markers);
+}
+function expandedKlineFocusRows(rows, selectedRows, markerWindow) {
+  return {
+    chartRows: selectedRows,
+    evidenceRows: markerWindow ? rows.slice(markerWindow.fromIndex, markerWindow.toIndex + 1) : selectedRows
+  };
+}
+function fullDateLabel(value) {
+  const timestamp = normalizeTimestampMs(value) ?? parseDateTimestampMs(value);
+  return timestamp === void 0 ? void 0 : dateKey(timestamp);
+}
+function batchKlineDateRangeLabel(item, rows, preferVisible = true) {
+  const start = fullDateLabel(preferVisible ? item.visible_start_date ?? item.start_date : item.start_date) ?? fullDateLabel(item.start_date) ?? (rows[0] ? dateKey(rows[0].timestamp) : emptyDisplay);
+  const end = fullDateLabel(preferVisible ? item.visible_end_date ?? item.end_date : item.end_date) ?? fullDateLabel(item.end_date) ?? (rows[rows.length - 1] ? dateKey(rows[rows.length - 1].timestamp) : emptyDisplay);
+  return `${start} ~ ${end}`;
+}
+function clampRangeToRows(rows, from, to) {
+  if (rows.length === 0) return null;
+  const first = rows[0]?.timestamp;
+  const last = rows[rows.length - 1]?.timestamp;
+  if (first === void 0 || last === void 0) return null;
+  const rangeFrom = Math.max(first, from);
+  const rangeTo = Math.min(last, to);
+  const barCount = rows.filter((row) => row.timestamp >= rangeFrom && row.timestamp <= rangeTo).length;
+  return barCount > 0 ? { from: rangeFrom, to: rangeTo, barCount } : null;
+}
+function expandedKlineRangeOption(rows, key, label, from, to, source) {
+  const range = clampRangeToRows(rows, from, to);
+  if (!range) return null;
+  return {
+    key,
+    label,
+    from: range.from,
+    to: range.to,
+    displayRange: `${dateKey(range.from)} ~ ${dateKey(range.to)}`,
+    barCount: range.barCount,
+    source
+  };
+}
+function buildExpandedKlineRangeOptions(rows, datePresets = []) {
+  if (rows.length === 0) return [];
+  const sortedRows = rows.slice().sort((left, right) => left.timestamp - right.timestamp);
+  const first = sortedRows[0]?.timestamp;
+  const last = sortedRows[sortedRows.length - 1]?.timestamp;
+  if (first === void 0 || last === void 0) return [];
+  const output = [];
+  const addOption = (option) => {
+    if (!option) return;
+    if (output.some((item) => item.key === option.key)) return;
+    output.push(option);
+  };
+  addOption(expandedKlineRangeOption(sortedRows, "visible_all", "\u56DE\u6D4B\u663E\u793A\u533A\u95F4", first, last, "backtest"));
+  const latestYear = Number(dateKey(last).slice(0, 4));
+  const ytdStart = Number.isFinite(latestYear) ? parseDateTimestampMs(`${latestYear}-01-01`) : void 0;
+  if (ytdStart !== void 0) {
+    addOption(expandedKlineRangeOption(sortedRows, "strategy_ytd", `${latestYear}\u5E74\u4EE5\u6765`, ytdStart, last, "strategy"));
+  }
+  ;
+  [
+    { key: "strategy_5d", label: "\u6700\u8FD1\u4E00\u5468", bars: 5 },
+    { key: "strategy_20d", label: "\u6700\u8FD1\u4E00\u4E2A\u6708", bars: 20 },
+    { key: "strategy_60d", label: "\u6700\u8FD1\u4E09\u4E2A\u6708", bars: 60 }
+  ].forEach((item) => {
+    const startIndex = Math.max(0, sortedRows.length - item.bars);
+    const from = sortedRows[startIndex]?.timestamp;
+    if (from !== void 0) {
+      addOption(expandedKlineRangeOption(sortedRows, item.key, item.label, from, last, "strategy"));
+    }
+  });
+  buildDatePresetWindows(datePresets, sortedRows).forEach((window2) => {
+    addOption(expandedKlineRangeOption(
+      sortedRows,
+      `event_${window2.key}`,
+      window2.shortLabel || window2.label,
+      window2.from,
+      window2.to,
+      "event"
+    ));
+  });
+  return output;
+}
+function filterKLineDataForRange(rows, option) {
+  if (!option) return rows;
+  return rows.filter((row) => row.timestamp >= option.from && row.timestamp <= option.to);
+}
+function filterMiniTradeMarkersForRange(markers, option) {
+  if (!option) return markers;
+  return markers.filter((marker) => marker.timestamp >= option.from && marker.timestamp <= option.to);
+}
+function buildKlineIndexWindow(rows, from, to) {
+  if (rows.length === 0) return null;
+  const first = rows[0]?.timestamp;
+  const last = rows[rows.length - 1]?.timestamp;
+  if (first === void 0 || last === void 0) return null;
+  const rangeFrom = Math.max(first, Math.min(from, to));
+  const rangeTo = Math.min(last, Math.max(from, to));
+  const fromIndex = rows.findIndex((row) => row.timestamp >= rangeFrom);
+  const reverseToIndex = rows.slice().reverse().findIndex((row) => row.timestamp <= rangeTo);
+  const toIndex = reverseToIndex >= 0 ? rows.length - reverseToIndex - 1 : -1;
+  if (fromIndex < 0 || toIndex < fromIndex) return null;
+  return {
+    fromIndex,
+    toIndex,
+    from: rows[fromIndex]?.timestamp ?? rangeFrom,
+    to: rows[toIndex]?.timestamp ?? rangeTo,
+    barCount: toIndex - fromIndex + 1
+  };
+}
+function nearestKLineIndex(rows, timestamp) {
+  if (!rows.length || !Number.isFinite(timestamp)) return null;
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  rows.forEach((row, index) => {
+    const distance = Math.abs(row.timestamp - timestamp);
+    if (distance < bestDistance) {
+      bestIndex = index;
+      bestDistance = distance;
+    }
+  });
+  return bestIndex >= 0 ? bestIndex : null;
+}
+function buildMarkerCenteredKlineWindow(rows, markers, contextBars = EXPANDED_EVENT_CONTEXT_BARS, minBars = EXPANDED_EVENT_MIN_BARS, maxBars = EXPANDED_EVENT_MAX_BARS) {
+  if (!rows.length || !markers.length) return null;
+  const indices = markers.map((marker) => nearestKLineIndex(rows, marker.timestamp)).filter((index) => index !== null);
+  if (!indices.length) return null;
+  const minIndex = Math.min(...indices);
+  const maxIndex = Math.max(...indices);
+  const spanBars = maxIndex - minIndex + 1;
+  const desiredBars = Math.min(
+    rows.length,
+    Math.max(spanBars, Math.min(maxBars, Math.max(minBars, spanBars + Math.max(0, contextBars) * 2)))
+  );
+  const centerIndex = (minIndex + maxIndex) / 2;
+  let fromIndex = Math.round(centerIndex - (desiredBars - 1) / 2);
+  let toIndex = fromIndex + desiredBars - 1;
+  if (fromIndex < 0) {
+    toIndex = Math.min(rows.length - 1, toIndex - fromIndex);
+    fromIndex = 0;
+  }
+  if (toIndex > rows.length - 1) {
+    const overshoot = toIndex - (rows.length - 1);
+    fromIndex = Math.max(0, fromIndex - overshoot);
+    toIndex = rows.length - 1;
+  }
+  return {
+    fromIndex,
+    toIndex,
+    from: rows[fromIndex]?.timestamp ?? rows[minIndex]?.timestamp ?? 0,
+    to: rows[toIndex]?.timestamp ?? rows[maxIndex]?.timestamp ?? 0,
+    barCount: toIndex - fromIndex + 1
+  };
+}
+function buildKlineFocusWindow(rows, timestamp, beforeBars = 42, afterBars = 28) {
+  if (rows.length === 0) return null;
+  const nearestIndex = rows.reduce((bestIndex, row, index) => {
+    const best = rows[bestIndex];
+    return !best || Math.abs(row.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? index : bestIndex;
+  }, 0);
+  const fromIndex = Math.max(0, nearestIndex - beforeBars);
+  const toIndex = Math.min(rows.length - 1, nearestIndex + afterBars);
+  return {
+    fromIndex,
+    toIndex,
+    from: rows[fromIndex]?.timestamp ?? timestamp,
+    to: rows[toIndex]?.timestamp ?? timestamp,
+    barCount: toIndex - fromIndex + 1
+  };
+}
+function medianNumber(values) {
+  if (values.length === 0) return void 0;
+  const sorted = values.slice().sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    const left = sorted[middle - 1] ?? sorted[middle] ?? 0;
+    const right = sorted[middle] ?? left;
+    return (left + right) / 2;
+  }
+  return sorted[middle];
+}
+function intervalVolatilityPct(rows) {
+  if (rows.length < 3) return void 0;
+  const returns = [];
+  for (let index = 1; index < rows.length; index += 1) {
+    const previous = rows[index - 1]?.close;
+    const current = rows[index]?.close;
+    if (!previous || current === void 0) continue;
+    returns.push((current - previous) / previous);
+  }
+  if (returns.length < 2) return void 0;
+  const average = returns.reduce((sum, value) => sum + value, 0) / returns.length;
+  const variance = returns.reduce((sum, value) => sum + (value - average) ** 2, 0) / (returns.length - 1);
+  return Math.sqrt(variance) * Math.sqrt(252) * 100;
+}
+function klineIntervalStats(rows) {
+  if (rows.length === 0) return {};
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  const rangeReturn = first.close ? (last.close - first.close) / first.close * 100 : void 0;
+  let runningHigh = first.close;
+  let maxDrawdown = 0;
+  let runningLow = first.close;
+  let maxRunup = 0;
+  rows.forEach((row) => {
+    runningHigh = Math.max(runningHigh, row.close);
+    if (runningHigh) maxDrawdown = Math.min(maxDrawdown, (row.close - runningHigh) / runningHigh * 100);
+    runningLow = Math.min(runningLow, row.close);
+    if (runningLow) maxRunup = Math.max(maxRunup, (row.close - runningLow) / runningLow * 100);
+  });
+  const highLowRanges = rows.slice(Math.max(0, rows.length - 5)).map((row) => row.low ? (row.high - row.low) / row.low * 100 : 0);
+  const upBars = rows.filter((row) => row.close >= row.open).length;
+  return {
+    range_return_pct: rangeReturn,
+    max_drawdown_pct: maxDrawdown,
+    max_runup_pct: maxRunup,
+    volatility_pct: intervalVolatilityPct(rows),
+    median_5d_high_low_pct: medianNumber(highLowRanges),
+    up_bar_ratio_pct: rows.length ? upBars / rows.length * 100 : void 0,
+    visible_bar_count: rows.length
+  };
 }
 function nearestKLineData(data, timestamp) {
   return data.reduce((nearest, item) => {
@@ -32397,12 +33360,68 @@ function nearestKLineData(data, timestamp) {
     return Math.abs(item.timestamp - timestamp) < Math.abs(nearest.timestamp - timestamp) ? item : nearest;
   }, void 0);
 }
+function fitChartToIndexWindow(chart, rows, window2, animationDuration = 120) {
+  if (rows.length === 0 || window2.barCount <= 0) return;
+  const width = chart.getSize()?.width ?? 980;
+  const fittedBarSpace = Math.max(1.4, Math.min(12, (width - 96) / Math.max(window2.barCount, 1)));
+  chart.setBarSpace(fittedBarSpace);
+  chart.setOffsetRightDistance(34);
+  chart.scrollToDataIndex(window2.toIndex, animationDuration);
+}
+function fitChartToRows(chart, rows, animationDuration = 120) {
+  if (rows.length === 0) return;
+  const fullWindow = buildKlineIndexWindow(rows, rows[0]?.timestamp ?? 0, rows[rows.length - 1]?.timestamp ?? 0);
+  if (fullWindow) fitChartToIndexWindow(chart, rows, fullWindow, animationDuration);
+}
+function focusChartOnTimestamp(chart, rows, timestamp, animationDuration = 120) {
+  const focusWindow = buildKlineFocusWindow(rows, timestamp);
+  if (focusWindow) fitChartToIndexWindow(chart, rows, focusWindow, animationDuration);
+}
+function focusChartOnDateWindow(chart, rows, window2, animationDuration = 120) {
+  const focusWindow = buildKlineIndexWindow(rows, window2.from, window2.to);
+  if (focusWindow) fitChartToIndexWindow(chart, rows, focusWindow, animationDuration);
+}
 async function fetchJson(baseUrl, path, timeoutMs = 12e4, init2) {
   return observedFetchJson(baseUrl, path, {
     timeoutMs,
     source: "backtest.api",
     ...init2
   });
+}
+async function fetchBacktestHistoryEntries(baseUrl) {
+  const payload = await fetchJson(baseUrl, `/api/backtest/history?limit=${BACKTEST_HISTORY_LIMIT}`, 3e4);
+  return parseBacktestHistoryEntries(payload);
+}
+async function saveRemoteBacktestHistoryEntry(baseUrl, entry) {
+  const payload = await fetchJson(baseUrl, "/api/backtest/history", 3e4, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entry)
+  });
+  return parseBacktestHistoryEntries([payload])[0] ?? null;
+}
+async function deleteRemoteBacktestHistoryEntry(baseUrl, id) {
+  await fetchJson(baseUrl, `/api/backtest/history/${encodeURIComponent(id)}`, 3e4, {
+    method: "DELETE"
+  });
+}
+function backtestRestoreStateFromHistory(entry, fallbackCodes = []) {
+  const rendererState = entry.rendererState ?? {};
+  const tab = rendererState.tab && isBacktestTab(rendererState.tab) ? rendererState.tab : "perf";
+  return {
+    codes: entry.codes.length ? entry.codes : fallbackCodes,
+    freq: entry.freq || "daily",
+    signalType: entry.signalType,
+    simParams: entry.simParams,
+    tab,
+    selectedDatePresetKey: rendererState.selectedDatePresetKey ?? null,
+    selectedSignalIndex: rendererState.selectedSignalIndex ?? null,
+    selectedTradeIndex: rendererState.selectedTradeIndex ?? null,
+    selectedBatchCode: rendererState.selectedBatchCode ?? null,
+    selectedBatchSignalType: rendererState.selectedBatchSignalType ?? null,
+    result: entry.mode === "single" ? entry.result ?? null : null,
+    batchResult: entry.mode === "multi" ? entry.batchResult ?? null : null
+  };
 }
 function parseCodeList(value) {
   const seen = /* @__PURE__ */ new Set();
@@ -32914,6 +33933,31 @@ function buildBatchBody(codes, freq, signalType, simParams) {
   });
   return body;
 }
+function backtestMaIndicatorStyles() {
+  return {
+    lines: BACKTEST_MA_PERIODS.map((period, index) => ({
+      color: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length],
+      size: period >= 60 ? 1.5 : 1.8,
+      style: "solid",
+      dashedValue: [2, 2]
+    }))
+  };
+}
+function backtestMacdIndicatorStyles() {
+  return {
+    lines: [
+      { color: tradingDeskTheme.chart.line, size: 1.5, style: "solid", dashedValue: [2, 2] },
+      { color: tradingDeskTheme.chart.orange, size: 1.5, style: "solid", dashedValue: [2, 2] }
+    ],
+    bars: [
+      {
+        upColor: tradingDeskTheme.market.up,
+        downColor: tradingDeskTheme.market.down,
+        noChangeColor: tradingDeskTheme.market.flat
+      }
+    ]
+  };
+}
 function chartStyles() {
   return {
     grid: {
@@ -32938,11 +33982,13 @@ function chartStyles() {
       }
     },
     indicator: {
-      lines: [
-        { color: tradingDeskTheme.chart.orange, size: 1, style: "solid" },
-        { color: tradingDeskTheme.chart.line, size: 1, style: "solid" },
-        { color: tradingDeskTheme.chart.violet, size: 1, style: "solid" },
-        { color: tradingDeskTheme.market.down, size: 1, style: "solid" }
+      lines: BACKTEST_MA_COLORS.map((color) => ({ color, size: 1, style: "solid", dashedValue: [2, 2] })),
+      bars: [
+        {
+          upColor: tradingDeskTheme.market.up,
+          downColor: tradingDeskTheme.market.down,
+          noChangeColor: tradingDeskTheme.market.flat
+        }
       ]
     },
     xAxis: { tickText: { color: tradingDeskTheme.market.flat, size: 11 } },
@@ -33074,13 +34120,14 @@ function createSignalOverlays(chart, data, signals, tradeMarkers = [], activeDat
     const timestamp = rawTime < 1e10 ? rawTime * 1e3 : rawTime;
     const kind = stringValue2(marker.kind) ?? "";
     const isExit = kind === "exit";
+    const markerLabel = isExit ? exitReasonLabel(marker.exit_reason ?? marker.label) : stringValue2(marker.signal_type) ?? "\u4E70\u70B9";
     chart.createOverlay({
       name: BACKTEST_MARKER_OVERLAY,
       groupId: BACKTEST_MARKER_GROUP,
       lock: true,
       points: [{ timestamp, value: price }],
       extendData: {
-        label: isExit ? "EXIT" : "ENTRY",
+        label: markerLabel,
         color: isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up,
         side: isExit ? "sell" : "buy",
         kind: "trade",
@@ -33092,6 +34139,14 @@ function createSignalOverlays(chart, data, signals, tradeMarkers = [], activeDat
       }
     });
   });
+}
+function selectedSignalsForOverlay(signals, selectedIndex) {
+  if (selectedIndex === null) return [];
+  return signals.map((signal, index) => ({ ...signal, index: signal.index ?? index })).filter((signal) => signal.index === selectedIndex);
+}
+function selectedTradeMarkersForOverlay(markers, selectedIndex) {
+  if (selectedIndex === null) return [];
+  return markers.filter((marker) => numberValue2(marker.trade_index) === selectedIndex);
 }
 function buildParams(code, freq, signalType, simParams) {
   const params = new URLSearchParams({ code, freq });
@@ -33129,11 +34184,15 @@ function BacktestWorkbench({
   const [selectedSignalIndex, setSelectedSignalIndex] = (0, import_react2.useState)(null);
   const [selectedTradeIndex, setSelectedTradeIndex] = (0, import_react2.useState)(null);
   const [selectedDatePresetKey, setSelectedDatePresetKey] = (0, import_react2.useState)(null);
+  const [selectedBatchCode, setSelectedBatchCode] = (0, import_react2.useState)(null);
+  const [selectedBatchSignalType, setSelectedBatchSignalType] = (0, import_react2.useState)(null);
   const [loading, setLoading] = (0, import_react2.useState)(false);
   const [scanLoading, setScanLoading] = (0, import_react2.useState)(false);
   const [error, setError] = (0, import_react2.useState)(null);
   const [symbolCatalog, setSymbolCatalog] = (0, import_react2.useState)([]);
   const [localHistory, setLocalHistory] = (0, import_react2.useState)(() => readBacktestHistoryEntries());
+  const [remoteHistory, setRemoteHistory] = (0, import_react2.useState)([]);
+  const [deletedHistoryIds, setDeletedHistoryIds] = (0, import_react2.useState)(() => readDeletedBacktestHistoryIds());
   const [simParams, setSimParams] = (0, import_react2.useState)({
     stop_loss: "5",
     trail_stop: "50",
@@ -33159,18 +34218,22 @@ function BacktestWorkbench({
   const signals = terminalPanelData?.signals?.rows ?? result?.signals ?? [];
   const trades = terminalPanelData?.trades?.rows ?? result?.sim_trades ?? [];
   const tradeMarkers = terminalChartData?.trade_markers ?? terminalChartData?.entry_exit_markers ?? [];
+  const selectedChartSignals = (0, import_react2.useMemo)(
+    () => selectedSignalsForOverlay(signals, selectedSignalIndex),
+    [selectedSignalIndex, signals]
+  );
+  const selectedChartTradeMarkers = (0, import_react2.useMemo)(
+    () => selectedTradeMarkersForOverlay(tradeMarkers, selectedTradeIndex),
+    [selectedTradeIndex, tradeMarkers]
+  );
   const datePresets = terminalChartData?.date_presets ?? result?.date_presets ?? [];
   const datePresetWindows = (0, import_react2.useMemo)(() => buildDatePresetWindows(datePresets, klineData), [datePresets, klineData]);
-  const activeDateWindow = (0, import_react2.useMemo)(
+  const detailDateWindow = (0, import_react2.useMemo)(
     () => datePresetWindows.find((item) => item.key === selectedDatePresetKey) ?? null,
     [datePresetWindows, selectedDatePresetKey]
   );
-  const visibleKlineData = (0, import_react2.useMemo)(() => filterKLineDataForDateWindow(klineData, activeDateWindow), [activeDateWindow, klineData]);
-  const visibleSignals = (0, import_react2.useMemo)(() => filterSignalsForDateWindow(signals, activeDateWindow), [activeDateWindow, signals]);
-  const visibleTrades = (0, import_react2.useMemo)(() => filterTradesForDateWindow(trades, activeDateWindow), [activeDateWindow, trades]);
-  const visibleTradeMarkers = (0, import_react2.useMemo)(() => filterTradeMarkersForDateWindow(tradeMarkers, activeDateWindow), [activeDateWindow, tradeMarkers]);
+  const detailRows = (0, import_react2.useMemo)(() => buildDatePresetDetailRows(signals, trades, detailDateWindow), [detailDateWindow, signals, trades]);
   const filledTrades = trades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
-  const visibleFilledTrades = visibleTrades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
   const targetInfo = terminalTarget(result);
   const metrics = terminalMetrics(result);
   const displaySymbol = stringValue2(targetInfo.symbol) ?? result?.symbol ?? result?.code ?? code;
@@ -33183,8 +34246,8 @@ function BacktestWorkbench({
   const resultSymbolOptions = (0, import_react2.useMemo)(() => symbolOptionsFromBacktestOutputs(result, batchResult), [batchResult, result]);
   const dashboardHistory = (0, import_react2.useMemo)(() => dashboardBacktestHistoryEntries(dashboard), [dashboard]);
   const restorableHistory = (0, import_react2.useMemo)(
-    () => mergeBacktestHistoryEntries([...localHistory, ...dashboardHistory]),
-    [dashboardHistory, localHistory]
+    () => mergeBacktestHistoryEntries([...localHistory, ...remoteHistory, ...dashboardHistory]).filter((entry) => !isBacktestHistoryEntryDeleted(entry, deletedHistoryIds)),
+    [dashboardHistory, deletedHistoryIds, localHistory, remoteHistory]
   );
   const symbolOptions = (0, import_react2.useMemo)(
     () => uniqueSymbolOptions([...symbolOptionsForPicker(dashboard), ...symbolCatalog, ...resultSymbolOptions]),
@@ -33205,8 +34268,8 @@ function BacktestWorkbench({
     }),
     [batchResult, error, freq, loading, locale, result, selectedCodes]
   );
-  const displayedSignalCount = activeDateWindow ? visibleSignals.length : numberValue2(metrics.signal_count) ?? signals.length;
-  const displayedTradeCount = activeDateWindow ? visibleFilledTrades.length : numberValue2(metrics.filled_trades) ?? filledTrades.length;
+  const displayedSignalCount = numberValue2(metrics.signal_count) ?? signals.length;
+  const displayedTradeCount = numberValue2(metrics.filled_trades) ?? filledTrades.length;
   const rememberSymbolOptions = (0, import_react2.useCallback)((nextOptions) => {
     if (!nextOptions.length) return;
     setSymbolCatalog((previous) => {
@@ -33221,7 +34284,70 @@ function BacktestWorkbench({
       writeBacktestHistoryEntries(next);
       return next;
     });
-  }, []);
+    setDeletedHistoryIds((previous) => {
+      const nextKeys = backtestHistoryDeleteKeys(entry);
+      if (nextKeys.every((key) => !previous.has(key))) return previous;
+      const next = new Set(previous);
+      nextKeys.forEach((key) => next.delete(key));
+      writeDeletedBacktestHistoryIds(next);
+      return next;
+    });
+    if (baseUrl) {
+      void saveRemoteBacktestHistoryEntry(baseUrl, entry).then((saved) => {
+        if (!saved) return;
+        setRemoteHistory((previous) => mergeBacktestHistoryEntries([saved, ...previous]));
+      }).catch((error2) => {
+        recordObservationEvent("backtest.history.save.error", {
+          id: entry.id,
+          error: error2 instanceof Error ? error2.message : String(error2),
+          level: "warning"
+        });
+      });
+    }
+  }, [baseUrl]);
+  (0, import_react2.useEffect)(() => {
+    if (!baseUrl) return;
+    let cancelled = false;
+    void fetchBacktestHistoryEntries(baseUrl).then((entries) => {
+      if (!cancelled) setRemoteHistory(entries);
+    }).catch((error2) => {
+      recordObservationEvent("backtest.history.load.error", {
+        error: error2 instanceof Error ? error2.message : String(error2),
+        level: "warning"
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl]);
+  (0, import_react2.useEffect)(() => {
+    if (!baseUrl || localHistory.length === 0 || typeof window === "undefined") return;
+    const migrationKey = `${BACKTEST_HISTORY_MIGRATED_STORAGE_KEY}:${baseUrl}`;
+    if (window.localStorage.getItem(migrationKey) === "1") return;
+    const entries = localHistory.filter((entry) => !isBacktestHistoryEntryDeleted(entry, deletedHistoryIds));
+    if (entries.length === 0) {
+      window.localStorage.setItem(migrationKey, "1");
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(entries.map((entry) => saveRemoteBacktestHistoryEntry(baseUrl, entry))).then((savedEntries) => {
+      if (cancelled) return;
+      const saved = savedEntries.filter((entry) => Boolean(entry));
+      if (saved.length) setRemoteHistory((previous) => mergeBacktestHistoryEntries([...saved, ...previous]));
+      window.localStorage.setItem(migrationKey, "1");
+      recordObservationEvent("backtest.history.migrate", {
+        count: saved.length
+      });
+    }).catch((error2) => {
+      recordObservationEvent("backtest.history.migrate.error", {
+        error: error2 instanceof Error ? error2.message : String(error2),
+        level: "warning"
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, deletedHistoryIds, localHistory]);
   const setCodeList = (0, import_react2.useCallback)((codes) => {
     setCode(selectedSymbolText(parseCodeList(codes.join(","))));
   }, []);
@@ -33234,10 +34360,7 @@ function BacktestWorkbench({
   }, [code, setCodeList]);
   const selectDatePreset = (0, import_react2.useCallback)((key) => {
     setSelectedDatePresetKey(key);
-    setSelectedSignalIndex(null);
-    setSelectedTradeIndex(null);
-    if (key && (tab === "perf" || tab === "scan" || tab === "risk")) setTab("signals");
-  }, [tab]);
+  }, []);
   const updateSimParam = (0, import_react2.useCallback)((key, value) => {
     setSimParams((previous) => ({ ...previous, [key]: value }));
   }, []);
@@ -33291,12 +34414,23 @@ function BacktestWorkbench({
         setSelectedSignalIndex(null);
         setSelectedTradeIndex(null);
         setSelectedDatePresetKey(null);
+        setSelectedBatchCode(null);
+        setSelectedBatchSignalType(null);
         setTab("perf");
         rememberBacktestHistory(createBacktestHistoryEntry({
           batchResult: data2,
           codes: codeList,
           freq,
-          signalType
+          signalType,
+          simParams,
+          rendererState: {
+            tab: "perf",
+            selectedDatePresetKey: null,
+            selectedSignalIndex: null,
+            selectedTradeIndex: null,
+            selectedBatchCode: null,
+            selectedBatchSignalType: null
+          }
         }));
         const summary = recordValue2(data2.summary);
         recordObservationEvent("backtest.batch.success", {
@@ -33318,12 +34452,23 @@ function BacktestWorkbench({
       setSelectedSignalIndex(null);
       setSelectedTradeIndex(null);
       setSelectedDatePresetKey(null);
+      setSelectedBatchCode(null);
+      setSelectedBatchSignalType(null);
       if (!hadResult) setTab("perf");
       rememberBacktestHistory(createBacktestHistoryEntry({
         result: data,
         codes: codeList,
         freq,
-        signalType
+        signalType,
+        simParams,
+        rendererState: {
+          tab: hadResult ? tab : "perf",
+          selectedDatePresetKey: null,
+          selectedSignalIndex: null,
+          selectedTradeIndex: null,
+          selectedBatchCode: null,
+          selectedBatchSignalType: null
+        }
       }));
       const metrics2 = recordValue2(data.terminal?.metrics);
       recordObservationEvent("backtest.analyze.success", {
@@ -33358,7 +34503,7 @@ function BacktestWorkbench({
     } finally {
       setLoading(false);
     }
-  }, [baseUrl, batchResult, code, freq, locale, rememberBacktestHistory, result, signalType, simParams]);
+  }, [baseUrl, batchResult, code, freq, locale, rememberBacktestHistory, result, signalType, simParams, tab]);
   const runScan = (0, import_react2.useCallback)(async () => {
     if (!baseUrl || !code.trim()) return;
     const codeList = parseCodeList(code);
@@ -33415,46 +34560,54 @@ function BacktestWorkbench({
   const handleMarkerSelect = (0, import_react2.useCallback)((marker) => {
     if (marker.kind === "signal" && marker.sourceIndex !== void 0) {
       setSelectedSignalIndex(marker.sourceIndex);
+      setSelectedTradeIndex(null);
       setTab("signals");
       return;
     }
     if (marker.kind === "trade" && marker.tradeIndex !== void 0) {
       setSelectedTradeIndex(marker.tradeIndex);
+      setSelectedSignalIndex(null);
       setTab("trades");
     }
   }, []);
   const drillIntoBatchSymbol = (0, import_react2.useCallback)((nextCode) => {
     const normalized = normalizeSymbolCode(nextCode);
     if (!normalized) return;
-    setCode(normalized);
-    setBatchResult(null);
-    setResult(null);
-    setScan(null);
-    setSelectedSignalIndex(null);
-    setSelectedTradeIndex(null);
-    setSelectedDatePresetKey(null);
-    setTab("perf");
+    setSelectedBatchCode(normalized);
+    recordObservationEvent("backtest.batch.drilldown", {
+      code: normalized,
+      mode: batchResult ? "batch-slice" : "pending"
+    });
+  }, [batchResult]);
+  const selectBatchSignalType = (0, import_react2.useCallback)((nextSignalType) => {
+    const normalized = nextSignalType?.trim() || null;
+    setSelectedBatchSignalType(normalized);
   }, []);
   const restoreBacktestHistory = (0, import_react2.useCallback)((entry) => {
-    const codes = entry.codes.length ? entry.codes : parseCodeList(code);
-    if (codes.length) setCode(selectedSymbolText(codes));
-    setFreq(entry.freq || "daily");
-    if (entry.signalType && ["all", "macd", "czsc", "gap", "trend_breakout", "vol_contraction", "candle_run", "candle_accel"].includes(entry.signalType)) {
-      setSignalType(entry.signalType);
+    const restoreState = backtestRestoreStateFromHistory(entry, parseCodeList(code));
+    if (restoreState.codes.length) setCode(selectedSymbolText(restoreState.codes));
+    setFreq(restoreState.freq);
+    if (restoreState.signalType && ["all", "macd", "czsc", "gap", "trend_breakout", "vol_contraction", "candle_run", "candle_accel"].includes(restoreState.signalType)) {
+      setSignalType(restoreState.signalType);
     }
-    if (entry.mode === "multi" && entry.batchResult) {
-      setBatchResult(entry.batchResult);
+    if (restoreState.simParams) {
+      setSimParams((previous) => ({ ...previous, ...restoreState.simParams }));
+    }
+    if (entry.mode === "multi" && restoreState.batchResult) {
+      setBatchResult(restoreState.batchResult);
       setResult(null);
-    } else if (entry.result) {
-      setResult(entry.result);
+    } else if (restoreState.result) {
+      setResult(restoreState.result);
       setBatchResult(null);
     }
     setScan(null);
     setError(null);
-    setSelectedSignalIndex(null);
-    setSelectedTradeIndex(null);
-    setSelectedDatePresetKey(null);
-    setTab("perf");
+    setSelectedSignalIndex(restoreState.selectedSignalIndex);
+    setSelectedTradeIndex(restoreState.selectedTradeIndex);
+    setSelectedDatePresetKey(restoreState.selectedDatePresetKey);
+    setSelectedBatchCode(restoreState.selectedBatchCode);
+    setSelectedBatchSignalType(restoreState.selectedBatchSignalType);
+    setTab(restoreState.tab);
     recordObservationEvent("backtest.history.restore", {
       id: entry.id,
       mode: entry.mode,
@@ -33462,12 +34615,39 @@ function BacktestWorkbench({
       freq: entry.freq
     });
   }, [code]);
+  const deleteBacktestHistory = (0, import_react2.useCallback)((entry) => {
+    const deleteKeys = backtestHistoryDeleteKeys(entry);
+    setLocalHistory((previous) => {
+      const next = previous.filter((item) => !backtestHistoryDeleteKeys(item).some((key) => deleteKeys.includes(key)));
+      writeBacktestHistoryEntries(next);
+      return next;
+    });
+    setRemoteHistory((previous) => previous.filter((item) => !backtestHistoryDeleteKeys(item).some((key) => deleteKeys.includes(key))));
+    setDeletedHistoryIds((previous) => {
+      const next = new Set(previous);
+      deleteKeys.forEach((key) => next.add(key));
+      writeDeletedBacktestHistoryIds(next);
+      return next;
+    });
+    if (baseUrl) {
+      void deleteRemoteBacktestHistoryEntry(baseUrl, entry.id).catch((error2) => {
+        recordObservationEvent("backtest.history.delete.error", {
+          id: entry.id,
+          error: error2 instanceof Error ? error2.message : String(error2),
+          level: "warning"
+        });
+      });
+    }
+    recordObservationEvent("backtest.history.delete", {
+      id: entry.id,
+      mode: entry.mode,
+      codes: entry.codes
+    });
+  }, [baseUrl]);
   (0, import_react2.useEffect)(() => {
     if (!selectedDatePresetKey) return;
     if (datePresetWindows.some((item) => item.key === selectedDatePresetKey)) return;
     setSelectedDatePresetKey(null);
-    setSelectedSignalIndex(null);
-    setSelectedTradeIndex(null);
   }, [datePresetWindows, selectedDatePresetKey]);
   (0, import_react2.useEffect)(() => {
     const onKeyDown = (event) => {
@@ -33482,6 +34662,10 @@ function BacktestWorkbench({
         return;
       }
       if (event.key === "Escape") {
+        if (selectedDatePresetKey) {
+          setSelectedDatePresetKey(null);
+          return;
+        }
         setSelectedSignalIndex(null);
         setSelectedTradeIndex(null);
         if (editing) target?.blur();
@@ -33520,7 +34704,7 @@ function BacktestWorkbench({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [code, freq, runAnalyze]);
+  }, [code, freq, runAnalyze, selectedDatePresetKey]);
   (0, import_react2.useEffect)(() => {
     if (isBatchView) return;
     if (!chartContainerRef.current) return;
@@ -33534,9 +34718,17 @@ function BacktestWorkbench({
     chartRef.current = chart;
     chart.setBarSpace(7);
     chart.setOffsetRightDistance(34);
-    chart.createIndicator("MA", true, { id: "candle_pane" });
-    chart.createIndicator("VOL");
-    chart.createIndicator("MACD");
+    chart.createIndicator(
+      { name: "MA", calcParams: BACKTEST_MA_PERIODS, styles: backtestMaIndicatorStyles() },
+      true,
+      { id: "candle_pane" }
+    );
+    chart.createIndicator("VOL", false, { id: "volume_pane", minHeight: 58, height: 74 });
+    chart.createIndicator(
+      { name: "MACD", calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles() },
+      false,
+      { id: "macd_pane", minHeight: 72, height: 96 }
+    );
     resizeObserverRef.current = new ResizeObserver(() => {
       if (resizeFrameRef.current !== null) {
         window.cancelAnimationFrame(resizeFrameRef.current);
@@ -33562,20 +34754,47 @@ function BacktestWorkbench({
     if (isBatchView) return;
     const chart = chartRef.current;
     if (!chart) return;
-    chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
-    if (visibleKlineData.length === 0) {
+    if (klineData.length === 0) {
+      chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
       chart.clearData();
       return;
     }
-    chart.applyNewData(visibleKlineData);
-    createSignalOverlays(chart, visibleKlineData, visibleSignals, visibleTradeMarkers, activeDateWindow, handleMarkerSelect);
-    if (activeDateWindow) {
-      chart.scrollToTimestamp(activeDateWindow.anchorTime, 300);
+    chart.applyNewData(klineData);
+    fitChartToRows(chart, klineData, 0);
+    chart.resize();
+  }, [isBatchView, klineData]);
+  (0, import_react2.useEffect)(() => {
+    if (isBatchView) return;
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
+    if (klineData.length === 0) return;
+    createSignalOverlays(
+      chart,
+      klineData,
+      selectedChartSignals,
+      selectedChartTradeMarkers,
+      detailDateWindow,
+      handleMarkerSelect
+    );
+  }, [detailDateWindow, handleMarkerSelect, isBatchView, klineData, selectedChartSignals, selectedChartTradeMarkers]);
+  (0, import_react2.useEffect)(() => {
+    if (isBatchView) return;
+    const chart = chartRef.current;
+    if (!chart || klineData.length === 0) return;
+    const selectedSignalTime = selectedChartSignals[0] ? signalTimestampMs(selectedChartSignals[0]) : void 0;
+    const selectedTradeTime = normalizeTimestampMs(selectedChartTradeMarkers[0]?.time);
+    if (selectedSignalTime !== void 0) {
+      focusChartOnTimestamp(chart, klineData, selectedSignalTime, 120);
+    } else if (selectedTradeTime !== void 0) {
+      focusChartOnTimestamp(chart, klineData, selectedTradeTime, 120);
+    } else if (detailDateWindow) {
+      focusChartOnDateWindow(chart, klineData, detailDateWindow, 120);
     } else {
-      chart.scrollToRealTime();
+      fitChartToRows(chart, klineData, 120);
     }
     chart.resize();
-  }, [activeDateWindow, handleMarkerSelect, isBatchView, visibleKlineData, visibleSignals, visibleTradeMarkers]);
+  }, [detailDateWindow, isBatchView, klineData, selectedChartSignals, selectedChartTradeMarkers]);
   if (!baseUrl) {
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...rootStyle, gridTemplateRows: "auto minmax(0, 1fr)" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...warningStyle, margin: 9 }, children: locale === "zh-CN" ? "Signals \u670D\u52A1\u672A\u8FDE\u63A5\uFF0C\u5148\u67E5\u770B\u672C\u5730\u5386\u53F2\u56DE\u6D4B\u4E0E\u5F85\u5904\u7406\u4EFB\u52A1\u3002" : "Signals service is not connected. Showing local history and pending backtests." }),
@@ -33586,6 +34805,7 @@ function BacktestWorkbench({
           dashboard,
           historyEntries: restorableHistory,
           onRestoreHistory: restoreBacktestHistory,
+          onDeleteHistory: deleteBacktestHistory,
           onOpenRun,
           onOpenRecord
         }
@@ -33686,6 +34906,8 @@ function BacktestWorkbench({
           setBatchResult(null);
           setResult(null);
           setSelectedDatePresetKey(null);
+          setSelectedBatchCode(null);
+          setSelectedBatchSignalType(null);
         },
         onRemoveCode: (codeToRemove) => {
           setCodeList(selectedCodes.filter((item) => item.toUpperCase() !== codeToRemove.toUpperCase()));
@@ -33720,7 +34942,7 @@ function BacktestWorkbench({
               "button",
               {
                 type: "button",
-                style: buttonStyle(!activeDateWindow),
+                style: buttonStyle(!detailDateWindow),
                 onClick: () => selectDatePreset(null),
                 title: locale === "zh-CN" ? "\u663E\u793A\u5B8C\u6574\u56DE\u6D4B\u533A\u95F4" : "Show full backtest range",
                 children: locale === "zh-CN" ? "\u5168\u90E8" : "All"
@@ -33730,7 +34952,7 @@ function BacktestWorkbench({
               "button",
               {
                 type: "button",
-                style: buttonStyle(activeDateWindow?.key === item.key),
+                style: buttonStyle(detailDateWindow?.key === item.key),
                 title: `${item.displayRange} \xB7 ${item.label}`,
                 onClick: () => {
                   recordObservationEvent("backtest.date-preset.select", {
@@ -33748,11 +34970,13 @@ function BacktestWorkbench({
               item.key
             ))
           ] }) : result && datePresets.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u5F53\u524D\u7B56\u7565\u533A\u95F4\u6CA1\u6709\u5339\u914D\u7684\u4E8B\u4EF6\u6807\u7B7E\u3002" : "No event presets match this backtest range." }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u8FD0\u884C\u540E\u663E\u793A\u4E8B\u4EF6\u6807\u7B7E\u3002" : "Run to show event presets." }),
-          activeDateWindow ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
-            activeDateWindow.displayRange,
+          detailDateWindow ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+            detailDateWindow.displayRange,
             " \xB7 ",
-            activeDateWindow.barCount,
-            locale === "zh-CN" ? "\u6839K\u7EBF" : " bars"
+            detailDateWindow.barCount,
+            locale === "zh-CN" ? "\u6839K\u7EBF" : " bars",
+            " \xB7 ",
+            locale === "zh-CN" ? "\u4E3B\u56FE\u540C\u6B65\u533A\u95F4" : "Main chart follows range"
           ] }) : null
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u56DE\u6D4B\u8BB0\u5F55" : "Backtest records", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
@@ -33760,7 +34984,9 @@ function BacktestWorkbench({
           {
             locale,
             entries: restorableHistory,
-            onRestore: restoreBacktestHistory
+            symbolOptions,
+            onRestore: restoreBacktestHistory,
+            onDelete: deleteBacktestHistory
           }
         ) }),
         !isBatchView && !result ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5F85\u5904\u7406\u7EBF\u7D22" : "Pending signals", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FallbackRows, { dashboard, onOpenRun, onOpenRecord }) }) : null
@@ -33770,7 +34996,10 @@ function BacktestWorkbench({
         {
           locale,
           terminal: batchResult?.terminal,
-          onSelectCode: drillIntoBatchSymbol
+          selectedCode: selectedBatchCode,
+          selectedSignalType: selectedBatchSignalType,
+          onSelectCode: drillIntoBatchSymbol,
+          onSelectSignalType: selectBatchSignalType
         }
       ) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: chartHeaderStyle, children: [
@@ -33787,38 +35016,9 @@ function BacktestWorkbench({
         ] }),
         dataHealthLabel ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, padding: "0 2px", minHeight: 16 }, children: dataHealthLabel }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MetricStrip, { result, locale }),
-        activeDateWindow ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: datePresetFocusStyle, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u4E8B\u4EF6\u533A\u95F4\u8BE6\u60C5" : "Event detail range" }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: [
-              activeDateWindow.shortLabel,
-              " \xB7 ",
-              activeDateWindow.displayRange
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
-              activeDateWindow.barCount,
-              locale === "zh-CN" ? "\u6839K\u7EBF" : " bars",
-              " \xB7 ",
-              visibleSignals.length,
-              locale === "zh-CN" ? "\u4E2A\u4FE1\u53F7" : " signals",
-              " \xB7 ",
-              visibleFilledTrades.length,
-              locale === "zh-CN" ? "\u7B14\u4EA4\u6613" : " trades"
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-            "button",
-            {
-              type: "button",
-              style: buttonStyle(false),
-              onClick: () => selectDatePreset(null),
-              children: locale === "zh-CN" ? "\u56DE\u5230\u5168\u90E8" : "All"
-            }
-          )
-        ] }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: chartShellStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { ref: chartContainerRef, style: { width: "100%", height: "100%" } }),
-          !result || visibleKlineData.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+          !result || klineData.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
             position: "absolute",
             inset: 0,
             display: "flex",
@@ -33836,7 +35036,10 @@ function BacktestWorkbench({
           {
             locale,
             batchResult,
-            onSelectCode: drillIntoBatchSymbol
+            selectedCode: selectedBatchCode,
+            selectedSignalType: selectedBatchSignalType,
+            onSelectCode: drillIntoBatchSymbol,
+            onSelectSignalType: selectBatchSignalType
           }
         ) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...panelStyle, gap: 7 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }, children: ["perf", "trades", "signals", "scan", "risk"].map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
@@ -33857,30 +35060,27 @@ function BacktestWorkbench({
             },
             item
           )) }) }),
-          tab === "perf" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u7EE9\u6548\u603B\u89C8" : "Performance", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(KpiPanel, { result }) }) : tab === "trades" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4EA4\u6613\u660E\u7EC6" : "Trades", meta: String(visibleFilledTrades.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          tab === "perf" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u7EE9\u6548\u603B\u89C8" : "Performance", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(KpiPanel, { result }) }) : tab === "trades" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4EA4\u6613\u660E\u7EC6" : "Trades", meta: String(filledTrades.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
             TradeTable,
             {
-              trades: visibleTrades,
+              trades,
               selectedIndex: selectedTradeIndex,
-              onSelect: (index, rawTime) => {
+              onSelect: (index) => {
                 setSelectedTradeIndex(index);
+                setSelectedSignalIndex(null);
                 setTab("trades");
-                const chart = chartRef.current;
-                const time = normalizeTimestampMs(rawTime);
-                if (chart && time) chart.scrollToTimestamp(time, 300);
               }
             }
-          ) }) : tab === "signals" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4FE1\u53F7\u8BE6\u60C5" : "Signals", meta: String(visibleSignals.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          ) }) : tab === "signals" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u4FE1\u53F7\u8BE6\u60C5" : "Signals", meta: String(signals.length), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
             SignalTable,
             {
-              signals: visibleSignals,
+              signals,
+              trades,
               selectedIndex: selectedSignalIndex,
-              onSelect: (index, rawTime) => {
+              onSelect: (index) => {
                 setSelectedSignalIndex(index);
+                setSelectedTradeIndex(null);
                 setTab("signals");
-                const chart = chartRef.current;
-                const time = numberValue2(rawTime);
-                if (chart && time) chart.scrollToTimestamp(time < 1e10 ? time * 1e3 : time, 300);
               }
             }
           ) }) : tab === "scan" ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u53C2\u6570\u626B\u63CF" : "Parameter scan", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
@@ -33897,8 +35097,109 @@ function BacktestWorkbench({
           ) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u98CE\u63A7\u6458\u8981" : "Risk", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(RiskPanel, { result }) })
         ] })
       ] })
-    ] })
+    ] }),
+    detailDateWindow ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      DatePresetDetailOverlay,
+      {
+        locale,
+        window: detailDateWindow,
+        rows: detailRows,
+        selectedSignalIndex,
+        selectedTradeIndex,
+        onSelectSignal: (index) => {
+          setSelectedSignalIndex(index);
+          setSelectedTradeIndex(null);
+        },
+        onSelectTrade: (index) => {
+          setSelectedTradeIndex(index);
+          setSelectedSignalIndex(null);
+        },
+        onClose: () => selectDatePreset(null)
+      }
+    ) : null
   ] });
+}
+function DatePresetDetailOverlay({
+  locale,
+  window: window2,
+  rows,
+  selectedSignalIndex,
+  selectedTradeIndex,
+  onSelectSignal,
+  onSelectTrade,
+  onClose
+}) {
+  const zh = locale === "zh-CN";
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    "div",
+    {
+      style: {
+        position: "fixed",
+        inset: 0,
+        zIndex: 55,
+        background: tradingDeskTheme.alpha.overlay,
+        display: "grid",
+        placeItems: "center",
+        padding: 18
+      },
+      children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "div",
+        {
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": zh ? "\u65E5\u671F\u6807\u7B7E\u8BE6\u60C5" : "Date preset detail",
+          style: {
+            ...panelStyle,
+            width: "min(1040px, 94vw)",
+            maxHeight: "88vh",
+            overflow: "auto",
+            boxShadow: tradingDeskTheme.shadows.island,
+            border: `1px solid ${terminalTheme.borderStrong}`,
+            gap: 10
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u65E5\u671F\u6807\u7B7E\u8BE6\u60C5" : "Date preset detail" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: window2.shortLabel }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+                  window2.displayRange,
+                  " \xB7 ",
+                  window2.barCount,
+                  zh ? "\u6839K\u7EBF" : " bars",
+                  " \xB7 ",
+                  rows.signals.length,
+                  zh ? "\u4E2A\u4FE1\u53F7" : " signals",
+                  " \xB7 ",
+                  rows.filledTrades.length,
+                  zh ? "\u7B14\u6210\u4EA4" : " trades"
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", "aria-label": zh ? "\u5173\u95ED\u65E5\u671F\u6807\u7B7E\u8BE6\u60C5" : "Close date preset detail", style: buttonStyle(false), onClick: onClose, children: "\xD7" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u6807\u7B7E" : "Label" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: window2.shortLabel })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u7A97\u53E3" : "Window" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: window2.displayRange })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "K\u7EBF\u6570" : "Bars" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: formatNumber(window2.barCount, 0) })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 1, background: terminalTheme.grid, minHeight: 280 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: zh ? "\u7A97\u53E3\u5185\u4FE1\u53F7" : "Signals in window", meta: String(rows.signals.length), style: { minHeight: 0 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(SignalTable, { signals: rows.signals, trades: rows.trades, selectedIndex: selectedSignalIndex, onSelect: onSelectSignal }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: zh ? "\u7A97\u53E3\u5185\u6210\u4EA4" : "Trades in window", meta: String(rows.filledTrades.length), style: { minHeight: 0 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(TradeTable, { trades: rows.trades, selectedIndex: selectedTradeIndex, onSelect: onSelectTrade }) })
+            ] })
+          ]
+        }
+      )
+    }
+  );
 }
 function StrategyResearchPanel({
   summary,
@@ -33935,6 +35236,16 @@ function batchRankingRows(batchResult) {
 function batchSignalRows(batchResult) {
   const rows = batchResult?.terminal?.panels?.signals?.rows;
   return Array.isArray(rows) ? rows.map(recordValue2) : [];
+}
+function bestBatchSignalFamilyRow(rows) {
+  const rowsWithTradeReturn = rows.filter((row) => numberValue2(row.avg_trade_return_pct) !== void 0);
+  const candidates = rowsWithTradeReturn.length ? rowsWithTradeReturn : rows;
+  return candidates.reduce((best, row) => {
+    const value = numberValue2(rowsWithTradeReturn.length ? row.avg_trade_return_pct : row.avg_t10_pct);
+    if (value === void 0) return best;
+    const bestValue = numberValue2(rowsWithTradeReturn.length ? best?.avg_trade_return_pct : best?.avg_t10_pct);
+    return !best || bestValue === void 0 || value > bestValue ? row : best;
+  }, null);
 }
 function recordSymbolLabel(row) {
   const code = normalizeSymbolCode(stringValue2(row.code) ?? stringValue2(row.symbol) ?? "");
@@ -33973,7 +35284,10 @@ function BatchSamplePanel({
 function BatchResearchDrilldownPanel({
   locale,
   batchResult,
-  onSelectCode
+  selectedCode,
+  selectedSignalType,
+  onSelectCode,
+  onSelectSignalType
 }) {
   const zh = locale === "zh-CN";
   const rankingRows = batchRankingRows(batchResult);
@@ -33984,17 +35298,19 @@ function BatchResearchDrilldownPanel({
     const worstValue = Math.abs(numberValue2(worst?.max_drawdown_pct) ?? 0);
     return !worst || value > worstValue ? row : worst;
   }, null);
-  const bestSignal = signalRows.reduce((best, row) => {
-    const value = numberValue2(row.avg_trade_return_pct ?? row.avg_t10_pct);
-    if (value === void 0) return best;
-    const bestValue = numberValue2(best?.avg_trade_return_pct ?? best?.avg_t10_pct);
-    return !best || bestValue === void 0 || value > bestValue ? row : best;
-  }, null);
+  const bestSignal = bestBatchSignalFamilyRow(signalRows);
+  const bestSignalType = signalFamilyLabel(bestSignal);
+  const bestSignalActive = Boolean(bestSignalType && signalFamilyMatches(bestSignalType, selectedSignalType));
   const drillButtons = [
     topRow ? { label: zh ? "\u4E0B\u94BB\u7B2C\u4E00\u540D" : "Open top", row: topRow, meta: formatPercent(topRow.range_return_pct) } : null,
     worstDrawdownRow ? { label: zh ? "\u4E0B\u94BB\u6700\u5927\u56DE\u64A4" : "Open worst DD", row: worstDrawdownRow, meta: formatDrawdown(worstDrawdownRow.max_drawdown_pct) } : null
   ].filter((item) => Boolean(item));
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: zh ? "\u6279\u91CF\u7814\u53D1\u52A8\u4F5C" : "Batch research actions", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 7 }, children: [
+    selectedCode ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...metricCardStyle, borderColor: terminalTheme.accent }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u5F53\u524D\u4E0B\u94BB" : "Current drilldown" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: selectedCode }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: zh ? "\u590D\u7528\u5F53\u524D\u6279\u91CF\u56DE\u6D4B\u5207\u7247\uFF0C\u4E0D\u6E05\u7A7A\u6837\u672C\u3001\u4E0D\u8981\u6C42\u91CD\u8DD1\u3002" : "Using the current batch slice without clearing the basket." })
+    ] }) : null,
     drillButtons.map((item) => {
       const code = normalizeSymbolCode(stringValue2(item.row.code) ?? "");
       return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
@@ -34015,17 +35331,42 @@ function BatchResearchDrilldownPanel({
         `${item.label}-${code}`
       );
     }),
-    bestSignal ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u4F18\u5148\u9A8C\u8BC1\u4FE1\u53F7\u65CF" : "Signal family to verify" }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: String(bestSignal.signal_type ?? emptyDisplay) }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
-        zh ? "\u6210\u4EA4\u5747\u5229" : "Avg trade",
-        " ",
-        formatPercent(bestSignal.avg_trade_return_pct),
-        " \xB7 T+10 ",
-        formatPercent(bestSignal.avg_t10_pct)
-      ] })
-    ] }) : null,
+    bestSignal ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+      "button",
+      {
+        type: "button",
+        style: {
+          ...metricCardStyle,
+          width: "100%",
+          textAlign: "left",
+          cursor: bestSignalType ? "pointer" : "default",
+          borderColor: bestSignalActive ? terminalTheme.accent : metricCardStyle.borderColor,
+          boxShadow: bestSignalActive ? `inset 3px 0 0 ${terminalTheme.accent}` : "none"
+        },
+        disabled: !bestSignalType,
+        onClick: () => {
+          onSelectSignalType(bestSignalType || null);
+          recordObservationEvent("backtest.batch.signal_family.select", {
+            signal_type: bestSignalType,
+            symbol_count: bestSignal.symbol_count,
+            trade_count: bestSignal.trade_count,
+            source: "research_panel"
+          });
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u4F18\u5148\u9A8C\u8BC1\u4FE1\u53F7\u65CF" : "Signal family to verify" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: bestSignalType || emptyDisplay }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+            zh ? "\u6210\u4EA4\u5747\u5229" : "Avg trade",
+            " ",
+            formatPercent(bestSignal.avg_trade_return_pct),
+            " \xB7 T+10 ",
+            formatPercent(bestSignal.avg_t10_pct)
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, marginTop: 4, color: bestSignalActive ? terminalTheme.accentSoft : terminalTheme.mutedStrong }, children: bestSignalActive ? zh ? "\u5DF2\u540C\u6B65\u5230\u4E2D\u95F4\u4FE1\u53F7\u65CF\u8BE6\u60C5" : "Synced to signal detail" : zh ? "\u70B9\u51FB\u540C\u6B65\u5230\u4FE1\u53F7\u65CF\u8BE6\u60C5" : "Click to sync signal detail" })
+        ]
+      }
+    ) : null,
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: zh ? "\u6279\u91CF\u5148\u627E\u5171\u6027\u548C\u5931\u8D25\u6837\u672C\uFF0C\u518D\u9009\u4EE3\u8868\u5355\u7968\u505A\u4EA4\u6613\u660E\u7EC6\u4E0E\u53C2\u6570\u626B\u63CF\u3002" : "Use batch for repeatability and failure samples, then scan representative single symbols." })
   ] }) });
 }
@@ -34392,10 +35733,15 @@ function SymbolBasketBar({
 function MultiBacktestReport({
   locale,
   terminal,
-  onSelectCode
+  selectedCode,
+  selectedSignalType,
+  onSelectCode,
+  onSelectSignalType
 }) {
   const [reportRef, reportSize] = useElementSize();
+  const signalDetailRef = (0, import_react2.useRef)(null);
   const [expandedKline, setExpandedKline] = (0, import_react2.useState)(null);
+  const normalizedSelectedSignalType = selectedSignalType?.trim() || "";
   const density = multiReportDensity(reportSize.width, reportSize.height);
   (0, import_react2.useEffect)(() => {
     setExpandedKline(null);
@@ -34408,6 +35754,13 @@ function MultiBacktestReport({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [expandedKline]);
+  (0, import_react2.useEffect)(() => {
+    if (!normalizedSelectedSignalType) return void 0;
+    const frame = window.requestAnimationFrame(() => {
+      signalDetailRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [normalizedSelectedSignalType]);
   if (!terminal) {
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { ref: reportRef, style: { ...multiReportStyle(density), justifyContent: "center" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u591A\u6807\u7684\u7ED3\u679C\u3002" }) });
   }
@@ -34415,7 +35768,43 @@ function MultiBacktestReport({
   const rankingRows = panels.ranking?.rows ?? [];
   const overviewRows = panels.interval_overview?.rows ?? [];
   const signalRows = Array.isArray(panels.signals?.rows) ? panels.signals.rows.map(recordValue2) : [];
-  const chartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? [];
+  const rawChartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? [];
+  const chartItems = (0, import_react2.useMemo)(() => rawChartItems.map(recordValue2), [rawChartItems]);
+  const preparedChartItems = (0, import_react2.useMemo)(() => chartItems.map(prepareBatchChartItem), [chartItems]);
+  const selectedChartItem = preparedChartItemForCode(preparedChartItems, selectedCode);
+  const selectedSignalFamily = normalizedSelectedSignalType ? signalRows.find((row) => signalFamilyMatches(signalFamilyLabel(row), normalizedSelectedSignalType)) ?? null : null;
+  const openKlineDetail = (0, import_react2.useCallback)((item, focus) => {
+    if (item.code) onSelectCode(item.code);
+    setExpandedKline({ chart: item, focus });
+  }, [onSelectCode]);
+  const openExpandedKline = (0, import_react2.useCallback)((item) => {
+    openKlineDetail(item, normalizedSelectedSignalType ? { signalType: normalizedSelectedSignalType } : void 0);
+  }, [openKlineDetail, normalizedSelectedSignalType]);
+  const selectSignalFamily = (0, import_react2.useCallback)((row) => {
+    const nextSignalType = signalFamilyLabel(row);
+    onSelectSignalType(nextSignalType || null);
+    recordObservationEvent("backtest.batch.signal_family.select", {
+      signal_type: nextSignalType,
+      symbol_count: row.symbol_count,
+      trade_count: row.trade_count
+    });
+  }, [onSelectSignalType]);
+  const openSignalFamilyKline = (0, import_react2.useCallback)((row) => {
+    const nextSignalType = signalFamilyLabel(row);
+    const targetItem = signalFamilyKlineTarget(row, preparedChartItems);
+    const targetHasMarker = targetItem ? preparedChartMatchesSignalFamily(targetItem, nextSignalType) : false;
+    onSelectSignalType(nextSignalType || null);
+    if (targetItem) {
+      openKlineDetail(targetItem, targetHasMarker && nextSignalType ? { signalType: nextSignalType } : void 0);
+    }
+    recordObservationEvent("backtest.batch.signal_family.open_kline", {
+      signal_type: nextSignalType,
+      symbol_count: row.symbol_count,
+      trade_count: row.trade_count,
+      target_code: targetItem?.code,
+      target_has_marker: targetHasMarker
+    });
+  }, [onSelectSignalType, openKlineDetail, preparedChartItems]);
   const scriptCards = panels.scripts?.cards ?? [];
   const metrics = recordValue2(terminal.metrics);
   const target = recordValue2(terminal.target);
@@ -34428,11 +35817,21 @@ function MultiBacktestReport({
     { label: locale === "zh-CN" ? "5\u65E5\u6CE2\u5E45" : "5D Range", value: formatPercent(metrics.median_5d_high_low_pct), tone: "warning" },
     { label: locale === "zh-CN" ? "\u5E73\u5747\u56DE\u64A4" : "Avg DD", value: formatDrawdown(metrics.max_drawdown_pct), tone: "down" }
   ];
+  const batchCodes = preparedChartItems.map((item) => item.code).filter(Boolean);
+  const commonalityLabel = commonalityLabelForCodes(batchCodes.length ? batchCodes : rankingRows.map((row) => stringValue2(recordValue2(row).code) ?? ""), rankingRows.map(recordValue2));
+  const reportTitle = commonalityLabel ? locale === "zh-CN" ? `${commonalityLabel}\u56DE\u6D4B` : `${commonalityLabel} backtest` : String(target.name ?? (locale === "zh-CN" ? "\u591A\u6807\u7684\u56DE\u6D4B" : "Signals Batch"));
+  const leaderRow = recordValue2(rankingRows[0]);
+  const worstDrawdownRow = rankingRows.map(recordValue2).reduce((worst, row) => {
+    const value = Math.abs(numberValue2(row.max_drawdown_pct) ?? 0);
+    const worstValue = Math.abs(numberValue2(worst?.max_drawdown_pct) ?? 0);
+    return !worst || value > worstValue ? row : worst;
+  }, null);
+  const primarySignal = bestBatchSignalFamilyRow(signalRows);
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { ref: reportRef, style: multiReportStyle(density), children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: multiHeaderStyle(density), children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: locale === "zh-CN" ? "\u591A\u6807\u7684\u590D\u76D8" : "Multi-symbol review" }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: String(target.name ?? (locale === "zh-CN" ? "\u591A\u6807\u7684\u56DE\u6D4B" : "Signals Batch")) }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: reportTitle }),
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [freqLabel(target.freq, locale), target.as_of ? `${locale === "zh-CN" ? "\u622A\u81F3" : "as of"} ${target.as_of}` : "", freshnessLabel(target.freshness, locale)].filter(Boolean).join(" \xB7 ") })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: multiKpiGridStyle(density), children: kpiItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
@@ -34440,30 +35839,279 @@ function MultiBacktestReport({
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor(item.tone), fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }, children: String(item.value) })
       ] }, item.label)) })
     ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      BatchCommonalityStrip,
+      {
+        locale,
+        density,
+        commonalityLabel: commonalityLabel || (locale === "zh-CN" ? "\u591A\u6807\u7684\u7EC4\u5408" : "Multi-symbol basket"),
+        primarySignal,
+        leaderRow,
+        riskRow: worstDrawdownRow,
+        onSelectSignal: primarySignal ? () => selectSignalFamily(primarySignal) : void 0
+      }
+    ),
+    selectedChartItem ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      BatchSymbolSlicePanel,
+      {
+        locale,
+        item: selectedChartItem,
+        density,
+        onOpen: () => openExpandedKline(selectedChartItem)
+      }
+    ) : selectedCode ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5F53\u524D\u4E0B\u94BB\u5207\u7247" : "Current batch slice", style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? `${selectedCode} \u4E0D\u5728\u5F53\u524D\u6279\u91CF K \u7EBF\u5207\u7247\u4E2D\uFF1B\u4ECD\u4FDD\u7559\u6279\u91CF\u7ED3\u679C\uFF0C\u4E0D\u5207\u6362\u5230\u5F85\u8FD0\u884C\u3002` : `${selectedCode} is not in the current batch chart slices.` }) }) : null,
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: multiBandStyle(density), children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u6392\u540D\u4E0E\u9510\u8BC4" : "Ranking", style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MultiRankingTable, { rows: rankingRows, density, onSelectCode }) }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u539F\u59CB\u533A\u95F4\u6982\u89C8" : "Interval overview", style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(IntervalOverviewTable, { rows: overviewRows, density }) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5168\u90E8\u4FE1\u53F7\u6536\u76CA\u62C6\u89E3" : "Signal return breakdown", meta: signalRows.length ? String(signalRows.length) : void 0, style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BatchSignalBreakdownTable, { rows: signalRows, density }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u591A\u80A1\u7968 K\u7EBF\u590D\u76D8" : "Multi-symbol candles", style: multiPanelStyle(density), children: chartItems.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: multiChartsGridStyle(density, chartItems.length), children: chartItems.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5168\u90E8\u4FE1\u53F7\u6536\u76CA\u62C6\u89E3" : "Signal return breakdown", meta: signalRows.length ? String(signalRows.length) : void 0, style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      BatchSignalBreakdownTable,
+      {
+        rows: signalRows,
+        density,
+        selectedSignalType: normalizedSelectedSignalType,
+        onSelectRow: selectSignalFamily,
+        onOpenKline: openSignalFamilyKline
+      }
+    ) }),
+    expandedKline ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      ExpandedKlineOverlay,
+      {
+        locale,
+        item: expandedKline.chart,
+        initialFocus: expandedKline.focus,
+        datePresets: terminal.chart?.date_presets,
+        density,
+        onClose: () => setExpandedKline(null)
+      }
+    ) : null,
+    selectedSignalFamily ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { ref: signalDetailRef, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      BatchSignalFamilyDetail,
+      {
+        locale,
+        row: selectedSignalFamily,
+        chartItems: preparedChartItems,
+        density,
+        onOpenCode: (code) => onSelectCode(code),
+        onOpenKline: (item, signalType) => openKlineDetail(item, signalType ? { signalType } : void 0)
+      }
+    ) }) : null,
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u591A\u80A1\u7968 K\u7EBF\u590D\u76D8" : "Multi-symbol candles", style: multiPanelStyle(density), children: chartItems.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: multiChartsGridStyle(density, chartItems.length), children: preparedChartItems.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       MiniKlineCard,
       {
         item,
         density,
-        onExpand: () => setExpandedKline(item)
+        selected: item.code.toUpperCase() === normalizeSymbolCode(selectedCode ?? "").toUpperCase(),
+        signalMatched: normalizedSelectedSignalType ? preparedChartMatchesSignalFamily(item, normalizedSelectedSignalType) : false,
+        onExpand: openExpandedKline
       },
-      `${String(item.code ?? index)}-${index}`
+      `${item.code || index}-${index}`
     )) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u591A\u6807\u7684\u56FE\u8868\u3002" }) }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u89C4\u5219\u9510\u8BC4 / \u4EA4\u6613\u5458\u7ED3\u8BBA" : "Rule review cards", style: multiPanelStyle(density), children: scriptCards.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: scriptGridStyle(density, scriptCards.length), children: scriptCards.map((card, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ReviewScriptCard, { card, density }, `${String(card.code ?? index)}-${index}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u9510\u8BC4\u5361\u7247\u3002" }) }),
-    expandedKline ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
-      ExpandedKlineOverlay,
-      {
-        item: expandedKline,
-        density,
-        onClose: () => setExpandedKline(null)
-      }
-    ) : null
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u89C4\u5219\u9510\u8BC4 / \u4EA4\u6613\u5458\u7ED3\u8BBA" : "Rule review cards", style: multiPanelStyle(density), children: scriptCards.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: scriptGridStyle(density, scriptCards.length), children: scriptCards.map((card, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ReviewScriptCard, { card, density }, `${String(card.code ?? index)}-${index}`)) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u9510\u8BC4\u5361\u7247\u3002" }) })
   ] });
+}
+function BatchCommonalityStrip({
+  locale,
+  density,
+  commonalityLabel,
+  primarySignal,
+  leaderRow,
+  riskRow,
+  onSelectSignal
+}) {
+  const zh = locale === "zh-CN";
+  const signalName = signalTypeLabel(signalFamilyLabel(primarySignal));
+  const signalMetric = historyEntrySignalMetric(primarySignal, locale);
+  const cards = [
+    {
+      key: "commonality",
+      label: zh ? "\u7EC4\u5408\u5171\u6027" : "Commonality",
+      value: commonalityLabel || emptyDisplay,
+      meta: zh ? "\u6309\u884C\u4E1A/\u4EA7\u4E1A\u94FE\u5F52\u6863" : "Industry or chain label",
+      toneKey: "",
+      toneValue: void 0
+    },
+    {
+      key: "signal",
+      label: zh ? "\u4E3B\u4FE1\u53F7" : "Key signal",
+      value: signalName === emptyDisplay ? emptyDisplay : signalName,
+      meta: signalMetric ? `${signalMetric.label} ${formatPercent(signalMetric.value)}` : zh ? "\u7B49\u5F85\u4FE1\u53F7\u62C6\u89E3" : "Waiting for signal breakdown",
+      toneKey: signalMetric?.toneKey ?? "",
+      toneValue: signalMetric?.value,
+      onClick: onSelectSignal
+    },
+    {
+      key: "leader",
+      label: zh ? "\u9886\u6DA8\u6837\u672C" : "Leader",
+      value: recordSymbolLabel(leaderRow),
+      meta: formatPercent(leaderRow.range_return_pct),
+      toneKey: "range_return_pct",
+      toneValue: leaderRow.range_return_pct
+    },
+    {
+      key: "risk",
+      label: zh ? "\u98CE\u9669\u6837\u672C" : "Risk sample",
+      value: riskRow ? recordSymbolLabel(riskRow) : emptyDisplay,
+      meta: riskRow ? formatDrawdown(riskRow.max_drawdown_pct) : emptyDisplay,
+      toneKey: "max_drawdown_pct",
+      toneValue: riskRow?.max_drawdown_pct
+    }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+    display: "grid",
+    gridTemplateColumns: density === "compact" ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
+    gap: 8,
+    minWidth: 0
+  }, children: cards.map((card) => {
+    const interactive = Boolean(card.onClick);
+    const content = /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: card.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+        color: cellToneColor(card.toneKey, card.toneValue) || terminalTheme.textStrong,
+        fontSize: 14,
+        fontWeight: 900,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap"
+      }, children: card.value }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: card.meta })
+    ] });
+    return interactive ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      "button",
+      {
+        type: "button",
+        style: {
+          ...metricCardStyle,
+          textAlign: "left",
+          cursor: "pointer",
+          appearance: "none",
+          fontFamily: fontStacks.ui,
+          borderColor: tradingDeskTheme.alpha.infoBorder
+        },
+        onClick: card.onClick,
+        children: content
+      },
+      card.key
+    ) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: metricCardStyle, children: content }, card.key);
+  }) });
+}
+function BatchSymbolSlicePanel({
+  locale,
+  item,
+  density,
+  onOpen
+}) {
+  const rows = item.rows;
+  const regimes = item.regimes;
+  const markers = item.markers;
+  const signalCount = markers.filter((marker) => marker.kind === "signal").length;
+  const tradeCount = item.filledTradeCount;
+  const zh = locale === "zh-CN";
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: zh ? "\u5F53\u524D\u4E0B\u94BB\u5207\u7247" : "Current batch slice", style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+    display: "grid",
+    gridTemplateColumns: density === "compact" ? "minmax(0, 1fr)" : "minmax(260px, 340px) minmax(0, 1fr)",
+    gap: 10,
+    alignItems: "stretch"
+  }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...metricCardStyle, display: "flex", flexDirection: "column", gap: 8 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u6279\u91CF\u7ED3\u679C\u5207\u7247" : "Batch result slice" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: 17, fontWeight: 900 }, children: item.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: item.dateRange })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u6536\u76CA" : "Return" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor("range_return_pct", item.item.range_return_pct), fontWeight: 800 }, children: formatPercent(item.item.range_return_pct) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u4FE1\u53F7" : "Signals" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: formatNumber(signalCount, 0) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u6210\u4EA4" : "Trades" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800 }, children: formatNumber(tradeCount, 0) })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", style: buttonStyle(true), onClick: onOpen, children: zh ? "\u8FDB\u5165K\u7EBF\u8BE6\u60C5" : "Open chart detail" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MiniKlineSvg, { rows, regimes, tradeMarkers: markers, density, variant: "expanded" })
+  ] }) });
+}
+function BatchSignalFamilyDetail({
+  locale,
+  row,
+  chartItems,
+  density,
+  onOpenCode,
+  onOpenKline
+}) {
+  const zh = locale === "zh-CN";
+  const signalType = signalFamilyLabel(row);
+  const matchedItems = signalType ? chartItems.filter((item) => preparedChartMatchesSignalFamily(item, signalType)) : [];
+  const bestCode = codeFromSignalFamilyBestSymbol(row);
+  const bestItem = preparedChartItemForCode(chartItems, bestCode) ?? matchedItems[0] ?? null;
+  const matchedItemCodes = new Set(matchedItems.map((item) => item.code.toUpperCase()));
+  const bestHasMarker = bestItem ? matchedItemCodes.has(bestItem.code.toUpperCase()) : false;
+  const openDetailItem = (item, highlightSignal) => {
+    onOpenCode(item.code);
+    onOpenKline(item, highlightSignal ? signalType : null);
+  };
+  const weakestItem = matchedItems.reduce((weakest, item) => {
+    const value = numberValue2(item.item.range_return_pct);
+    if (value === void 0) return weakest;
+    const weakestValue = numberValue2(weakest?.item.range_return_pct);
+    return !weakest || weakestValue === void 0 || value < weakestValue ? item : weakest;
+  }, null);
+  const cards = [
+    { label: zh ? "\u6837\u672C" : "Samples", value: `${formatNumber(row.evaluated_count, 0)} / ${formatNumber(row.signal_count, 0)}` },
+    { label: zh ? "\u6807\u6CE8/\u8986\u76D6" : "Tags/Symbols", value: `${formatNumber(matchedItems.length, 0)} / ${formatNumber(row.symbol_count, 0)}` },
+    { label: zh ? "\u6210\u4EA4" : "Trades", value: formatNumber(row.trade_count, 0) },
+    { label: zh ? "\u80DC\u7387" : "Win rate", value: formatUnsignedPercent(row.win_rate), key: "win_rate_pct" },
+    { label: "T+10", value: formatPercent(row.avg_t10_pct), key: "avg_t10_pct" },
+    { label: zh ? "\u6210\u4EA4\u5747\u5229" : "Avg trade", value: formatPercent(row.avg_trade_return_pct), key: "avg_trade_return_pct" }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: zh ? "\u4FE1\u53F7\u65CF\u8BE6\u60C5" : "Signal family detail", meta: signalType || void 0, style: multiPanelStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: density === "compact" ? "repeat(3, minmax(0, 1fr))" : "repeat(6, minmax(0, 1fr))", gap: 6 }, children: cards.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor(item.key ?? "", row[item.key ?? ""]), fontWeight: 800 }, children: item.value })
+    ] }, item.label)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }, children: [
+      matchedItems.slice(0, 6).map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "button",
+        {
+          type: "button",
+          style: buttonStyle(item.code === bestCode),
+          onClick: () => openDetailItem(item, true),
+          children: [
+            item.label,
+            " \xB7 ",
+            formatPercent(item.item.range_return_pct)
+          ]
+        },
+        item.code
+      )),
+      bestItem && !matchedItemCodes.has(bestItem.code.toUpperCase()) ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "button",
+        {
+          type: "button",
+          style: buttonStyle(true),
+          onClick: () => openDetailItem(bestItem, bestHasMarker),
+          children: bestHasMarker ? zh ? "\u770B\u6700\u4F73\u6837\u672C" : "Best sample" : zh ? "\u6700\u4F73\u6807\u7684K\u7EBF" : "Best symbol chart"
+        }
+      ) : null,
+      weakestItem ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        "button",
+        {
+          type: "button",
+          style: buttonStyle(false),
+          onClick: () => openDetailItem(weakestItem, true),
+          children: zh ? "\u770B\u5931\u8D25\u6837\u672C" : "Failure sample"
+        }
+      ) : null
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: matchedItems.length ? zh ? `\u56FE\u4E0A\u6807\u6CE8\u8986\u76D6 ${formatNumber(matchedItems.length, 0)} \u53EA\uFF1B\u70B9\u51FB\u6837\u672C\u4F1A\u6253\u5F00 K\u7EBF\u5F39\u5C42\u5E76\u9AD8\u4EAE\u5F53\u524D\u4FE1\u53F7\u65CF\u3002` : `${formatNumber(matchedItems.length, 0)} chart slices contain markers; samples open the chart overlay and highlight this family.` : bestItem ? zh ? "\u5F53\u524D\u6279\u91CF K\u7EBF\u5207\u7247\u6CA1\u6709\u8FD9\u4E2A\u4FE1\u53F7\u65CF\u7684\u56FE\u4E0A\u6807\u6CE8\uFF1B\u53EF\u6253\u5F00\u6700\u4F73\u6807\u7684\u8D70\u52BF\u6838\u5BF9\uFF0C\u4F46\u4E0D\u8981\u5F53\u4F5C\u5DF2\u6807\u8BB0\u8BC1\u636E\u3002" : "No chart markers were found for this family; open the best symbol chart for context, not marked evidence." : zh ? "\u5F53\u524D\u6279\u91CF K\u7EBF\u5207\u7247\u91CC\u6CA1\u6709\u627E\u5230\u8FD9\u4E2A\u4FE1\u53F7\u65CF\u7684\u6807\u6CE8\u3002" : "No matching markers were found in the current batch chart slices." })
+  ] }) });
 }
 function MultiRankingTable({
   rows,
@@ -34499,7 +36147,7 @@ function MultiRankingTable({
     "review_conclusion"
   ].includes(key));
   const headers = density === "compact" ? compactHeaders : fullHeaders;
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: reportTableWrapStyle("ranking", density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: reportTableStyleFor("ranking", density), children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: reportTableWrapStyle("ranking", density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { role: "presentation", style: reportTableStyleFor("ranking", density), children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: headers.map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, width: key === "review_conclusion" ? 210 : void 0, whiteSpace: "nowrap" }, children: label }, key)) }) }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: rows.map((row, index) => {
       const code = String(row.code ?? "");
@@ -34530,12 +36178,19 @@ function IntervalOverviewTable({ rows, density }) {
     ["volatility_pct", "\u6CE2\u52A8\u7387"],
     ["up_bar_ratio_pct", "\u4E0A\u6DA8K\u5360\u6BD4"]
   ];
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: reportTableWrapStyle("overview", density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: reportTableStyleFor("overview", density), children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: reportTableWrapStyle("overview", density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { role: "presentation", style: reportTableStyleFor("overview", density), children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: headers.map(([key, label]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: "nowrap" }, children: label }, key)) }) }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: rows.map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { borderTop: `1px solid ${terminalTheme.border}` }, children: headers.map(([key]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: cellToneColor(key, row[key]), overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: formatReportCell(key, row[key]) }, key)) }, `${String(row.code ?? index)}-${index}`)) })
   ] }) });
 }
-function BatchSignalBreakdownTable({ rows, density }) {
+function BatchSignalBreakdownTable({
+  rows,
+  density,
+  selectedSignalType,
+  onSelectRow,
+  onOpenKline
+}) {
+  const [hoveredIndex, setHoveredIndex] = (0, import_react2.useState)(null);
   if (rows.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u8FD0\u884C\u201C\u5168\u90E8\u4FE1\u53F7\u201D\u540E\u663E\u793A\u5404\u4FE1\u53F7\u7C7B\u578B\u7684 T+5/T+10\u3001MFE/MAE \u548C\u6210\u4EA4\u6536\u76CA\u3002" });
   const topBy = (key, direction = "max") => rows.reduce((best, row) => {
     const value = numberValue2(row[key]);
@@ -34551,76 +36206,127 @@ function BatchSignalBreakdownTable({ rows, density }) {
     { label: "\u6210\u4EA4\u5747\u5229", row: topBy("avg_trade_return_pct"), key: "avg_trade_return_pct", format: formatPercent },
     { label: "\u56DE\u64A4\u538B\u529B", row: topBy("avg_mae_pct", "min"), key: "avg_mae_pct", format: formatPercent }
   ];
+  const cellPadding = density === "compact" ? "6px 7px" : "7px 8px";
+  const signalColumnWidth = density === "compact" ? 142 : 178;
+  const headers = [
+    { label: "\u4FE1\u53F7\u7C7B\u578B", width: signalColumnWidth },
+    { label: "\u6837\u672C", width: density === "compact" ? 78 : 88 },
+    { label: "\u80DC\u7387", width: density === "compact" ? 66 : 76 },
+    { label: "\u524D\u77BB", width: density === "compact" ? 92 : 106 },
+    { label: "\u76C8/\u64A4", width: density === "compact" ? 96 : 112 },
+    { label: "\u6210\u4EA4", width: density === "compact" ? 86 : 98 },
+    { label: "\u6700\u4F73\u6807\u7684", width: density === "compact" ? 122 : 150 },
+    { label: "\u52A8\u4F5C", width: density === "compact" ? 60 : 70 }
+  ];
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: density === "compact" ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))", gap: 6 }, children: summaryItems.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...metricCardStyle, padding: "6px 8px" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor(item.key, item.row?.[item.key]), fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: item.row ? item.format(item.row[item.key]) : emptyDisplay }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(item.row?.signal_type ?? emptyDisplay) })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: signalTypeLabel(item.row?.signal_type) })
     ] }, item.label)) }),
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: signalBreakdownWrapStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: { ...reportTableStyle, minWidth: density === "compact" ? 820 : 1060 }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: ["\u4FE1\u53F7\u7C7B\u578B", "\u6837\u672C", "\u80DC\u7387", "\u524D\u77BB\u6536\u76CA", "\u6D6E\u76C8/\u56DE\u64A4", "\u6210\u4EA4", "\u6700\u4F73\u6807\u7684"].map((label) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 8, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: "nowrap" }, children: label }, label)) }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: signalBreakdownWrapStyle(density), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { role: "presentation", style: { ...reportTableStyle, tableLayout: "fixed", minWidth: density === "compact" ? 742 : 878 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("colgroup", { children: headers.map((header) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("col", { style: { width: header.width } }, header.label)) }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: headers.map((header) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: cellPadding, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: "nowrap" }, children: header.label }, header.label)) }) }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: rows.map((row, index) => {
         const signalType = String(row.signal_type ?? "unknown");
-        return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: `1px solid ${terminalTheme.border}` }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, overflow: "hidden" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: signalType }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
-              formatNumber(row.symbol_count, 0),
-              " \u6807\u7684"
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, color: terminalTheme.textStrong, whiteSpace: "nowrap" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
-              formatNumber(row.evaluated_count, 0),
-              " / ",
-              formatNumber(row.signal_count, 0)
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
-              "\u6210\u4EA4 ",
-              formatNumber(row.trade_count, 0)
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 8, color: cellToneColor("win_rate_pct", row.win_rate), whiteSpace: "nowrap", fontWeight: 800 }, children: formatUnsignedPercent(row.win_rate) }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, whiteSpace: "nowrap" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_t5_pct", row.avg_t5_pct), fontWeight: 800 }, children: [
-              "T+5 ",
-              formatPercent(row.avg_t5_pct)
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_t10_pct", row.avg_t10_pct) }, children: [
-              "T+10 ",
-              formatPercent(row.avg_t10_pct)
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, whiteSpace: "nowrap" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_mfe_pct", row.avg_mfe_pct), fontWeight: 800 }, children: [
-              "MFE ",
-              formatPercent(row.avg_mfe_pct)
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_mae_pct", row.avg_mae_pct) }, children: [
-              "MAE ",
-              formatPercent(row.avg_mae_pct)
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 8, whiteSpace: "nowrap" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor("avg_trade_return_pct", row.avg_trade_return_pct), fontWeight: 800 }, children: formatPercent(row.avg_trade_return_pct) }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
-              "\u80DC\u7387 ",
-              formatUnsignedPercent(row.trade_win_rate)
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 8, color: terminalTheme.textStrong, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(row.best_symbol ?? emptyDisplay) })
-        ] }, `${signalType}-${index}`);
+        const displaySignalType = signalTypeLabel(signalType);
+        const active = signalFamilyMatches(signalType, selectedSignalType);
+        const hovered = hoveredIndex === index;
+        const selectRow = () => onSelectRow?.(row);
+        const openRowKline = () => (onOpenKline ?? onSelectRow)?.(row);
+        return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+          "tr",
+          {
+            style: {
+              borderTop: `1px solid ${terminalTheme.border}`,
+              background: active ? tradingDeskTheme.alpha.accentSurface : hovered && onSelectRow ? terminalTheme.panelInset : "transparent",
+              cursor: onSelectRow ? "pointer" : "default",
+              boxShadow: active ? `inset 3px 0 ${terminalTheme.accent}` : void 0
+            },
+            onClick: selectRow,
+            onMouseEnter: () => setHoveredIndex(index),
+            onMouseLeave: () => setHoveredIndex((current) => current === index ? null : current),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: cellPadding, overflow: "hidden" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: displaySignalType }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...mutedStyle, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: [
+                  formatNumber(row.symbol_count, 0),
+                  " \u6807\u7684"
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: cellPadding, color: terminalTheme.textStrong, whiteSpace: "nowrap" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+                  formatNumber(row.evaluated_count, 0),
+                  " / ",
+                  formatNumber(row.signal_count, 0)
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+                  "\u6210\u4EA4 ",
+                  formatNumber(row.trade_count, 0)
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: cellPadding, color: cellToneColor("win_rate_pct", row.win_rate), whiteSpace: "nowrap", fontWeight: 800 }, children: formatUnsignedPercent(row.win_rate) }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: cellPadding, whiteSpace: "nowrap" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_t5_pct", row.avg_t5_pct), fontWeight: 800 }, children: [
+                  "T+5 ",
+                  formatPercent(row.avg_t5_pct)
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_t10_pct", row.avg_t10_pct) }, children: [
+                  "T+10 ",
+                  formatPercent(row.avg_t10_pct)
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: cellPadding, whiteSpace: "nowrap" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_mfe_pct", row.avg_mfe_pct), fontWeight: 800 }, children: [
+                  "MFE ",
+                  formatPercent(row.avg_mfe_pct)
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: cellToneColor("avg_mae_pct", row.avg_mae_pct) }, children: [
+                  "MAE ",
+                  formatPercent(row.avg_mae_pct)
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: cellPadding, whiteSpace: "nowrap" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor("avg_trade_return_pct", row.avg_trade_return_pct), fontWeight: 800 }, children: formatPercent(row.avg_trade_return_pct) }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+                  "\u80DC\u7387 ",
+                  formatUnsignedPercent(row.trade_win_rate)
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: cellPadding, color: terminalTheme.textStrong, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(row.best_symbol ?? emptyDisplay) }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: cellPadding, whiteSpace: "nowrap" }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                "button",
+                {
+                  type: "button",
+                  "aria-label": `${active ? "\u5F53\u524D\u4FE1\u53F7\u65CF" : "\u6253\u5F00K\u7EBF"} ${displaySignalType}`,
+                  style: { ...buttonStyle(active), minWidth: 50, minHeight: 26, padding: "3px 7px", fontSize: 12 },
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    openRowKline();
+                  },
+                  children: active ? "\u5DF2\u9009" : "K\u7EBF"
+                }
+              ) })
+            ]
+          },
+          `${signalType}-${index}`
+        );
       }) })
     ] }) })
   ] });
 }
-function MiniKlineCard({
+var MiniKlineCard = import_react2.default.memo(function MiniKlineCard2({
   item,
   density,
+  selected = false,
+  signalMatched = false,
   onExpand
 }) {
-  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv : []);
-  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue2) : [];
+  const rows = item.rows;
+  const regimes = item.regimes;
+  const tradeMarkers = item.tradeMarkers;
+  const dateRange = item.dateRange;
+  const filledTradeCount = item.filledTradeCount;
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
     "button",
     {
@@ -34636,27 +36342,37 @@ function MiniKlineCard({
         fontFamily: fontStacks.ui,
         color: terminalTheme.text,
         cursor: "zoom-in",
-        textAlign: "left"
+        textAlign: "left",
+        borderColor: selected ? terminalTheme.accent : signalMatched ? tradingDeskTheme.alpha.infoBorder : terminalTheme.border,
+        boxShadow: selected ? `inset 0 0 0 1px ${terminalTheme.accent}` : signalMatched ? `inset 3px 0 ${tradingDeskTheme.market.up}` : void 0
       },
-      onClick: onExpand,
-      "aria-label": `\u653E\u5927K\u7EBF ${String(item.name ?? item.code ?? "")}`,
+      onClick: () => onExpand?.(item),
+      "aria-label": `\u653E\u5927K\u7EBF ${item.name || item.code}`,
       title: "\u70B9\u51FB\u653E\u5927K\u7EBF",
       children: [
         /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: String(item.name ?? item.code ?? "\u6807\u7684") }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: String(item.code ?? item.symbol ?? "") })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: item.name || item.code || "\u6807\u7684" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: item.code }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: dateRange })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor((numberValue2(item.range_return_pct) ?? 0) >= 0 ? "up" : "down"), fontWeight: 800 }, children: formatPercent(item.range_return_pct) })
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { textAlign: "right", minWidth: 58 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: toneColor((numberValue2(item.item.range_return_pct) ?? 0) >= 0 ? "up" : "down"), fontWeight: 800 }, children: formatPercent(item.item.range_return_pct) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+              formatNumber(filledTradeCount, 0),
+              "\u7B14"
+            ] })
+          ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MiniKlineSvg, { rows, regimes, density })
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MiniKlineSvg, { rows, regimes, tradeMarkers, density })
       ]
     }
   );
-}
-function MiniKlineSvg({
+}, (previous, next) => previous.item === next.item && previous.density === next.density && previous.selected === next.selected && previous.signalMatched === next.signalMatched && previous.onExpand === next.onExpand);
+var MiniKlineSvg = import_react2.default.memo(function MiniKlineSvg2({
   rows,
   regimes,
+  tradeMarkers = [],
   density,
   variant = "mini"
 }) {
@@ -34674,8 +36390,8 @@ function MiniKlineSvg({
   const candleWidth = Math.max(2, Math.min(7, xStep * 0.56));
   const yFor = (price) => 12 + (maxPrice - price) / priceSpan * (height - 30);
   const points = rows.map((row, index) => `${index * xStep},${yFor(row.close)}`).join(" ");
-  const firstDate = new Date(rows[0].timestamp).toISOString().slice(5, 10);
-  const lastDate = new Date(rows[rows.length - 1].timestamp).toISOString().slice(5, 10);
+  const firstDate = dateKey(rows[0].timestamp);
+  const lastDate = dateKey(rows[rows.length - 1].timestamp);
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("svg", { viewBox: `0 0 ${width} ${height}`, style: { width: "100%", aspectRatio: `${width} / ${height}`, display: "block" }, role: "img", "aria-label": variant === "expanded" ? "expanded kline" : "mini kline", children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("rect", { x: "0", y: "0", width, height, fill: terminalTheme.chartPanel }),
     [0, 1, 2, 3].map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
@@ -34735,74 +36451,669 @@ function MiniKlineSvg({
         )
       ] }, `${row.timestamp}-${index}`);
     }),
+    tradeMarkers.map((marker, index) => {
+      const x = marker.index * xStep;
+      const y = yFor(marker.price);
+      const isExit = marker.kind === "exit";
+      const isSignal = marker.kind === "signal";
+      const side = marker.side ?? (isExit ? "sell" : "buy");
+      const color = isSignal ? side === "sell" ? tradingDeskTheme.chart.purple : tradingDeskTheme.chart.orange : isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up;
+      const markerSize = variant === "expanded" ? 8 : 5;
+      const label = isSignal ? "S" : isExit ? "E" : "B";
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("g", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("circle", { cx: x, cy: y, r: markerSize, fill: terminalTheme.chartPanel, stroke: color, strokeWidth: variant === "expanded" ? 2 : 1.4 }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          "text",
+          {
+            x,
+            y: y + (variant === "expanded" ? 4 : 3),
+            textAnchor: "middle",
+            fill: color,
+            fontSize: variant === "expanded" ? 10 : 7,
+            fontWeight: "800",
+            children: label
+          }
+        )
+      ] }, `${marker.timestamp}-${marker.kind}-${index}`);
+    }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: "0", y: height - 3, fill: terminalTheme.muted, fontSize: variant === "expanded" ? 14 : 9, children: firstDate }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("text", { x: width, y: height - 3, fill: terminalTheme.muted, fontSize: variant === "expanded" ? 14 : 9, textAnchor: "end", children: lastDate })
   ] });
+}, (previous, next) => previous.rows === next.rows && previous.regimes === next.regimes && previous.tradeMarkers === next.tradeMarkers && previous.density === next.density && previous.variant === next.variant);
+function miniTradeMarkerOverlayLabel(marker) {
+  if (marker.kind === "signal") {
+    const label = signalTypeLabel(marker.signalType ?? marker.label);
+    return label === emptyDisplay ? "\u4FE1\u53F7" : label;
+  }
+  if (marker.kind === "entry") {
+    const label = signalTypeLabel(marker.signalType ?? marker.label);
+    return label === emptyDisplay ? "\u4E70\u70B9" : label;
+  }
+  return exitReasonLabel(marker.exitReason ?? marker.label);
+}
+function createMiniKlineTradeOverlays(chart, tradeMarkers) {
+  chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
+  tradeMarkers.slice(-180).forEach((marker) => {
+    const isExit = marker.kind === "exit";
+    const isSignal = marker.kind === "signal";
+    const side = marker.side ?? (isExit ? "sell" : "buy");
+    const color = isSignal ? side === "sell" ? tradingDeskTheme.chart.purple : tradingDeskTheme.chart.orange : isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up;
+    chart.createOverlay({
+      name: BACKTEST_MARKER_OVERLAY,
+      groupId: BACKTEST_MARKER_GROUP,
+      lock: true,
+      points: [{ timestamp: marker.timestamp, value: marker.price }],
+      extendData: {
+        label: miniTradeMarkerOverlayLabel(marker),
+        color,
+        side,
+        kind: isSignal ? "signal" : "trade",
+        sourceIndex: marker.sourceIndex,
+        tradeIndex: marker.tradeIndex
+      }
+    });
+  });
+}
+function applyExpandedPaneLayout(chart, height) {
+  const volumeHeight = Math.max(82, Math.min(118, Math.round(height * 0.15)));
+  const macdHeight = Math.max(118, Math.min(168, Math.round(height * 0.2)));
+  const candleHeight = Math.max(240, height - volumeHeight - macdHeight - 38);
+  chart.setPaneOptions({ id: "candle_pane", minHeight: 240, height: candleHeight });
+  chart.setPaneOptions({ id: "volume_pane", minHeight: 82, height: volumeHeight });
+  chart.setPaneOptions({ id: "macd_pane", minHeight: 118, height: macdHeight });
+}
+function fitExpandedChartToRows(chart, rows) {
+  const width = chart.getSize()?.width ?? 980;
+  const fittedBarSpace = Math.max(2, Math.min(12, (width - 96) / Math.max(rows.length, 1)));
+  chart.setBarSpace(fittedBarSpace);
+  chart.setOffsetRightDistance(44);
+  chart.scrollToRealTime(120);
+}
+function fitExpandedChartToIndexWindow(chart, rows, window2, animationDuration = 140) {
+  if (rows.length === 0 || window2.barCount <= 0) return;
+  const width = chart.getSize()?.width ?? 980;
+  const fittedBarSpace = Math.max(4, Math.min(18, (width - 104) / Math.max(window2.barCount, 1)));
+  chart.setBarSpace(fittedBarSpace);
+  chart.setOffsetRightDistance(44);
+  chart.scrollToDataIndex(window2.toIndex, animationDuration);
+}
+function focusExpandedChartOnMarkers(chart, rows, markers) {
+  const focusWindow = buildMarkerCenteredKlineWindow(rows, markers);
+  if (!focusWindow) {
+    fitExpandedChartToRows(chart, rows);
+    return;
+  }
+  fitExpandedChartToIndexWindow(chart, rows, focusWindow);
+}
+var EXPANDED_KLINE_MIN_HEIGHT = 360;
+var EXPANDED_KLINE_MAX_HEIGHT = 760;
+function expandedKlineChartHeightLimit(viewportWidth, viewportHeight) {
+  const compact = viewportWidth < 1120;
+  const reservedVerticalSpace = compact ? 340 : 250;
+  const heightLimit = Math.floor(viewportHeight - reservedVerticalSpace);
+  return Math.max(EXPANDED_KLINE_MIN_HEIGHT, Math.min(EXPANDED_KLINE_MAX_HEIGHT, heightLimit));
+}
+function ExpandedKlineChart({
+  rows,
+  highlightMarkers,
+  height,
+  locale,
+  onChartReady
+}) {
+  const containerRef = (0, import_react2.useRef)(null);
+  const chartRef = (0, import_react2.useRef)(null);
+  const resizeFrameRef = (0, import_react2.useRef)(null);
+  (0, import_react2.useEffect)(() => {
+    if (!containerRef.current) return;
+    ensureMarkerOverlay();
+    const chart = init(containerRef.current, {
+      locale: locale === "zh-CN" ? "zh-CN" : "en-US",
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      styles: chartStyles()
+    });
+    if (!chart) return;
+    chartRef.current = chart;
+    chart.setZoomEnabled(true);
+    chart.setScrollEnabled(true);
+    chart.setBarSpace(7);
+    chart.setOffsetRightDistance(44);
+    chart.createIndicator(
+      { name: "MA", calcParams: BACKTEST_MA_PERIODS, styles: backtestMaIndicatorStyles() },
+      true,
+      { id: "candle_pane" }
+    );
+    chart.createIndicator("VOL", false, { id: "volume_pane", minHeight: 82, height: 96 });
+    chart.createIndicator(
+      { name: "MACD", calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles() },
+      false,
+      { id: "macd_pane", minHeight: 118, height: 138 }
+    );
+    applyExpandedPaneLayout(chart, height);
+    onChartReady(chart);
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeFrameRef.current !== null) window.cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        chart.resize();
+      });
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => {
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
+      resizeObserver.disconnect();
+      chartRef.current = null;
+      onChartReady(null);
+      dispose(chart);
+    };
+  }, [locale, onChartReady]);
+  (0, import_react2.useEffect)(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
+    if (rows.length === 0) {
+      chart.clearData();
+      return;
+    }
+    chart.applyNewData(rows);
+    fitExpandedChartToRows(chart, rows);
+    chart.resize();
+  }, [rows]);
+  (0, import_react2.useEffect)(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP });
+    createMiniKlineTradeOverlays(chart, highlightMarkers);
+    focusExpandedChartOnMarkers(chart, rows, highlightMarkers);
+  }, [highlightMarkers, rows]);
+  (0, import_react2.useEffect)(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    applyExpandedPaneLayout(chart, height);
+    chart.resize();
+  }, [height]);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...chartShellStyle, height, minHeight: 360, flex: "0 0 auto" }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { ref: containerRef, style: { width: "100%", height: "100%" } }),
+    rows.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+      position: "absolute",
+      inset: 0,
+      display: "grid",
+      placeItems: "center",
+      color: terminalTheme.mutedStrong
+    }, children: "\u6682\u65E0K\u7EBF\u3002" }) : null
+  ] });
+}
+function expandedKlineStatValueLabel(key, value) {
+  if ([
+    "signal_marker_count",
+    "filled_trade_count",
+    "active_bar_count",
+    "range_bar_count",
+    "full_bar_count"
+  ].includes(key)) {
+    return formatNumber(value, 0);
+  }
+  if (key === "visible_date_range" || key === "chart_date_range") return String(value ?? emptyDisplay);
+  return formatReportCell(key, value);
+}
+function ExpandedKlineStatsGrid({
+  stats,
+  statValue
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }, children: stats.map(([label, key]) => {
+    const value = statValue(key);
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+      "div",
+      {
+        style: {
+          ...metricCardStyle,
+          gridColumn: key === "visible_date_range" || key === "chart_date_range" ? "1 / -1" : void 0
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: label }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+            color: cellToneColor(key, value),
+            fontWeight: 800,
+            overflow: "hidden",
+            textOverflow: key === "visible_date_range" || key === "chart_date_range" ? void 0 : "ellipsis",
+            whiteSpace: key === "visible_date_range" || key === "chart_date_range" ? "normal" : "nowrap",
+            lineHeight: key === "visible_date_range" || key === "chart_date_range" ? 1.45 : void 0
+          }, children: expandedKlineStatValueLabel(key, value) })
+        ]
+      },
+      key
+    );
+  }) });
+}
+function KlineEventRail({
+  groups,
+  selectedMarkerKey,
+  maxHeight,
+  onSelectMarker
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+    ...metricCardStyle,
+    padding: 8,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    minWidth: 0,
+    maxHeight,
+    overflow: "hidden"
+  }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: "\u4EA4\u6613\u4E8B\u4EF6" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { color: terminalTheme.textStrong, fontWeight: 900 }, children: [
+          formatNumber(groups.length, 0),
+          " \u4E2A"
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("open"), children: "\u70B9\u51FB\u805A\u7126" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 6, overflow: "auto", paddingRight: 2 }, children: groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u5F53\u524D\u533A\u95F4\u6CA1\u6709\u4E70\u5356\u70B9\u3002" }) : groups.map((group) => {
+      const marker = preferredMiniTradeEventMarker(group);
+      if (!marker) return null;
+      const markerKey = miniTradeMarkerId(marker);
+      const active = group.markers.some((item) => miniTradeMarkerId(item) === selectedMarkerKey);
+      const tone = group.resultPct === void 0 ? "open" : group.resultPct >= 0 ? "success" : "failed";
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "button",
+        {
+          type: "button",
+          "aria-pressed": active,
+          title: miniTradeEventGroupSubtitle(group),
+          style: {
+            appearance: "none",
+            border: `1px solid ${active ? terminalTheme.accent : terminalTheme.border}`,
+            borderRadius: 7,
+            background: active ? tradingDeskTheme.alpha.accentSurface : terminalTheme.panelInset,
+            color: terminalTheme.text,
+            cursor: "pointer",
+            padding: "7px 8px",
+            textAlign: "left",
+            fontFamily: fontStacks.ui,
+            boxShadow: active ? `inset 3px 0 ${terminalTheme.accent}` : void 0
+          },
+          onClick: () => onSelectMarker(active ? "" : markerKey),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(group.kind === "trade" ? "success" : group.kind === "signal" ? "open" : "warning"), children: group.kind === "trade" ? "\u4EA4\u6613" : group.kind === "signal" ? "\u4FE1\u53F7" : "\u6807\u6CE8" }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(tone), children: formatPercent(group.resultPct) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { marginTop: 5, color: terminalTheme.textStrong, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }, children: miniTradeEventGroupTitle(group) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { ...mutedStyle, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: miniTradeEventGroupSubtitle(group) })
+          ]
+        },
+        group.key
+      );
+    }) })
+  ] });
 }
 function ExpandedKlineOverlay({
+  locale,
   item,
+  initialFocus,
+  datePresets = [],
   density,
+  presentation = "overlay",
   onClose
 }) {
-  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv : []);
-  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue2) : [];
+  const zh = locale === "zh-CN";
+  const chartRef = (0, import_react2.useRef)(null);
+  const [overlayViewport, setOverlayViewport] = (0, import_react2.useState)(() => ({
+    width: typeof window === "undefined" ? 1440 : window.innerWidth,
+    height: typeof window === "undefined" ? 900 : window.innerHeight
+  }));
+  const overlayCompact = overlayViewport.width < 1120;
+  const chartHeightLimit = expandedKlineChartHeightLimit(overlayViewport.width, overlayViewport.height);
+  const [chartHeight, setChartHeight] = (0, import_react2.useState)(() => {
+    if (typeof window === "undefined") return 620;
+    const preferredHeight = window.innerWidth < 1120 ? 460 : 620;
+    return Math.min(preferredHeight, expandedKlineChartHeightLimit(window.innerWidth, window.innerHeight));
+  });
+  const effectiveChartHeight = Math.min(chartHeight, chartHeightLimit);
+  const [selectedRangeKey, setSelectedRangeKey] = (0, import_react2.useState)("visible_all");
+  const [selectedMarkerKey, setSelectedMarkerKey] = (0, import_react2.useState)("");
+  const rows = item.rows;
+  const chartMarkers = item.markers;
+  (0, import_react2.useEffect)(() => {
+    if (typeof window === "undefined") return void 0;
+    const handleResize = () => setOverlayViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+  const rangeOptions = (0, import_react2.useMemo)(() => buildExpandedKlineRangeOptions(rows, datePresets), [datePresets, rows]);
+  const selectedRange = rangeOptions.find((option) => option.key === selectedRangeKey) ?? rangeOptions[0] ?? null;
+  const selectedRows = (0, import_react2.useMemo)(() => filterKLineDataForRange(rows, selectedRange), [rows, selectedRange]);
+  const rangeMarkers = (0, import_react2.useMemo)(() => filterMiniTradeMarkersForRange(chartMarkers, selectedRange), [chartMarkers, selectedRange]);
+  const eventGroups = (0, import_react2.useMemo)(() => miniTradeEventGroups(rangeMarkers), [rangeMarkers]);
+  const selectedMarker = rangeMarkers.find((marker) => miniTradeMarkerId(marker) === selectedMarkerKey) ?? null;
+  const pairedMarkers = (0, import_react2.useMemo)(() => pairedMiniTradeMarkers(rangeMarkers, selectedMarker), [rangeMarkers, selectedMarker]);
+  const markerWindow = (0, import_react2.useMemo)(() => markerWindowFromPairedMarkers(rows, pairedMarkers), [pairedMarkers, rows]);
+  const { chartRows, evidenceRows } = (0, import_react2.useMemo)(
+    () => expandedKlineFocusRows(rows, selectedRows, markerWindow),
+    [markerWindow, rows, selectedRows]
+  );
+  const eventRange = markerWindow ? {
+    key: "selected_marker",
+    label: "\u5F53\u524D\u4E8B\u4EF6\u7A97\u53E3",
+    from: markerWindow.from,
+    to: markerWindow.to,
+    displayRange: `${dateKey(markerWindow.from)} ~ ${dateKey(markerWindow.to)}`,
+    barCount: markerWindow.barCount,
+    source: "event"
+  } : selectedRange;
+  const eventMarkers = (0, import_react2.useMemo)(
+    () => filterMiniTradeMarkersForRange(chartMarkers, eventRange),
+    [eventRange, chartMarkers]
+  );
+  const highlightedMarkers = selectedMarker ? pairedMarkers : [];
+  const selectedRangeStats = (0, import_react2.useMemo)(() => klineIntervalStats(evidenceRows), [evidenceRows]);
+  const chartDateRange = chartRows.length ? `${dateKey(chartRows[0].timestamp)} ~ ${dateKey(chartRows[chartRows.length - 1].timestamp)}` : selectedRange?.displayRange ?? item.dateRange;
+  const visibleDateRange = evidenceRows.length ? `${dateKey(evidenceRows[0].timestamp)} ~ ${dateKey(evidenceRows[evidenceRows.length - 1].timestamp)}` : selectedRange?.displayRange ?? item.dateRange;
+  const fullDateRange = item.fullDateRange;
+  const signalMarkerCount = eventMarkers.filter((marker) => marker.kind === "signal").length;
+  const filledTradeCount = eventMarkers.filter((marker) => marker.kind === "entry").length;
+  const focusLabel = initialFocus?.signalType ? signalTypeLabel(initialFocus.signalType) : "";
+  const isInline = presentation === "inline";
+  const handleChartReady = (0, import_react2.useCallback)((chart) => {
+    chartRef.current = chart;
+  }, []);
+  const zoomChart = (0, import_react2.useCallback)((scale) => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const current = chart.getBarSpace();
+    const next = Math.max(2, Math.min(48, current * (scale > 0 ? 1.25 : 0.8)));
+    chart.setBarSpace(next);
+    chart.resize();
+  }, []);
+  const scrollChart = (0, import_react2.useCallback)((distance) => {
+    chartRef.current?.scrollByDistance(distance, 120);
+  }, []);
+  const fitChart = (0, import_react2.useCallback)(() => {
+    const chart = chartRef.current;
+    if (chart) fitExpandedChartToRows(chart, selectedRows);
+  }, [selectedRows]);
+  (0, import_react2.useEffect)(() => {
+    if (rangeOptions.length === 0) return;
+    if (!rangeOptions.some((option) => option.key === selectedRangeKey)) {
+      setSelectedRangeKey(rangeOptions[0]?.key ?? "");
+    }
+  }, [rangeOptions, selectedRangeKey]);
+  (0, import_react2.useEffect)(() => {
+    if (!selectedMarkerKey) return;
+    if (!rangeMarkers.some((marker) => miniTradeMarkerId(marker) === selectedMarkerKey)) {
+      setSelectedMarkerKey("");
+    }
+  }, [rangeMarkers, selectedMarkerKey]);
+  (0, import_react2.useEffect)(() => {
+    if (!initialFocus?.markerKey && !initialFocus?.signalType) return;
+    if (selectedMarkerKey) return;
+    const direct = initialFocus.markerKey ? rangeMarkers.find((marker2) => miniTradeMarkerId(marker2) === initialFocus.markerKey) : null;
+    const bySignal = initialFocus.signalType ? rangeMarkers.find((marker2) => miniMarkerMatchesSignalFamily(marker2, initialFocus.signalType)) : null;
+    const marker = direct ?? bySignal;
+    if (marker) setSelectedMarkerKey(miniTradeMarkerId(marker));
+  }, [initialFocus?.markerKey, initialFocus?.signalType, rangeMarkers, selectedMarkerKey]);
   const stats = [
-    ["\u533A\u95F4\u6536\u76CA", "range_return_pct"],
+    [selectedMarker ? "\u4E8B\u4EF6\u7A97\u53E3" : "\u9009\u5B9A\u533A\u95F4", "visible_date_range"],
+    ...selectedMarker ? [["\u56DE\u6D4B\u533A\u95F4", "chart_date_range"]] : [],
+    [selectedMarker ? "\u4E8B\u4EF6\u6536\u76CA" : "\u533A\u95F4\u6536\u76CA", "range_return_pct"],
     ["\u6700\u5927\u56DE\u64A4", "max_drawdown_pct"],
     ["\u6700\u5927\u6D6E\u76C8", "max_runup_pct"],
     ["\u6CE2\u52A8\u7387", "volatility_pct"],
     ["5\u65E5\u9AD8\u4F4E\u5E45", "median_5d_high_low_pct"],
     ["\u4E0A\u6DA8K\u5360\u6BD4", "up_bar_ratio_pct"],
-    ["K\u7EBF\u6570", "bar_count"],
-    ["\u663E\u793AK\u7EBF", "visible_bar_count"]
+    [selectedMarker ? "\u7A97\u53E3\u4FE1\u53F7" : "\u4FE1\u53F7\u6570", "signal_marker_count"],
+    [selectedMarker ? "\u7A97\u53E3\u6210\u4EA4" : "\u6210\u4EA4\u6570", "filled_trade_count"],
+    [selectedMarker ? "\u4E8B\u4EF6K\u6570" : "\u533A\u95F4K\u6570", "active_bar_count"],
+    ...selectedMarker ? [["\u56DE\u6D4B\u533A\u95F4K", "range_bar_count"]] : [],
+    ["\u5168\u91CFK", "full_bar_count"]
   ];
+  const statValue = (key) => {
+    if (key === "visible_date_range") return visibleDateRange;
+    if (key === "chart_date_range") return chartDateRange;
+    if (key === "signal_marker_count") return signalMarkerCount;
+    if (key === "filled_trade_count") return filledTradeCount;
+    if (key === "active_bar_count") return evidenceRows.length;
+    if (key === "range_bar_count") return chartRows.length;
+    if (key === "full_bar_count") return rows.length;
+    return selectedRangeStats[key] ?? item.item[key];
+  };
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
     "div",
     {
       style: {
-        position: "fixed",
-        inset: 0,
-        zIndex: 50,
-        background: tradingDeskTheme.alpha.overlay,
-        display: "grid",
-        placeItems: "center",
-        padding: density === "compact" ? 12 : 24
+        ...isInline ? {
+          ...panelStyle,
+          border: `1px solid ${terminalTheme.borderStrong}`,
+          gap: 10,
+          scrollMarginTop: 12
+        } : {
+          position: "fixed",
+          inset: 0,
+          zIndex: 50,
+          background: tradingDeskTheme.alpha.overlay,
+          display: "grid",
+          placeItems: "center",
+          padding: density === "compact" ? 12 : 24
+        }
       },
       children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
         "div",
         {
-          role: "dialog",
-          "aria-modal": "true",
-          "aria-label": "\u653E\u5927K\u7EBF",
+          role: isInline ? void 0 : "dialog",
+          "aria-modal": isInline ? void 0 : true,
+          "aria-label": isInline ? zh ? "K\u7EBF\u8BE6\u60C5" : "Chart detail" : zh ? "\u653E\u5927K\u7EBF" : "Expanded chart",
           style: {
-            ...panelStyle,
-            width: "min(1480px, 96vw)",
-            maxHeight: "92vh",
-            overflow: "auto",
-            boxShadow: tradingDeskTheme.shadows.island,
-            border: `1px solid ${terminalTheme.borderStrong}`
+            ...isInline ? {
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              minWidth: 0
+            } : {
+              ...panelStyle,
+              width: "min(1480px, 96vw)",
+              maxHeight: "92vh",
+              overflow: "auto",
+              boxShadow: tradingDeskTheme.shadows.island,
+              border: `1px solid ${terminalTheme.borderStrong}`
+            }
           },
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { minWidth: 0 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: "\u653E\u5927K\u7EBF \xB7 ESC" }),
-                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: String(item.name ?? item.code ?? "\u6807\u7684") }),
-                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: String(item.code ?? item.symbol ?? "") })
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: focusLabel ? zh ? "K\u7EBF\u8BE6\u60C5 \xB7 \u4FE1\u53F7\u6807\u8BC6" : "Chart detail \xB7 signal tagged" : zh ? "K\u7EBF\u8BE6\u60C5" : "Chart detail" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: chartTitleStyle, children: item.name || item.code || "\u6807\u7684" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: monoStyle, children: item.code }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+                  "\u5B8C\u6574\u533A\u95F4 ",
+                  fullDateRange,
+                  " \xB7 ",
+                  selectedMarker ? "\u56DE\u6D4B\u533A\u95F4" : "\u56FE\u8868\u533A\u95F4",
+                  " ",
+                  chartDateRange,
+                  selectedMarker ? ` \xB7 \u4E8B\u4EF6\u7A97\u53E3 ${visibleDateRange}` : ""
+                ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", "aria-label": "\u5173\u95ED\u653E\u5927K\u7EBF", style: buttonStyle(false), onClick: onClose, children: "\xD7" })
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }, children: [
+                focusLabel ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("success"), children: zh ? `\u6807\u8BC6 ${focusLabel}` : `Tagged ${focusLabel}` }) : null,
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", "aria-label": zh ? "\u5173\u95EDK\u7EBF\u8BE6\u60C5" : "Close chart detail", style: buttonStyle(false), onClick: onClose, children: isInline ? zh ? "\u6536\u8D77" : "Collapse" : "\xD7" })
+              ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 6 }, children: stats.map(([label, key]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: label }),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: cellToneColor(key, item[key]), fontWeight: 800 }, children: key === "visible_bar_count" ? formatNumber(rows.length, 0) : key === "bar_count" ? formatNumber(item[key] ?? rows.length, 0) : formatReportCell(key, item[key]) })
-            ] }, key)) }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MiniKlineSvg, { rows, regimes, density, variant: "expanded" })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+              border: `1px solid ${terminalTheme.border}`,
+              background: terminalTheme.panelInset,
+              padding: "8px 9px"
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("label", { style: { display: "flex", gap: 6, alignItems: "center" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: labelStyle, children: "\u533A\u95F4" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                    "select",
+                    {
+                      value: selectedRange?.key ?? "",
+                      style: { ...selectStyle, height: 28, width: 190 },
+                      onChange: (event) => {
+                        setSelectedRangeKey(event.currentTarget.value);
+                        setSelectedMarkerKey("");
+                      },
+                      "aria-label": "\u9009\u62E9\u56DE\u6D4B\u6536\u76CA\u533A\u95F4",
+                      children: rangeOptions.map((option) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("option", { value: option.key, children: [
+                        option.label,
+                        " \xB7 ",
+                        option.barCount,
+                        "K"
+                      ] }, option.key))
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u653E\u5927", "aria-label": "\u653E\u5927K\u7EBF", style: { ...buttonStyle(false), minWidth: 30, padding: "4px 8px" }, onClick: () => zoomChart(1), children: "+" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u7F29\u5C0F", "aria-label": "\u7F29\u5C0FK\u7EBF", style: { ...buttonStyle(false), minWidth: 30, padding: "4px 8px" }, onClick: () => zoomChart(-1), children: "-" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u5DE6\u79FB", "aria-label": "\u5DE6\u79FBK\u7EBF", style: { ...buttonStyle(false), minWidth: 30, padding: "4px 8px" }, onClick: () => scrollChart(180), children: "\u2190" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u53F3\u79FB", "aria-label": "\u53F3\u79FBK\u7EBF", style: { ...buttonStyle(false), minWidth: 30, padding: "4px 8px" }, onClick: () => scrollChart(-180), children: "\u2192" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u5168\u56FE", "aria-label": "\u663E\u793A\u5168\u56FE\u533A\u95F4", style: { ...buttonStyle(false), minWidth: 30, padding: "4px 8px" }, onClick: fitChart, children: "\u5168" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u6700\u65B0", "aria-label": "\u6EDA\u52A8\u5230\u6700\u65B0K\u7EBF", style: { ...buttonStyle(false), minWidth: 30, padding: "4px 8px" }, onClick: () => chartRef.current?.scrollToRealTime(120), children: "\u65B0" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", title: "\u6E05\u9664\u4E8B\u4EF6\u805A\u7126", "aria-label": "\u6E05\u9664\u4E8B\u4EF6\u805A\u7126", style: { ...buttonStyle(selectedMarkerKey === ""), minWidth: 30, padding: "4px 8px" }, onClick: () => setSelectedMarkerKey(""), children: "\u6E05" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center", minWidth: 220 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: labelStyle, children: "\u9AD8\u5EA6" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                  "input",
+                  {
+                    type: "range",
+                    min: EXPANDED_KLINE_MIN_HEIGHT,
+                    max: chartHeightLimit,
+                    step: 20,
+                    value: effectiveChartHeight,
+                    onChange: (event) => setChartHeight(Number(event.target.value)),
+                    style: { flex: 1, accentColor: tradingDeskTheme.chart.line },
+                    "aria-label": "\u8C03\u6574\u653E\u5927K\u7EBF\u9AD8\u5EA6"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { style: monoStyle, children: [
+                  effectiveChartHeight,
+                  "px"
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }, children: [
+                BACKTEST_MA_PERIODS.map((period, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { style: statusBadgeStyle("open"), children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { display: "inline-block", width: 8, height: 8, background: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length], marginRight: 5 } }),
+                  "MA",
+                  period
+                ] }, period)),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("open"), children: "VOL" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("open"), children: "MACD" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("success"), children: "\u4E70" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("warning"), children: "\u5356/\u79BB\u573A" })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+              display: "grid",
+              gridTemplateColumns: overlayCompact ? "1fr" : "270px minmax(520px, 1fr) 360px",
+              gap: 10,
+              alignItems: "start"
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                KlineEventRail,
+                {
+                  groups: eventGroups,
+                  selectedMarkerKey,
+                  maxHeight: overlayCompact ? 260 : effectiveChartHeight,
+                  onSelectMarker: (markerKey) => setSelectedMarkerKey(markerKey)
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { minWidth: 0 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                ExpandedKlineChart,
+                {
+                  rows: chartRows,
+                  highlightMarkers: highlightedMarkers,
+                  height: effectiveChartHeight,
+                  locale,
+                  onChartReady: handleChartReady
+                },
+                `${item.code || "chart"}-${selectedRange?.key ?? "all"}`
+              ) }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                minWidth: 0,
+                maxHeight: overlayCompact ? void 0 : effectiveChartHeight,
+                overflow: overlayCompact ? void 0 : "auto"
+              }, children: selectedMarker ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(SelectedMarkerNarrative, { marker: selectedMarker, pairedMarkers, locale }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandedKlineStatsGrid, { stats, statValue })
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandedKlineStatsGrid, { stats, statValue }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: "\u4E8B\u4EF6\u8BC1\u636E" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 900 }, children: "\u9009\u62E9\u5DE6\u4FA7\u4EA4\u6613\u4E8B\u4EF6" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: "\u70B9\u51FB\u540E\u56FE\u8868\u4F1A\u56F4\u7ED5\u4E70\u5356\u70B9\u5C45\u4E2D\uFF1B\u53F3\u4FA7\u7EDF\u8BA1\u5207\u5230\u4E8B\u4EF6\u7A97\u53E3\u3002" })
+                ] })
+              ] }) })
+            ] })
           ]
         }
       )
     }
   );
 }
-function ReviewScriptCard({ card, density }) {
+function SelectedMarkerNarrative({
+  marker,
+  pairedMarkers,
+  locale
+}) {
+  const zh = locale === "zh-CN";
+  const entry = pairedMarkers.find((item) => item.kind === "entry") ?? (marker.kind === "entry" ? marker : void 0);
+  const exit = pairedMarkers.find((item) => item.kind === "exit") ?? (marker.kind === "exit" ? marker : void 0);
+  const holdingDays = entry && exit ? Math.max(0, Math.round((exit.timestamp - entry.timestamp) / MS_PER_DAY)) : void 0;
+  const direction = marker.kind === "exit" ? zh ? "\u9000\u51FA\u89C6\u89D2" : "Exit view" : marker.kind === "signal" ? zh ? "\u4FE1\u53F7\u89C6\u89D2" : "Signal view" : zh ? "\u5165\u573A\u89C6\u89D2" : "Entry view";
+  const currentEventName = miniTradeMarkerOverlayLabel(marker);
+  const resultPct = exit?.returnPct ?? entry?.returnPct ?? marker.returnPct;
+  const cards = [
+    { label: zh ? "\u5F53\u524D\u4E8B\u4EF6" : "Event", value: `${dateKey(marker.timestamp)} \xB7 ${currentEventName}` },
+    { label: zh ? "\u5165\u573A" : "Entry", value: entry ? `${dateKey(entry.timestamp)} \xB7 ${formatNumber(entry.price)}` : emptyDisplay },
+    { label: zh ? "\u79BB\u573A" : "Exit", value: exit ? `${dateKey(exit.timestamp)} \xB7 ${formatNumber(exit.price)}` : emptyDisplay },
+    { label: zh ? "\u6301\u4ED3" : "Holding", value: holdingDays === void 0 ? emptyDisplay : `${holdingDays}${zh ? "\u65E5" : "D"}` },
+    { label: zh ? "\u7ED3\u679C" : "Result", value: formatPercent(resultPct), key: "return_pct" },
+    { label: zh ? "\u9000\u51FA\u539F\u56E0" : "Exit reason", value: exitReasonLabel(exit?.exitReason) }
+  ];
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+    ...metricCardStyle,
+    borderColor: terminalTheme.accent,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8
+  }, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: zh ? "\u4E00\u7B14\u4EA4\u6613 / \u4E8B\u4EF6\u8BC1\u636E" : "Trade / event evidence" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontSize: 15, fontWeight: 900 }, children: direction })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(resultPct === void 0 ? "open" : resultPct >= 0 ? "success" : "failed"), children: formatPercent(resultPct) })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 6 }, children: cards.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: metricCardStyle, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: item.label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: {
+        color: cellToneColor(item.key ?? "", item.key ? resultPct : void 0),
+        fontWeight: 800,
+        overflow: "hidden",
+        overflowWrap: "anywhere",
+        lineHeight: 1.45
+      }, children: item.value })
+    ] }, item.label)) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: zh ? "\u56FE\u8868\u89C6\u53E3\u5DF2\u56F4\u7ED5\u4E70\u5356\u70B9\u5C45\u4E2D\uFF0C\u914D\u5BF9\u4E70\u70B9/\u79BB\u573A\u4F1A\u540C\u65F6\u9AD8\u4EAE\uFF1B\u53F3\u4FA7\u7EDF\u8BA1\u53E3\u5F84\u5207\u6362\u5230\u5F53\u524D\u4E8B\u4EF6\u7A97\u53E3\u3002" : "The chart viewport is centered around the entry/exit pair, highlights both markers, and scopes metrics to the current event window." })
+  ] });
+}
+var ReviewScriptCard = import_react2.default.memo(function ReviewScriptCard2({ card, density }) {
   const stats = Array.isArray(card.stats) ? card.stats.map(recordValue2) : [];
   const tone = String(card.tone ?? "") === "down" ? "down" : "up";
   const compact = density === "compact";
@@ -34833,7 +37144,7 @@ function ReviewScriptCard({ card, density }) {
     compact ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ScriptLine, { title: "\u4EA4\u6613\u96BE\u5EA6", text: String(card.difficulty ?? "") }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ScriptLine, { title: "\u4E00\u53E5\u8BDD", text: String(card.one_liner ?? ""), strong: true })
   ] });
-}
+}, (previous, next) => previous.card === next.card && previous.density === next.density);
 function ScriptLine({ title, text: text2, strong = false }) {
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { borderTop: `1px solid ${terminalTheme.border}`, paddingTop: 8 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: labelStyle, children: title }),
@@ -34964,21 +37275,29 @@ function MetricGroup({ title, items }) {
 }
 function SignalTable({
   signals,
+  trades = [],
   selectedIndex,
   onSelect
 }) {
   if (signals.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u4FE1\u53F7\u3002" });
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { role: "presentation", style: { width: "100%", minWidth: 520, borderCollapse: "collapse", fontSize: 12 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u65E5\u671F" }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u4FE1\u53F7" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u65B9\u5411/\u4FE1\u53F7" }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u4EF7\u683C" }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "T+10" })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u6301\u6709/\u9000\u51FA" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u6536\u76CA" })
     ] }) }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: signals.slice().reverse().map((signal, index) => {
       const sourceIndex = signal.index ?? signals.length - index - 1;
+      const outcome = tradeOutcomeForSignal(signal, trades);
+      const returnT5 = numberValue2(signal.eval?.return_t5 ?? signal.return_t5);
       const returnT10 = numberValue2(signal.eval?.return_t10 ?? signal.return_t10);
+      const mfe = numberValue2(signal.eval?.mfe_pct ?? signal.mfe_pct);
+      const mae = numberValue2(signal.eval?.mae_pct ?? signal.mae_pct);
+      const outcomeReturn = outcome?.netReturnPct;
       const rowActive = selectedIndex === sourceIndex;
+      const side = signalSide(signal);
       return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
         "tr",
         {
@@ -34989,13 +37308,33 @@ function SignalTable({
           },
           onClick: () => onSelect(sourceIndex, signal.dt ?? signal.time),
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono }, children: signal.date_str ?? signal.date ?? "" }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono, whiteSpace: "nowrap" }, children: signalDisplayDate(signal) }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: signal.type ?? signal.group ?? "\u4FE1\u53F7" }),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [signal.group, signal.ma_status, signal.volume_status].filter(Boolean).join(" \xB7 ") })
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 5, alignItems: "center", minWidth: 0 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(side === "buy" ? "success" : "warning"), children: side === "buy" ? "\u4E70\u70B9" : "\u79BB\u573A" }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { color: terminalTheme.textStrong, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: signal.type ?? signal.group ?? "\u4FE1\u53F7" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [signal.group, signal.ma_status, signal.volume_status].filter(Boolean).join(" \xB7 ") }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+                "T+5 ",
+                formatPercent(returnT5),
+                " \xB7 T+10 ",
+                formatPercent(returnT10),
+                " \xB7 MFE/MAE ",
+                formatPercent(mfe),
+                " / ",
+                formatPercent(mae)
+              ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.mono }, children: formatNumber(signal.price) }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (returnT10 ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down }, children: formatPercent(returnT10) })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.text, whiteSpace: "nowrap" }, children: outcome ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontWeight: 800 }, children: formatHoldingDays(outcome.holdingDays) }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: exitReasonLabel(outcome.exitReason) })
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontWeight: 800 }, children: side === "buy" ? "\u672A\u6210\u4EA4" : "\u4FE1\u53F7\u70B9" }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: "\u770B\u524D\u77BB\u6536\u76CA" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (outcomeReturn ?? returnT10 ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down, fontWeight: 800, whiteSpace: "nowrap" }, children: outcome ? formatPercent(outcomeReturn) : formatPercent(returnT10) })
           ]
         },
         `${signal.dt ?? signal.time ?? index}-${signal.type ?? "signal"}`
@@ -35010,11 +37349,13 @@ function TradeTable({
 }) {
   const filled = trades.filter((trade) => trade.entry_price !== null && trade.entry_price !== void 0);
   if (filled.length === 0) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u6682\u65E0\u6210\u4EA4\u8BB0\u5F55\u3002" });
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("table", { role: "presentation", style: { width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 12 }, children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("thead", { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { color: terminalTheme.mutedStrong, textAlign: "left" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u4FE1\u53F7" }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u5165/\u51FA" }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u51C0\u5229" })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u4E70\u70B9\u4FE1\u53F7" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u5165\u573A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u6B62\u635F/\u79BB\u573A" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u6301\u6709" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("th", { style: { padding: 7 }, children: "\u6536\u76CA" })
     ] }) }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: filled.slice().reverse().map((trade, index) => {
       const sourceIndex = trade.index ?? filled.length - index - 1;
@@ -35031,15 +37372,33 @@ function TradeTable({
           children: [
             /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: trade.signal_type ?? "\u4FE1\u53F7" }),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: trade.signal_date })
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: [trade.signal_date, trade.signal_group].filter(Boolean).join(" \xB7 ") })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: terminalTheme.mono }, children: [
-              formatNumber(trade.entry_price),
-              " / ",
-              formatNumber(trade.exit_price),
-              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: trade.exit_reason ?? "" })
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { children: trade.entry_date ?? emptyDisplay }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { children: [
+                formatNumber(trade.entry_price),
+                " \xB7 ",
+                fillTypeLabel(trade.fill_type)
+              ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: (trade.net_return_pct ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down, fontWeight: 800 }, children: formatPercent(trade.net_return_pct) })
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: terminalTheme.mono }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { children: trade.exit_date ?? emptyDisplay }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 5, alignItems: "center" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle(String(trade.exit_reason ?? "").includes("stop") ? "failed" : "warning"), children: exitReasonLabel(trade.exit_reason) }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: formatNumber(trade.exit_price) })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.textStrong, fontWeight: 800, whiteSpace: "nowrap" }, children: formatHoldingDays(trade.holding_days) }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: (trade.net_return_pct ?? 0) >= 0 ? tradingDeskTheme.market.up : tradingDeskTheme.market.down, fontWeight: 800, whiteSpace: "nowrap" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { children: formatPercent(trade.net_return_pct) }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: mutedStyle, children: [
+                "MFE/MAE ",
+                formatPercent(trade.mfe_pct),
+                " / ",
+                formatPercent(trade.mae_pct)
+              ] })
+            ] })
           ]
         },
         `${trade.id ?? trade.signal_date ?? index}-${trade.signal_type ?? "trade"}`
@@ -35124,7 +37483,7 @@ function ScanControls({
       "\u6700\u4F18\u53C2\u6570\uFF1A",
       Object.entries(bestParams).map(([key, value]) => `${key}=${String(value)}`).join(", ")
     ] }) : null,
-    scanRows?.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: scanRows.slice(0, 18).map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: index === 0 ? "none" : `1px solid ${terminalTheme.border}` }, children: [
+    scanRows?.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: tableWrapStyle, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("table", { role: "presentation", style: { width: "100%", borderCollapse: "collapse", fontSize: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: scanRows.slice(0, 18).map((row, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { style: { borderTop: index === 0 ? "none" : `1px solid ${terminalTheme.border}` }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { style: { padding: 7, color: terminalTheme.textStrong }, children: Object.values(recordValue2(row.params)).join(" / ") }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("td", { style: { padding: 7, color: terminalTheme.mono }, children: [
         "Sharpe ",
@@ -35137,45 +37496,175 @@ function ScanControls({
     ] }, index)) }) }) }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: "\u5C55\u5F00\u626B\u63CF\u53C2\u6570\u540E\u8FD0\u884C\u3002" })
   ] });
 }
-function historyEntryTitle(entry, locale) {
+function historyEntrySignalRows(entry) {
+  const rows = entry.batchResult?.terminal?.panels?.signals?.rows;
+  return Array.isArray(rows) ? rows.map(recordValue2) : [];
+}
+function historyEntryPrimarySignal(entry) {
+  const rows = historyEntrySignalRows(entry);
+  if (!rows.length) return null;
+  return bestBatchSignalFamilyRow(rows) ?? rows[0] ?? null;
+}
+function historyEntrySignalMetric(row, locale) {
+  if (!row) return null;
+  if (numberValue2(row.avg_trade_return_pct) !== void 0) {
+    return {
+      label: locale === "zh-CN" ? "\u6210\u4EA4\u5747\u5229" : "trade",
+      value: row.avg_trade_return_pct,
+      toneKey: "avg_trade_return_pct"
+    };
+  }
+  if (numberValue2(row.avg_t10_pct) !== void 0) {
+    return {
+      label: "T+10",
+      value: row.avg_t10_pct,
+      toneKey: "avg_t10_pct"
+    };
+  }
+  if (numberValue2(row.win_rate) !== void 0) {
+    return {
+      label: locale === "zh-CN" ? "\u80DC\u7387" : "win",
+      value: row.win_rate,
+      toneKey: "win_rate_pct"
+    };
+  }
+  return null;
+}
+function historyEntryTitle(entry, locale, context = {}) {
   if (entry.mode === "multi") {
-    const count = entry.codes.length;
-    return locale === "zh-CN" ? `\u591A\u6807\u7684\u56DE\u6D4B${count ? ` \xB7 ${count}\u53EA` : ""}` : `Multi-symbol backtest${count ? ` \xB7 ${count}` : ""}`;
+    const label = historyEntryCommonalityLabel(entry, locale, context);
+    if (locale === "zh-CN" && label === "\u591A\u6807\u7684\u7EC4\u5408") return "\u591A\u6807\u7684\u56DE\u6D4B";
+    if (locale !== "zh-CN" && label === "Multi-symbol basket") return "Multi-symbol backtest";
+    return locale === "zh-CN" ? `${label}\u56DE\u6D4B` : `${label} backtest`;
+  }
+  const parts = entry.title.trim().split(/\s+/);
+  if (parts.length >= 2 && normalizeSymbolCode(parts[0] ?? "") === normalizeSymbolCode(parts[1] ?? "")) {
+    return parts[0] ?? entry.title;
   }
   return entry.title;
 }
-function historyEntryMeta(entry, locale) {
+function historyEntryCountLabel(entry, locale) {
+  if (entry.mode !== "multi") return "";
+  const count = entry.summary?.totalStocks ?? entry.codes.length;
+  if (!count) return "";
+  return locale === "zh-CN" ? `${formatNumber(count, 0)}\u53EA` : `${formatNumber(count, 0)} symbols`;
+}
+function historyEntryMetaTokens(entry, locale) {
   const date = entry.createdAt ? entry.createdAt.slice(5, 16).replace("T", " ") : "";
+  const metaTokens = entry.meta.split(" \xB7 ").map((item) => item.trim()).filter(Boolean);
   return [
-    entry.meta,
+    ...metaTokens,
     freqLabel(entry.freq, locale),
     date
-  ].filter(Boolean).join(" \xB7 ");
+  ].filter(Boolean);
+}
+function historyEntryChips(entry) {
+  if (entry.mode !== "multi") return [];
+  const chips = entry.codes.slice(0, 2);
+  const hidden = entry.codes.length - chips.length;
+  return hidden > 0 ? [...chips, `+${hidden}`] : chips;
+}
+function TrashIcon() {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("svg", { viewBox: "0 0 24 24", width: "15", height: "15", "aria-hidden": "true", focusable: "false", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("path", { d: "M9 4h6l1 2h4v2H4V6h4l1-2Z", fill: "currentColor" }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("path", { d: "M7 9h10l-.7 11H7.7L7 9Zm3 2v7h1.5v-7H10Zm2.5 0v7H14v-7h-1.5Z", fill: "currentColor" })
+  ] });
+}
+function RestoreIcon() {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("svg", { viewBox: "0 0 24 24", width: "15", height: "15", "aria-hidden": "true", focusable: "false", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+    "path",
+    {
+      d: "M6.2 6.8A8 8 0 1 1 4 12h2a6 6 0 1 0 1.76-4.24L10 10H4V4l2.2 2.8Z",
+      fill: "currentColor"
+    }
+  ) });
 }
 function BacktestHistoryRows({
   locale,
   entries,
-  onRestore
+  symbolOptions = [],
+  onRestore,
+  onDelete
 }) {
   if (entries.length === 0) {
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: emptyStyle, children: locale === "zh-CN" ? "\u6682\u65E0\u53EF\u590D\u539F\u56DE\u6D4B\u3002" : "No restorable backtest yet." });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: compactListStyle, children: entries.slice(0, BACKTEST_HISTORY_LIMIT).map((entry) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
-    "button",
-    {
-      type: "button",
-      style: { ...rowStyle, width: "100%", cursor: "pointer", textAlign: "left" },
-      onClick: () => onRestore(entry),
-      children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { color: terminalTheme.textStrong, fontWeight: 700 }, children: historyEntryTitle(entry, locale) }),
-          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: mutedStyle, children: historyEntryMeta(entry, locale) })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("success"), children: locale === "zh-CN" ? "\u590D\u539F" : "Restore" })
-      ]
-    },
-    entry.id
-  )) });
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: compactListStyle, children: entries.slice(0, BACKTEST_HISTORY_LIMIT).map((entry) => {
+    const chips = historyEntryChips(entry);
+    const countLabel = historyEntryCountLabel(entry, locale);
+    const metaTokens = historyEntryMetaTokens(entry, locale);
+    const title = historyEntryTitle(entry, locale, { symbolOptions });
+    const primarySignal = historyEntryPrimarySignal(entry);
+    const signalName = signalTypeLabel(signalFamilyLabel(primarySignal));
+    const signalMetric = historyEntrySignalMetric(primarySignal, locale);
+    const restoreEntry = (event) => {
+      event.stopPropagation();
+      onRestore(entry);
+    };
+    const deleteEntry = (event) => {
+      event.stopPropagation();
+      onDelete(entry);
+    };
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+      "div",
+      {
+        style: historyCardStyle,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+            "button",
+            {
+              type: "button",
+              style: historyRestoreSurfaceStyle,
+              onClick: restoreEntry,
+              "aria-label": locale === "zh-CN" ? `\u590D\u539F${title}` : `Restore ${title}`,
+              title: locale === "zh-CN" ? "\u590D\u539F\u8FD9\u6761\u56DE\u6D4B\u7ED3\u679C" : "Restore this backtest result",
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: historyTitleLineStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: historyTitleTextStyle, children: title }),
+                  countLabel ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: historyCountBadgeStyle, children: countLabel }) : null
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: historyMetaRowStyle, children: metaTokens.map((token, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: historyMetaTokenStyle, children: token }, `${entry.id}-meta-${index}`)) }),
+                primarySignal && signalName !== emptyDisplay ? /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: historySignalLineStyle, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: statusBadgeStyle("open"), children: locale === "zh-CN" ? "\u4E3B\u4FE1\u53F7" : "Signal" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: historySignalNameStyle, children: signalName }),
+                  signalMetric ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: {
+                    ...historySignalMetricStyle,
+                    color: cellToneColor(signalMetric.toneKey, signalMetric.value)
+                  }, children: formatPercent(signalMetric.value) }) : null
+                ] }) : null,
+                chips.length ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: historyChipRowStyle, children: chips.map((item) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: historyChipStyle, children: item }, item)) }) : null
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: historyActionColumnStyle, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                style: historyRestoreActionStyle,
+                onClick: restoreEntry,
+                "aria-label": locale === "zh-CN" ? "\u590D\u539F\u56DE\u6D4B\u8BB0\u5F55" : "Restore backtest record",
+                title: locale === "zh-CN" ? "\u590D\u539F\u8FD9\u6761\u56DE\u6D4B\u7ED3\u679C" : "Restore this backtest result",
+                children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(RestoreIcon, {})
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+              "button",
+              {
+                type: "button",
+                "aria-label": locale === "zh-CN" ? "\u5220\u9664\u56DE\u6D4B\u8BB0\u5F55" : "Delete backtest record",
+                title: locale === "zh-CN" ? "\u5220\u9664\u8FD9\u6761\u5386\u53F2\u5165\u53E3" : "Delete this history entry",
+                style: historyDeleteActionStyle,
+                onClick: deleteEntry,
+                children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(TrashIcon, {})
+              }
+            )
+          ] })
+        ]
+      },
+      entry.id
+    );
+  }) });
 }
 function FallbackRows({
   dashboard,
@@ -35230,11 +37719,12 @@ function FallbackBacktest({
   dashboard,
   historyEntries,
   onRestoreHistory,
+  onDeleteHistory,
   onOpenRun,
   onOpenRecord
 }) {
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { ...mainGridStyle, gridTemplateColumns: "1fr" }, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u56DE\u6D4B\u8BB0\u5F55" : "Backtest records", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BacktestHistoryRows, { locale, entries: historyEntries, onRestore: onRestoreHistory }) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u56DE\u6D4B\u8BB0\u5F55" : "Backtest records", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BacktestHistoryRows, { locale, entries: historyEntries, onRestore: onRestoreHistory, onDelete: onDeleteHistory }) }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Panel, { title: locale === "zh-CN" ? "\u5F85\u5904\u7406\u7EBF\u7D22" : "Pending signals", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FallbackRows, { dashboard, onOpenRun, onOpenRecord }) })
   ] });
 }
@@ -35371,8 +37861,10 @@ var OPPORTUNITY_FUNNEL_TABS = ["buy_candidates", "watch_stocks", "focus_stocks"]
 var SHELL_REQUEST_TIMEOUT_MS = 12e3;
 var SYMBOL_REQUEST_TIMEOUT_MS = 45e3;
 var SYMBOL_DATA_CACHE_TTL_MS = 6e4;
-var RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 8;
+var RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 3;
 var RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS = 12e3;
+var RIGHT_PANEL_SYMBOL_PREFETCH_DELAY_MS = 2500;
+var TIMEFRAME_SNAPSHOT_DELAY_MS = 2e3;
 var TRADE_ROLE_FILTERS = [
   { key: "all", zh: "\u5168\u90E8", en: "All" },
   { key: "left_attack", zh: "\u4F4E\u5438\u8FDB\u653B", en: "Left attack" },
@@ -40671,6 +43163,7 @@ function StrategyChartTerminal({
   const shellLoadedRef = (0, import_react3.useRef)(false);
   const activeWatchlistTabRef = (0, import_react3.useRef)("sector_boards");
   const silentSymbolRefreshInFlightRef = (0, import_react3.useRef)(false);
+  const manualSymbolLoadingRef = (0, import_react3.useRef)(false);
   const manualSymbolAbortRef = (0, import_react3.useRef)(null);
   const timeframeSnapshotKeyRef = (0, import_react3.useRef)("");
   const dashboardRef = (0, import_react3.useRef)(dashboard);
@@ -41126,21 +43619,24 @@ function StrategyChartTerminal({
     }
   }, [baseUrl, rememberSymbolData]);
   (0, import_react3.useEffect)(() => {
-    if (!baseUrl || rightPanelPrefetchTargets.length === 0) return;
+    if (!baseUrl || rightPanelPrefetchTargets.length === 0 || loading || booting || !symbolData) return;
     const controller = new AbortController();
     let cancelled = false;
-    void (async () => {
-      for (const nextTarget of rightPanelPrefetchTargets) {
-        if (cancelled || controller.signal.aborted) return;
-        await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: "visible-right-panel" });
-        await new Promise((resolve) => window.setTimeout(resolve, 80));
-      }
-    })();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const nextTarget of rightPanelPrefetchTargets) {
+          if (cancelled || controller.signal.aborted) return;
+          await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: "visible-right-panel" });
+          await new Promise((resolve) => window.setTimeout(resolve, 80));
+        }
+      })();
+    }, RIGHT_PANEL_SYMBOL_PREFETCH_DELAY_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
       controller.abort();
     };
-  }, [baseUrl, prefetchSymbolData, rightPanelPrefetchKey]);
+  }, [baseUrl, booting, loading, prefetchSymbolData, rightPanelPrefetchKey, rightPanelPrefetchTargets, symbolData]);
   const loadShell = (0, import_react3.useCallback)(
     async (signal) => {
       if (!baseUrl) return null;
@@ -41168,11 +43664,14 @@ function StrategyChartTerminal({
   const loadSymbol = (0, import_react3.useCallback)(
     async (nextTarget, options = {}) => {
       if (!baseUrl) return;
-      if (options.silent && silentSymbolRefreshInFlightRef.current) return;
+      if (options.silent && (silentSymbolRefreshInFlightRef.current || manualSymbolLoadingRef.current)) return;
       if (options.silent) silentSymbolRefreshInFlightRef.current = true;
       const requestId = activeRequestRef.current + 1;
       activeRequestRef.current = requestId;
-      if (!options.silent) setLoading(true);
+      if (!options.silent) {
+        manualSymbolLoadingRef.current = true;
+        setLoading(true);
+      }
       setError(null);
       const cacheKey = symbolDataCacheKey(nextTarget);
       const cached = symbolDataCacheRef.current.get(cacheKey);
@@ -41180,6 +43679,7 @@ function StrategyChartTerminal({
       const hasFreshCache = Boolean(cached && cacheAgeMs <= SYMBOL_DATA_CACHE_TTL_MS);
       if (!options.silent && cached && hasFreshCache) {
         applySymbolData(cached.data, nextTarget, { cachedAt: cached.cachedAt });
+        manualSymbolLoadingRef.current = false;
         setLoading(false);
         recordObservationEvent("strategy.symbol.cache-hit", {
           target: nextTarget.label,
@@ -41187,6 +43687,7 @@ function StrategyChartTerminal({
           freq: nextTarget.freq,
           age_ms: Math.round(cacheAgeMs)
         });
+        return;
       }
       try {
         const nextSymbolData = await fetchJson2(
@@ -41218,6 +43719,7 @@ function StrategyChartTerminal({
         setError(apiError.message || (locale === "zh-CN" ? "Signals \u56FE\u8868\u6570\u636E\u52A0\u8F7D\u5931\u8D25\u3002" : "Failed to load Signals chart data."));
       } finally {
         if (options.silent) silentSymbolRefreshInFlightRef.current = false;
+        if (!options.silent && requestId === activeRequestRef.current) manualSymbolLoadingRef.current = false;
         if (requestId === activeRequestRef.current) setLoading(false);
       }
     },
@@ -41229,6 +43731,7 @@ function StrategyChartTerminal({
       setTimeframeSnapshots({});
       return;
     }
+    if (loading || booting) return;
     const requestKey = timeframeSnapshotSymbol.trim().toUpperCase();
     timeframeSnapshotKeyRef.current = requestKey;
     const controller = new AbortController();
@@ -41260,6 +43763,7 @@ function StrategyChartTerminal({
               { timeoutMs: 15e3 }
             );
             if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return;
+            rememberSymbolData({ label: timeframeSnapshotSymbol, kind: "stock", freq }, nextData);
             setTimeframeSnapshots((previous) => ({
               ...previous,
               [freq]: marketSnapshotFromSymbolData(nextData, freq, locale)
@@ -41275,12 +43779,12 @@ function StrategyChartTerminal({
           await new Promise((resolve) => window.setTimeout(resolve, 120));
         }
       })();
-    }, 700);
+    }, TIMEFRAME_SNAPSHOT_DELAY_MS);
     return () => {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [baseUrl, locale, timeframeSnapshotSymbol]);
+  }, [baseUrl, booting, currentFreq, loading, locale, rememberSymbolData, symbolData, timeframeSnapshotSymbol]);
   (0, import_react3.useEffect)(() => {
     if (!symbolData || !timeframeSnapshotSymbol) return;
     const freq = normalizeSignalFreq(currentFreq) || currentFreq;
@@ -41380,6 +43884,7 @@ function StrategyChartTerminal({
     const controllers = /* @__PURE__ */ new Set();
     const symbolRefreshMs = liveRefresh ? 15e3 : 6e4;
     const refreshSymbol = () => {
+      if (manualSymbolLoadingRef.current) return;
       const controller = new AbortController();
       controllers.add(controller);
       void loadSymbol(target, { signal: controller.signal, silent: true }).finally(() => {
@@ -48747,13 +51252,14 @@ function App() {
   const [managedPluginPathDraft, setManagedPluginPathDraft] = (0, import_react6.useState)("");
   const activeLaunchIdRef = (0, import_react6.useRef)(null);
   const workModeTouchedRef = (0, import_react6.useRef)(false);
-  const viewportTier = getViewportTier(viewportWidth);
-  const shellLayout = (0, import_react6.useMemo)(
-    () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, Boolean(selected)),
-    [selected, threadSidebarOpen, viewportTier, viewportWidth]
-  );
   const isFullBleedPackPage = page === "strategy" || page === "ai_factor_factory" || page === "backtest";
   const isWeChatPage = page === "wechat";
+  const detailPaneEnabled = !isWeChatPage && page !== "backtest";
+  const viewportTier = getViewportTier(viewportWidth);
+  const shellLayout = (0, import_react6.useMemo)(
+    () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, detailPaneEnabled && Boolean(selected)),
+    [detailPaneEnabled, selected, threadSidebarOpen, viewportTier, viewportWidth]
+  );
   const hideContextSidebar = isFullBleedPackPage || page === "execution" || page === "factory" || page === "wechat";
   const wechatBound = wechatBindingStatus?.state === "bound";
   const wechatIdentityReady = wechatBindingStatus?.identity_status === "ilink_verified";
@@ -49627,6 +52133,11 @@ function App() {
       setSelected(null);
     }
   }, [page, selected, selectedWeclawSessionId]);
+  (0, import_react6.useEffect)(() => {
+    if (page === "backtest" && selected) {
+      setSelected(null);
+    }
+  }, [page, selected]);
   (0, import_react6.useEffect)(() => {
     if (page === "wechat") return;
     if (selected?.type === "weclaw_session") {
@@ -50762,7 +53273,7 @@ function App() {
             ]
           }
         ),
-        !isWeChatPage && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("aside", { "aria-label": t(locale, "section.detail.drawer"), style: shellLayout.detailPane, children: selected ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: pageStackStyle, children: [
+        detailPaneEnabled && /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("aside", { "aria-label": t(locale, "section.detail.drawer"), style: shellLayout.detailPane, children: selected ? /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: pageStackStyle, children: [
           /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: detailHeaderStyle, children: [
             /* @__PURE__ */ (0, import_jsx_runtime9.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime9.jsx)("div", { style: chromeStyles.eyebrowLight, children: t(locale, "section.detail.drawer") }),

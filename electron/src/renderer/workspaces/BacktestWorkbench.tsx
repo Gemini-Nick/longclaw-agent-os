@@ -216,6 +216,7 @@ type BacktestResult = {
 
 type BacktestHistoryEntry = {
   id: string
+  sourceKey?: string
   schema_version?: string
   title: string
   meta: string
@@ -246,6 +247,12 @@ type BacktestHistoryRendererState = {
   selectedDatePresetKey?: string | null
   selectedSignalIndex?: number | null
   selectedTradeIndex?: number | null
+  selectedBatchCode?: string | null
+  selectedBatchSignalType?: string | null
+}
+
+type BacktestHistoryLabelContext = {
+  symbolOptions?: SymbolOption[]
 }
 
 type ScanResult = {
@@ -301,6 +308,9 @@ const BACKTEST_MARKER_GROUP = 'longclaw-backtest-markers'
 const DATE_PRESET_BEFORE_DAYS = 30
 const DATE_PRESET_AFTER_DAYS = 60
 const MS_PER_DAY = 86_400_000
+const EXPANDED_EVENT_CONTEXT_BARS = 24
+const EXPANDED_EVENT_MIN_BARS = 48
+const EXPANDED_EVENT_MAX_BARS = 96
 const MARKET_DATE_TZ_OFFSET_MS = 8 * 60 * 60 * 1000
 const MARKET_DATE_TIME_ZONE = 'Asia/Shanghai'
 export const BACKTEST_HISTORY_SCHEMA_VERSION = 'backtest-history.v2'
@@ -495,10 +505,10 @@ const rowStyle: React.CSSProperties = {
 const historyRestoreButtonStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) auto',
-  alignItems: 'center',
-  gap: 8,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  justifyContent: 'center',
   border: 'none',
   background: 'transparent',
   color: 'inherit',
@@ -508,9 +518,16 @@ const historyRestoreButtonStyle: React.CSSProperties = {
   fontFamily: fontStacks.ui,
 }
 
+const historyRestoreSurfaceStyle: React.CSSProperties = {
+  ...historyRestoreButtonStyle,
+  gap: 6,
+  borderRadius: 5,
+  padding: '1px 0',
+}
+
 const iconButtonStyle: React.CSSProperties = {
-  width: 26,
-  height: 26,
+  width: 32,
+  height: 32,
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -524,11 +541,134 @@ const iconButtonStyle: React.CSSProperties = {
 }
 
 const historyChipStyle: React.CSSProperties = {
-  ...statusBadgeStyle('open'),
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
+  borderRadius: tradingDeskTheme.radius.pill,
+  background: tradingDeskTheme.alpha.infoSurface,
+  color: tradingDeskTheme.colors.infoText,
   fontFamily: fontStacks.mono,
-  maxWidth: 72,
+  fontSize: 11,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  maxWidth: 64,
+  minHeight: 20,
+  padding: '2px 7px',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const historyCardStyle: React.CSSProperties = {
+  width: '100%',
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) 34px',
+  alignItems: 'stretch',
+  gap: 8,
+  border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
+  borderRadius: 6,
+  background: 'linear-gradient(135deg, rgba(18, 27, 39, 0.98), rgba(12, 18, 27, 0.96))',
+  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.infoBorder}, 0 8px 20px rgba(0, 0, 0, 0.12)`,
+  padding: '8px 7px 8px 8px',
+  minWidth: 0,
+}
+
+const historyTitleLineStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 0,
+}
+
+const historyTitleTextStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 14,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const historyCountBadgeStyle: React.CSSProperties = {
+  ...historyChipStyle,
+  flex: '0 0 auto',
+  color: tradingDeskTheme.chart.line,
+  padding: '2px 7px',
+}
+
+const historyMetaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '2px 6px',
+  minWidth: 0,
+}
+
+const historyMetaTokenStyle: React.CSSProperties = {
+  ...mutedStyle,
+  fontSize: 11,
+  whiteSpace: 'nowrap',
+  wordBreak: 'keep-all',
+  overflowWrap: 'normal',
+}
+
+const historySignalLineStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  minWidth: 0,
+  color: terminalTheme.text,
+  fontSize: 11,
+  lineHeight: 1.25,
+}
+
+const historySignalNameStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontWeight: 800,
+}
+
+const historySignalMetricStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  fontFamily: fontStacks.mono,
+  fontWeight: 800,
+}
+
+const historyChipRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 4,
+  minWidth: 0,
+  maxHeight: 20,
+  overflow: 'hidden',
+}
+
+const historyActionColumnStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  flex: '0 0 auto',
+}
+
+const historyRestoreActionStyle: React.CSSProperties = {
+  ...iconButtonStyle,
+  border: `1px solid rgba(89, 217, 142, 0.34)`,
+  background: 'rgba(89, 217, 142, 0.11)',
+  color: palette.success,
+  appearance: 'none',
+}
+
+const historyDeleteActionStyle: React.CSSProperties = {
+  ...iconButtonStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
+  background: terminalTheme.panelInset,
+  color: terminalTheme.mutedStrong,
+  appearance: 'none',
 }
 
 const compactListStyle: React.CSSProperties = {
@@ -934,6 +1074,177 @@ function boardKindLabel(kind: unknown, locale: LongclawLocale): string {
   }[raw.toLowerCase()] ?? raw
 }
 
+const GENERIC_MULTI_HISTORY_TITLE = /^(多标的回测|多标的回测复盘|Multi-symbol backtest|Signals Batch)(\s*[·-]\s*\d+\s*(只|symbols?)?)?$/i
+
+const HISTORY_GROUP_NOISE_LABELS = new Set([
+  '批量结果',
+  '批量排名',
+  '区间概览',
+  '批量K线',
+  '交易员结论',
+  '当前图表',
+  '名称查询',
+  '直接输入',
+  '观察池',
+  '待复盘',
+])
+
+const BACKTEST_COMMONALITY_HINTS: Array<{ label: string; codes: string[]; names: string[] }> = [
+  {
+    label: '半导体设备',
+    codes: [
+      '688478',
+      '688072',
+      '688729',
+      '688082',
+      '688012',
+      '603690',
+      '002371',
+      '301369',
+      '603061',
+      '300604',
+      '688419',
+      '301297',
+      '688605',
+      '688652',
+      '301629',
+      '688037',
+      '003043',
+      '688200',
+      '688147',
+      '688120',
+      '688361',
+      '688409',
+    ],
+    names: ['晶升股份', '拓荆科技', '屹唐股份', '盛美上海', '中微公司', '至纯科技', '北方华创', '长川科技'],
+  },
+  {
+    label: '银行/券商/保险',
+    codes: ['601398', '601211', '601318', '600030', '601688', '600837', '601166', '600036'],
+    names: ['工商银行', '国泰海通', '国泰君安', '中国平安', '中信证券', '华泰证券', '招商银行'],
+  },
+  {
+    label: '地产/基建/建材',
+    codes: ['000002', '601668', '600585', '600019', '600048', '601800', '000877', '000401'],
+    names: ['万科', '中国建筑', '海螺水泥', '宝钢股份', '保利发展', '中国交建', '天山股份'],
+  },
+  {
+    label: '食品饮料/零售消费',
+    codes: ['600519', '600887', '300999', '600754', '000858', '600809', '601888', '000568'],
+    names: ['贵州茅台', '伊利股份', '金龙鱼', '锦江酒店', '五粮液', '山西汾酒', '中国中免'],
+  },
+  {
+    label: '新能源车/锂电',
+    codes: ['300750', '002594', '002466', '002709', '603799', '002812', '300014'],
+    names: ['宁德时代', '比亚迪', '天齐锂业', '赣锋锂业', '华友钴业', '恩捷股份', '亿纬锂能'],
+  },
+]
+
+function cleanCommonalityLabel(value: unknown): string {
+  const raw = stringValue(value)?.trim()
+  if (!raw) return ''
+  const withoutSource = raw.replace(/^自建产业链图谱\s*[·-]\s*/u, '').trim()
+  const parts = withoutSource.split(/[·｜|]/u).map(item => item.trim()).filter(Boolean)
+  const label = parts.length >= 2 && /产业链$/u.test(parts[0] ?? '')
+    ? parts[parts.length - 1] ?? withoutSource
+    : withoutSource
+  const compact = label
+    .replace(/\s+/g, '')
+    .replace(/复盘$/u, '')
+    .replace(/回测$/u, '')
+  return HISTORY_GROUP_NOISE_LABELS.has(compact) ? '' : compact
+}
+
+function commonalityRowsFromBatchResult(batchResult?: BatchBacktestResult): Array<Record<string, unknown>> {
+  const panels = batchResult?.terminal?.panels ?? {}
+  const chart = batchResult?.terminal?.chart ?? {}
+  const groups: unknown[] = [
+    batchResult?.stocks,
+    panels.ranking?.rows,
+    panels.interval_overview?.rows,
+    panels.multi_charts?.items,
+    chart.multi_charts,
+    panels.scripts?.cards,
+  ]
+  return groups.flatMap(group => Array.isArray(group) ? group.map(recordValue) : [])
+}
+
+function commonalityLabelFromSymbolOptions(codes: string[], options: SymbolOption[] = []): string {
+  const codeSet = new Set(codes.map(normalizeSymbolCode).filter(Boolean))
+  if (!codeSet.size) return ''
+  const counts = new Map<string, number>()
+  options.forEach(option => {
+    if (!codeSet.has(normalizeSymbolCode(option.code))) return
+    const label = cleanCommonalityLabel(option.group)
+    if (!label) return
+    counts.set(label, (counts.get(label) ?? 0) + 1)
+  })
+  const [bestLabel, bestCount = 0] = [...counts.entries()].sort((left, right) => right[1] - left[1])[0] ?? []
+  const threshold = Math.min(codeSet.size, Math.max(2, Math.ceil(codeSet.size * 0.5)))
+  return bestLabel && bestCount >= threshold ? bestLabel : ''
+}
+
+function commonalityLabelFromHints(codes: string[], rows: Array<Record<string, unknown>>): string {
+  const normalizedCodes = codes.map(normalizeSymbolCode).filter(Boolean)
+  const codeSet = new Set(normalizedCodes)
+  if (!codeSet.size) return ''
+  const rowText = rows.map(row => [
+    row.code,
+    row.symbol,
+    row.name,
+    row.stock_name,
+    row.title,
+  ].map(item => String(item ?? '')).join(' ')).join(' ')
+  const best = BACKTEST_COMMONALITY_HINTS
+    .map(hint => {
+      const matchedCodes = hint.codes.filter(code => codeSet.has(normalizeSymbolCode(code))).length
+      const matchedNames = hint.names.filter(name => rowText.includes(name)).length
+      const coverage = matchedCodes / Math.max(codeSet.size, 1)
+      return { hint, matchedCodes, matchedNames, coverage, score: matchedCodes * 4 + matchedNames }
+    })
+    .filter(item => (
+      item.matchedCodes >= Math.min(2, codeSet.size) && item.coverage >= 0.5
+    ) || (
+      codeSet.size <= 2 && item.matchedCodes === codeSet.size
+    ) || (
+      item.matchedNames >= Math.min(2, codeSet.size)
+    ))
+    .sort((left, right) => right.score - left.score)[0]
+  return best?.hint.label ?? ''
+}
+
+function commonalityLabelForCodes(
+  codes: string[],
+  rows: Array<Record<string, unknown>> = [],
+  context: BacktestHistoryLabelContext = {},
+): string {
+  return commonalityLabelFromSymbolOptions(codes, context.symbolOptions) ||
+    commonalityLabelFromHints(codes, rows)
+}
+
+export function historyEntryCommonalityLabel(
+  entry: BacktestHistoryEntry,
+  locale: LongclawLocale,
+  context: BacktestHistoryLabelContext = {},
+): string {
+  if (entry.mode !== 'multi') return ''
+  const storedTitle = entry.title.trim()
+  if (storedTitle && !GENERIC_MULTI_HISTORY_TITLE.test(storedTitle)) {
+    return cleanCommonalityLabel(storedTitle) || storedTitle
+  }
+  const rows = commonalityRowsFromBatchResult(entry.batchResult)
+  const label = commonalityLabelForCodes(entry.codes, rows, context)
+  if (label) return label
+  if (entry.codes.length <= 2) {
+    const names = rows
+      .map(row => stringValue(row.name) ?? stringValue(row.stock_name))
+      .filter((item): item is string => Boolean(item))
+      .slice(0, 2)
+    if (names.length === entry.codes.length) return names.join('/')
+  }
+  return locale === 'zh-CN' ? '多标的组合' : 'Multi-symbol basket'
+}
+
 function buttonStyle(active = false, disabled = false): React.CSSProperties {
   return {
     height: 30,
@@ -1204,6 +1515,12 @@ function rendererStateValue(value: unknown): BacktestHistoryRendererState | unde
   const selectedTradeIndex = numberValue(record.selectedTradeIndex)
   if (selectedSignalIndex !== undefined) state.selectedSignalIndex = selectedSignalIndex
   if (selectedTradeIndex !== undefined) state.selectedTradeIndex = selectedTradeIndex
+  if (record.selectedBatchCode === null || typeof record.selectedBatchCode === 'string') {
+    state.selectedBatchCode = record.selectedBatchCode
+  }
+  if (record.selectedBatchSignalType === null || typeof record.selectedBatchSignalType === 'string') {
+    state.selectedBatchSignalType = record.selectedBatchSignalType
+  }
   return Object.keys(state).length ? state : undefined
 }
 
@@ -1222,6 +1539,7 @@ function normalizeBacktestHistoryEntry(value: unknown): BacktestHistoryEntry | n
   const createdAt = stringValue(record.createdAt ?? record.created_at) ?? ''
   return {
     id: stringValue(record.id) ?? '',
+    sourceKey: stringValue(record.sourceKey ?? record.source_key),
     schema_version: stringValue(record.schema_version) ?? BACKTEST_HISTORY_SCHEMA_VERSION,
     title: stringValue(record.title) ?? (mode === 'multi' ? '多标的回测' : '单票回测'),
     meta: stringValue(record.meta) ?? '',
@@ -1292,6 +1610,16 @@ function readDeletedBacktestHistoryIds(): Set<string> {
   }
 }
 
+export function backtestHistoryDeleteKeys(entry: BacktestHistoryEntry): string[] {
+  return [entry.id, entry.sourceKey]
+    .map(item => String(item ?? '').trim())
+    .filter(Boolean)
+}
+
+export function isBacktestHistoryEntryDeleted(entry: BacktestHistoryEntry, deletedKeys: Set<string>): boolean {
+  return backtestHistoryDeleteKeys(entry).some(key => deletedKeys.has(key))
+}
+
 function writeDeletedBacktestHistoryIds(ids: Set<string>) {
   if (typeof window === 'undefined') return
   try {
@@ -1299,6 +1627,20 @@ function writeDeletedBacktestHistoryIds(ids: Set<string>) {
   } catch {
     // Local tombstones are best-effort; remote soft delete remains canonical.
   }
+}
+
+function backtestRecordSourceKey(record: Record<string, unknown>): string | undefined {
+  const metadata = recordValue(record.metadata)
+  const sourceId =
+    stringValue(record.job_id) ??
+    stringValue(record.history_id) ??
+    stringValue(record.run_id) ??
+    stringValue(record.id) ??
+    stringValue(metadata.job_id) ??
+    stringValue(metadata.history_id) ??
+    stringValue(metadata.run_id) ??
+    stringValue(metadata.id)
+  return sourceId ? `dashboard:${sourceId}` : undefined
 }
 
 export function backtestHistoryEntryFromRecord(title: string, record: Record<string, unknown>): BacktestHistoryEntry | null {
@@ -1327,9 +1669,19 @@ export function backtestHistoryEntryFromRecord(title: string, record: Record<str
     codes,
     freq,
     signalType: stringValue(metadata.signal_type) ?? stringValue(metadata.signal_group),
-    createdAt: stringValue(record.updated_at) ?? stringValue(metadata.created_at) ?? stringValue(metadata.updated_at),
+    createdAt:
+      stringValue(record.updated_at) ??
+      stringValue(record.created_at) ??
+      stringValue(metadata.created_at) ??
+      stringValue(metadata.updated_at),
   })
-  return entry ? { ...entry, title: entry.mode === 'multi' ? entry.title : (title || entry.title) } : null
+  return entry
+    ? {
+        ...entry,
+        sourceKey: backtestRecordSourceKey(record),
+        title: entry.mode === 'multi' ? entry.title : (title || entry.title),
+      }
+    : null
 }
 
 function dashboardBacktestHistoryEntries(dashboard: BacktestDashboard): BacktestHistoryEntry[] {
@@ -1547,6 +1899,31 @@ const EXIT_REASON_LABELS: Record<string, string> = {
   atr_trail: 'ATR追踪',
 }
 
+const SIGNAL_TYPE_LABELS: Record<string, string> = {
+  breakout_20d: '突破 · 20日新高',
+  'breakout_20d_buy': '突破 · 20日新高',
+  breakout_200d: '突破 · 200日新高',
+  '200日新高突破': '突破 · 200日新高',
+  b_零下企稳: 'MACD · B零下企稳',
+  a_零上回踩: 'MACD · A零上回踩',
+  candlerun_3: 'K线 · 连续阳线3',
+  candleaccel_3: 'K线 · 加速阳线3',
+  trend_buy: '缠论 · 趋势买',
+  一买: '缠论 · 一买',
+  二买: '缠论 · 二买',
+  三买: '缠论 · 三买',
+  一卖: '缠论 · 一卖',
+  二卖: '缠论 · 二卖',
+  三卖: '缠论 · 三卖',
+  背驰买: '缠论 · 背驰买',
+  背驰卖: '缠论 · 背驰卖',
+  趋势买: '缠论 · 趋势买',
+  趋势卖: '缠论 · 趋势卖',
+  跳空买点: '缺口 · 跳空买点',
+  头肩顶: '形态 · 头肩顶',
+  头肩底: '形态 · 头肩底',
+}
+
 const FILL_TYPE_LABELS: Record<string, string> = {
   open_fill: '开盘',
   trigger_fill: '触发',
@@ -1556,6 +1933,16 @@ function exitReasonLabel(value: unknown): string {
   const raw = stringValue(value)
   if (!raw) return emptyDisplay
   return EXIT_REASON_LABELS[raw.toLowerCase()] ?? raw
+}
+
+function signalTypeLabel(value: unknown): string {
+  const raw = stringValue(value)
+  if (!raw) return emptyDisplay
+  const trimmed = raw.trim()
+  const normalized = trimmed.toLowerCase()
+  return SIGNAL_TYPE_LABELS[normalized] ??
+    SIGNAL_TYPE_LABELS[trimmed] ??
+    trimmed.replace(/_/g, ' ')
 }
 
 function fillTypeLabel(value: unknown): string {
@@ -1571,6 +1958,32 @@ function formatHoldingDays(value: unknown): string {
 
 function normalizeSignalComparable(value: unknown): string {
   return String(value ?? '').trim().toLowerCase().replace(/[\s_-]+/g, '')
+}
+
+function normalizedSignalVariants(value: unknown): string[] {
+  const raw = stringValue(value)
+  if (!raw) return []
+  const variants = new Set<string>()
+  const add = (candidate: unknown) => {
+    const normalized = normalizeSignalComparable(candidate)
+    if (normalized) variants.add(normalized)
+  }
+  const addWithShortName = (candidate: unknown) => {
+    const text = stringValue(candidate)
+    if (!text) return
+    add(text)
+    const short = text.split(/[·:：/｜|]/).map(item => item.trim()).filter(Boolean).at(-1)
+    add(short)
+  }
+  addWithShortName(raw)
+  addWithShortName(signalTypeLabel(raw))
+  return Array.from(variants)
+}
+
+export function signalFamilyMatches(left: unknown, right: unknown): boolean {
+  const leftVariants = normalizedSignalVariants(left)
+  const rightVariants = new Set(normalizedSignalVariants(right))
+  return leftVariants.some(item => rightVariants.has(item))
 }
 
 function signalDateKey(signal: BacktestSignal): string {
@@ -1591,12 +2004,11 @@ function signalDisplayDate(signal: BacktestSignal): string {
 export function tradeOutcomeForSignal(signal: BacktestSignal, trades: BacktestTrade[]): SignalTradeOutcome | null {
   const date = signalDateKey(signal)
   if (!date) return null
-  const signalTypes = [signal.type, signal.group].map(normalizeSignalComparable).filter(Boolean)
   const filled = trades.filter(trade => trade.entry_price !== null && trade.entry_price !== undefined)
   const sameDateTrades = filled.filter(trade => stringValue(trade.signal_date) === date)
   const exactTypeTrade = sameDateTrades.find(trade => {
-    const tradeTypes = [trade.signal_type, trade.signal_group].map(normalizeSignalComparable).filter(Boolean)
-    return tradeTypes.some(type => signalTypes.includes(type))
+    const tradeTypes = [trade.signal_type, trade.signal_group].filter(item => stringValue(item))
+    return tradeTypes.some(type => [signal.type, signal.group].some(signalType => signalFamilyMatches(type, signalType)))
   })
   const trade = exactTypeTrade ?? sameDateTrades[0]
   if (!trade) return null
@@ -1612,12 +2024,27 @@ type MiniKlineTradeMarker = {
   index: number
   timestamp: number
   price: number
-  kind: 'entry' | 'exit'
+  kind: 'signal' | 'entry' | 'exit'
+  side?: 'buy' | 'sell'
   label?: string
+  group?: string
+  sourceIndex?: number
   tradeIndex?: number
   signalType?: string
   exitReason?: string
   returnPct?: number
+  confidence?: number
+}
+
+type MiniTradeEventGroup = {
+  key: string
+  kind: 'trade' | 'signal' | 'marker'
+  timestamp: number
+  markers: MiniKlineTradeMarker[]
+  entry?: MiniKlineTradeMarker
+  exit?: MiniKlineTradeMarker
+  signal?: MiniKlineTradeMarker
+  resultPct?: number
 }
 
 type ExpandedKlineRangeOption = {
@@ -1630,6 +2057,40 @@ type ExpandedKlineRangeOption = {
   source: 'backtest' | 'strategy' | 'event'
 }
 
+type KlineIndexWindow = {
+  fromIndex: number
+  toIndex: number
+  from: number
+  to: number
+  barCount: number
+}
+
+type ExpandedKlineFocus = {
+  signalType?: string
+  markerKey?: string
+}
+
+type PreparedBatchChartItem = {
+  item: Record<string, unknown>
+  code: string
+  name: string
+  label: string
+  rows: KLineData[]
+  regimes: Array<Record<string, unknown>>
+  signalMarkers: MiniKlineTradeMarker[]
+  tradeMarkers: MiniKlineTradeMarker[]
+  markers: MiniKlineTradeMarker[]
+  signalFamilies: Set<string>
+  dateRange: string
+  fullDateRange: string
+  filledTradeCount: number
+}
+
+type ExpandedKlineState = {
+  chart: PreparedBatchChartItem
+  focus?: ExpandedKlineFocus
+}
+
 type SignalTradeOutcome = {
   trade: BacktestTrade
   holdingDays?: number
@@ -1637,14 +2098,26 @@ type SignalTradeOutcome = {
   exitReason?: string
 }
 
-function tradeMarkerKind(marker: Record<string, unknown>): 'entry' | 'exit' {
+function miniMarkerKind(marker: Record<string, unknown>): MiniKlineTradeMarker['kind'] {
   const text = String(marker.kind ?? marker.side ?? marker.type ?? '').toLowerCase()
+  if (text.includes('signal') || text.includes('信号')) return 'signal'
   return text.includes('exit') || text.includes('sell') || text.includes('卖') || text.includes('平') ? 'exit' : 'entry'
+}
+
+function miniMarkerSide(marker: Record<string, unknown>, kind: MiniKlineTradeMarker['kind']): 'buy' | 'sell' {
+  const text = String(marker.side ?? marker.type ?? marker.label ?? '').toLowerCase()
+  if (kind === 'exit' || text.includes('sell') || text.includes('卖') || text.includes('平')) return 'sell'
+  return 'buy'
 }
 
 function tradeMarkersFromChartItem(item: Record<string, unknown>): Array<Record<string, unknown>> {
   const markers = Array.isArray(item.trade_markers) ? item.trade_markers : item.entry_exit_markers
   return Array.isArray(markers) ? markers.map(recordValue) : []
+}
+
+function signalMarkersFromChartItem(item: Record<string, unknown>): Array<Record<string, unknown>> {
+  const markers = Array.isArray(item.signal_markers) ? item.signal_markers : []
+  return markers.map(recordValue)
 }
 
 export function buildMiniKlineTradeMarkers(markers: Array<Record<string, unknown>>, rows: KLineData[]): MiniKlineTradeMarker[] {
@@ -1666,16 +2139,22 @@ export function buildMiniKlineTradeMarkers(markers: Array<Record<string, unknown
         }, 0)
       const price = numberValue(marker.price) ?? rows[nearestIndex]?.close
       if (price === undefined) return null
+      const evalData = recordValue(marker.eval)
+      const kind = miniMarkerKind(marker)
       return {
         index: nearestIndex,
         timestamp,
         price,
-        kind: tradeMarkerKind(marker),
+        kind,
+        side: miniMarkerSide(marker, kind),
         label: stringValue(marker.label),
+        group: stringValue(marker.group),
+        sourceIndex: numberValue(marker.source_index),
         tradeIndex: numberValue(marker.trade_index),
-        signalType: stringValue(marker.signal_type),
+        signalType: stringValue(marker.signal_type ?? marker.type),
         exitReason: stringValue(marker.exit_reason),
-        returnPct: numberValue(marker.return_pct),
+        returnPct: numberValue(marker.return_pct ?? marker.return_t10 ?? evalData.return_t10 ?? marker.return_t5 ?? evalData.return_t5),
+        confidence: numberValue(marker.confidence),
       } satisfies MiniKlineTradeMarker
     })
     .filter((item): item is MiniKlineTradeMarker => Boolean(item))
@@ -1686,9 +2165,238 @@ function miniTradeMarkerId(marker: MiniKlineTradeMarker): string {
     marker.kind,
     marker.timestamp,
     marker.price,
+    marker.sourceIndex ?? '',
     marker.tradeIndex ?? '',
     marker.signalType ?? marker.exitReason ?? marker.label ?? '',
   ].join(':')
+}
+
+function signalFamilyLabel(row: Record<string, unknown> | null | undefined): string {
+  return stringValue(row?.signal_type) ??
+    stringValue(row?.type) ??
+    stringValue(row?.group) ??
+    stringValue(row?.label) ??
+    ''
+}
+
+function markerSignalFamily(marker: MiniKlineTradeMarker): string {
+  return marker.signalType ?? marker.group ?? marker.label ?? marker.exitReason ?? ''
+}
+
+function miniMarkerMatchesSignalFamily(marker: MiniKlineTradeMarker, signalType: string | null | undefined): boolean {
+  return [
+    marker.signalType,
+    marker.group,
+    marker.label,
+  ].some(item => signalFamilyMatches(item, signalType))
+}
+
+function chartItemCode(item: Record<string, unknown>): string {
+  return normalizeSymbolCode(stringValue(item.code) ?? stringValue(item.symbol) ?? '')
+}
+
+function chartItemName(item: Record<string, unknown>): string {
+  return stringValue(item.name) ?? stringValue(item.stock_name) ?? chartItemCode(item)
+}
+
+function chartItemLabel(item: Record<string, unknown>): string {
+  const code = chartItemCode(item)
+  const name = chartItemName(item)
+  return code && name && normalizeSymbolCode(name) !== code ? `${code} ${name}` : code || name || emptyDisplay
+}
+
+type PreparedBatchChartItemCacheEntry = {
+  rawOhlcv: unknown
+  rawRegimes: unknown
+  rawSignalMarkers: unknown
+  rawTradeMarkers: unknown
+  prepared: PreparedBatchChartItem
+}
+
+const preparedBatchChartItemCache = new WeakMap<Record<string, unknown>, PreparedBatchChartItemCacheEntry>()
+
+function addSignalFamilyVariants(target: Set<string>, ...values: unknown[]) {
+  values.forEach(value => {
+    normalizedSignalVariants(value).forEach(item => target.add(item))
+  })
+}
+
+function prepareBatchChartItem(item: Record<string, unknown>): PreparedBatchChartItem {
+  const rawOhlcv = item.ohlcv
+  const rawRegimes = item.regimes
+  const rawSignalMarkers = item.signal_markers
+  const rawTradeMarkers = item.trade_markers ?? item.entry_exit_markers
+  const cached = preparedBatchChartItemCache.get(item)
+  if (
+    cached &&
+    cached.rawOhlcv === rawOhlcv &&
+    cached.rawRegimes === rawRegimes &&
+    cached.rawSignalMarkers === rawSignalMarkers &&
+    cached.rawTradeMarkers === rawTradeMarkers
+  ) {
+    return cached.prepared
+  }
+
+  const rows = toKLineData(Array.isArray(rawOhlcv) ? rawOhlcv as Record<string, unknown>[] : [])
+  const regimes = Array.isArray(rawRegimes) ? rawRegimes.map(recordValue) : []
+  const signalMarkers = buildMiniKlineTradeMarkers(signalMarkersFromChartItem(item), rows)
+  const tradeMarkers = buildMiniKlineTradeMarkers(tradeMarkersFromChartItem(item), rows)
+  const markers = [...signalMarkers, ...tradeMarkers].sort((left, right) => left.timestamp - right.timestamp || left.index - right.index)
+  const signalFamilies = new Set<string>()
+  markers.forEach(marker => addSignalFamilyVariants(signalFamilies, marker.signalType, marker.group, marker.label))
+
+  const code = chartItemCode(item)
+  const name = chartItemName(item)
+  const prepared: PreparedBatchChartItem = {
+    item,
+    code,
+    name,
+    label: chartItemLabel(item),
+    rows,
+    regimes,
+    signalMarkers,
+    tradeMarkers,
+    markers,
+    signalFamilies,
+    dateRange: batchKlineDateRangeLabel(item, rows),
+    fullDateRange: batchKlineDateRangeLabel(item, rows, false),
+    filledTradeCount: numberValue(item.filled_trade_count) ?? tradeMarkers.filter(marker => marker.kind === 'entry').length,
+  }
+  preparedBatchChartItemCache.set(item, {
+    rawOhlcv,
+    rawRegimes,
+    rawSignalMarkers,
+    rawTradeMarkers,
+    prepared,
+  })
+  return prepared
+}
+
+function allMiniMarkersFromChartItem(item: Record<string, unknown>, rows?: KLineData[]): MiniKlineTradeMarker[] {
+  if (!rows) return prepareBatchChartItem(item).markers
+  return [
+    ...buildMiniKlineTradeMarkers(signalMarkersFromChartItem(item), rows),
+    ...buildMiniKlineTradeMarkers(tradeMarkersFromChartItem(item), rows),
+  ].sort((left, right) => left.timestamp - right.timestamp || left.index - right.index)
+}
+
+function preparedChartMatchesSignalFamily(item: PreparedBatchChartItem, signalType: string | null | undefined): boolean {
+  const variants = normalizedSignalVariants(signalType)
+  return variants.some(variant => item.signalFamilies.has(variant))
+}
+
+function chartItemMatchesSignalFamily(item: Record<string, unknown>, signalType: string | null | undefined): boolean {
+  return preparedChartMatchesSignalFamily(prepareBatchChartItem(item), signalType)
+}
+
+function chartItemForCode(items: Array<Record<string, unknown>>, code: string | null | undefined): Record<string, unknown> | null {
+  const normalized = normalizeSymbolCode(code ?? '')
+  if (!normalized) return null
+  return items.find(item => chartItemCode(item).toUpperCase() === normalized.toUpperCase()) ?? null
+}
+
+function preparedChartItemForCode(items: PreparedBatchChartItem[], code: string | null | undefined): PreparedBatchChartItem | null {
+  const normalized = normalizeSymbolCode(code ?? '')
+  if (!normalized) return null
+  return items.find(item => item.code.toUpperCase() === normalized.toUpperCase()) ?? null
+}
+
+function codeFromSignalFamilyBestSymbol(row: Record<string, unknown>): string {
+  return normalizeSymbolCode(extractSymbolCandidates(String(row.best_symbol ?? row.best_code ?? row.code ?? '')).at(0) ?? '')
+}
+
+function signalFamilyKlineTarget(row: Record<string, unknown>, items: PreparedBatchChartItem[]): PreparedBatchChartItem | null {
+  const signalType = signalFamilyLabel(row)
+  const matchedItems = signalType
+    ? items.filter(item => preparedChartMatchesSignalFamily(item, signalType))
+    : []
+  const bestCode = codeFromSignalFamilyBestSymbol(row)
+  return preparedChartItemForCode(items, bestCode) ?? matchedItems[0] ?? null
+}
+
+export function signalFamilyKlineTargetCode(row: Record<string, unknown>, chartItems: Array<Record<string, unknown>>): string {
+  return signalFamilyKlineTarget(row, chartItems.map(prepareBatchChartItem))?.code ?? ''
+}
+
+export function pairedMiniTradeMarkers(markers: MiniKlineTradeMarker[], selectedMarker: MiniKlineTradeMarker | null): MiniKlineTradeMarker[] {
+  if (!selectedMarker) return []
+  if (selectedMarker.tradeIndex !== undefined) {
+    const paired = markers.filter(marker => marker.tradeIndex === selectedMarker.tradeIndex)
+    if (paired.length) return paired
+  }
+  return [selectedMarker]
+}
+
+export function miniTradeEventGroups(markers: MiniKlineTradeMarker[]): MiniTradeEventGroup[] {
+  const groups = new Map<string, MiniTradeEventGroup>()
+  markers.forEach(marker => {
+    const keyedTrade = marker.tradeIndex !== undefined
+    const key = keyedTrade ? `trade:${marker.tradeIndex}` : `${marker.kind}:${miniTradeMarkerId(marker)}`
+    const existing = groups.get(key)
+    const group = existing ?? {
+      key,
+      kind: keyedTrade ? 'trade' : marker.kind === 'signal' ? 'signal' : 'marker',
+      timestamp: marker.timestamp,
+      markers: [],
+    }
+    group.markers.push(marker)
+    group.timestamp = Math.min(group.timestamp, marker.timestamp)
+    if (marker.kind === 'entry') group.entry = marker
+    if (marker.kind === 'exit') group.exit = marker
+    if (marker.kind === 'signal') group.signal = marker
+    if (marker.returnPct !== undefined) group.resultPct = marker.returnPct
+    groups.set(key, group)
+  })
+  return Array.from(groups.values())
+    .map(group => {
+      const orderedMarkers = [...group.markers].sort((left, right) => left.timestamp - right.timestamp || left.index - right.index)
+      const entry = group.entry ?? orderedMarkers.find(marker => marker.kind === 'entry')
+      const exit = group.exit ?? orderedMarkers.find(marker => marker.kind === 'exit')
+      const signal = group.signal ?? orderedMarkers.find(marker => marker.kind === 'signal')
+      return {
+        ...group,
+        markers: orderedMarkers,
+        entry,
+        exit,
+        signal,
+        kind: entry || exit ? 'trade' : signal ? 'signal' : 'marker',
+        timestamp: entry?.timestamp ?? signal?.timestamp ?? orderedMarkers[0]?.timestamp ?? group.timestamp,
+        resultPct: exit?.returnPct ?? entry?.returnPct ?? signal?.returnPct ?? group.resultPct,
+      } satisfies MiniTradeEventGroup
+    })
+    .sort((left, right) => left.timestamp - right.timestamp || left.key.localeCompare(right.key))
+}
+
+function preferredMiniTradeEventMarker(group: MiniTradeEventGroup): MiniKlineTradeMarker | null {
+  return group.exit ?? group.entry ?? group.signal ?? group.markers[0] ?? null
+}
+
+function shortKlineDate(timestamp: number): string {
+  return dateKey(timestamp).slice(5)
+}
+
+function miniTradeEventGroupTitle(group: MiniTradeEventGroup): string {
+  if (group.entry && group.exit) return `${shortKlineDate(group.entry.timestamp)} 买 → ${shortKlineDate(group.exit.timestamp)} 卖`
+  if (group.entry) return `${shortKlineDate(group.entry.timestamp)} 买入`
+  if (group.exit) return `${shortKlineDate(group.exit.timestamp)} 离场`
+  if (group.signal) return `${shortKlineDate(group.signal.timestamp)} ${group.signal.side === 'sell' ? '卖出信号' : '买入信号'}`
+  return group.markers[0] ? shortKlineDate(group.markers[0].timestamp) : emptyDisplay
+}
+
+function miniTradeEventGroupSubtitle(group: MiniTradeEventGroup): string {
+  const marker = group.entry ?? group.signal ?? group.exit ?? group.markers[0]
+  return marker ? miniTradeMarkerOverlayLabel(marker) : emptyDisplay
+}
+
+function markerWindowFromPairedMarkers(rows: KLineData[], markers: MiniKlineTradeMarker[]): KlineIndexWindow | null {
+  return buildMarkerCenteredKlineWindow(rows, markers)
+}
+
+export function expandedKlineFocusRows(rows: KLineData[], selectedRows: KLineData[], markerWindow: KlineIndexWindow | null) {
+  return {
+    chartRows: selectedRows,
+    evidenceRows: markerWindow ? rows.slice(markerWindow.fromIndex, markerWindow.toIndex + 1) : selectedRows,
+  }
 }
 
 function fullDateLabel(value: unknown): string | undefined {
@@ -1795,6 +2503,105 @@ function filterMiniTradeMarkersForRange(markers: MiniKlineTradeMarker[], option:
   return markers.filter(marker => marker.timestamp >= option.from && marker.timestamp <= option.to)
 }
 
+export function buildKlineIndexWindow(rows: KLineData[], from: number, to: number): KlineIndexWindow | null {
+  if (rows.length === 0) return null
+  const first = rows[0]?.timestamp
+  const last = rows[rows.length - 1]?.timestamp
+  if (first === undefined || last === undefined) return null
+  const rangeFrom = Math.max(first, Math.min(from, to))
+  const rangeTo = Math.min(last, Math.max(from, to))
+  const fromIndex = rows.findIndex(row => row.timestamp >= rangeFrom)
+  const reverseToIndex = rows.slice().reverse().findIndex(row => row.timestamp <= rangeTo)
+  const toIndex = reverseToIndex >= 0 ? rows.length - reverseToIndex - 1 : -1
+  if (fromIndex < 0 || toIndex < fromIndex) return null
+  return {
+    fromIndex,
+    toIndex,
+    from: rows[fromIndex]?.timestamp ?? rangeFrom,
+    to: rows[toIndex]?.timestamp ?? rangeTo,
+    barCount: toIndex - fromIndex + 1,
+  }
+}
+
+function nearestKLineIndex(rows: KLineData[], timestamp: number): number | null {
+  if (!rows.length || !Number.isFinite(timestamp)) return null
+  let bestIndex = -1
+  let bestDistance = Number.POSITIVE_INFINITY
+  rows.forEach((row, index) => {
+    const distance = Math.abs(row.timestamp - timestamp)
+    if (distance < bestDistance) {
+      bestIndex = index
+      bestDistance = distance
+    }
+  })
+  return bestIndex >= 0 ? bestIndex : null
+}
+
+export function buildMarkerCenteredKlineWindow(
+  rows: KLineData[],
+  markers: Array<{ timestamp: number }>,
+  contextBars = EXPANDED_EVENT_CONTEXT_BARS,
+  minBars = EXPANDED_EVENT_MIN_BARS,
+  maxBars = EXPANDED_EVENT_MAX_BARS,
+): KlineIndexWindow | null {
+  if (!rows.length || !markers.length) return null
+  const indices = markers
+    .map(marker => nearestKLineIndex(rows, marker.timestamp))
+    .filter((index): index is number => index !== null)
+  if (!indices.length) return null
+
+  const minIndex = Math.min(...indices)
+  const maxIndex = Math.max(...indices)
+  const spanBars = maxIndex - minIndex + 1
+  const desiredBars = Math.min(
+    rows.length,
+    Math.max(spanBars, Math.min(maxBars, Math.max(minBars, spanBars + Math.max(0, contextBars) * 2))),
+  )
+  const centerIndex = (minIndex + maxIndex) / 2
+  let fromIndex = Math.round(centerIndex - (desiredBars - 1) / 2)
+  let toIndex = fromIndex + desiredBars - 1
+
+  if (fromIndex < 0) {
+    toIndex = Math.min(rows.length - 1, toIndex - fromIndex)
+    fromIndex = 0
+  }
+  if (toIndex > rows.length - 1) {
+    const overshoot = toIndex - (rows.length - 1)
+    fromIndex = Math.max(0, fromIndex - overshoot)
+    toIndex = rows.length - 1
+  }
+
+  return {
+    fromIndex,
+    toIndex,
+    from: rows[fromIndex]?.timestamp ?? rows[minIndex]?.timestamp ?? 0,
+    to: rows[toIndex]?.timestamp ?? rows[maxIndex]?.timestamp ?? 0,
+    barCount: toIndex - fromIndex + 1,
+  }
+}
+
+export function buildKlineFocusWindow(
+  rows: KLineData[],
+  timestamp: number,
+  beforeBars = 42,
+  afterBars = 28,
+): KlineIndexWindow | null {
+  if (rows.length === 0) return null
+  const nearestIndex = rows.reduce((bestIndex, row, index) => {
+    const best = rows[bestIndex]
+    return !best || Math.abs(row.timestamp - timestamp) < Math.abs(best.timestamp - timestamp) ? index : bestIndex
+  }, 0)
+  const fromIndex = Math.max(0, nearestIndex - beforeBars)
+  const toIndex = Math.min(rows.length - 1, nearestIndex + afterBars)
+  return {
+    fromIndex,
+    toIndex,
+    from: rows[fromIndex]?.timestamp ?? timestamp,
+    to: rows[toIndex]?.timestamp ?? timestamp,
+    barCount: toIndex - fromIndex + 1,
+  }
+}
+
 function medianNumber(values: number[]): number | undefined {
   if (values.length === 0) return undefined
   const sorted = values.slice().sort((left, right) => left - right)
@@ -1859,6 +2666,31 @@ function nearestKLineData(data: KLineData[], timestamp: number): KLineData | und
   }, undefined)
 }
 
+function fitChartToIndexWindow(chart: Chart, rows: KLineData[], window: KlineIndexWindow, animationDuration = 120) {
+  if (rows.length === 0 || window.barCount <= 0) return
+  const width = chart.getSize()?.width ?? 980
+  const fittedBarSpace = Math.max(1.4, Math.min(12, (width - 96) / Math.max(window.barCount, 1)))
+  chart.setBarSpace(fittedBarSpace)
+  chart.setOffsetRightDistance(34)
+  chart.scrollToDataIndex(window.toIndex, animationDuration)
+}
+
+function fitChartToRows(chart: Chart, rows: KLineData[], animationDuration = 120) {
+  if (rows.length === 0) return
+  const fullWindow = buildKlineIndexWindow(rows, rows[0]?.timestamp ?? 0, rows[rows.length - 1]?.timestamp ?? 0)
+  if (fullWindow) fitChartToIndexWindow(chart, rows, fullWindow, animationDuration)
+}
+
+function focusChartOnTimestamp(chart: Chart, rows: KLineData[], timestamp: number, animationDuration = 120) {
+  const focusWindow = buildKlineFocusWindow(rows, timestamp)
+  if (focusWindow) fitChartToIndexWindow(chart, rows, focusWindow, animationDuration)
+}
+
+function focusChartOnDateWindow(chart: Chart, rows: KLineData[], window: DatePresetWindow, animationDuration = 120) {
+  const focusWindow = buildKlineIndexWindow(rows, window.from, window.to)
+  if (focusWindow) fitChartToIndexWindow(chart, rows, focusWindow, animationDuration)
+}
+
 async function fetchJson<T>(
   baseUrl: string,
   path: string,
@@ -1908,6 +2740,8 @@ export function backtestRestoreStateFromHistory(entry: BacktestHistoryEntry, fal
     selectedDatePresetKey: rendererState.selectedDatePresetKey ?? null,
     selectedSignalIndex: rendererState.selectedSignalIndex ?? null,
     selectedTradeIndex: rendererState.selectedTradeIndex ?? null,
+    selectedBatchCode: rendererState.selectedBatchCode ?? null,
+    selectedBatchSignalType: rendererState.selectedBatchSignalType ?? null,
     result: entry.mode === 'single' ? entry.result ?? null : null,
     batchResult: entry.mode === 'multi' ? entry.batchResult ?? null : null,
   }
@@ -2516,8 +3350,9 @@ function backtestMaIndicatorStyles(): DeepPartial<IndicatorStyle> {
   return {
     lines: BACKTEST_MA_PERIODS.map((period, index) => ({
       color: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length],
-      size: period >= 60 ? 1 : 1.2,
+      size: period >= 60 ? 1.5 : 1.8,
       style: 'solid',
+      dashedValue: [2, 2],
     })),
   }
 }
@@ -2525,8 +3360,8 @@ function backtestMaIndicatorStyles(): DeepPartial<IndicatorStyle> {
 function backtestMacdIndicatorStyles(): DeepPartial<IndicatorStyle> {
   return {
     lines: [
-      { color: tradingDeskTheme.chart.line, size: 1.2, style: 'solid' },
-      { color: tradingDeskTheme.chart.orange, size: 1.2, style: 'solid' },
+      { color: tradingDeskTheme.chart.line, size: 1.5, style: 'solid', dashedValue: [2, 2] },
+      { color: tradingDeskTheme.chart.orange, size: 1.5, style: 'solid', dashedValue: [2, 2] },
     ],
     bars: [
       {
@@ -2562,7 +3397,7 @@ function chartStyles(): DeepPartial<Styles> {
       },
     },
     indicator: {
-      lines: BACKTEST_MA_COLORS.map(color => ({ color, size: 1, style: 'solid' })),
+      lines: BACKTEST_MA_COLORS.map(color => ({ color, size: 1, style: 'solid', dashedValue: [2, 2] })),
       bars: [
         {
           upColor: tradingDeskTheme.market.up,
@@ -2789,6 +3624,8 @@ export function BacktestWorkbench({
   const [selectedSignalIndex, setSelectedSignalIndex] = useState<number | null>(null)
   const [selectedTradeIndex, setSelectedTradeIndex] = useState<number | null>(null)
   const [selectedDatePresetKey, setSelectedDatePresetKey] = useState<string | null>(null)
+  const [selectedBatchCode, setSelectedBatchCode] = useState<string | null>(null)
+  const [selectedBatchSignalType, setSelectedBatchSignalType] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [scanLoading, setScanLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -2851,7 +3688,7 @@ export function BacktestWorkbench({
   const dashboardHistory = useMemo(() => dashboardBacktestHistoryEntries(dashboard), [dashboard])
   const restorableHistory = useMemo(
     () => mergeBacktestHistoryEntries([...localHistory, ...remoteHistory, ...dashboardHistory])
-      .filter(entry => !deletedHistoryIds.has(entry.id)),
+      .filter(entry => !isBacktestHistoryEntryDeleted(entry, deletedHistoryIds)),
     [dashboardHistory, deletedHistoryIds, localHistory, remoteHistory],
   )
   const symbolOptions = useMemo(
@@ -2892,9 +3729,10 @@ export function BacktestWorkbench({
       return next
     })
     setDeletedHistoryIds(previous => {
-      if (!previous.has(entry.id)) return previous
+      const nextKeys = backtestHistoryDeleteKeys(entry)
+      if (nextKeys.every(key => !previous.has(key))) return previous
       const next = new Set(previous)
-      next.delete(entry.id)
+      nextKeys.forEach(key => next.delete(key))
       writeDeletedBacktestHistoryIds(next)
       return next
     })
@@ -2936,7 +3774,7 @@ export function BacktestWorkbench({
     if (!baseUrl || localHistory.length === 0 || typeof window === 'undefined') return
     const migrationKey = `${BACKTEST_HISTORY_MIGRATED_STORAGE_KEY}:${baseUrl}`
     if (window.localStorage.getItem(migrationKey) === '1') return
-    const entries = localHistory.filter(entry => !deletedHistoryIds.has(entry.id))
+    const entries = localHistory.filter(entry => !isBacktestHistoryEntryDeleted(entry, deletedHistoryIds))
     if (entries.length === 0) {
       window.localStorage.setItem(migrationKey, '1')
       return
@@ -3040,6 +3878,8 @@ export function BacktestWorkbench({
         setSelectedSignalIndex(null)
         setSelectedTradeIndex(null)
         setSelectedDatePresetKey(null)
+        setSelectedBatchCode(null)
+        setSelectedBatchSignalType(null)
         setTab('perf')
         rememberBacktestHistory(createBacktestHistoryEntry({
           batchResult: data,
@@ -3052,6 +3892,8 @@ export function BacktestWorkbench({
             selectedDatePresetKey: null,
             selectedSignalIndex: null,
             selectedTradeIndex: null,
+            selectedBatchCode: null,
+            selectedBatchSignalType: null,
           },
         }))
         const summary = recordValue(data.summary)
@@ -3074,6 +3916,8 @@ export function BacktestWorkbench({
       setSelectedSignalIndex(null)
       setSelectedTradeIndex(null)
       setSelectedDatePresetKey(null)
+      setSelectedBatchCode(null)
+      setSelectedBatchSignalType(null)
       if (!hadResult) setTab('perf')
       rememberBacktestHistory(createBacktestHistoryEntry({
         result: data,
@@ -3086,6 +3930,8 @@ export function BacktestWorkbench({
           selectedDatePresetKey: null,
           selectedSignalIndex: null,
           selectedTradeIndex: null,
+          selectedBatchCode: null,
+          selectedBatchSignalType: null,
         },
       }))
       const metrics = recordValue(data.terminal?.metrics)
@@ -3181,11 +4027,13 @@ export function BacktestWorkbench({
   const handleMarkerSelect = useCallback((marker: MarkerData) => {
     if (marker.kind === 'signal' && marker.sourceIndex !== undefined) {
       setSelectedSignalIndex(marker.sourceIndex)
+      setSelectedTradeIndex(null)
       setTab('signals')
       return
     }
     if (marker.kind === 'trade' && marker.tradeIndex !== undefined) {
       setSelectedTradeIndex(marker.tradeIndex)
+      setSelectedSignalIndex(null)
       setTab('trades')
     }
   }, [])
@@ -3193,14 +4041,16 @@ export function BacktestWorkbench({
   const drillIntoBatchSymbol = useCallback((nextCode: string) => {
     const normalized = normalizeSymbolCode(nextCode)
     if (!normalized) return
-    setCode(normalized)
-    setBatchResult(null)
-    setResult(null)
-    setScan(null)
-    setSelectedSignalIndex(null)
-    setSelectedTradeIndex(null)
-    setSelectedDatePresetKey(null)
-    setTab('perf')
+    setSelectedBatchCode(normalized)
+    recordObservationEvent('backtest.batch.drilldown', {
+      code: normalized,
+      mode: batchResult ? 'batch-slice' : 'pending',
+    })
+  }, [batchResult])
+
+  const selectBatchSignalType = useCallback((nextSignalType: string | null) => {
+    const normalized = nextSignalType?.trim() || null
+    setSelectedBatchSignalType(normalized)
   }, [])
 
   const restoreBacktestHistory = useCallback((entry: BacktestHistoryEntry) => {
@@ -3225,6 +4075,8 @@ export function BacktestWorkbench({
     setSelectedSignalIndex(restoreState.selectedSignalIndex)
     setSelectedTradeIndex(restoreState.selectedTradeIndex)
     setSelectedDatePresetKey(restoreState.selectedDatePresetKey)
+    setSelectedBatchCode(restoreState.selectedBatchCode)
+    setSelectedBatchSignalType(restoreState.selectedBatchSignalType)
     setTab(restoreState.tab)
     recordObservationEvent('backtest.history.restore', {
       id: entry.id,
@@ -3235,15 +4087,16 @@ export function BacktestWorkbench({
   }, [code])
 
   const deleteBacktestHistory = useCallback((entry: BacktestHistoryEntry) => {
+    const deleteKeys = backtestHistoryDeleteKeys(entry)
     setLocalHistory(previous => {
-      const next = previous.filter(item => item.id !== entry.id)
+      const next = previous.filter(item => !backtestHistoryDeleteKeys(item).some(key => deleteKeys.includes(key)))
       writeBacktestHistoryEntries(next)
       return next
     })
-    setRemoteHistory(previous => previous.filter(item => item.id !== entry.id))
+    setRemoteHistory(previous => previous.filter(item => !backtestHistoryDeleteKeys(item).some(key => deleteKeys.includes(key))))
     setDeletedHistoryIds(previous => {
       const next = new Set(previous)
-      next.add(entry.id)
+      deleteKeys.forEach(key => next.add(key))
       writeDeletedBacktestHistoryIds(next)
       return next
     })
@@ -3379,24 +4232,49 @@ export function BacktestWorkbench({
     if (isBatchView) return
     const chart = chartRef.current
     if (!chart) return
-    chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
     if (klineData.length === 0) {
+      chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
       chart.clearData()
       return
     }
     chart.applyNewData(klineData)
-    createSignalOverlays(chart, klineData, selectedChartSignals, selectedChartTradeMarkers, null, handleMarkerSelect)
+    fitChartToRows(chart, klineData, 0)
+    chart.resize()
+  }, [isBatchView, klineData])
+
+  useEffect(() => {
+    if (isBatchView) return
+    const chart = chartRef.current
+    if (!chart) return
+    chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
+    if (klineData.length === 0) return
+    createSignalOverlays(
+      chart,
+      klineData,
+      selectedChartSignals,
+      selectedChartTradeMarkers,
+      detailDateWindow,
+      handleMarkerSelect,
+    )
+  }, [detailDateWindow, handleMarkerSelect, isBatchView, klineData, selectedChartSignals, selectedChartTradeMarkers])
+
+  useEffect(() => {
+    if (isBatchView) return
+    const chart = chartRef.current
+    if (!chart || klineData.length === 0) return
     const selectedSignalTime = selectedChartSignals[0] ? signalTimestampMs(selectedChartSignals[0]) : undefined
     const selectedTradeTime = normalizeTimestampMs(selectedChartTradeMarkers[0]?.time)
     if (selectedSignalTime !== undefined) {
-      chart.scrollToTimestamp(selectedSignalTime, 120)
+      focusChartOnTimestamp(chart, klineData, selectedSignalTime, 120)
     } else if (selectedTradeTime !== undefined) {
-      chart.scrollToTimestamp(selectedTradeTime, 120)
+      focusChartOnTimestamp(chart, klineData, selectedTradeTime, 120)
+    } else if (detailDateWindow) {
+      focusChartOnDateWindow(chart, klineData, detailDateWindow, 120)
     } else {
-      chart.scrollToRealTime()
+      fitChartToRows(chart, klineData, 120)
     }
     chart.resize()
-  }, [handleMarkerSelect, isBatchView, klineData, selectedChartSignals, selectedChartTradeMarkers])
+  }, [detailDateWindow, isBatchView, klineData, selectedChartSignals, selectedChartTradeMarkers])
 
   if (!baseUrl) {
     return (
@@ -3516,6 +4394,8 @@ export function BacktestWorkbench({
           setBatchResult(null)
           setResult(null)
           setSelectedDatePresetKey(null)
+          setSelectedBatchCode(null)
+          setSelectedBatchSignalType(null)
         }}
         onRemoveCode={codeToRemove => {
           setCodeList(selectedCodes.filter(item => item.toUpperCase() !== codeToRemove.toUpperCase()))
@@ -3587,7 +4467,7 @@ export function BacktestWorkbench({
             )}
             {detailDateWindow ? (
               <div style={mutedStyle}>
-                {detailDateWindow.displayRange} · {detailDateWindow.barCount}{locale === 'zh-CN' ? '根K线' : ' bars'} · {locale === 'zh-CN' ? '主图保持完整' : 'Full chart stays visible'}
+                {detailDateWindow.displayRange} · {detailDateWindow.barCount}{locale === 'zh-CN' ? '根K线' : ' bars'} · {locale === 'zh-CN' ? '主图同步区间' : 'Main chart follows range'}
               </div>
             ) : null}
           </Panel>
@@ -3596,6 +4476,7 @@ export function BacktestWorkbench({
             <BacktestHistoryRows
               locale={locale}
               entries={restorableHistory}
+              symbolOptions={symbolOptions}
               onRestore={restoreBacktestHistory}
               onDelete={deleteBacktestHistory}
             />
@@ -3612,7 +4493,10 @@ export function BacktestWorkbench({
             <MultiBacktestReport
               locale={locale}
               terminal={batchResult?.terminal}
+              selectedCode={selectedBatchCode}
+              selectedSignalType={selectedBatchSignalType}
               onSelectCode={drillIntoBatchSymbol}
+              onSelectSignalType={selectBatchSignalType}
             />
           ) : (
           <>
@@ -3674,7 +4558,10 @@ export function BacktestWorkbench({
             <BatchResearchDrilldownPanel
               locale={locale}
               batchResult={batchResult}
+              selectedCode={selectedBatchCode}
+              selectedSignalType={selectedBatchSignalType}
               onSelectCode={drillIntoBatchSymbol}
+              onSelectSignalType={selectBatchSignalType}
             />
           ) : (
           <>
@@ -3709,13 +4596,10 @@ export function BacktestWorkbench({
               <TradeTable
                 trades={trades}
                 selectedIndex={selectedTradeIndex}
-                onSelect={(index, rawTime) => {
+                onSelect={index => {
                   setSelectedTradeIndex(index)
                   setSelectedSignalIndex(null)
                   setTab('trades')
-                  const chart = chartRef.current
-                  const time = normalizeTimestampMs(rawTime)
-                  if (chart && time) chart.scrollToTimestamp(time, 300)
                 }}
               />
             </Panel>
@@ -3725,13 +4609,10 @@ export function BacktestWorkbench({
                 signals={signals}
                 trades={trades}
                 selectedIndex={selectedSignalIndex}
-                onSelect={(index, rawTime) => {
+                onSelect={index => {
                   setSelectedSignalIndex(index)
                   setSelectedTradeIndex(null)
                   setTab('signals')
-                  const chart = chartRef.current
-                  const time = numberValue(rawTime)
-                  if (chart && time) chart.scrollToTimestamp((time < 10_000_000_000 ? time * 1000 : time), 300)
                 }}
               />
             </Panel>
@@ -3763,19 +4644,13 @@ export function BacktestWorkbench({
           rows={detailRows}
           selectedSignalIndex={selectedSignalIndex}
           selectedTradeIndex={selectedTradeIndex}
-          onSelectSignal={(index, rawTime) => {
+          onSelectSignal={index => {
             setSelectedSignalIndex(index)
             setSelectedTradeIndex(null)
-            const chart = chartRef.current
-            const time = numberValue(rawTime)
-            if (chart && time) chart.scrollToTimestamp((time < 10_000_000_000 ? time * 1000 : time), 300)
           }}
-          onSelectTrade={(index, rawTime) => {
+          onSelectTrade={index => {
             setSelectedTradeIndex(index)
             setSelectedSignalIndex(null)
-            const chart = chartRef.current
-            const time = normalizeTimestampMs(rawTime)
-            if (chart && time) chart.scrollToTimestamp(time, 300)
           }}
           onClose={() => selectDatePreset(null)}
         />
@@ -3938,6 +4813,17 @@ function batchSignalRows(batchResult: BatchBacktestResult | null | undefined): A
   return Array.isArray(rows) ? rows.map(recordValue) : []
 }
 
+export function bestBatchSignalFamilyRow(rows: Array<Record<string, unknown>>): Record<string, unknown> | null {
+  const rowsWithTradeReturn = rows.filter(row => numberValue(row.avg_trade_return_pct) !== undefined)
+  const candidates = rowsWithTradeReturn.length ? rowsWithTradeReturn : rows
+  return candidates.reduce<Record<string, unknown> | null>((best, row) => {
+    const value = numberValue(rowsWithTradeReturn.length ? row.avg_trade_return_pct : row.avg_t10_pct)
+    if (value === undefined) return best
+    const bestValue = numberValue(rowsWithTradeReturn.length ? best?.avg_trade_return_pct : best?.avg_t10_pct)
+    return !best || bestValue === undefined || value > bestValue ? row : best
+  }, null)
+}
+
 function recordSymbolLabel(row: Record<string, unknown>): string {
   const code = normalizeSymbolCode(stringValue(row.code) ?? stringValue(row.symbol) ?? '')
   const name = stringValue(row.name) ?? stringValue(row.stock_name)
@@ -3995,11 +4881,17 @@ function BatchSamplePanel({
 function BatchResearchDrilldownPanel({
   locale,
   batchResult,
+  selectedCode,
+  selectedSignalType,
   onSelectCode,
+  onSelectSignalType,
 }: {
   locale: LongclawLocale
   batchResult: BatchBacktestResult | null
+  selectedCode?: string | null
+  selectedSignalType?: string | null
   onSelectCode: (code: string) => void
+  onSelectSignalType: (signalType: string | null) => void
 }) {
   const zh = locale === 'zh-CN'
   const rankingRows = batchRankingRows(batchResult)
@@ -4010,12 +4902,9 @@ function BatchResearchDrilldownPanel({
     const worstValue = Math.abs(numberValue(worst?.max_drawdown_pct) ?? 0)
     return !worst || value > worstValue ? row : worst
   }, null)
-  const bestSignal = signalRows.reduce<Record<string, unknown> | null>((best, row) => {
-    const value = numberValue(row.avg_trade_return_pct ?? row.avg_t10_pct)
-    if (value === undefined) return best
-    const bestValue = numberValue(best?.avg_trade_return_pct ?? best?.avg_t10_pct)
-    return !best || bestValue === undefined || value > bestValue ? row : best
-  }, null)
+  const bestSignal = bestBatchSignalFamilyRow(signalRows)
+  const bestSignalType = signalFamilyLabel(bestSignal)
+  const bestSignalActive = Boolean(bestSignalType && signalFamilyMatches(bestSignalType, selectedSignalType))
   const drillButtons = [
     topRow ? { label: zh ? '下钻第一名' : 'Open top', row: topRow, meta: formatPercent(topRow.range_return_pct) } : null,
     worstDrawdownRow ? { label: zh ? '下钻最大回撤' : 'Open worst DD', row: worstDrawdownRow, meta: formatDrawdown(worstDrawdownRow.max_drawdown_pct) } : null,
@@ -4023,6 +4912,13 @@ function BatchResearchDrilldownPanel({
   return (
     <Panel title={zh ? '批量研发动作' : 'Batch research actions'}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+        {selectedCode ? (
+          <div style={{ ...metricCardStyle, borderColor: terminalTheme.accent }}>
+            <div style={labelStyle}>{zh ? '当前下钻' : 'Current drilldown'}</div>
+            <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>{selectedCode}</div>
+            <div style={mutedStyle}>{zh ? '复用当前批量回测切片，不清空样本、不要求重跑。' : 'Using the current batch slice without clearing the basket.'}</div>
+          </div>
+        ) : null}
         {drillButtons.map(item => {
           const code = normalizeSymbolCode(stringValue(item.row.code) ?? '')
           return (
@@ -4042,15 +4938,40 @@ function BatchResearchDrilldownPanel({
           )
         })}
         {bestSignal ? (
-          <div style={metricCardStyle}>
+          <button
+            type="button"
+            style={{
+              ...metricCardStyle,
+              width: '100%',
+              textAlign: 'left',
+              cursor: bestSignalType ? 'pointer' : 'default',
+              borderColor: bestSignalActive ? terminalTheme.accent : metricCardStyle.borderColor,
+              boxShadow: bestSignalActive ? `inset 3px 0 0 ${terminalTheme.accent}` : 'none',
+            }}
+            disabled={!bestSignalType}
+            onClick={() => {
+              onSelectSignalType(bestSignalType || null)
+              recordObservationEvent('backtest.batch.signal_family.select', {
+                signal_type: bestSignalType,
+                symbol_count: bestSignal.symbol_count,
+                trade_count: bestSignal.trade_count,
+                source: 'research_panel',
+              })
+            }}
+          >
             <div style={labelStyle}>{zh ? '优先验证信号族' : 'Signal family to verify'}</div>
             <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>
-              {String(bestSignal.signal_type ?? emptyDisplay)}
+              {bestSignalType || emptyDisplay}
             </div>
             <div style={mutedStyle}>
               {zh ? '成交均利' : 'Avg trade'} {formatPercent(bestSignal.avg_trade_return_pct)} · T+10 {formatPercent(bestSignal.avg_t10_pct)}
             </div>
-          </div>
+            <div style={{ ...mutedStyle, marginTop: 4, color: bestSignalActive ? terminalTheme.accentSoft : terminalTheme.mutedStrong }}>
+              {bestSignalActive
+                ? (zh ? '已同步到中间信号族详情' : 'Synced to signal detail')
+                : (zh ? '点击同步到信号族详情' : 'Click to sync signal detail')}
+            </div>
+          </button>
         ) : null}
         <div style={emptyStyle}>
           {zh
@@ -4533,14 +5454,22 @@ function SymbolBasketBar({
 function MultiBacktestReport({
   locale,
   terminal,
+  selectedCode,
+  selectedSignalType,
   onSelectCode,
+  onSelectSignalType,
 }: {
   locale: LongclawLocale
   terminal?: BacktestTerminal
+  selectedCode?: string | null
+  selectedSignalType?: string | null
   onSelectCode: (code: string) => void
+  onSelectSignalType: (signalType: string | null) => void
 }) {
   const [reportRef, reportSize] = useElementSize<HTMLDivElement>()
-  const [expandedKline, setExpandedKline] = useState<Record<string, unknown> | null>(null)
+  const signalDetailRef = useRef<HTMLDivElement | null>(null)
+  const [expandedKline, setExpandedKline] = useState<ExpandedKlineState | null>(null)
+  const normalizedSelectedSignalType = selectedSignalType?.trim() || ''
   const density = multiReportDensity(reportSize.width, reportSize.height)
   useEffect(() => {
     setExpandedKline(null)
@@ -4553,6 +5482,13 @@ function MultiBacktestReport({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [expandedKline])
+  useEffect(() => {
+    if (!normalizedSelectedSignalType) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      signalDetailRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [normalizedSelectedSignalType])
   if (!terminal) {
     return <div ref={reportRef} style={{ ...multiReportStyle(density), justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
   }
@@ -4560,7 +5496,45 @@ function MultiBacktestReport({
   const rankingRows = panels.ranking?.rows ?? []
   const overviewRows = panels.interval_overview?.rows ?? []
   const signalRows = Array.isArray(panels.signals?.rows) ? panels.signals.rows.map(recordValue) : []
-  const chartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? []
+  const rawChartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? []
+  const chartItems = useMemo(() => rawChartItems.map(recordValue), [rawChartItems])
+  const preparedChartItems = useMemo(() => chartItems.map(prepareBatchChartItem), [chartItems])
+  const selectedChartItem = preparedChartItemForCode(preparedChartItems, selectedCode)
+  const selectedSignalFamily = normalizedSelectedSignalType
+    ? signalRows.find(row => signalFamilyMatches(signalFamilyLabel(row), normalizedSelectedSignalType)) ?? null
+    : null
+  const openKlineDetail = useCallback((item: PreparedBatchChartItem, focus?: ExpandedKlineFocus) => {
+    if (item.code) onSelectCode(item.code)
+    setExpandedKline({ chart: item, focus })
+  }, [onSelectCode])
+  const openExpandedKline = useCallback((item: PreparedBatchChartItem) => {
+    openKlineDetail(item, normalizedSelectedSignalType ? { signalType: normalizedSelectedSignalType } : undefined)
+  }, [openKlineDetail, normalizedSelectedSignalType])
+  const selectSignalFamily = useCallback((row: Record<string, unknown>) => {
+    const nextSignalType = signalFamilyLabel(row)
+    onSelectSignalType(nextSignalType || null)
+    recordObservationEvent('backtest.batch.signal_family.select', {
+      signal_type: nextSignalType,
+      symbol_count: row.symbol_count,
+      trade_count: row.trade_count,
+    })
+  }, [onSelectSignalType])
+  const openSignalFamilyKline = useCallback((row: Record<string, unknown>) => {
+    const nextSignalType = signalFamilyLabel(row)
+    const targetItem = signalFamilyKlineTarget(row, preparedChartItems)
+    const targetHasMarker = targetItem ? preparedChartMatchesSignalFamily(targetItem, nextSignalType) : false
+    onSelectSignalType(nextSignalType || null)
+    if (targetItem) {
+      openKlineDetail(targetItem, targetHasMarker && nextSignalType ? { signalType: nextSignalType } : undefined)
+    }
+    recordObservationEvent('backtest.batch.signal_family.open_kline', {
+      signal_type: nextSignalType,
+      symbol_count: row.symbol_count,
+      trade_count: row.trade_count,
+      target_code: targetItem?.code,
+      target_has_marker: targetHasMarker,
+    })
+  }, [onSelectSignalType, openKlineDetail, preparedChartItems])
   const scriptCards = panels.scripts?.cards ?? []
   const metrics = recordValue(terminal.metrics)
   const target = recordValue(terminal.target)
@@ -4573,12 +5547,24 @@ function MultiBacktestReport({
     { label: locale === 'zh-CN' ? '5日波幅' : '5D Range', value: formatPercent(metrics.median_5d_high_low_pct), tone: 'warning' },
     { label: locale === 'zh-CN' ? '平均回撤' : 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct), tone: 'down' },
   ]
+  const batchCodes = preparedChartItems.map(item => item.code).filter(Boolean)
+  const commonalityLabel = commonalityLabelForCodes(batchCodes.length ? batchCodes : rankingRows.map(row => stringValue(recordValue(row).code) ?? ''), rankingRows.map(recordValue))
+  const reportTitle = commonalityLabel
+    ? (locale === 'zh-CN' ? `${commonalityLabel}回测` : `${commonalityLabel} backtest`)
+    : String(target.name ?? (locale === 'zh-CN' ? '多标的回测' : 'Signals Batch'))
+  const leaderRow = recordValue(rankingRows[0])
+  const worstDrawdownRow = rankingRows.map(recordValue).reduce<Record<string, unknown> | null>((worst, row) => {
+    const value = Math.abs(numberValue(row.max_drawdown_pct) ?? 0)
+    const worstValue = Math.abs(numberValue(worst?.max_drawdown_pct) ?? 0)
+    return !worst || value > worstValue ? row : worst
+  }, null)
+  const primarySignal = bestBatchSignalFamilyRow(signalRows)
   return (
     <div ref={reportRef} style={multiReportStyle(density)}>
       <div style={multiHeaderStyle(density)}>
         <div style={{ minWidth: 0 }}>
           <div style={labelStyle}>{locale === 'zh-CN' ? '多标的复盘' : 'Multi-symbol review'}</div>
-          <div style={chartTitleStyle}>{String(target.name ?? (locale === 'zh-CN' ? '多标的回测' : 'Signals Batch'))}</div>
+          <div style={chartTitleStyle}>{reportTitle}</div>
           <div style={mutedStyle}>
             {[freqLabel(target.freq, locale), target.as_of ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${target.as_of}` : '', freshnessLabel(target.freshness, locale)].filter(Boolean).join(' · ')}
           </div>
@@ -4595,6 +5581,33 @@ function MultiBacktestReport({
         </div>
       </div>
 
+      <BatchCommonalityStrip
+        locale={locale}
+        density={density}
+        commonalityLabel={commonalityLabel || (locale === 'zh-CN' ? '多标的组合' : 'Multi-symbol basket')}
+        primarySignal={primarySignal}
+        leaderRow={leaderRow}
+        riskRow={worstDrawdownRow}
+        onSelectSignal={primarySignal ? () => selectSignalFamily(primarySignal) : undefined}
+      />
+
+      {selectedChartItem ? (
+        <BatchSymbolSlicePanel
+          locale={locale}
+          item={selectedChartItem}
+          density={density}
+          onOpen={() => openExpandedKline(selectedChartItem)}
+        />
+      ) : selectedCode ? (
+        <Panel title={locale === 'zh-CN' ? '当前下钻切片' : 'Current batch slice'} style={multiPanelStyle(density)}>
+          <div style={emptyStyle}>
+            {locale === 'zh-CN'
+              ? `${selectedCode} 不在当前批量 K 线切片中；仍保留批量结果，不切换到待运行。`
+              : `${selectedCode} is not in the current batch chart slices.`}
+          </div>
+        </Panel>
+      ) : null}
+
       <div style={multiBandStyle(density)}>
         <Panel title={locale === 'zh-CN' ? '排名与锐评' : 'Ranking'} style={multiPanelStyle(density)}>
           <MultiRankingTable rows={rankingRows} density={density} onSelectCode={onSelectCode} />
@@ -4605,18 +5618,50 @@ function MultiBacktestReport({
       </div>
 
       <Panel title={locale === 'zh-CN' ? '全部信号收益拆解' : 'Signal return breakdown'} meta={signalRows.length ? String(signalRows.length) : undefined} style={multiPanelStyle(density)}>
-        <BatchSignalBreakdownTable rows={signalRows} density={density} />
+        <BatchSignalBreakdownTable
+          rows={signalRows}
+          density={density}
+          selectedSignalType={normalizedSelectedSignalType}
+          onSelectRow={selectSignalFamily}
+          onOpenKline={openSignalFamilyKline}
+        />
       </Panel>
+
+      {expandedKline ? (
+        <ExpandedKlineOverlay
+          locale={locale}
+          item={expandedKline.chart}
+          initialFocus={expandedKline.focus}
+          datePresets={terminal.chart?.date_presets}
+          density={density}
+          onClose={() => setExpandedKline(null)}
+        />
+      ) : null}
+
+      {selectedSignalFamily ? (
+        <div ref={signalDetailRef}>
+          <BatchSignalFamilyDetail
+            locale={locale}
+            row={selectedSignalFamily}
+            chartItems={preparedChartItems}
+            density={density}
+            onOpenCode={code => onSelectCode(code)}
+            onOpenKline={(item, signalType) => openKlineDetail(item, signalType ? { signalType } : undefined)}
+          />
+        </div>
+      ) : null}
 
       <Panel title={locale === 'zh-CN' ? '多股票 K线复盘' : 'Multi-symbol candles'} style={multiPanelStyle(density)}>
         {chartItems.length ? (
           <div style={multiChartsGridStyle(density, chartItems.length)}>
-            {chartItems.map((item, index) => (
+            {preparedChartItems.map((item, index) => (
               <MiniKlineCard
-                key={`${String(item.code ?? index)}-${index}`}
+                key={`${item.code || index}-${index}`}
                 item={item}
                 density={density}
-                onExpand={() => setExpandedKline(item)}
+                selected={item.code.toUpperCase() === normalizeSymbolCode(selectedCode ?? '').toUpperCase()}
+                signalMatched={normalizedSelectedSignalType ? preparedChartMatchesSignalFamily(item, normalizedSelectedSignalType) : false}
+                onExpand={openExpandedKline}
               />
             ))}
           </div>
@@ -4636,16 +5681,269 @@ function MultiBacktestReport({
           <div style={emptyStyle}>暂无锐评卡片。</div>
         )}
       </Panel>
-      {expandedKline ? (
-        <ExpandedKlineOverlay
-          locale={locale}
-          item={expandedKline}
-          datePresets={terminal.chart?.date_presets}
-          density={density}
-          onClose={() => setExpandedKline(null)}
-        />
-      ) : null}
     </div>
+  )
+}
+
+function BatchCommonalityStrip({
+  locale,
+  density,
+  commonalityLabel,
+  primarySignal,
+  leaderRow,
+  riskRow,
+  onSelectSignal,
+}: {
+  locale: LongclawLocale
+  density: MultiReportDensity
+  commonalityLabel: string
+  primarySignal: Record<string, unknown> | null
+  leaderRow: Record<string, unknown>
+  riskRow: Record<string, unknown> | null
+  onSelectSignal?: () => void
+}) {
+  const zh = locale === 'zh-CN'
+  const signalName = signalTypeLabel(signalFamilyLabel(primarySignal))
+  const signalMetric = historyEntrySignalMetric(primarySignal, locale)
+  const cards = [
+    {
+      key: 'commonality',
+      label: zh ? '组合共性' : 'Commonality',
+      value: commonalityLabel || emptyDisplay,
+      meta: zh ? '按行业/产业链归档' : 'Industry or chain label',
+      toneKey: '',
+      toneValue: undefined,
+    },
+    {
+      key: 'signal',
+      label: zh ? '主信号' : 'Key signal',
+      value: signalName === emptyDisplay ? emptyDisplay : signalName,
+      meta: signalMetric ? `${signalMetric.label} ${formatPercent(signalMetric.value)}` : (zh ? '等待信号拆解' : 'Waiting for signal breakdown'),
+      toneKey: signalMetric?.toneKey ?? '',
+      toneValue: signalMetric?.value,
+      onClick: onSelectSignal,
+    },
+    {
+      key: 'leader',
+      label: zh ? '领涨样本' : 'Leader',
+      value: recordSymbolLabel(leaderRow),
+      meta: formatPercent(leaderRow.range_return_pct),
+      toneKey: 'range_return_pct',
+      toneValue: leaderRow.range_return_pct,
+    },
+    {
+      key: 'risk',
+      label: zh ? '风险样本' : 'Risk sample',
+      value: riskRow ? recordSymbolLabel(riskRow) : emptyDisplay,
+      meta: riskRow ? formatDrawdown(riskRow.max_drawdown_pct) : emptyDisplay,
+      toneKey: 'max_drawdown_pct',
+      toneValue: riskRow?.max_drawdown_pct,
+    },
+  ]
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: density === 'compact' ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+      gap: 8,
+      minWidth: 0,
+    }}>
+      {cards.map(card => {
+        const interactive = Boolean(card.onClick)
+        const content = (
+          <>
+            <div style={labelStyle}>{card.label}</div>
+            <div style={{
+              color: cellToneColor(card.toneKey, card.toneValue) || terminalTheme.textStrong,
+              fontSize: 14,
+              fontWeight: 900,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {card.value}
+            </div>
+            <div style={{ ...mutedStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {card.meta}
+            </div>
+          </>
+        )
+        return interactive ? (
+          <button
+            key={card.key}
+            type="button"
+            style={{
+              ...metricCardStyle,
+              textAlign: 'left',
+              cursor: 'pointer',
+              appearance: 'none',
+              fontFamily: fontStacks.ui,
+              borderColor: tradingDeskTheme.alpha.infoBorder,
+            }}
+            onClick={card.onClick}
+          >
+            {content}
+          </button>
+        ) : (
+          <div key={card.key} style={metricCardStyle}>
+            {content}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function BatchSymbolSlicePanel({
+  locale,
+  item,
+  density,
+  onOpen,
+}: {
+  locale: LongclawLocale
+  item: PreparedBatchChartItem
+  density: MultiReportDensity
+  onOpen: () => void
+}) {
+  const rows = item.rows
+  const regimes = item.regimes
+  const markers = item.markers
+  const signalCount = markers.filter(marker => marker.kind === 'signal').length
+  const tradeCount = item.filledTradeCount
+  const zh = locale === 'zh-CN'
+  return (
+    <Panel title={zh ? '当前下钻切片' : 'Current batch slice'} style={multiPanelStyle(density)}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: density === 'compact' ? 'minmax(0, 1fr)' : 'minmax(260px, 340px) minmax(0, 1fr)',
+        gap: 10,
+        alignItems: 'stretch',
+      }}>
+        <div style={{ ...metricCardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div>
+              <div style={labelStyle}>{zh ? '批量结果切片' : 'Batch result slice'}</div>
+              <div style={{ color: terminalTheme.textStrong, fontSize: 17, fontWeight: 900 }}>{item.label}</div>
+              <div style={mutedStyle}>{item.dateRange}</div>
+            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+            <div style={metricCardStyle}>
+              <div style={labelStyle}>{zh ? '收益' : 'Return'}</div>
+              <div style={{ color: cellToneColor('range_return_pct', item.item.range_return_pct), fontWeight: 800 }}>{formatPercent(item.item.range_return_pct)}</div>
+            </div>
+            <div style={metricCardStyle}>
+              <div style={labelStyle}>{zh ? '信号' : 'Signals'}</div>
+              <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>{formatNumber(signalCount, 0)}</div>
+            </div>
+            <div style={metricCardStyle}>
+              <div style={labelStyle}>{zh ? '成交' : 'Trades'}</div>
+              <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>{formatNumber(tradeCount, 0)}</div>
+            </div>
+          </div>
+          <button type="button" style={buttonStyle(true)} onClick={onOpen}>
+            {zh ? '进入K线详情' : 'Open chart detail'}
+          </button>
+        </div>
+        <MiniKlineSvg rows={rows} regimes={regimes} tradeMarkers={markers} density={density} variant="expanded" />
+      </div>
+    </Panel>
+  )
+}
+
+function BatchSignalFamilyDetail({
+  locale,
+  row,
+  chartItems,
+  density,
+  onOpenCode,
+  onOpenKline,
+}: {
+  locale: LongclawLocale
+  row: Record<string, unknown>
+  chartItems: PreparedBatchChartItem[]
+  density: MultiReportDensity
+  onOpenCode: (code: string) => void
+  onOpenKline: (item: PreparedBatchChartItem, signalType?: string | null) => void
+}) {
+  const zh = locale === 'zh-CN'
+  const signalType = signalFamilyLabel(row)
+  const matchedItems = signalType
+    ? chartItems.filter(item => preparedChartMatchesSignalFamily(item, signalType))
+    : []
+  const bestCode = codeFromSignalFamilyBestSymbol(row)
+  const bestItem = preparedChartItemForCode(chartItems, bestCode) ?? matchedItems[0] ?? null
+  const matchedItemCodes = new Set(matchedItems.map(item => item.code.toUpperCase()))
+  const bestHasMarker = bestItem ? matchedItemCodes.has(bestItem.code.toUpperCase()) : false
+  const openDetailItem = (item: PreparedBatchChartItem, highlightSignal: boolean) => {
+    onOpenCode(item.code)
+    onOpenKline(item, highlightSignal ? signalType : null)
+  }
+  const weakestItem = matchedItems.reduce<PreparedBatchChartItem | null>((weakest, item) => {
+    const value = numberValue(item.item.range_return_pct)
+    if (value === undefined) return weakest
+    const weakestValue = numberValue(weakest?.item.range_return_pct)
+    return !weakest || weakestValue === undefined || value < weakestValue ? item : weakest
+  }, null)
+  const cards = [
+    { label: zh ? '样本' : 'Samples', value: `${formatNumber(row.evaluated_count, 0)} / ${formatNumber(row.signal_count, 0)}` },
+    { label: zh ? '标注/覆盖' : 'Tags/Symbols', value: `${formatNumber(matchedItems.length, 0)} / ${formatNumber(row.symbol_count, 0)}` },
+    { label: zh ? '成交' : 'Trades', value: formatNumber(row.trade_count, 0) },
+    { label: zh ? '胜率' : 'Win rate', value: formatUnsignedPercent(row.win_rate), key: 'win_rate_pct' },
+    { label: 'T+10', value: formatPercent(row.avg_t10_pct), key: 'avg_t10_pct' },
+    { label: zh ? '成交均利' : 'Avg trade', value: formatPercent(row.avg_trade_return_pct), key: 'avg_trade_return_pct' },
+  ]
+  return (
+    <Panel title={zh ? '信号族详情' : 'Signal family detail'} meta={signalType || undefined} style={multiPanelStyle(density)}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: density === 'compact' ? 'repeat(3, minmax(0, 1fr))' : 'repeat(6, minmax(0, 1fr))', gap: 6 }}>
+          {cards.map(item => (
+            <div key={item.label} style={metricCardStyle}>
+              <div style={labelStyle}>{item.label}</div>
+              <div style={{ color: cellToneColor(item.key ?? '', row[item.key ?? '']), fontWeight: 800 }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
+          {matchedItems.slice(0, 6).map(item => (
+            <button
+              key={item.code}
+              type="button"
+              style={buttonStyle(item.code === bestCode)}
+              onClick={() => openDetailItem(item, true)}
+            >
+              {item.label} · {formatPercent(item.item.range_return_pct)}
+            </button>
+          ))}
+          {bestItem && !matchedItemCodes.has(bestItem.code.toUpperCase()) ? (
+            <button
+              type="button"
+              style={buttonStyle(true)}
+              onClick={() => openDetailItem(bestItem, bestHasMarker)}
+            >
+              {bestHasMarker ? (zh ? '看最佳样本' : 'Best sample') : (zh ? '最佳标的K线' : 'Best symbol chart')}
+            </button>
+          ) : null}
+          {weakestItem ? (
+            <button
+              type="button"
+              style={buttonStyle(false)}
+              onClick={() => openDetailItem(weakestItem, true)}
+            >
+              {zh ? '看失败样本' : 'Failure sample'}
+            </button>
+          ) : null}
+        </div>
+        <div style={mutedStyle}>
+          {matchedItems.length
+            ? (zh
+                ? `图上标注覆盖 ${formatNumber(matchedItems.length, 0)} 只；点击样本会打开 K线弹层并高亮当前信号族。`
+                : `${formatNumber(matchedItems.length, 0)} chart slices contain markers; samples open the chart overlay and highlight this family.`)
+            : bestItem
+              ? (zh
+                  ? '当前批量 K线切片没有这个信号族的图上标注；可打开最佳标的走势核对，但不要当作已标记证据。'
+                  : 'No chart markers were found for this family; open the best symbol chart for context, not marked evidence.')
+              : (zh ? '当前批量 K线切片里没有找到这个信号族的标注。' : 'No matching markers were found in the current batch chart slices.')}
+        </div>
+      </div>
+    </Panel>
   )
 }
 
@@ -4689,7 +5987,7 @@ function MultiRankingTable({
   const headers = density === 'compact' ? compactHeaders : fullHeaders
   return (
     <div style={reportTableWrapStyle('ranking', density)}>
-      <table style={reportTableStyleFor('ranking', density)}>
+      <table role="presentation" style={reportTableStyleFor('ranking', density)}>
         <thead>
           <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
             {headers.map(([key, label]) => (
@@ -4739,7 +6037,7 @@ function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, u
   ] as const
   return (
     <div style={reportTableWrapStyle('overview', density)}>
-      <table style={reportTableStyleFor('overview', density)}>
+      <table role="presentation" style={reportTableStyleFor('overview', density)}>
         <thead>
           <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
             {headers.map(([key, label]) => <th key={key} style={{ padding: 7, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>{label}</th>)}
@@ -4761,7 +6059,20 @@ function IntervalOverviewTable({ rows, density }: { rows: Array<Record<string, u
   )
 }
 
-function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<string, unknown>>; density: MultiReportDensity }) {
+function BatchSignalBreakdownTable({
+  rows,
+  density,
+  selectedSignalType,
+  onSelectRow,
+  onOpenKline,
+}: {
+  rows: Array<Record<string, unknown>>
+  density: MultiReportDensity
+  selectedSignalType?: string
+  onSelectRow?: (row: Record<string, unknown>) => void
+  onOpenKline?: (row: Record<string, unknown>) => void
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   if (rows.length === 0) return <div style={emptyStyle}>运行“全部信号”后显示各信号类型的 T+5/T+10、MFE/MAE 和成交收益。</div>
   const topBy = (key: string, direction: 'max' | 'min' = 'max') => rows.reduce<Record<string, unknown> | null>((best, row) => {
     const value = numberValue(row[key])
@@ -4779,6 +6090,18 @@ function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<strin
     { label: '成交均利', row: topBy('avg_trade_return_pct'), key: 'avg_trade_return_pct', format: formatPercent },
     { label: '回撤压力', row: topBy('avg_mae_pct', 'min'), key: 'avg_mae_pct', format: formatPercent },
   ]
+  const cellPadding = density === 'compact' ? '6px 7px' : '7px 8px'
+  const signalColumnWidth = density === 'compact' ? 142 : 178
+  const headers = [
+    { label: '信号类型', width: signalColumnWidth },
+    { label: '样本', width: density === 'compact' ? 78 : 88 },
+    { label: '胜率', width: density === 'compact' ? 66 : 76 },
+    { label: '前瞻', width: density === 'compact' ? 92 : 106 },
+    { label: '盈/撤', width: density === 'compact' ? 96 : 112 },
+    { label: '成交', width: density === 'compact' ? 86 : 98 },
+    { label: '最佳标的', width: density === 'compact' ? 122 : 150 },
+    { label: '动作', width: density === 'compact' ? 60 : 70 },
+  ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div style={{ display: 'grid', gridTemplateColumns: density === 'compact' ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: 6 }}>
@@ -4789,50 +6112,88 @@ function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<strin
               {item.row ? item.format(item.row[item.key]) : emptyDisplay}
             </div>
             <div style={{ ...mutedStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {String(item.row?.signal_type ?? emptyDisplay)}
+              {signalTypeLabel(item.row?.signal_type)}
             </div>
           </div>
         ))}
       </div>
       <div style={signalBreakdownWrapStyle(density)}>
-        <table style={{ ...reportTableStyle, minWidth: density === 'compact' ? 820 : 1060 }}>
+        <table role="presentation" style={{ ...reportTableStyle, tableLayout: 'fixed', minWidth: density === 'compact' ? 742 : 878 }}>
+          <colgroup>
+            {headers.map(header => <col key={header.label} style={{ width: header.width }} />)}
+          </colgroup>
           <thead>
             <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
-              {['信号类型', '样本', '胜率', '前瞻收益', '浮盈/回撤', '成交', '最佳标的'].map(label => (
-                <th key={label} style={{ padding: 8, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>{label}</th>
+              {headers.map(header => (
+                <th key={header.label} style={{ padding: cellPadding, borderBottom: `1px solid ${terminalTheme.border}`, whiteSpace: 'nowrap' }}>{header.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => {
               const signalType = String(row.signal_type ?? 'unknown')
+              const displaySignalType = signalTypeLabel(signalType)
+              const active = signalFamilyMatches(signalType, selectedSignalType)
+              const hovered = hoveredIndex === index
+              const selectRow = () => onSelectRow?.(row)
+              const openRowKline = () => (onOpenKline ?? onSelectRow)?.(row)
               return (
-                <tr key={`${signalType}-${index}`} style={{ borderTop: `1px solid ${terminalTheme.border}` }}>
-                  <td style={{ padding: 8, overflow: 'hidden' }}>
-                    <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{signalType}</div>
-                    <div style={mutedStyle}>{formatNumber(row.symbol_count, 0)} 标的</div>
+                <tr
+                  key={`${signalType}-${index}`}
+                  style={{
+                    borderTop: `1px solid ${terminalTheme.border}`,
+                    background: active
+                      ? tradingDeskTheme.alpha.accentSurface
+                      : hovered && onSelectRow
+                        ? terminalTheme.panelInset
+                        : 'transparent',
+                    cursor: onSelectRow ? 'pointer' : 'default',
+                    boxShadow: active ? `inset 3px 0 ${terminalTheme.accent}` : undefined,
+                  }}
+                  onClick={selectRow}
+                  onMouseEnter={() => setHoveredIndex(index)}
+                  onMouseLeave={() => setHoveredIndex(current => current === index ? null : current)}
+                >
+                  <td style={{ padding: cellPadding, overflow: 'hidden' }}>
+                    <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displaySignalType}</div>
+                    <div style={{ ...mutedStyle, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {formatNumber(row.symbol_count, 0)} 标的
+                    </div>
                   </td>
-                  <td style={{ padding: 8, color: terminalTheme.textStrong, whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: cellPadding, color: terminalTheme.textStrong, whiteSpace: 'nowrap' }}>
                     <div>{formatNumber(row.evaluated_count, 0)} / {formatNumber(row.signal_count, 0)}</div>
                     <div style={mutedStyle}>成交 {formatNumber(row.trade_count, 0)}</div>
                   </td>
-                  <td style={{ padding: 8, color: cellToneColor('win_rate_pct', row.win_rate), whiteSpace: 'nowrap', fontWeight: 800 }}>
+                  <td style={{ padding: cellPadding, color: cellToneColor('win_rate_pct', row.win_rate), whiteSpace: 'nowrap', fontWeight: 800 }}>
                     {formatUnsignedPercent(row.win_rate)}
                   </td>
-                  <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: cellPadding, whiteSpace: 'nowrap' }}>
                     <div style={{ color: cellToneColor('avg_t5_pct', row.avg_t5_pct), fontWeight: 800 }}>T+5 {formatPercent(row.avg_t5_pct)}</div>
                     <div style={{ color: cellToneColor('avg_t10_pct', row.avg_t10_pct) }}>T+10 {formatPercent(row.avg_t10_pct)}</div>
                   </td>
-                  <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: cellPadding, whiteSpace: 'nowrap' }}>
                     <div style={{ color: cellToneColor('avg_mfe_pct', row.avg_mfe_pct), fontWeight: 800 }}>MFE {formatPercent(row.avg_mfe_pct)}</div>
                     <div style={{ color: cellToneColor('avg_mae_pct', row.avg_mae_pct) }}>MAE {formatPercent(row.avg_mae_pct)}</div>
                   </td>
-                  <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: cellPadding, whiteSpace: 'nowrap' }}>
                     <div style={{ color: cellToneColor('avg_trade_return_pct', row.avg_trade_return_pct), fontWeight: 800 }}>{formatPercent(row.avg_trade_return_pct)}</div>
                     <div style={mutedStyle}>胜率 {formatUnsignedPercent(row.trade_win_rate)}</div>
                   </td>
-                  <td style={{ padding: 8, color: terminalTheme.textStrong, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: cellPadding, color: terminalTheme.textStrong, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {String(row.best_symbol ?? emptyDisplay)}
+                  </td>
+                  <td style={{ padding: cellPadding, whiteSpace: 'nowrap' }}>
+                    <button
+                      type="button"
+                      aria-label={`${active ? '当前信号族' : '打开K线'} ${displaySignalType}`}
+                      style={{ ...buttonStyle(active), minWidth: 50, minHeight: 26, padding: '3px 7px', fontSize: 12 }}
+                      onClick={event => {
+                        event.stopPropagation()
+                        openRowKline()
+                      }}
+                    >
+                      {active ? '已选' : 'K线'}
+                    </button>
                   </td>
                 </tr>
               )
@@ -4844,20 +6205,26 @@ function BatchSignalBreakdownTable({ rows, density }: { rows: Array<Record<strin
   )
 }
 
-function MiniKlineCard({
+type MiniKlineCardProps = {
+  item: PreparedBatchChartItem
+  density: MultiReportDensity
+  selected?: boolean
+  signalMatched?: boolean
+  onExpand?: (item: PreparedBatchChartItem) => void
+}
+
+const MiniKlineCard = React.memo(function MiniKlineCard({
   item,
   density,
+  selected = false,
+  signalMatched = false,
   onExpand,
-}: {
-  item: Record<string, unknown>
-  density: MultiReportDensity
-  onExpand?: () => void
-}) {
-  const rows = toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv as Record<string, unknown>[] : [])
-  const regimes = Array.isArray(item.regimes) ? item.regimes.map(recordValue) : []
-  const tradeMarkers = buildMiniKlineTradeMarkers(tradeMarkersFromChartItem(item), rows)
-  const dateRange = batchKlineDateRangeLabel(item, rows)
-  const filledTradeCount = numberValue(item.filled_trade_count) ?? tradeMarkers.filter(marker => marker.kind === 'entry').length
+}: MiniKlineCardProps) {
+  const rows = item.rows
+  const regimes = item.regimes
+  const tradeMarkers = item.tradeMarkers
+  const dateRange = item.dateRange
+  const filledTradeCount = item.filledTradeCount
   return (
     <button
       type="button"
@@ -4873,22 +6240,24 @@ function MiniKlineCard({
         color: terminalTheme.text,
         cursor: 'zoom-in',
         textAlign: 'left',
+        borderColor: selected ? terminalTheme.accent : signalMatched ? tradingDeskTheme.alpha.infoBorder : terminalTheme.border,
+        boxShadow: selected ? `inset 0 0 0 1px ${terminalTheme.accent}` : signalMatched ? `inset 3px 0 ${tradingDeskTheme.market.up}` : undefined,
       }}
-      onClick={onExpand}
-      aria-label={`放大K线 ${String(item.name ?? item.code ?? '')}`}
+      onClick={() => onExpand?.(item)}
+      aria-label={`放大K线 ${item.name || item.code}`}
       title="点击放大K线"
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ color: terminalTheme.textStrong, fontSize: 14, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {String(item.name ?? item.code ?? '标的')}
+            {item.name || item.code || '标的'}
           </div>
-          <div style={monoStyle}>{String(item.code ?? item.symbol ?? '')}</div>
+          <div style={monoStyle}>{item.code}</div>
           <div style={mutedStyle}>{dateRange}</div>
         </div>
         <div style={{ textAlign: 'right', minWidth: 58 }}>
-          <div style={{ color: toneColor((numberValue(item.range_return_pct) ?? 0) >= 0 ? 'up' : 'down'), fontWeight: 800 }}>
-            {formatPercent(item.range_return_pct)}
+          <div style={{ color: toneColor((numberValue(item.item.range_return_pct) ?? 0) >= 0 ? 'up' : 'down'), fontWeight: 800 }}>
+            {formatPercent(item.item.range_return_pct)}
           </div>
           <div style={mutedStyle}>{formatNumber(filledTradeCount, 0)}笔</div>
         </div>
@@ -4896,21 +6265,29 @@ function MiniKlineCard({
       <MiniKlineSvg rows={rows} regimes={regimes} tradeMarkers={tradeMarkers} density={density} />
     </button>
   )
-}
+}, (previous, next) => (
+  previous.item === next.item &&
+  previous.density === next.density &&
+  previous.selected === next.selected &&
+  previous.signalMatched === next.signalMatched &&
+  previous.onExpand === next.onExpand
+))
 
-function MiniKlineSvg({
-  rows,
-  regimes,
-  tradeMarkers = [],
-  density,
-  variant = 'mini',
-}: {
+type MiniKlineSvgProps = {
   rows: KLineData[]
   regimes: Array<Record<string, unknown>>
   tradeMarkers?: MiniKlineTradeMarker[]
   density: MultiReportDensity
   variant?: 'mini' | 'expanded'
-}) {
+}
+
+const MiniKlineSvg = React.memo(function MiniKlineSvg({
+  rows,
+  regimes,
+  tradeMarkers = [],
+  density,
+  variant = 'mini',
+}: MiniKlineSvgProps) {
   const width = variant === 'expanded' ? 980 : 320
   const height = variant === 'expanded' ? (density === 'compact' ? 360 : 430) : (density === 'compact' ? 126 : 150)
   if (rows.length === 0) {
@@ -4988,9 +6365,13 @@ function MiniKlineSvg({
         const x = marker.index * xStep
         const y = yFor(marker.price)
         const isExit = marker.kind === 'exit'
-        const color = isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up
+        const isSignal = marker.kind === 'signal'
+        const side = marker.side ?? (isExit ? 'sell' : 'buy')
+        const color = isSignal
+          ? (side === 'sell' ? tradingDeskTheme.chart.purple : tradingDeskTheme.chart.orange)
+          : isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up
         const markerSize = variant === 'expanded' ? 8 : 5
-        const label = isExit ? 'E' : 'B'
+        const label = isSignal ? 'S' : isExit ? 'E' : 'B'
         return (
           <g key={`${marker.timestamp}-${marker.kind}-${index}`}>
             <circle cx={x} cy={y} r={markerSize} fill={terminalTheme.chartPanel} stroke={color} strokeWidth={variant === 'expanded' ? 2 : 1.4} />
@@ -5011,10 +6392,23 @@ function MiniKlineSvg({
       <text x={width} y={height - 3} fill={terminalTheme.muted} fontSize={variant === 'expanded' ? 14 : 9} textAnchor="end">{lastDate}</text>
     </svg>
   )
-}
+}, (previous, next) => (
+  previous.rows === next.rows &&
+  previous.regimes === next.regimes &&
+  previous.tradeMarkers === next.tradeMarkers &&
+  previous.density === next.density &&
+  previous.variant === next.variant
+))
 
 function miniTradeMarkerOverlayLabel(marker: MiniKlineTradeMarker): string {
-  if (marker.kind === 'entry') return marker.signalType || marker.label || '买点'
+  if (marker.kind === 'signal') {
+    const label = signalTypeLabel(marker.signalType ?? marker.label)
+    return label === emptyDisplay ? '信号' : label
+  }
+  if (marker.kind === 'entry') {
+    const label = signalTypeLabel(marker.signalType ?? marker.label)
+    return label === emptyDisplay ? '买点' : label
+  }
   return exitReasonLabel(marker.exitReason ?? marker.label)
 }
 
@@ -5022,6 +6416,11 @@ function createMiniKlineTradeOverlays(chart: Chart, tradeMarkers: MiniKlineTrade
   chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
   tradeMarkers.slice(-180).forEach(marker => {
     const isExit = marker.kind === 'exit'
+    const isSignal = marker.kind === 'signal'
+    const side = marker.side ?? (isExit ? 'sell' : 'buy')
+    const color = isSignal
+      ? (side === 'sell' ? tradingDeskTheme.chart.purple : tradingDeskTheme.chart.orange)
+      : isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up
     chart.createOverlay({
       name: BACKTEST_MARKER_OVERLAY,
       groupId: BACKTEST_MARKER_GROUP,
@@ -5029,13 +6428,23 @@ function createMiniKlineTradeOverlays(chart: Chart, tradeMarkers: MiniKlineTrade
       points: [{ timestamp: marker.timestamp, value: marker.price }],
       extendData: {
         label: miniTradeMarkerOverlayLabel(marker),
-        color: isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up,
-        side: isExit ? 'sell' : 'buy',
-        kind: 'trade',
+        color,
+        side,
+        kind: isSignal ? 'signal' : 'trade',
+        sourceIndex: marker.sourceIndex,
         tradeIndex: marker.tradeIndex,
       } satisfies MarkerData,
     })
   })
+}
+
+function applyExpandedPaneLayout(chart: Chart, height: number) {
+  const volumeHeight = Math.max(82, Math.min(118, Math.round(height * 0.15)))
+  const macdHeight = Math.max(118, Math.min(168, Math.round(height * 0.2)))
+  const candleHeight = Math.max(240, height - volumeHeight - macdHeight - 38)
+  chart.setPaneOptions({ id: 'candle_pane', minHeight: 240, height: candleHeight })
+  chart.setPaneOptions({ id: 'volume_pane', minHeight: 82, height: volumeHeight })
+  chart.setPaneOptions({ id: 'macd_pane', minHeight: 118, height: macdHeight })
 }
 
 function fitExpandedChartToRows(chart: Chart, rows: KLineData[]) {
@@ -5044,6 +6453,34 @@ function fitExpandedChartToRows(chart: Chart, rows: KLineData[]) {
   chart.setBarSpace(fittedBarSpace)
   chart.setOffsetRightDistance(44)
   chart.scrollToRealTime(120)
+}
+
+function fitExpandedChartToIndexWindow(chart: Chart, rows: KLineData[], window: KlineIndexWindow, animationDuration = 140) {
+  if (rows.length === 0 || window.barCount <= 0) return
+  const width = chart.getSize()?.width ?? 980
+  const fittedBarSpace = Math.max(4, Math.min(18, (width - 104) / Math.max(window.barCount, 1)))
+  chart.setBarSpace(fittedBarSpace)
+  chart.setOffsetRightDistance(44)
+  chart.scrollToDataIndex(window.toIndex, animationDuration)
+}
+
+function focusExpandedChartOnMarkers(chart: Chart, rows: KLineData[], markers: MiniKlineTradeMarker[]) {
+  const focusWindow = buildMarkerCenteredKlineWindow(rows, markers)
+  if (!focusWindow) {
+    fitExpandedChartToRows(chart, rows)
+    return
+  }
+  fitExpandedChartToIndexWindow(chart, rows, focusWindow)
+}
+
+const EXPANDED_KLINE_MIN_HEIGHT = 360
+const EXPANDED_KLINE_MAX_HEIGHT = 760
+
+export function expandedKlineChartHeightLimit(viewportWidth: number, viewportHeight: number): number {
+  const compact = viewportWidth < 1120
+  const reservedVerticalSpace = compact ? 340 : 250
+  const heightLimit = Math.floor(viewportHeight - reservedVerticalSpace)
+  return Math.max(EXPANDED_KLINE_MIN_HEIGHT, Math.min(EXPANDED_KLINE_MAX_HEIGHT, heightLimit))
 }
 
 function ExpandedKlineChart({
@@ -5082,12 +6519,13 @@ function ExpandedKlineChart({
       true,
       { id: 'candle_pane' },
     )
-    chart.createIndicator('VOL', false, { id: 'volume_pane', minHeight: 72, height: 92 })
+    chart.createIndicator('VOL', false, { id: 'volume_pane', minHeight: 82, height: 96 })
     chart.createIndicator(
       { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles() },
       false,
-      { id: 'macd_pane', minHeight: 96, height: 122 },
+      { id: 'macd_pane', minHeight: 118, height: 138 },
     )
+    applyExpandedPaneLayout(chart, height)
     onChartReady(chart)
 
     const resizeObserver = new ResizeObserver(() => {
@@ -5129,13 +6567,13 @@ function ExpandedKlineChart({
     if (!chart) return
     chart.removeOverlay({ groupId: BACKTEST_MARKER_GROUP })
     createMiniKlineTradeOverlays(chart, highlightMarkers)
-    const marker = highlightMarkers[0]
-    if (marker) chart.scrollToTimestamp(marker.timestamp, 120)
-  }, [highlightMarkers])
+    focusExpandedChartOnMarkers(chart, rows, highlightMarkers)
+  }, [highlightMarkers, rows])
 
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
+    applyExpandedPaneLayout(chart, height)
     chart.resize()
   }, [height])
 
@@ -5157,40 +6595,226 @@ function ExpandedKlineChart({
   )
 }
 
+function expandedKlineStatValueLabel(key: string, value: unknown): string {
+  if ([
+    'signal_marker_count',
+    'filled_trade_count',
+    'active_bar_count',
+    'range_bar_count',
+    'full_bar_count',
+  ].includes(key)) {
+    return formatNumber(value, 0)
+  }
+  if (key === 'visible_date_range' || key === 'chart_date_range') return String(value ?? emptyDisplay)
+  return formatReportCell(key, value)
+}
+
+function ExpandedKlineStatsGrid({
+  stats,
+  statValue,
+}: {
+  stats: Array<[string, string]>
+  statValue: (key: string) => unknown
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+      {stats.map(([label, key]) => {
+        const value = statValue(key)
+        return (
+          <div
+            key={key}
+            style={{
+              ...metricCardStyle,
+              gridColumn: key === 'visible_date_range' || key === 'chart_date_range' ? '1 / -1' : undefined,
+            }}
+          >
+            <div style={labelStyle}>{label}</div>
+            <div style={{
+              color: cellToneColor(key, value),
+              fontWeight: 800,
+              overflow: 'hidden',
+              textOverflow: key === 'visible_date_range' || key === 'chart_date_range' ? undefined : 'ellipsis',
+              whiteSpace: key === 'visible_date_range' || key === 'chart_date_range' ? 'normal' : 'nowrap',
+              lineHeight: key === 'visible_date_range' || key === 'chart_date_range' ? 1.45 : undefined,
+            }}>
+              {expandedKlineStatValueLabel(key, value)}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function KlineEventRail({
+  groups,
+  selectedMarkerKey,
+  maxHeight,
+  onSelectMarker,
+}: {
+  groups: MiniTradeEventGroup[]
+  selectedMarkerKey: string
+  maxHeight: number
+  onSelectMarker: (markerKey: string) => void
+}) {
+  return (
+    <div style={{
+      ...metricCardStyle,
+      padding: 8,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+      minWidth: 0,
+      maxHeight,
+      overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+        <div>
+          <div style={labelStyle}>交易事件</div>
+          <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>{formatNumber(groups.length, 0)} 个</div>
+        </div>
+        <span style={statusBadgeStyle('open')}>点击聚焦</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'auto', paddingRight: 2 }}>
+        {groups.length === 0 ? (
+          <div style={emptyStyle}>当前区间没有买卖点。</div>
+        ) : groups.map(group => {
+          const marker = preferredMiniTradeEventMarker(group)
+          if (!marker) return null
+          const markerKey = miniTradeMarkerId(marker)
+          const active = group.markers.some(item => miniTradeMarkerId(item) === selectedMarkerKey)
+          const tone = group.resultPct === undefined ? 'open' : group.resultPct >= 0 ? 'success' : 'failed'
+          return (
+            <button
+              key={group.key}
+              type="button"
+              aria-pressed={active}
+              title={miniTradeEventGroupSubtitle(group)}
+              style={{
+                appearance: 'none',
+                border: `1px solid ${active ? terminalTheme.accent : terminalTheme.border}`,
+                borderRadius: 7,
+                background: active ? tradingDeskTheme.alpha.accentSurface : terminalTheme.panelInset,
+                color: terminalTheme.text,
+                cursor: 'pointer',
+                padding: '7px 8px',
+                textAlign: 'left',
+                fontFamily: fontStacks.ui,
+                boxShadow: active ? `inset 3px 0 ${terminalTheme.accent}` : undefined,
+              }}
+              onClick={() => onSelectMarker(active ? '' : markerKey)}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
+                <span style={statusBadgeStyle(group.kind === 'trade' ? 'success' : group.kind === 'signal' ? 'open' : 'warning')}>
+                  {group.kind === 'trade' ? '交易' : group.kind === 'signal' ? '信号' : '标注'}
+                </span>
+                <span style={statusBadgeStyle(tone)}>{formatPercent(group.resultPct)}</span>
+              </div>
+              <div style={{ marginTop: 5, color: terminalTheme.textStrong, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {miniTradeEventGroupTitle(group)}
+              </div>
+              <div style={{ ...mutedStyle, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {miniTradeEventGroupSubtitle(group)}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function ExpandedKlineOverlay({
   locale,
   item,
+  initialFocus,
   datePresets = [],
   density,
+  presentation = 'overlay',
   onClose,
 }: {
   locale: LongclawLocale
-  item: Record<string, unknown>
+  item: PreparedBatchChartItem
+  initialFocus?: ExpandedKlineFocus
   datePresets?: DatePreset[]
   density: MultiReportDensity
+  presentation?: 'overlay' | 'inline'
   onClose: () => void
 }) {
+  const zh = locale === 'zh-CN'
   const chartRef = useRef<Chart | null>(null)
-  const [chartHeight, setChartHeight] = useState(density === 'compact' ? 460 : 620)
+  const [overlayViewport, setOverlayViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 1440 : window.innerWidth,
+    height: typeof window === 'undefined' ? 900 : window.innerHeight,
+  }))
+  const overlayCompact = overlayViewport.width < 1120
+  const chartHeightLimit = expandedKlineChartHeightLimit(overlayViewport.width, overlayViewport.height)
+  const [chartHeight, setChartHeight] = useState(() => {
+    if (typeof window === 'undefined') return 620
+    const preferredHeight = window.innerWidth < 1120 ? 460 : 620
+    return Math.min(preferredHeight, expandedKlineChartHeightLimit(window.innerWidth, window.innerHeight))
+  })
+  const effectiveChartHeight = Math.min(chartHeight, chartHeightLimit)
   const [selectedRangeKey, setSelectedRangeKey] = useState('visible_all')
   const [selectedMarkerKey, setSelectedMarkerKey] = useState('')
-  const rows = useMemo(() => toKLineData(Array.isArray(item.ohlcv) ? item.ohlcv as Record<string, unknown>[] : []), [item])
-  const tradeMarkers = useMemo(() => buildMiniKlineTradeMarkers(tradeMarkersFromChartItem(item), rows), [item, rows])
+  const rows = item.rows
+  const chartMarkers = item.markers
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const handleResize = () => setOverlayViewport({ width: window.innerWidth, height: window.innerHeight })
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
   const rangeOptions = useMemo(() => buildExpandedKlineRangeOptions(rows, datePresets), [datePresets, rows])
   const selectedRange = rangeOptions.find(option => option.key === selectedRangeKey) ?? rangeOptions[0] ?? null
   const selectedRows = useMemo(() => filterKLineDataForRange(rows, selectedRange), [rows, selectedRange])
-  const rangeTradeMarkers = useMemo(() => filterMiniTradeMarkersForRange(tradeMarkers, selectedRange), [selectedRange, tradeMarkers])
-  const selectedMarker = rangeTradeMarkers.find(marker => miniTradeMarkerId(marker) === selectedMarkerKey) ?? null
-  const highlightedMarkers = selectedMarker ? [selectedMarker] : []
-  const selectedRangeStats = useMemo(() => klineIntervalStats(selectedRows), [selectedRows])
-  const visibleDateRange = selectedRange?.displayRange ?? batchKlineDateRangeLabel(item, rows)
-  const fullDateRange = batchKlineDateRangeLabel(item, rows, false)
-  const filledTradeCount = rangeTradeMarkers.filter(marker => marker.kind === 'entry').length
+  const rangeMarkers = useMemo(() => filterMiniTradeMarkersForRange(chartMarkers, selectedRange), [chartMarkers, selectedRange])
+  const eventGroups = useMemo(() => miniTradeEventGroups(rangeMarkers), [rangeMarkers])
+  const selectedMarker = rangeMarkers.find(marker => miniTradeMarkerId(marker) === selectedMarkerKey) ?? null
+  const pairedMarkers = useMemo(() => pairedMiniTradeMarkers(rangeMarkers, selectedMarker), [rangeMarkers, selectedMarker])
+  const markerWindow = useMemo(() => markerWindowFromPairedMarkers(rows, pairedMarkers), [pairedMarkers, rows])
+  const { chartRows, evidenceRows } = useMemo(
+    () => expandedKlineFocusRows(rows, selectedRows, markerWindow),
+    [markerWindow, rows, selectedRows],
+  )
+  const eventRange: ExpandedKlineRangeOption | null = markerWindow
+    ? {
+        key: 'selected_marker',
+        label: '当前事件窗口',
+        from: markerWindow.from,
+        to: markerWindow.to,
+        displayRange: `${dateKey(markerWindow.from)} ~ ${dateKey(markerWindow.to)}`,
+        barCount: markerWindow.barCount,
+        source: 'event',
+      }
+    : selectedRange
+  const eventMarkers = useMemo(
+    () => filterMiniTradeMarkersForRange(chartMarkers, eventRange),
+    [eventRange, chartMarkers],
+  )
+  const highlightedMarkers = selectedMarker ? pairedMarkers : []
+  const selectedRangeStats = useMemo(() => klineIntervalStats(evidenceRows), [evidenceRows])
+  const chartDateRange = chartRows.length
+    ? `${dateKey(chartRows[0].timestamp)} ~ ${dateKey(chartRows[chartRows.length - 1].timestamp)}`
+    : selectedRange?.displayRange ?? item.dateRange
+  const visibleDateRange = evidenceRows.length
+    ? `${dateKey(evidenceRows[0].timestamp)} ~ ${dateKey(evidenceRows[evidenceRows.length - 1].timestamp)}`
+    : selectedRange?.displayRange ?? item.dateRange
+  const fullDateRange = item.fullDateRange
+  const signalMarkerCount = eventMarkers.filter(marker => marker.kind === 'signal').length
+  const filledTradeCount = eventMarkers.filter(marker => marker.kind === 'entry').length
+  const focusLabel = initialFocus?.signalType ? signalTypeLabel(initialFocus.signalType) : ''
+  const isInline = presentation === 'inline'
   const handleChartReady = useCallback((chart: Chart | null) => {
     chartRef.current = chart
   }, [])
   const zoomChart = useCallback((scale: number) => {
-    chartRef.current?.zoomAtCoordinate(scale, undefined, 120)
+    const chart = chartRef.current
+    if (!chart) return
+    const current = chart.getBarSpace()
+    const next = Math.max(2, Math.min(48, current * (scale > 0 ? 1.25 : 0.8)))
+    chart.setBarSpace(next)
+    chart.resize()
   }, [])
   const scrollChart = useCallback((distance: number) => {
     chartRef.current?.scrollByDistance(distance, 120)
@@ -5207,62 +6831,113 @@ function ExpandedKlineOverlay({
   }, [rangeOptions, selectedRangeKey])
   useEffect(() => {
     if (!selectedMarkerKey) return
-    if (!rangeTradeMarkers.some(marker => miniTradeMarkerId(marker) === selectedMarkerKey)) {
+    if (!rangeMarkers.some(marker => miniTradeMarkerId(marker) === selectedMarkerKey)) {
       setSelectedMarkerKey('')
     }
-  }, [rangeTradeMarkers, selectedMarkerKey])
-  const stats = [
-    ['选定区间', 'visible_date_range'],
-    ['区间收益', 'range_return_pct'],
+  }, [rangeMarkers, selectedMarkerKey])
+  useEffect(() => {
+    if (!initialFocus?.markerKey && !initialFocus?.signalType) return
+    if (selectedMarkerKey) return
+    const direct = initialFocus.markerKey
+      ? rangeMarkers.find(marker => miniTradeMarkerId(marker) === initialFocus.markerKey)
+      : null
+    const bySignal = initialFocus.signalType
+      ? rangeMarkers.find(marker => miniMarkerMatchesSignalFamily(marker, initialFocus.signalType))
+      : null
+    const marker = direct ?? bySignal
+    if (marker) setSelectedMarkerKey(miniTradeMarkerId(marker))
+  }, [initialFocus?.markerKey, initialFocus?.signalType, rangeMarkers, selectedMarkerKey])
+  const stats: Array<[string, string]> = [
+    [selectedMarker ? '事件窗口' : '选定区间', 'visible_date_range'],
+    ...(selectedMarker ? [['回测区间', 'chart_date_range'] as [string, string]] : []),
+    [selectedMarker ? '事件收益' : '区间收益', 'range_return_pct'],
     ['最大回撤', 'max_drawdown_pct'],
     ['最大浮盈', 'max_runup_pct'],
     ['波动率', 'volatility_pct'],
     ['5日高低幅', 'median_5d_high_low_pct'],
     ['上涨K占比', 'up_bar_ratio_pct'],
-    ['成交数', 'filled_trade_count'],
-    ['K线数', 'bar_count'],
-    ['显示K线', 'visible_bar_count'],
-  ] as const
+    [selectedMarker ? '窗口信号' : '信号数', 'signal_marker_count'],
+    [selectedMarker ? '窗口成交' : '成交数', 'filled_trade_count'],
+    [selectedMarker ? '事件K数' : '区间K数', 'active_bar_count'],
+    ...(selectedMarker ? [['回测区间K', 'range_bar_count'] as [string, string]] : []),
+    ['全量K', 'full_bar_count'],
+  ]
   const statValue = (key: string): unknown => {
     if (key === 'visible_date_range') return visibleDateRange
+    if (key === 'chart_date_range') return chartDateRange
+    if (key === 'signal_marker_count') return signalMarkerCount
     if (key === 'filled_trade_count') return filledTradeCount
-    if (key === 'bar_count') return item[key] ?? rows.length
-    if (key === 'visible_bar_count') return selectedRows.length
-    return selectedRangeStats[key] ?? item[key]
+    if (key === 'active_bar_count') return evidenceRows.length
+    if (key === 'range_bar_count') return chartRows.length
+    if (key === 'full_bar_count') return rows.length
+    return selectedRangeStats[key] ?? item.item[key]
   }
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 50,
-        background: tradingDeskTheme.alpha.overlay,
-        display: 'grid',
-        placeItems: 'center',
-        padding: density === 'compact' ? 12 : 24,
+        ...(isInline
+          ? {
+              ...panelStyle,
+              border: `1px solid ${terminalTheme.borderStrong}`,
+              gap: 10,
+              scrollMarginTop: 12,
+            }
+          : {
+              position: 'fixed',
+              inset: 0,
+              zIndex: 50,
+              background: tradingDeskTheme.alpha.overlay,
+              display: 'grid',
+              placeItems: 'center',
+              padding: density === 'compact' ? 12 : 24,
+            }),
       }}
     >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="放大K线"
+        role={isInline ? undefined : 'dialog'}
+        aria-modal={isInline ? undefined : true}
+        aria-label={isInline ? (zh ? 'K线详情' : 'Chart detail') : (zh ? '放大K线' : 'Expanded chart')}
         style={{
-          ...panelStyle,
-          width: 'min(1480px, 96vw)',
-          maxHeight: '92vh',
-          overflow: 'auto',
-          boxShadow: tradingDeskTheme.shadows.island,
-          border: `1px solid ${terminalTheme.borderStrong}`,
+          ...(isInline
+            ? {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                minWidth: 0,
+              }
+            : {
+                ...panelStyle,
+                width: 'min(1480px, 96vw)',
+                maxHeight: '92vh',
+                overflow: 'auto',
+                boxShadow: tradingDeskTheme.shadows.island,
+                border: `1px solid ${terminalTheme.borderStrong}`,
+              }),
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
           <div style={{ minWidth: 0 }}>
-            <div style={labelStyle}>放大K线 · ESC</div>
-            <div style={chartTitleStyle}>{String(item.name ?? item.code ?? '标的')}</div>
-            <div style={monoStyle}>{String(item.code ?? item.symbol ?? '')}</div>
-            <div style={mutedStyle}>完整区间 {fullDateRange} · 当前区间 {visibleDateRange}</div>
+            <div style={labelStyle}>
+              {focusLabel
+                ? (zh ? 'K线详情 · 信号标识' : 'Chart detail · signal tagged')
+                : (zh ? 'K线详情' : 'Chart detail')}
+            </div>
+            <div style={chartTitleStyle}>{item.name || item.code || '标的'}</div>
+            <div style={monoStyle}>{item.code}</div>
+            <div style={mutedStyle}>
+              完整区间 {fullDateRange} · {selectedMarker ? '回测区间' : '图表区间'} {chartDateRange}{selectedMarker ? ` · 事件窗口 ${visibleDateRange}` : ''}
+            </div>
           </div>
-          <button type="button" aria-label="关闭放大K线" style={buttonStyle(false)} onClick={onClose}>×</button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {focusLabel ? (
+              <span style={statusBadgeStyle('success')}>
+                {zh ? `标识 ${focusLabel}` : `Tagged ${focusLabel}`}
+              </span>
+            ) : null}
+            <button type="button" aria-label={zh ? '关闭K线详情' : 'Close chart detail'} style={buttonStyle(false)} onClick={onClose}>
+              {isInline ? (zh ? '收起' : 'Collapse') : '×'}
+            </button>
+          </div>
         </div>
         <div style={{
           display: 'flex',
@@ -5293,107 +6968,164 @@ function ExpandedKlineOverlay({
                 ))}
               </select>
             </label>
-            <button type="button" style={buttonStyle(false)} onClick={() => zoomChart(1)}>放大</button>
-            <button type="button" style={buttonStyle(false)} onClick={() => zoomChart(-1)}>缩小</button>
-            <button type="button" style={buttonStyle(false)} onClick={() => scrollChart(180)}>左移</button>
-            <button type="button" style={buttonStyle(false)} onClick={() => scrollChart(-180)}>右移</button>
-            <button type="button" style={buttonStyle(false)} onClick={fitChart}>全图</button>
-            <button type="button" style={buttonStyle(false)} onClick={() => chartRef.current?.scrollToRealTime(120)}>最新</button>
-            <button type="button" style={buttonStyle(selectedMarkerKey === '')} onClick={() => setSelectedMarkerKey('')}>无标注</button>
+            <button type="button" title="放大" aria-label="放大K线" style={{ ...buttonStyle(false), minWidth: 30, padding: '4px 8px' }} onClick={() => zoomChart(1)}>+</button>
+            <button type="button" title="缩小" aria-label="缩小K线" style={{ ...buttonStyle(false), minWidth: 30, padding: '4px 8px' }} onClick={() => zoomChart(-1)}>-</button>
+            <button type="button" title="左移" aria-label="左移K线" style={{ ...buttonStyle(false), minWidth: 30, padding: '4px 8px' }} onClick={() => scrollChart(180)}>←</button>
+            <button type="button" title="右移" aria-label="右移K线" style={{ ...buttonStyle(false), minWidth: 30, padding: '4px 8px' }} onClick={() => scrollChart(-180)}>→</button>
+            <button type="button" title="全图" aria-label="显示全图区间" style={{ ...buttonStyle(false), minWidth: 30, padding: '4px 8px' }} onClick={fitChart}>全</button>
+            <button type="button" title="最新" aria-label="滚动到最新K线" style={{ ...buttonStyle(false), minWidth: 30, padding: '4px 8px' }} onClick={() => chartRef.current?.scrollToRealTime(120)}>新</button>
+            <button type="button" title="清除事件聚焦" aria-label="清除事件聚焦" style={{ ...buttonStyle(selectedMarkerKey === ''), minWidth: 30, padding: '4px 8px' }} onClick={() => setSelectedMarkerKey('')}>清</button>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 220 }}>
             <span style={labelStyle}>高度</span>
             <input
               type="range"
-              min={380}
-              max={760}
+              min={EXPANDED_KLINE_MIN_HEIGHT}
+              max={chartHeightLimit}
               step={20}
-              value={chartHeight}
+              value={effectiveChartHeight}
               onChange={event => setChartHeight(Number(event.target.value))}
               style={{ flex: 1, accentColor: tradingDeskTheme.chart.line }}
               aria-label="调整放大K线高度"
             />
-            <span style={monoStyle}>{chartHeight}px</span>
+            <span style={monoStyle}>{effectiveChartHeight}px</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {BACKTEST_MA_PERIODS.map((period, index) => (
+              <span key={period} style={statusBadgeStyle('open')}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, background: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length], marginRight: 5 }} />
+                MA{period}
+              </span>
+            ))}
+            <span style={statusBadgeStyle('open')}>VOL</span>
+            <span style={statusBadgeStyle('open')}>MACD</span>
+            <span style={statusBadgeStyle('success')}>买</span>
+            <span style={statusBadgeStyle('warning')}>卖/离场</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {BACKTEST_MA_PERIODS.map((period, index) => (
-            <span key={period} style={statusBadgeStyle('open')}>
-              <span style={{ display: 'inline-block', width: 8, height: 8, background: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length], marginRight: 5 }} />
-              MA{period}
-            </span>
-          ))}
-          <span style={statusBadgeStyle('open')}>VOL</span>
-          <span style={statusBadgeStyle('open')}>MACD 12/26/9</span>
-          <span style={statusBadgeStyle('success')}>买点</span>
-          <span style={statusBadgeStyle('warning')}>止损/离场</span>
-        </div>
-        {rangeTradeMarkers.length ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(154px, 1fr))', gap: 6, maxHeight: 126, overflow: 'auto' }}>
-            {rangeTradeMarkers.map(marker => {
-              const markerKey = miniTradeMarkerId(marker)
-              const active = markerKey === selectedMarkerKey
-              const isExit = marker.kind === 'exit'
-              return (
-                <button
-                  key={markerKey}
-                  type="button"
-                  style={{
-                    ...metricCardStyle,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    borderColor: active ? terminalTheme.accent : terminalTheme.border,
-                    background: active ? tradingDeskTheme.alpha.accentSurface : terminalTheme.panelInset,
-                  }}
-                  onClick={() => setSelectedMarkerKey(active ? '' : markerKey)}
-                  aria-pressed={active}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
-                    <span style={statusBadgeStyle(isExit ? 'warning' : 'success')}>{isExit ? '止损/离场' : '买点'}</span>
-                    <span style={monoStyle}>{dateKey(marker.timestamp)}</span>
-                  </div>
-                  <div style={{ color: terminalTheme.textStrong, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {miniTradeMarkerOverlayLabel(marker)}
-                  </div>
-                  <div style={mutedStyle}>
-                    {formatNumber(marker.price)}{marker.returnPct !== undefined ? ` · ${formatPercent(marker.returnPct)}` : ''}
-                  </div>
-                </button>
-              )
-            })}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: overlayCompact ? '1fr' : '270px minmax(520px, 1fr) 360px',
+          gap: 10,
+          alignItems: 'start',
+        }}>
+          <KlineEventRail
+            groups={eventGroups}
+            selectedMarkerKey={selectedMarkerKey}
+            maxHeight={overlayCompact ? 260 : effectiveChartHeight}
+            onSelectMarker={markerKey => setSelectedMarkerKey(markerKey)}
+          />
+          <div style={{ minWidth: 0 }}>
+            <ExpandedKlineChart
+              key={`${item.code || 'chart'}-${selectedRange?.key ?? 'all'}`}
+              rows={chartRows}
+              highlightMarkers={highlightedMarkers}
+              height={effectiveChartHeight}
+              locale={locale}
+              onChartReady={handleChartReady}
+            />
           </div>
-        ) : null}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 6 }}>
-          {stats.map(([label, key]) => (
-            <div key={key} style={metricCardStyle}>
-              <div style={labelStyle}>{label}</div>
-              <div style={{ color: cellToneColor(key, statValue(key)), fontWeight: 800 }}>
-                {key === 'visible_bar_count'
-                  ? formatNumber(selectedRows.length, 0)
-                  : key === 'bar_count'
-                    ? formatNumber(item[key] ?? rows.length, 0)
-                    : key === 'filled_trade_count'
-                      ? formatNumber(statValue(key), 0)
-                      : key === 'visible_date_range'
-                        ? String(statValue(key))
-                        : formatReportCell(key, statValue(key))}
-              </div>
-            </div>
-          ))}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            minWidth: 0,
+            maxHeight: overlayCompact ? undefined : effectiveChartHeight,
+            overflow: overlayCompact ? undefined : 'auto',
+          }}>
+            {selectedMarker ? (
+              <>
+                <SelectedMarkerNarrative marker={selectedMarker} pairedMarkers={pairedMarkers} locale={locale} />
+                <ExpandedKlineStatsGrid stats={stats} statValue={statValue} />
+              </>
+            ) : (
+              <>
+                <ExpandedKlineStatsGrid stats={stats} statValue={statValue} />
+                <div style={metricCardStyle}>
+                  <div style={labelStyle}>事件证据</div>
+                  <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>选择左侧交易事件</div>
+                  <div style={mutedStyle}>点击后图表会围绕买卖点居中；右侧统计切到事件窗口。</div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-        <ExpandedKlineChart
-          rows={selectedRows}
-          highlightMarkers={highlightedMarkers}
-          height={chartHeight}
-          locale={locale}
-          onChartReady={handleChartReady}
-        />
       </div>
     </div>
   )
 }
 
-function ReviewScriptCard({ card, density }: { card: Record<string, unknown>; density: MultiReportDensity }) {
+function SelectedMarkerNarrative({
+  marker,
+  pairedMarkers,
+  locale,
+}: {
+  marker: MiniKlineTradeMarker
+  pairedMarkers: MiniKlineTradeMarker[]
+  locale: LongclawLocale
+}) {
+  const zh = locale === 'zh-CN'
+  const entry = pairedMarkers.find(item => item.kind === 'entry') ?? (marker.kind === 'entry' ? marker : undefined)
+  const exit = pairedMarkers.find(item => item.kind === 'exit') ?? (marker.kind === 'exit' ? marker : undefined)
+  const holdingDays = entry && exit ? Math.max(0, Math.round((exit.timestamp - entry.timestamp) / MS_PER_DAY)) : undefined
+  const direction = marker.kind === 'exit'
+    ? (zh ? '退出视角' : 'Exit view')
+    : marker.kind === 'signal'
+      ? (zh ? '信号视角' : 'Signal view')
+      : (zh ? '入场视角' : 'Entry view')
+  const currentEventName = miniTradeMarkerOverlayLabel(marker)
+  const resultPct = exit?.returnPct ?? entry?.returnPct ?? marker.returnPct
+  const cards = [
+    { label: zh ? '当前事件' : 'Event', value: `${dateKey(marker.timestamp)} · ${currentEventName}` },
+    { label: zh ? '入场' : 'Entry', value: entry ? `${dateKey(entry.timestamp)} · ${formatNumber(entry.price)}` : emptyDisplay },
+    { label: zh ? '离场' : 'Exit', value: exit ? `${dateKey(exit.timestamp)} · ${formatNumber(exit.price)}` : emptyDisplay },
+    { label: zh ? '持仓' : 'Holding', value: holdingDays === undefined ? emptyDisplay : `${holdingDays}${zh ? '日' : 'D'}` },
+    { label: zh ? '结果' : 'Result', value: formatPercent(resultPct), key: 'return_pct' },
+    { label: zh ? '退出原因' : 'Exit reason', value: exitReasonLabel(exit?.exitReason) },
+  ]
+  return (
+    <div style={{
+      ...metricCardStyle,
+      borderColor: terminalTheme.accent,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+        <div>
+          <div style={labelStyle}>{zh ? '一笔交易 / 事件证据' : 'Trade / event evidence'}</div>
+          <div style={{ color: terminalTheme.textStrong, fontSize: 15, fontWeight: 900 }}>{direction}</div>
+        </div>
+        <span style={statusBadgeStyle(resultPct === undefined ? 'open' : resultPct >= 0 ? 'success' : 'failed')}>
+          {formatPercent(resultPct)}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 6 }}>
+        {cards.map(item => (
+          <div key={item.label} style={metricCardStyle}>
+            <div style={labelStyle}>{item.label}</div>
+            <div style={{
+              color: cellToneColor(item.key ?? '', item.key ? resultPct : undefined),
+              fontWeight: 800,
+              overflow: 'hidden',
+              overflowWrap: 'anywhere',
+              lineHeight: 1.45,
+            }}>
+              {item.value}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={mutedStyle}>
+        {zh
+          ? '图表视口已围绕买卖点居中，配对买点/离场会同时高亮；右侧统计口径切换到当前事件窗口。'
+          : 'The chart viewport is centered around the entry/exit pair, highlights both markers, and scopes metrics to the current event window.'}
+      </div>
+    </div>
+  )
+}
+
+const ReviewScriptCard = React.memo(function ReviewScriptCard({ card, density }: { card: Record<string, unknown>; density: MultiReportDensity }) {
   const stats = Array.isArray(card.stats) ? card.stats.map(recordValue) : []
   const tone = String(card.tone ?? '') === 'down' ? 'down' : 'up'
   const compact = density === 'compact'
@@ -5432,7 +7164,7 @@ function ReviewScriptCard({ card, density }: { card: Record<string, unknown>; de
       <ScriptLine title="一句话" text={String(card.one_liner ?? '')} strong />
     </div>
   )
-}
+}, (previous, next) => previous.card === next.card && previous.density === next.density)
 
 function ScriptLine({ title, text, strong = false }: { title: string; text: string; strong?: boolean }) {
   return (
@@ -5622,7 +7354,7 @@ function SignalTable({
   if (signals.length === 0) return <div style={emptyStyle}>暂无信号。</div>
   return (
     <div style={tableWrapStyle}>
-      <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: 12 }}>
+      <table role="presentation" style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
             <th style={{ padding: 7 }}>日期</th>
@@ -5703,7 +7435,7 @@ function TradeTable({
   if (filled.length === 0) return <div style={emptyStyle}>暂无成交记录。</div>
   return (
     <div style={tableWrapStyle}>
-      <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: 12 }}>
+      <table role="presentation" style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ color: terminalTheme.mutedStrong, textAlign: 'left' }}>
             <th style={{ padding: 7 }}>买点信号</th>
@@ -5863,7 +7595,7 @@ function ScanControls({
       ) : null}
       {scanRows?.length ? (
         <div style={tableWrapStyle}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <tbody>
               {scanRows.slice(0, 18).map((row, index) => (
                 <tr key={index} style={{ borderTop: index === 0 ? 'none' : `1px solid ${terminalTheme.border}` }}>
@@ -5884,12 +7616,61 @@ function ScanControls({
   )
 }
 
-function historyEntryTitle(entry: BacktestHistoryEntry, locale: LongclawLocale): string {
+function historyEntrySignalRows(entry: BacktestHistoryEntry): Array<Record<string, unknown>> {
+  const rows = entry.batchResult?.terminal?.panels?.signals?.rows
+  return Array.isArray(rows) ? rows.map(recordValue) : []
+}
+
+export function historyEntryPrimarySignal(entry: BacktestHistoryEntry): Record<string, unknown> | null {
+  const rows = historyEntrySignalRows(entry)
+  if (!rows.length) return null
+  return bestBatchSignalFamilyRow(rows) ?? rows[0] ?? null
+}
+
+function historyEntrySignalMetric(row: Record<string, unknown> | null, locale: LongclawLocale): { label: string; value: unknown; toneKey: string } | null {
+  if (!row) return null
+  if (numberValue(row.avg_trade_return_pct) !== undefined) {
+    return {
+      label: locale === 'zh-CN' ? '成交均利' : 'trade',
+      value: row.avg_trade_return_pct,
+      toneKey: 'avg_trade_return_pct',
+    }
+  }
+  if (numberValue(row.avg_t10_pct) !== undefined) {
+    return {
+      label: 'T+10',
+      value: row.avg_t10_pct,
+      toneKey: 'avg_t10_pct',
+    }
+  }
+  if (numberValue(row.win_rate) !== undefined) {
+    return {
+      label: locale === 'zh-CN' ? '胜率' : 'win',
+      value: row.win_rate,
+      toneKey: 'win_rate_pct',
+    }
+  }
+  return null
+}
+
+export function historyEntrySignalLabel(entry: BacktestHistoryEntry, locale: LongclawLocale): string {
+  const signal = historyEntryPrimarySignal(entry)
+  const name = signalTypeLabel(signalFamilyLabel(signal))
+  if (!signal || name === emptyDisplay) return ''
+  const metric = historyEntrySignalMetric(signal, locale)
+  return metric ? `${name} ${formatPercent(metric.value)}` : name
+}
+
+export function historyEntryTitle(
+  entry: BacktestHistoryEntry,
+  locale: LongclawLocale,
+  context: BacktestHistoryLabelContext = {},
+): string {
   if (entry.mode === 'multi') {
-    const count = entry.codes.length
-    return locale === 'zh-CN'
-      ? `多标的回测${count ? ` · ${count}只` : ''}`
-      : `Multi-symbol backtest${count ? ` · ${count}` : ''}`
+    const label = historyEntryCommonalityLabel(entry, locale, context)
+    if (locale === 'zh-CN' && label === '多标的组合') return '多标的回测'
+    if (locale !== 'zh-CN' && label === 'Multi-symbol basket') return 'Multi-symbol backtest'
+    return locale === 'zh-CN' ? `${label}回测` : `${label} backtest`
   }
   const parts = entry.title.trim().split(/\s+/)
   if (parts.length >= 2 && normalizeSymbolCode(parts[0] ?? '') === normalizeSymbolCode(parts[1] ?? '')) {
@@ -5898,27 +7679,46 @@ function historyEntryTitle(entry: BacktestHistoryEntry, locale: LongclawLocale):
   return entry.title
 }
 
-function historyEntryMeta(entry: BacktestHistoryEntry, locale: LongclawLocale): string {
-  const date = entry.createdAt ? entry.createdAt.slice(5, 16).replace('T', ' ') : ''
-  return [
-    entry.meta,
-    freqLabel(entry.freq, locale),
-    date,
-  ].filter(Boolean).join(' · ')
+export function historyEntryCountLabel(entry: BacktestHistoryEntry, locale: LongclawLocale): string {
+  if (entry.mode !== 'multi') return ''
+  const count = entry.summary?.totalStocks ?? entry.codes.length
+  if (!count) return ''
+  return locale === 'zh-CN' ? `${formatNumber(count, 0)}只` : `${formatNumber(count, 0)} symbols`
 }
 
-function historyEntryChips(entry: BacktestHistoryEntry): string[] {
+export function historyEntryMetaTokens(entry: BacktestHistoryEntry, locale: LongclawLocale): string[] {
+  const date = entry.createdAt ? entry.createdAt.slice(5, 16).replace('T', ' ') : ''
+  const metaTokens = entry.meta.split(' · ').map(item => item.trim()).filter(Boolean)
+  return [
+    ...metaTokens,
+    freqLabel(entry.freq, locale),
+    date,
+  ].filter(Boolean)
+}
+
+export function historyEntryChips(entry: BacktestHistoryEntry): string[] {
   if (entry.mode !== 'multi') return []
-  const chips = entry.codes.slice(0, 3)
+  const chips = entry.codes.slice(0, 2)
   const hidden = entry.codes.length - chips.length
   return hidden > 0 ? [...chips, `+${hidden}`] : chips
 }
 
 function TrashIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
       <path d="M9 4h6l1 2h4v2H4V6h4l1-2Z" fill="currentColor" />
       <path d="M7 9h10l-.7 11H7.7L7 9Zm3 2v7h1.5v-7H10Zm2.5 0v7H14v-7h-1.5Z" fill="currentColor" />
+    </svg>
+  )
+}
+
+function RestoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">
+      <path
+        d="M6.2 6.8A8 8 0 1 1 4 12h2a6 6 0 1 0 1.76-4.24L10 10H4V4l2.2 2.8Z"
+        fill="currentColor"
+      />
     </svg>
   )
 }
@@ -5926,11 +7726,13 @@ function TrashIcon() {
 function BacktestHistoryRows({
   locale,
   entries,
+  symbolOptions = [],
   onRestore,
   onDelete,
 }: {
   locale: LongclawLocale
   entries: BacktestHistoryEntry[]
+  symbolOptions?: SymbolOption[]
   onRestore: (entry: BacktestHistoryEntry) => void
   onDelete: (entry: BacktestHistoryEntry) => void
 }) {
@@ -5943,41 +7745,88 @@ function BacktestHistoryRows({
   }
   return (
     <div style={compactListStyle}>
-      {entries.slice(0, BACKTEST_HISTORY_LIMIT).map(entry => (
-        <div
-          key={entry.id}
-          style={{ ...rowStyle, width: '100%' }}
-        >
-          <button
-            type="button"
-            style={historyRestoreButtonStyle}
-            onClick={() => onRestore(entry)}
-            title={locale === 'zh-CN' ? '复原这条回测结果' : 'Restore this backtest result'}
+      {entries.slice(0, BACKTEST_HISTORY_LIMIT).map(entry => {
+        const chips = historyEntryChips(entry)
+        const countLabel = historyEntryCountLabel(entry, locale)
+        const metaTokens = historyEntryMetaTokens(entry, locale)
+        const title = historyEntryTitle(entry, locale, { symbolOptions })
+        const primarySignal = historyEntryPrimarySignal(entry)
+        const signalName = signalTypeLabel(signalFamilyLabel(primarySignal))
+        const signalMetric = historyEntrySignalMetric(primarySignal, locale)
+        const restoreEntry = (event: React.MouseEvent<HTMLButtonElement>) => {
+          event.stopPropagation()
+          onRestore(entry)
+        }
+        const deleteEntry = (event: React.MouseEvent<HTMLButtonElement>) => {
+          event.stopPropagation()
+          onDelete(entry)
+        }
+        return (
+          <div
+            key={entry.id}
+            style={historyCardStyle}
           >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ color: terminalTheme.textStrong, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{historyEntryTitle(entry, locale)}</div>
-              <div style={mutedStyle}>{historyEntryMeta(entry, locale)}</div>
-              {historyEntryChips(entry).length ? (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 5 }}>
-                  {historyEntryChips(entry).map(item => (
+            <button
+              type="button"
+              style={historyRestoreSurfaceStyle}
+              onClick={restoreEntry}
+              aria-label={locale === 'zh-CN' ? `复原${title}` : `Restore ${title}`}
+              title={locale === 'zh-CN' ? '复原这条回测结果' : 'Restore this backtest result'}
+            >
+              <div style={historyTitleLineStyle}>
+                <span style={historyTitleTextStyle}>{title}</span>
+                {countLabel ? <span style={historyCountBadgeStyle}>{countLabel}</span> : null}
+              </div>
+              <div style={historyMetaRowStyle}>
+                {metaTokens.map((token, index) => (
+                  <span key={`${entry.id}-meta-${index}`} style={historyMetaTokenStyle}>{token}</span>
+                ))}
+              </div>
+              {primarySignal && signalName !== emptyDisplay ? (
+                <div style={historySignalLineStyle}>
+                  <span style={statusBadgeStyle('open')}>{locale === 'zh-CN' ? '主信号' : 'Signal'}</span>
+                  <span style={historySignalNameStyle}>{signalName}</span>
+                  {signalMetric ? (
+                    <span style={{
+                      ...historySignalMetricStyle,
+                      color: cellToneColor(signalMetric.toneKey, signalMetric.value),
+                    }}>
+                      {formatPercent(signalMetric.value)}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              {chips.length ? (
+                <div style={historyChipRowStyle}>
+                  {chips.map(item => (
                     <span key={item} style={historyChipStyle}>{item}</span>
                   ))}
                 </div>
               ) : null}
+            </button>
+            <div style={historyActionColumnStyle}>
+              <button
+                type="button"
+                style={historyRestoreActionStyle}
+                onClick={restoreEntry}
+                aria-label={locale === 'zh-CN' ? '复原回测记录' : 'Restore backtest record'}
+                title={locale === 'zh-CN' ? '复原这条回测结果' : 'Restore this backtest result'}
+              >
+                <RestoreIcon />
+              </button>
+              <button
+                type="button"
+                aria-label={locale === 'zh-CN' ? '删除回测记录' : 'Delete backtest record'}
+                title={locale === 'zh-CN' ? '删除这条历史入口' : 'Delete this history entry'}
+                style={historyDeleteActionStyle}
+                onClick={deleteEntry}
+              >
+                <TrashIcon />
+              </button>
             </div>
-            <span style={statusBadgeStyle('success')}>{locale === 'zh-CN' ? '复原' : 'Restore'}</span>
-          </button>
-          <button
-            type="button"
-            aria-label={locale === 'zh-CN' ? '删除回测记录' : 'Delete backtest record'}
-            title={locale === 'zh-CN' ? '删除这条历史入口' : 'Delete this history entry'}
-            style={iconButtonStyle}
-            onClick={() => onDelete(entry)}
-          >
-            <TrashIcon />
-          </button>
-        </div>
-      ))}
+          </div>
+        )
+      })}
     </div>
   )
 }

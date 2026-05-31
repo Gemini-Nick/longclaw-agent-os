@@ -2,19 +2,38 @@ import { describe, expect, it } from 'vitest'
 
 import {
   BACKTEST_HISTORY_SCHEMA_VERSION,
+  backtestHistoryDeleteKeys,
   backtestHistoryEntryFromRecord,
   backtestRestoreStateFromHistory,
+  bestBatchSignalFamilyRow,
   batchKlineDateRangeLabel,
   buildDatePresetDetailRows,
   buildDatePresetWindows,
   buildExpandedKlineRangeOptions,
+  buildKlineFocusWindow,
+  buildKlineIndexWindow,
+  buildMarkerCenteredKlineWindow,
   buildMiniKlineTradeMarkers,
   buildStrategyResearchSummary,
   createBacktestHistoryEntry,
+  expandedKlineFocusRows,
+  expandedKlineChartHeightLimit,
   filterSignalsForDateWindow,
   filterTradesForDateWindow,
+  historyEntryChips,
+  historyEntryCommonalityLabel,
+  historyEntryCountLabel,
+  historyEntryMetaTokens,
+  historyEntryPrimarySignal,
+  historyEntrySignalLabel,
+  historyEntryTitle,
+  isBacktestHistoryEntryDeleted,
   klineIntervalStats,
+  miniTradeEventGroups,
+  pairedMiniTradeMarkers,
   parseBacktestHistoryEntries,
+  signalFamilyKlineTargetCode,
+  signalFamilyMatches,
   symbolOptionFromLookupPayload,
   symbolOptionsFromBacktestOutputs,
   tradeOutcomeForSignal,
@@ -289,14 +308,16 @@ describe('BacktestWorkbench strategy research summary', () => {
     ]
 
     const markers = buildMiniKlineTradeMarkers([
+      { kind: 'signal', time: daySeconds('2025-01-01'), price: 1.1, type: '缠论 · 一买', side: 'buy', eval: { return_t10: 8.2 } },
       { kind: 'entry', time: daySeconds('2025-01-02'), price: 1.2, signal_type: 'MACD-零上回踩' },
       { kind: 'exit', date: '2025-01-03', price: 1.4, exit_reason: 'stop_loss', return_pct: -5 },
       { kind: 'entry', date: '2025-04-01', price: 1.5 },
     ], rows)
 
-    expect(markers.map(item => [item.kind, item.index])).toEqual([['entry', 1], ['exit', 2]])
-    expect(markers[0]).toMatchObject({ signalType: 'MACD-零上回踩' })
-    expect(markers[1]).toMatchObject({ exitReason: 'stop_loss', returnPct: -5 })
+    expect(markers.map(item => [item.kind, item.index])).toEqual([['signal', 0], ['entry', 1], ['exit', 2]])
+    expect(markers[0]).toMatchObject({ signalType: '缠论 · 一买', returnPct: 8.2, side: 'buy' })
+    expect(markers[1]).toMatchObject({ signalType: 'MACD-零上回踩' })
+    expect(markers[2]).toMatchObject({ exitReason: 'stop_loss', returnPct: -5 })
     expect(batchKlineDateRangeLabel({
       start_date: '2024-12-01',
       end_date: '2025-06-01',
@@ -328,6 +349,118 @@ describe('BacktestWorkbench strategy research summary', () => {
     expect(options.find(item => item.key === 'strategy_20d')?.barCount).toBe(20)
   })
 
+  it('builds stable chart focus windows without reloading the full kline series', () => {
+    const rows = Array.from({ length: 120 }, (_, index) => klineBar(dayOffset('2026-01-01', index)))
+    const focus = buildKlineFocusWindow(rows, dayTimestamp('2026-02-15'), 10, 5)
+    const range = buildKlineIndexWindow(rows, dayTimestamp('2026-02-01'), dayTimestamp('2026-02-28'))
+    const markerFocus = buildMarkerCenteredKlineWindow(
+      rows,
+      [{ timestamp: rows[40].timestamp }, { timestamp: rows[42].timestamp }],
+      10,
+      24,
+      60,
+    )
+
+    expect(focus).toMatchObject({
+      fromIndex: 35,
+      toIndex: 50,
+      barCount: 16,
+    })
+    expect(range).toMatchObject({
+      fromIndex: 31,
+      toIndex: 58,
+      barCount: 28,
+    })
+    expect(markerFocus).toMatchObject({
+      fromIndex: 30,
+      toIndex: 53,
+      barCount: 24,
+    })
+  })
+
+  it('pairs entry and exit markers into one trade context', () => {
+    const rows = [klineBar('2026-01-01'), klineBar('2026-01-02')]
+    const markers = buildMiniKlineTradeMarkers([
+      { kind: 'entry', date: '2026-01-01', price: 10, trade_index: 3, signal_type: '一买' },
+      { kind: 'exit', date: '2026-01-02', price: 11, trade_index: 3, exit_reason: 'trail_stop', return_pct: 10 },
+    ], rows)
+
+    expect(pairedMiniTradeMarkers(markers, markers[0] ?? null).map(item => item.kind)).toEqual(['entry', 'exit'])
+  })
+
+  it('groups trade markers into compact event pills', () => {
+    const rows = [klineBar('2026-01-01'), klineBar('2026-01-02'), klineBar('2026-01-03')]
+    const markers = buildMiniKlineTradeMarkers([
+      { kind: 'entry', date: '2026-01-01', price: 10, trade_index: 3, signal_type: '一买' },
+      { kind: 'exit', date: '2026-01-02', price: 11, trade_index: 3, exit_reason: 'trail_stop', return_pct: 10 },
+      { kind: 'signal', date: '2026-01-03', price: 12, signal_type: 'Breakout_20D' },
+    ], rows)
+    const groups = miniTradeEventGroups(markers)
+
+    expect(groups).toHaveLength(2)
+    expect(groups[0]).toMatchObject({ kind: 'trade', resultPct: 10 })
+    expect(groups[0]?.markers.map(item => item.kind)).toEqual(['entry', 'exit'])
+    expect(groups[1]).toMatchObject({ kind: 'signal' })
+  })
+
+  it('matches trader-facing signal family names to raw kline marker labels', () => {
+    expect(signalFamilyMatches('缠论 · 一买', '一买')).toBe(true)
+    expect(signalFamilyMatches('MACD · A零上回踩', 'A_零上回踩')).toBe(true)
+    expect(signalFamilyMatches('突破 · 20日新高', 'Breakout_20D')).toBe(true)
+    expect(signalFamilyMatches('K线 · 加速阳线3', 'CandleAccel_3')).toBe(true)
+  })
+
+  it('chooses a kline detail target for a selected signal family', () => {
+    const row = { signal_type: '缠论 · 一买', best_symbol: '600030 中信证券' }
+    const chartItems = [
+      {
+        code: '601318',
+        ohlcv: [klineBar('2026-01-01')],
+        signal_markers: [{ kind: 'signal', date: '2026-01-01', price: 1, signal_type: '一买' }],
+      },
+      {
+        code: '600030',
+        ohlcv: [klineBar('2026-01-01')],
+        signal_markers: [{ kind: 'signal', date: '2026-01-01', price: 1, signal_type: '一买' }],
+      },
+    ]
+
+    expect(signalFamilyKlineTargetCode(row, chartItems)).toBe('600030')
+  })
+
+  it('selects the best batch signal family from trade return before t10 fallback', () => {
+    const best = bestBatchSignalFamilyRow([
+      { signal_type: '突破 · 20日新高', avg_trade_return_pct: -0.12, avg_t10_pct: 5.5 },
+      { signal_type: '缠论 · 一买', avg_trade_return_pct: 2.11, avg_t10_pct: 1.52 },
+      { signal_type: '形态 · 头肩顶', avg_t10_pct: 7.32 },
+    ])
+
+    expect(best?.signal_type).toBe('缠论 · 一买')
+  })
+
+  it('keeps the expanded chart on the selected backtest range while scoping event evidence', () => {
+    const rows = Array.from({ length: 90 }, (_, index) => klineBar(dayOffset('2026-01-01', index)))
+    const selectedRows = rows.slice(10, 80)
+    const focus = expandedKlineFocusRows(rows, selectedRows, {
+      fromIndex: 30,
+      toIndex: 45,
+      from: rows[30].timestamp,
+      to: rows[45].timestamp,
+      barCount: 16,
+    })
+
+    expect(focus.chartRows).toHaveLength(70)
+    expect(focus.chartRows[0]?.timestamp).toBe(rows[10].timestamp)
+    expect(focus.evidenceRows).toHaveLength(16)
+    expect(focus.evidenceRows[0]?.timestamp).toBe(rows[30].timestamp)
+  })
+
+  it('caps the expanded chart height to keep all panes visible in a short desktop window', () => {
+    expect(expandedKlineChartHeightLimit(1200, 768)).toBe(518)
+    expect(expandedKlineChartHeightLimit(1440, 1100)).toBe(760)
+    expect(expandedKlineChartHeightLimit(960, 700)).toBe(360)
+  })
+
   it('calculates interval return from the currently selected kline range', () => {
     const stats = klineIntervalStats([
       pricedKlineBar('2026-05-01', 10, 10),
@@ -347,7 +480,7 @@ describe('BacktestWorkbench strategy research summary', () => {
       freq: 'daily',
       signalType: 'all',
       simParams: { stop_loss: '5' },
-      rendererState: { tab: 'risk', selectedDatePresetKey: 'event-1' },
+      rendererState: { tab: 'risk', selectedDatePresetKey: 'event-1', selectedBatchSignalType: '缠论 · 一买' },
       batchResult: {
         summary: { total_stocks: 2, total_signals: 8, total_trades: 3 },
         terminal: {
@@ -367,15 +500,126 @@ describe('BacktestWorkbench strategy research summary', () => {
       codes: ['002409', '300394'],
       freq: 'daily',
       simParams: { stop_loss: '5' },
-      rendererState: { tab: 'risk', selectedDatePresetKey: 'event-1' },
+      rendererState: { tab: 'risk', selectedDatePresetKey: 'event-1', selectedBatchSignalType: '缠论 · 一买' },
     })
     expect(parseBacktestHistoryEntries([entry])[0]?.batchResult?.terminal?.mode).toBe('multi')
     expect(backtestRestoreStateFromHistory(entry!, ['fallback'])).toMatchObject({
       codes: ['002409', '300394'],
       tab: 'risk',
       selectedDatePresetKey: 'event-1',
+      selectedBatchSignalType: '缠论 · 一买',
       simParams: { stop_loss: '5' },
     })
+  })
+
+  it('keeps narrow history cards readable with stable title, meta tokens, and compact chips', () => {
+    const codes = [
+      '300408',
+      '002859',
+      '688260',
+      '601211',
+      '601318',
+      '600030',
+      '000002',
+      '601668',
+      '600585',
+      '688478',
+      '688072',
+      '688729',
+      '300394',
+      '002409',
+      '300750',
+      '600519',
+      '000001',
+      '002594',
+    ]
+    const entry = createBacktestHistoryEntry({
+      createdAt: '2026-05-30T08:00:00.000Z',
+      codes,
+      freq: 'daily',
+      batchResult: {
+        summary: { total_stocks: 18, total_signals: 1093, total_trades: 393 },
+        terminal: {
+          version: 'backtest-terminal.v1',
+          mode: 'multi',
+          panels: {
+            ranking: { rows: codes.map(code => ({ code })) },
+            multi_charts: { items: [{ code: codes[0], ohlcv: [klineBar('2026-05-30')] }] },
+          },
+        },
+      },
+    })
+
+    expect(historyEntryTitle(entry!, 'zh-CN')).toBe('多标的回测')
+    expect(historyEntryCountLabel(entry!, 'zh-CN')).toBe('18只')
+    expect(historyEntryMetaTokens(entry!, 'zh-CN')).toEqual(['18标的', '1093信号', '393成交', '日线', '05-30 08:00'])
+    expect(historyEntryChips(entry!)).toEqual(['300408', '002859', '+16'])
+  })
+
+  it('labels multi-symbol history by common industry and exposes the key signal', () => {
+    const entry = createBacktestHistoryEntry({
+      createdAt: '2026-05-30T06:45:29.748Z',
+      codes: ['688478', '688072', '688729', '688082', '688012', '603690', '002371'],
+      freq: 'daily',
+      batchResult: {
+        summary: { total_stocks: 7, total_signals: 372, total_trades: 144 },
+        terminal: {
+          version: 'backtest-terminal.v1',
+          mode: 'multi',
+          panels: {
+            ranking: {
+              rows: [
+                { code: '688072', name: '拓荆科技' },
+                { code: '688478', name: '晶升股份' },
+              ],
+            },
+            signals: {
+              rows: [
+                { signal_type: '突破 · 20日新高', avg_trade_return_pct: 1.33, avg_t10_pct: 3.97 },
+                { signal_type: '缠论 · 背驰买', avg_trade_return_pct: 5.07, avg_t10_pct: 1.24 },
+              ],
+            },
+            multi_charts: { items: [{ code: '688072', ohlcv: [klineBar('2026-05-30')] }] },
+          },
+        },
+      },
+    })
+
+    expect(historyEntryCommonalityLabel(entry!, 'zh-CN')).toBe('半导体设备')
+    expect(historyEntryTitle(entry!, 'zh-CN')).toBe('半导体设备回测')
+    expect(historyEntryPrimarySignal(entry!)?.signal_type).toBe('缠论 · 背驰买')
+    expect(historyEntrySignalLabel(entry!, 'zh-CN')).toBe('缠论 · 背驰买 +5.07%')
+  })
+
+  it('prefers selected basket group names when history codes match a known option group', () => {
+    const entry = createBacktestHistoryEntry({
+      createdAt: '2026-05-30T07:49:38.960Z',
+      codes: ['601211', '601318', '600030'],
+      freq: 'daily',
+      batchResult: {
+        summary: { total_stocks: 3, total_signals: 114, total_trades: 46 },
+        terminal: {
+          version: 'backtest-terminal.v1',
+          mode: 'multi',
+          panels: {
+            ranking: {
+              rows: [
+                { code: '601318', name: '中国平安' },
+                { code: '600030', name: '中信证券' },
+              ],
+            },
+            multi_charts: { items: [{ code: '601318', ohlcv: [klineBar('2026-05-30')] }] },
+          },
+        },
+      },
+    })
+    const symbolOptions = [
+      { code: '601211', name: '国泰海通', group: '大金融产业链 · 银行/券商/保险' },
+      { code: '601318', name: '中国平安', group: '大金融产业链 · 银行/券商/保险' },
+      { code: '600030', name: '中信证券', group: '大金融产业链 · 银行/券商/保险' },
+    ]
+
+    expect(historyEntryTitle(entry!, 'zh-CN', { symbolOptions })).toBe('银行/券商/保险回测')
   })
 
   it('keeps v1 history parseable but skips deleted tombstones', () => {
@@ -409,6 +653,36 @@ describe('BacktestWorkbench strategy research summary', () => {
       tab: 'perf',
       result: rows[0]?.result,
     })
+  })
+
+  it('keeps dashboard history deletion stable across refreshed timestamps', () => {
+    const baseRecord = {
+      job_id: 'bt-300394',
+      symbol: '300394',
+      freq: 'daily',
+      result: {
+        terminal: {
+          version: 'backtest-terminal.v1',
+          target: { code: '300394', name: '300394' },
+          metrics: { signal_count: 1, filled_trades: 1 },
+          chart: { ohlcv: [klineBar('2026-05-29')] },
+        },
+      },
+    }
+
+    const first = backtestHistoryEntryFromRecord('300394', {
+      ...baseRecord,
+      updated_at: '2026-05-30T07:01:00.000Z',
+    })
+    const refreshed = backtestHistoryEntryFromRecord('300394', {
+      ...baseRecord,
+      updated_at: '2026-05-30T07:02:00.000Z',
+    })
+
+    expect(first?.id).not.toBe(refreshed?.id)
+    expect(backtestHistoryDeleteKeys(first!)).toContain('dashboard:bt-300394')
+    expect(backtestHistoryDeleteKeys(refreshed!)).toContain('dashboard:bt-300394')
+    expect(isBacktestHistoryEntryDeleted(refreshed!, new Set(backtestHistoryDeleteKeys(first!)))).toBe(true)
   })
 
   it('deduplicates single-symbol titles when code and name match', () => {
