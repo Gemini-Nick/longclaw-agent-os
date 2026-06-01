@@ -1,7 +1,11 @@
+import { createRequire } from 'module'
+import React, { act } from 'react'
+import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
 
 import {
   BACKTEST_HISTORY_SCHEMA_VERSION,
+  MultiBacktestReport,
   backtestHistoryDeleteKeys,
   backtestHistoryEntryFromRecord,
   backtestRestoreStateFromHistory,
@@ -39,6 +43,11 @@ import {
   tradeOutcomeForSignal,
 } from './BacktestWorkbench.js'
 
+const require = createRequire(import.meta.url)
+const domino = require('@mixmark-io/domino') as {
+  createWindow: (html: string) => Window
+}
+
 function dayTimestamp(date: string): number {
   const [year, month, day] = date.split('-').map(Number)
   return new Date(year, month - 1, day).getTime()
@@ -69,6 +78,60 @@ function pricedKlineBar(date: string, open: number, close: number) {
     high: Math.max(open, close),
     low: Math.min(open, close),
     close,
+  }
+}
+
+function installDom() {
+  const previous = {
+    window: (globalThis as any).window,
+    document: (globalThis as any).document,
+    navigatorDescriptor: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+    HTMLElement: (globalThis as any).HTMLElement,
+    Element: (globalThis as any).Element,
+    Node: (globalThis as any).Node,
+    SVGElement: (globalThis as any).SVGElement,
+    ResizeObserver: (globalThis as any).ResizeObserver,
+    IS_REACT_ACT_ENVIRONMENT: (globalThis as any).IS_REACT_ACT_ENVIRONMENT,
+  }
+  const window = domino.createWindow('<!doctype html><html><body><div id="root"></div></body></html>') as any
+  window.requestAnimationFrame = (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0)
+  window.cancelAnimationFrame = (id: ReturnType<typeof setTimeout>) => clearTimeout(id)
+  class ResizeObserverMock {
+    observe() {}
+    disconnect() {}
+  }
+  ;(globalThis as any).window = window
+  ;(globalThis as any).document = window.document
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: window.navigator,
+  })
+  ;(globalThis as any).HTMLElement = window.HTMLElement
+  ;(globalThis as any).Element = window.Element
+  ;(globalThis as any).Node = window.Node
+  ;(globalThis as any).SVGElement = window.SVGElement
+  ;(globalThis as any).ResizeObserver = ResizeObserverMock
+  ;(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true
+
+  const rootElement = window.document.getElementById('root') as HTMLElement
+  return {
+    rootElement,
+    cleanup: () => {
+      Object.entries(previous).forEach(([key, value]) => {
+        if (key === 'navigatorDescriptor') return
+        if (value === undefined) {
+          delete (globalThis as any)[key]
+        } else {
+          ;(globalThis as any)[key] = value
+        }
+      })
+      if (previous.navigatorDescriptor) {
+        Object.defineProperty(globalThis, 'navigator', previous.navigatorDescriptor)
+      } else {
+        delete (globalThis as any).navigator
+      }
+    },
   }
 }
 
@@ -173,6 +236,64 @@ describe('BacktestWorkbench strategy research summary', () => {
     expect(summary.statusLabel).toBe('先清洗样本')
     expect(summary.issues).toContain('组合样本偏薄，不能直接沉淀策略')
     expect(summary.actions.join(' ')).toContain('5-10 只标的')
+  })
+
+  it('keeps multi-report hook order stable when a batch terminal result arrives', async () => {
+    const { rootElement, cleanup } = installDom()
+    const root = createRoot(rootElement)
+    const renderReport = (terminal?: React.ComponentProps<typeof MultiBacktestReport>['terminal']) => (
+      <MultiBacktestReport
+        locale="zh-CN"
+        terminal={terminal}
+        selectedCode={null}
+        selectedSignalType={null}
+        onSelectCode={() => {}}
+        onSelectSignalType={() => {}}
+      />
+    )
+
+    try {
+      await act(async () => {
+        root.render(renderReport())
+      })
+      await act(async () => {
+        root.render(renderReport({
+          version: 'backtest-terminal.v1',
+          mode: 'multi',
+          target: { name: '半导体设备', freq: 'daily', as_of: '2026-05-31' },
+          metrics: {
+            signal_count: 147,
+            filled_trades: 54,
+            win_rate: 52,
+            total_return_pct: 3.2,
+            max_drawdown_pct: -4.5,
+          },
+          panels: {
+            ranking: { rows: [{ code: '002371', name: '北方华创', total_return_pct: 3.1 }] },
+            interval_overview: { rows: [{ code: '002371', visible_start_date: '2026-01-01' }] },
+            signals: { rows: [{ signal_type: '突破 · 20日新高', avg_trade_return_pct: 1.3 }] },
+            multi_charts: {
+              items: [
+                {
+                  code: '002371',
+                  name: '北方华创',
+                  ohlcv: [klineBar('2026-05-29')],
+                  trade_markers: [{ kind: 'signal', date: '2026-05-29', price: 1, signal_type: 'Breakout_20D' }],
+                },
+              ],
+            },
+          },
+        }))
+      })
+
+      expect(rootElement.textContent).toContain('半导体设备回测')
+      expect(rootElement.textContent).toContain('147')
+    } finally {
+      await act(async () => {
+        root.unmount()
+      })
+      cleanup()
+    }
   })
 
   it('learns stock names from batch output so selected codes render with names', () => {

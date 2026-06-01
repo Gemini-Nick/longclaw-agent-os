@@ -5451,7 +5451,7 @@ function SymbolBasketBar({
   )
 }
 
-function MultiBacktestReport({
+export function MultiBacktestReport({
   locale,
   terminal,
   selectedCode,
@@ -5489,14 +5489,12 @@ function MultiBacktestReport({
     })
     return () => window.cancelAnimationFrame(frame)
   }, [normalizedSelectedSignalType])
-  if (!terminal) {
-    return <div ref={reportRef} style={{ ...multiReportStyle(density), justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
-  }
-  const panels = terminal.panels ?? {}
+
+  const panels: NonNullable<BacktestTerminal['panels']> = terminal?.panels ?? {}
   const rankingRows = panels.ranking?.rows ?? []
   const overviewRows = panels.interval_overview?.rows ?? []
   const signalRows = Array.isArray(panels.signals?.rows) ? panels.signals.rows.map(recordValue) : []
-  const rawChartItems = panels.multi_charts?.items ?? terminal.chart?.multi_charts ?? []
+  const rawChartItems = panels.multi_charts?.items ?? terminal?.chart?.multi_charts ?? []
   const chartItems = useMemo(() => rawChartItems.map(recordValue), [rawChartItems])
   const preparedChartItems = useMemo(() => chartItems.map(prepareBatchChartItem), [chartItems])
   const selectedChartItem = preparedChartItemForCode(preparedChartItems, selectedCode)
@@ -5536,8 +5534,8 @@ function MultiBacktestReport({
     })
   }, [onSelectSignalType, openKlineDetail, preparedChartItems])
   const scriptCards = panels.scripts?.cards ?? []
-  const metrics = recordValue(terminal.metrics)
-  const target = recordValue(terminal.target)
+  const metrics = recordValue(terminal?.metrics)
+  const target = recordValue(terminal?.target)
   const kpiItems = [
     { label: locale === 'zh-CN' ? '标的数' : 'Symbols', value: rankingRows.length, tone: 'neutral' },
     { label: locale === 'zh-CN' ? '信号数' : 'Signals', value: formatNumber(metrics.signal_count, 0), tone: 'neutral' },
@@ -5559,6 +5557,9 @@ function MultiBacktestReport({
     return !worst || value > worstValue ? row : worst
   }, null)
   const primarySignal = bestBatchSignalFamilyRow(signalRows)
+  if (!terminal) {
+    return <div ref={reportRef} style={{ ...multiReportStyle(density), justifyContent: 'center' }}><div style={emptyStyle}>暂无多标的结果。</div></div>
+  }
   return (
     <div ref={reportRef} style={multiReportStyle(density)}>
       <div style={multiHeaderStyle(density)}>
