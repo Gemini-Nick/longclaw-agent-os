@@ -859,6 +859,44 @@ function multiChartsGridStyle(density: MultiReportDensity, count: number): React
   }
 }
 
+function batchSliceChartPreviewStyle(density: MultiReportDensity): React.CSSProperties {
+  return {
+    width: '100%',
+    maxWidth: density === 'wide' ? 920 : 780,
+    minWidth: 0,
+    alignSelf: 'start',
+  }
+}
+
+const klinePreviewButtonStyle: React.CSSProperties = {
+  width: '100%',
+  appearance: 'none',
+  border: `1px solid ${terminalTheme.chartBorder}`,
+  borderRadius: 6,
+  background: terminalTheme.chartPanel,
+  color: terminalTheme.text,
+  cursor: 'zoom-in',
+  padding: 0,
+  overflow: 'hidden',
+  position: 'relative',
+  fontFamily: fontStacks.ui,
+  textAlign: 'left',
+}
+
+const klinePreviewActionStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: 8,
+  top: 8,
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: tradingDeskTheme.radius.pill,
+  background: tradingDeskTheme.alpha.panelWashStrong,
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 800,
+  padding: '4px 8px',
+  pointerEvents: 'none',
+}
+
 function scriptGridStyle(density: MultiReportDensity, count: number): React.CSSProperties {
   if (density === 'compact') {
     return {
@@ -2383,9 +2421,24 @@ function miniTradeEventGroupTitle(group: MiniTradeEventGroup): string {
   return group.markers[0] ? shortKlineDate(group.markers[0].timestamp) : emptyDisplay
 }
 
+function miniTradeEventHoldingDays(group: MiniTradeEventGroup): number | undefined {
+  if (!group.entry || !group.exit) return undefined
+  return Math.max(0, Math.round((group.exit.timestamp - group.entry.timestamp) / MS_PER_DAY))
+}
+
 function miniTradeEventGroupSubtitle(group: MiniTradeEventGroup): string {
   const marker = group.entry ?? group.signal ?? group.exit ?? group.markers[0]
   return marker ? miniTradeMarkerOverlayLabel(marker) : emptyDisplay
+}
+
+function miniTradeEventGroupDetailLine(group: MiniTradeEventGroup): string {
+  const parts = [
+    group.entry ? `买 ${dateKey(group.entry.timestamp)} @${formatNumber(group.entry.price)}` : '',
+    group.exit ? `卖 ${dateKey(group.exit.timestamp)} @${formatNumber(group.exit.price)}` : '',
+    miniTradeEventHoldingDays(group) !== undefined ? `持仓 ${miniTradeEventHoldingDays(group)}日` : '',
+    miniTradeEventGroupSubtitle(group),
+  ].filter(Boolean)
+  return parts.join(' · ')
 }
 
 function markerWindowFromPairedMarkers(rows: KLineData[], markers: MiniKlineTradeMarker[]): KlineIndexWindow | null {
@@ -3343,6 +3396,10 @@ function buildBatchBody(
     const parsed = Number(value)
     body[key] = Number.isFinite(parsed) ? parsed : value
   })
+  for (const key of ['start_date', 'end_date'] as const) {
+    const value = simParams[key]
+    if (value?.trim()) body[key] = value.trim()
+  }
   return body
 }
 
@@ -3643,6 +3700,8 @@ export function BacktestWorkbench({
     profit_drawdown: '0',
     atr_exit_period: '0',
     atr_exit_mult: '2.0',
+    start_date: '',
+    end_date: '',
   })
   const [scanParams, setScanParams] = useState<Record<string, string>>({
     scan_param: 'stop_loss_pct',
@@ -3857,6 +3916,8 @@ export function BacktestWorkbench({
       signal_type: signalType,
       had_result: hadResult,
       mode: multiMode ? 'multi' : 'single',
+      start_date: simParams.start_date,
+      end_date: simParams.end_date,
     })
     setLoading(true)
     setError(null)
@@ -4418,6 +4479,7 @@ export function BacktestWorkbench({
                 </div>
               </div>
             ) : null}
+            <DateRangeGrid params={simParams} onChange={updateSimParam} locale={locale} />
             <ParamGrid params={simParams} onChange={updateSimParam} />
           </Panel>
           {isBatchView ? (
@@ -5597,7 +5659,7 @@ export function MultiBacktestReport({
           locale={locale}
           item={selectedChartItem}
           density={density}
-          onOpen={() => openExpandedKline(selectedChartItem)}
+          onOpen={focus => focus ? openKlineDetail(selectedChartItem, focus) : openExpandedKline(selectedChartItem)}
         />
       ) : selectedCode ? (
         <Panel title={locale === 'zh-CN' ? '当前下钻切片' : 'Current batch slice'} style={multiPanelStyle(density)}>
@@ -5794,6 +5856,93 @@ function BatchCommonalityStrip({
   )
 }
 
+function KlineMarkerLegend({ compact = false }: { compact?: boolean }) {
+  const items = [
+    { label: '信', text: '策略信号', tone: 'open' },
+    { label: '买', text: '买入/开仓', tone: 'success' },
+    { label: '卖', text: '卖出/离场', tone: 'failed' },
+  ]
+  return (
+    <div style={{ display: 'flex', gap: compact ? 5 : 7, flexWrap: 'wrap', alignItems: 'center' }}>
+      {items.map(item => (
+        <span key={item.label} style={{ ...statusBadgeStyle(item.tone), padding: compact ? '3px 7px' : '4px 8px' }}>
+          <span style={{ fontFamily: fontStacks.mono, fontWeight: 900 }}>{item.label}</span>
+          {item.text}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function BatchTradeSnapshot({
+  groups,
+  density,
+  onOpenGroup,
+}: {
+  groups: MiniTradeEventGroup[]
+  density: MultiReportDensity
+  onOpenGroup: (group: MiniTradeEventGroup) => void
+}) {
+  const tradeGroups = groups
+    .filter(group => group.entry || group.exit)
+    .slice()
+    .sort((left, right) => right.timestamp - left.timestamp)
+  const visibleGroups = tradeGroups.slice(0, density === 'compact' ? 2 : 4)
+  const compact = density === 'compact'
+  return (
+    <div style={{ ...metricCardStyle, display: 'flex', flexDirection: 'column', gap: 7, padding: compact ? 8 : 9 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+        <div>
+          <div style={labelStyle}>交易明细</div>
+          <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>{formatNumber(tradeGroups.length, 0)} 笔可检查</div>
+        </div>
+        <span style={statusBadgeStyle('open')}>点一笔放大</span>
+      </div>
+      {visibleGroups.length === 0 ? (
+        <div style={emptyStyle}>当前切片没有成交通道，只能先看信号标注。</div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+          {visibleGroups.map(group => {
+            const resultPct = group.resultPct
+            const tone = resultPct === undefined ? 'open' : resultPct >= 0 ? 'success' : 'failed'
+            return (
+              <button
+                key={group.key}
+                type="button"
+                style={{
+                  appearance: 'none',
+                  border: `1px solid ${terminalTheme.border}`,
+                  borderRadius: 6,
+                  background: terminalTheme.panelInset,
+                  color: terminalTheme.text,
+                  cursor: 'zoom-in',
+                  fontFamily: fontStacks.ui,
+                  padding: '7px 8px',
+                  textAlign: 'left',
+                  minWidth: 0,
+                }}
+                onClick={() => onOpenGroup(group)}
+                aria-label={`放大检查 ${miniTradeEventGroupTitle(group)}`}
+                title={miniTradeEventGroupDetailLine(group)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
+                  <span style={{ color: terminalTheme.textStrong, fontWeight: 900, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {miniTradeEventGroupTitle(group)}
+                  </span>
+                  <span style={{ ...statusBadgeStyle(tone), padding: '3px 7px' }}>{formatPercent(resultPct)}</span>
+                </div>
+                <div style={{ ...mutedStyle, marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {miniTradeEventGroupDetailLine(group)}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function BatchSymbolSlicePanel({
   locale,
   item,
@@ -5803,14 +5952,19 @@ function BatchSymbolSlicePanel({
   locale: LongclawLocale
   item: PreparedBatchChartItem
   density: MultiReportDensity
-  onOpen: () => void
+  onOpen: (focus?: ExpandedKlineFocus) => void
 }) {
   const rows = item.rows
   const regimes = item.regimes
   const markers = item.markers
+  const eventGroups = useMemo(() => miniTradeEventGroups(markers), [markers])
   const signalCount = markers.filter(marker => marker.kind === 'signal').length
   const tradeCount = item.filledTradeCount
   const zh = locale === 'zh-CN'
+  const openFocusedGroup = (group: MiniTradeEventGroup) => {
+    const marker = preferredMiniTradeEventMarker(group)
+    onOpen(marker ? { markerKey: miniTradeMarkerId(marker) } : undefined)
+  }
   return (
     <Panel title={zh ? '当前下钻切片' : 'Current batch slice'} style={multiPanelStyle(density)}>
       <div style={{
@@ -5839,11 +5993,28 @@ function BatchSymbolSlicePanel({
               <div style={{ color: terminalTheme.textStrong, fontWeight: 800 }}>{formatNumber(tradeCount, 0)}</div>
             </div>
           </div>
-          <button type="button" style={buttonStyle(true)} onClick={onOpen}>
-            {zh ? '进入K线详情' : 'Open chart detail'}
+          <button type="button" style={buttonStyle(true)} onClick={() => onOpen()}>
+            {zh ? '放大检查K线 / 交易明细' : 'Inspect chart / trades'}
           </button>
         </div>
-        <MiniKlineSvg rows={rows} regimes={regimes} tradeMarkers={markers} density={density} variant="expanded" />
+        <div style={batchSliceChartPreviewStyle(density)}>
+          <button
+            type="button"
+            style={klinePreviewButtonStyle}
+            onClick={() => onOpen()}
+            aria-label={zh ? '放大检查当前K线切片' : 'Inspect current chart slice'}
+            title={zh ? '点击放大检查K线和交易明细' : 'Click to inspect chart and trades'}
+          >
+            <MiniKlineSvg rows={rows} regimes={regimes} tradeMarkers={markers} density={density} variant="expanded" />
+            <span style={klinePreviewActionStyle}>{zh ? '放大检查' : 'Inspect'}</span>
+          </button>
+          <div style={{ marginTop: 7 }}>
+            <KlineMarkerLegend compact={density === 'compact'} />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <BatchTradeSnapshot groups={eventGroups} density={density} onOpenGroup={openFocusedGroup} />
+          </div>
+        </div>
       </div>
     </Panel>
   )
@@ -6289,8 +6460,8 @@ const MiniKlineSvg = React.memo(function MiniKlineSvg({
   density,
   variant = 'mini',
 }: MiniKlineSvgProps) {
-  const width = variant === 'expanded' ? 980 : 320
-  const height = variant === 'expanded' ? (density === 'compact' ? 360 : 430) : (density === 'compact' ? 126 : 150)
+  const width = variant === 'expanded' ? 920 : 320
+  const height = variant === 'expanded' ? (density === 'compact' ? 360 : 460) : (density === 'compact' ? 138 : 168)
   if (rows.length === 0) {
     return <div style={emptyStyle}>暂无K线。</div>
   }
@@ -6306,7 +6477,15 @@ const MiniKlineSvg = React.memo(function MiniKlineSvg({
   const firstDate = dateKey(rows[0].timestamp)
   const lastDate = dateKey(rows[rows.length - 1].timestamp)
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', aspectRatio: `${width} / ${height}`, display: 'block' }} role="img" aria-label={variant === 'expanded' ? 'expanded kline' : 'mini kline'}>
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: '100%', height: 'auto', maxWidth: '100%', display: 'block' }}
+      role="img"
+      aria-label={variant === 'expanded' ? 'expanded kline' : 'mini kline'}
+    >
       <rect x="0" y="0" width={width} height={height} fill={terminalTheme.chartPanel} />
       {[0, 1, 2, 3].map(item => (
         <line
@@ -6371,17 +6550,19 @@ const MiniKlineSvg = React.memo(function MiniKlineSvg({
         const color = isSignal
           ? (side === 'sell' ? tradingDeskTheme.chart.purple : tradingDeskTheme.chart.orange)
           : isExit ? tradingDeskTheme.market.down : tradingDeskTheme.market.up
-        const markerSize = variant === 'expanded' ? 8 : 5
-        const label = isSignal ? 'S' : isExit ? 'E' : 'B'
+        const markerSize = variant === 'expanded' ? 10 : 6
+        const label = isSignal ? '信' : isExit ? '卖' : '买'
         return (
           <g key={`${marker.timestamp}-${marker.kind}-${index}`}>
+            <title>{`${label} ${dateKey(marker.timestamp)} ${miniTradeMarkerOverlayLabel(marker)} ${formatNumber(marker.price)}`}</title>
             <circle cx={x} cy={y} r={markerSize} fill={terminalTheme.chartPanel} stroke={color} strokeWidth={variant === 'expanded' ? 2 : 1.4} />
             <text
               x={x}
-              y={y + (variant === 'expanded' ? 4 : 3)}
+              y={y}
               textAnchor="middle"
+              dominantBaseline="central"
               fill={color}
-              fontSize={variant === 'expanded' ? 10 : 7}
+              fontSize={variant === 'expanded' ? 12 : 8}
               fontWeight="800"
             >
               {label}
@@ -6671,11 +6852,12 @@ function KlineEventRail({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
         <div>
-          <div style={labelStyle}>交易事件</div>
+          <div style={labelStyle}>交易明细</div>
           <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>{formatNumber(groups.length, 0)} 个</div>
         </div>
-        <span style={statusBadgeStyle('open')}>点击聚焦</span>
+        <span style={statusBadgeStyle('open')}>点击聚焦放大</span>
       </div>
+      <KlineMarkerLegend compact />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflow: 'auto', paddingRight: 2 }}>
         {groups.length === 0 ? (
           <div style={emptyStyle}>当前区间没有买卖点。</div>
@@ -6716,6 +6898,9 @@ function KlineEventRail({
               </div>
               <div style={{ ...mutedStyle, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {miniTradeEventGroupSubtitle(group)}
+              </div>
+              <div style={{ ...mutedStyle, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {miniTradeEventGroupDetailLine(group)}
               </div>
             </button>
           )
@@ -7000,8 +7185,7 @@ function ExpandedKlineOverlay({
             ))}
             <span style={statusBadgeStyle('open')}>VOL</span>
             <span style={statusBadgeStyle('open')}>MACD</span>
-            <span style={statusBadgeStyle('success')}>买</span>
-            <span style={statusBadgeStyle('warning')}>卖/离场</span>
+            <KlineMarkerLegend compact />
           </div>
         </div>
         <div style={{
@@ -7273,6 +7457,54 @@ function ParamGrid({
           />
         </label>
       ))}
+    </div>
+  )
+}
+
+function DateRangeGrid({
+  params,
+  onChange,
+  locale,
+}: {
+  params: Record<string, string>
+  onChange: (key: string, value: string) => void
+  locale: LongclawLocale
+}) {
+  const items = [
+    ['start_date', locale === 'zh-CN' ? '起始' : 'Start'],
+    ['end_date', locale === 'zh-CN' ? '结束' : 'End'],
+  ]
+  const setYearToDate = () => {
+    onChange('start_date', '2026-01-01')
+    onChange('end_date', '')
+  }
+  const clearRange = () => {
+    onChange('start_date', '')
+    onChange('end_date', '')
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 7 }}>
+        {items.map(([key, label]) => (
+          <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+            <span style={mutedStyle}>{label}</span>
+            <input
+              type="date"
+              style={{ ...inputStyle, height: 28 }}
+              value={params[key] ?? ''}
+              onChange={event => onChange(key, event.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 7, minWidth: 0 }}>
+        <button type="button" style={{ ...buttonStyle(Boolean(params.start_date)), height: 28 }} onClick={setYearToDate}>
+          {locale === 'zh-CN' ? '2026年至今' : '2026 YTD'}
+        </button>
+        <button type="button" style={{ ...buttonStyle(false), height: 28 }} onClick={clearRange}>
+          {locale === 'zh-CN' ? '清空区间' : 'Clear'}
+        </button>
+      </div>
     </div>
   )
 }
