@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { fontStacks, motion, palette, tradingDeskTheme } from './designSystem.js'
 
 export type ViewportTier = 'wide' | 'mid' | 'narrow'
+export type ShellBackgroundMode = 'light' | 'dark'
 
 export function getViewportTier(width: number): ViewportTier {
   if (width >= 1360) return 'wide'
@@ -15,6 +16,7 @@ export function createShellLayout(
   tier: ViewportTier,
   threadSidebarOpen: boolean,
   detailOpen: boolean,
+  backgroundMode: ShellBackgroundMode = 'dark',
 ): {
   app: CSSProperties
   rail: CSSProperties
@@ -29,7 +31,8 @@ export function createShellLayout(
 } {
   const overlayDetail = true
   const overlayThreadSidebar = tier === 'narrow'
-  const railWidth = tier === 'narrow' ? 74 : tier === 'mid' ? 132 : 144
+  const railWidth = tier === 'narrow' ? 58 : 64
+  const lightMode = backgroundMode === 'light'
   const threadSidebarWidth = tier === 'narrow' ? Math.min(320, Math.max(280, width - 88)) : tier === 'mid' ? 258 : 286
   const detailWidth = Math.min(
     tier === 'narrow' ? 360 : 430,
@@ -42,8 +45,10 @@ export function createShellLayout(
     app: {
       display: 'flex',
       height: '100vh',
-      background: tradingDeskTheme.gradients.app,
-      color: palette.ink,
+      background: lightMode
+        ? 'linear-gradient(180deg, #FAFBFC 0%, #F2F4F7 100%)'
+        : tradingDeskTheme.gradients.app,
+      color: lightMode ? '#20242A' : palette.ink,
       fontFamily: fontStacks.ui,
       overflow: 'hidden',
       position: 'relative',
@@ -51,14 +56,18 @@ export function createShellLayout(
     rail: {
       width: railWidth,
       flexShrink: 0,
-      padding: tier === 'narrow' ? 14 : '14px 12px',
-      borderRight: `1px solid ${tradingDeskTheme.alpha.textHairline}`,
-      background: tradingDeskTheme.gradients.rail,
+      padding: tier === 'narrow' ? '8px 6px' : '9px 7px',
+      borderRight: lightMode
+        ? '1px solid rgba(17, 24, 39, 0.10)'
+        : '1px solid rgba(255, 255, 255, 0.10)',
+      background: lightMode
+        ? 'linear-gradient(180deg, #F5F6F8 0%, #ECEFF3 100%)'
+        : 'linear-gradient(180deg, #090D14 0%, #0F1620 100%)',
       display: 'flex',
       flexDirection: 'column',
-      gap: tier === 'narrow' ? 16 : 12,
+      gap: 8,
       minHeight: 0,
-      overflowY: 'auto',
+      overflowY: 'visible',
     },
     threadSidebar: overlayThreadSidebar
       ? {

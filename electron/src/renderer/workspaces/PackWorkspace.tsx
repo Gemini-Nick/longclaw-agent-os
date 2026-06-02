@@ -16,6 +16,7 @@ import {
   utilityStyles,
 } from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, t } from '../i18n.js'
+import type { ShellBackgroundMode } from '../layout.js'
 import {
   ActionButtons,
   PackListSection,
@@ -38,6 +39,7 @@ type PackWorkspaceProps = {
   signalsWebBaseUrl?: string
   localizedNotice?: string | null
   aiFactorStrategySignals?: AiFactorStrategySignal[]
+  backgroundMode: ShellBackgroundMode
   onRunAction: (action: LongclawOperatorAction) => Promise<void>
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (
@@ -1121,12 +1123,14 @@ function SignalsStrategyView({
   dashboard,
   signalsWebBaseUrl,
   aiFactorStrategySignals,
+  backgroundMode,
   onOpenRecord,
 }: {
   locale: LongclawLocale
   dashboard: SignalsStrategyVM
   signalsWebBaseUrl?: string
   aiFactorStrategySignals?: AiFactorStrategySignal[]
+  backgroundMode: ShellBackgroundMode
   onOpenRecord: (
     title: string,
     record: Record<string, unknown>,
@@ -1139,6 +1143,7 @@ function SignalsStrategyView({
       dashboard={dashboard}
       signalsWebBaseUrl={signalsWebBaseUrl}
       aiFactorStrategySignals={aiFactorStrategySignals}
+      backgroundMode={backgroundMode}
       onOpenRecord={onOpenRecord}
     />
   )
@@ -1148,12 +1153,14 @@ function SignalsBacktestView({
   locale,
   dashboard,
   signalsWebBaseUrl,
+  backgroundMode,
   onOpenRun,
   onOpenRecord,
 }: {
   locale: LongclawLocale
   dashboard: SignalsBacktestVM
   signalsWebBaseUrl?: string
+  backgroundMode: ShellBackgroundMode
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (
     title: string,
@@ -1166,6 +1173,7 @@ function SignalsBacktestView({
       locale={locale}
       dashboard={dashboard}
       signalsWebBaseUrl={signalsWebBaseUrl}
+      backgroundMode={backgroundMode}
       onOpenRun={onOpenRun}
       onOpenRecord={onOpenRecord}
     />
@@ -1247,6 +1255,7 @@ export function PackWorkspace({
   signalsWebBaseUrl,
   localizedNotice,
   aiFactorStrategySignals,
+  backgroundMode,
   onRunAction,
   onOpenRun,
   onOpenRecord,
@@ -1293,6 +1302,7 @@ export function PackWorkspace({
           dashboard={toSignalsStrategyVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
           aiFactorStrategySignals={aiFactorStrategySignals}
+          backgroundMode={backgroundMode}
           onOpenRecord={onOpenRecord}
         />
       </div>
@@ -1306,6 +1316,7 @@ export function PackWorkspace({
           locale={locale}
           dashboard={toSignalsBacktestVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
+          backgroundMode={backgroundMode}
           onOpenRun={onOpenRun}
           onOpenRecord={onOpenRecord}
         />
@@ -1336,6 +1347,7 @@ export function PackWorkspace({
           locale={locale}
           dashboard={toSignalsStrategyVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
+          backgroundMode={backgroundMode}
           onOpenRecord={onOpenRecord}
         />
       ) : surface === 'backtest' ? (
@@ -1343,6 +1355,7 @@ export function PackWorkspace({
           locale={locale}
           dashboard={toSignalsBacktestVM(normalizedDashboard as SignalsDashboard)}
           signalsWebBaseUrl={signalsWebBaseUrl}
+          backgroundMode={backgroundMode}
           onOpenRun={onOpenRun}
           onOpenRecord={onOpenRecord}
         />

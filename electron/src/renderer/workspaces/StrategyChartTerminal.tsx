@@ -15,8 +15,17 @@ import {
 } from 'klinecharts'
 
 import type { SignalsDashboard } from '../../../../src/services/longclawControlPlane/models.js'
-import { fontStacks, interaction, motion, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
+import {
+  designThemeColor,
+  fontStacks,
+  interaction,
+  motion,
+  palette,
+  statusBadgeStyle,
+  tradingDeskTheme,
+} from '../designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '../i18n.js'
+import type { ShellBackgroundMode } from '../layout.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
 import type { AiFactorStrategySignal } from './AIFactorFactoryWorkspace.js'
 import { rankLabelForWatchlist, rankReasonForWatchlist, signalScopeLabel, tagsForWatchlist } from './StrategyChartTags.js'
@@ -41,6 +50,7 @@ type StrategyChartTerminalProps = {
   dashboard: StrategyDashboard
   signalsWebBaseUrl?: string
   aiFactorStrategySignals?: AiFactorStrategySignal[]
+  backgroundMode?: ShellBackgroundMode
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }
 
@@ -2341,6 +2351,33 @@ const chartOverlayMessageStyle: React.CSSProperties = {
   zIndex: 2,
 }
 
+function chartCanvasShellStyleForMode(backgroundMode: ShellBackgroundMode): React.CSSProperties {
+  if (backgroundMode !== 'light') return chartCanvasShellStyle
+  return {
+    ...chartCanvasShellStyle,
+    background: '#FBFCFE',
+    boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.08)',
+  }
+}
+
+function chartCanvasStyleForMode(backgroundMode: ShellBackgroundMode): React.CSSProperties {
+  return {
+    ...chartCanvasStyle,
+    background: backgroundMode === 'light'
+      ? '#FBFCFE'
+      : designThemeColor(backgroundMode, 'chart-panel', '#131722'),
+  }
+}
+
+function chartOverlayMessageStyleForMode(backgroundMode: ShellBackgroundMode): React.CSSProperties {
+  if (backgroundMode !== 'light') return chartOverlayMessageStyle
+  return {
+    ...chartOverlayMessageStyle,
+    color: '#667085',
+    background: 'rgba(251, 252, 254, 0.88)',
+  }
+}
+
 const signalRowStyle: React.CSSProperties = {
   display: 'flex',
   border: `1px solid ${terminalTheme.border}`,
@@ -3715,27 +3752,48 @@ async function fetchJson<T>(
   })
 }
 
-function chartStyles(): DeepPartial<Styles> {
+function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
+  const lightMode = backgroundMode === 'light'
+  const chartPanel = lightMode ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+  const panelSoft = lightMode ? '#F5F7FA' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
+  const border = lightMode ? '#E4E7EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
+  const borderStrong = lightMode ? '#CBD5E1' : designThemeColor(backgroundMode, 'border-strong', '#263244')
+  const muted = lightMode ? '#667085' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
+  const text = lightMode ? '#344054' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
+  const crosshair = lightMode ? '#475467' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
+  const gridHorizontal = lightMode ? 'rgba(148, 163, 184, 0.22)' : tradingDeskTheme.chart.gridHorizontal
+  const gridVertical = lightMode ? 'rgba(148, 163, 184, 0.14)' : tradingDeskTheme.chart.gridVertical
+  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 22, 32, 0.94)'
+  const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
+  const downColor = lightMode ? '#079455' : tradingDeskTheme.market.down
+  const flatColor = lightMode ? '#667085' : tradingDeskTheme.market.flat
   return {
     grid: {
-      horizontal: { color: tradingDeskTheme.chart.gridHorizontal },
-      vertical: { color: tradingDeskTheme.chart.gridVertical },
+      horizontal: { color: gridHorizontal },
+      vertical: { color: gridVertical },
     },
     candle: {
+      area: {
+        backgroundColor: chartPanel,
+      },
       bar: {
-        upColor: tradingDeskTheme.market.up,
-        downColor: tradingDeskTheme.market.down,
-        noChangeColor: tradingDeskTheme.market.flat,
-        upBorderColor: tradingDeskTheme.market.up,
-        downBorderColor: tradingDeskTheme.market.down,
-        noChangeBorderColor: tradingDeskTheme.market.flat,
-        upWickColor: tradingDeskTheme.market.up,
-        downWickColor: tradingDeskTheme.market.down,
-        noChangeWickColor: tradingDeskTheme.market.flat,
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
+        upBorderColor: upColor,
+        downBorderColor: downColor,
+        noChangeBorderColor: flatColor,
+        upWickColor: upColor,
+        downWickColor: downColor,
+        noChangeWickColor: flatColor,
       },
       tooltip: {
+        rect: {
+          color: tooltipBackground,
+          borderColor: border,
+        },
         text: {
-          color: terminalTheme.text,
+          color: text,
           size: 10,
           family: 'IBM Plex Mono, Menlo, monospace',
         },
@@ -3753,44 +3811,44 @@ function chartStyles(): DeepPartial<Styles> {
         },
       },
     },
-    indicator: {
-      lines: MA_COLORS.map(color => solidLineStyle(color, 1)),
-      bars: [
-        {
-          upColor: tradingDeskTheme.market.up,
-          downColor: tradingDeskTheme.market.down,
-          noChangeColor: tradingDeskTheme.market.flat,
-        },
-      ],
-      tooltip: {
-        text: {
-          color: terminalTheme.text,
-          size: 9,
-          family: 'IBM Plex Mono, Menlo, monospace',
-        },
-      },
-    },
     xAxis: {
-      axisLine: { color: tradingDeskTheme.alpha.textBorderStrong },
-      tickText: { color: tradingDeskTheme.market.flat, size: 10 },
+      axisLine: { color: borderStrong },
+      tickLine: { color: border },
+      tickText: { color: muted, size: 10 },
     },
     yAxis: {
-      axisLine: { color: tradingDeskTheme.alpha.textBorderStrong },
-      tickText: { color: tradingDeskTheme.market.flat, size: 10 },
+      axisLine: { color: borderStrong },
+      tickLine: { color: border },
+      tickText: { color: muted, size: 10 },
+    },
+    separator: {
+      color: border,
+      activeBackgroundColor: panelSoft,
     },
     crosshair: {
       horizontal: {
-        line: solidLineStyle(tradingDeskTheme.market.flat, 1),
-        text: { color: terminalTheme.white, backgroundColor: terminalTheme.crosshair },
+        line: { color: crosshair },
+        text: { color: terminalTheme.white, backgroundColor: crosshair },
       },
       vertical: {
-        line: solidLineStyle(tradingDeskTheme.market.flat, 1),
-        text: { color: terminalTheme.white, backgroundColor: terminalTheme.crosshair },
+        line: { color: crosshair },
+        text: { color: terminalTheme.white, backgroundColor: crosshair },
       },
     },
-    separator: {
-      color: tradingDeskTheme.chart.separator,
-      size: 1,
+    indicator: {
+      lines: MA_COLORS.map(color => solidLineStyle(color, 1)),
+      tooltip: {
+        text: {
+          color: text,
+        },
+      },
+      bars: [
+        {
+          upColor,
+          downColor,
+          noChangeColor: flatColor,
+        },
+      ],
     },
   }
 }
@@ -7014,6 +7072,7 @@ export function StrategyChartTerminal({
   dashboard,
   signalsWebBaseUrl,
   aiFactorStrategySignals = [],
+  backgroundMode = 'dark',
   onOpenRecord,
 }: StrategyChartTerminalProps) {
   const baseUrl =
@@ -7917,9 +7976,12 @@ export function StrategyChartTerminal({
     const chart = init(chartContainerRef.current, {
       locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
       timezone: 'Asia/Shanghai',
-      styles: chartStyles(),
+      styles: backgroundMode === 'light' ? 'light' : 'dark',
     })
     if (!chart) return
+    chartContainerRef.current.style.backgroundColor =
+      backgroundMode === 'light' ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+    chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setBarSpace(chartBarSpaceForMode(layoutMode))
     chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
@@ -7944,7 +8006,7 @@ export function StrategyChartTerminal({
       chartRef.current = null
       dispose(chart)
     }
-  }, [baseUrl, locale])
+  }, [backgroundMode, baseUrl, locale])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -8782,10 +8844,10 @@ export function StrategyChartTerminal({
             </div>
           </div>
 
-          <div style={chartCanvasShellStyle}>
-            <div ref={chartContainerRef} style={chartCanvasStyle} />
+          <div style={chartCanvasShellStyleForMode(backgroundMode)}>
+            <div ref={chartContainerRef} style={chartCanvasStyleForMode(backgroundMode)} />
             {klineData.length === 0 ? (
-              <div style={chartOverlayMessageStyle}>
+              <div style={chartOverlayMessageStyleForMode(backgroundMode)}>
                 {loading || booting
                   ? (chartMeta.is_price_kline === false
                     ? (locale === 'zh-CN' ? '正在等待 Signals 输出热度K线。' : 'Waiting for Signals heat candles.')

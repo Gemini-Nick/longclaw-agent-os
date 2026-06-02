@@ -852,6 +852,7 @@ const CAPABILITY_MANAGER_SETTINGS_PATH = path.join(
   'capability-manager.json',
 )
 const CAPABILITY_REGISTRY_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'capability-registry.json')
+const MODEL_SERVICE_SETTINGS_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'model-service.json')
 const WECLAW_SESSION_UI_STATE_PATH = path.join(
   LONGCLAW_RUNTIME_DIR,
   'weclaw-session-state.json',
@@ -1934,6 +1935,201 @@ let runtimeCapabilityRegistry = readRuntimeCapabilityRegistry(
   CAPABILITY_REGISTRY_PATH,
   LONGCLAW_RUNTIME_DIR,
 )
+
+type ModelServiceAlias = {
+  id: string
+  model: string
+  alias: string
+  thinking: boolean
+}
+
+type ModelServiceSettingsPrivate = {
+  enabled: boolean
+  baseUrl: string
+  apiKey: string
+  aliases: ModelServiceAlias[]
+  lastModels: string[]
+  updatedAt?: string
+}
+
+type ModelServiceSettingsPublic = Omit<ModelServiceSettingsPrivate, 'apiKey'> & {
+  apiKeySet: boolean
+}
+
+type ModelServiceResult = {
+  ok: boolean
+  message: string
+  models?: string[]
+  settings?: ModelServiceSettingsPublic
+}
+
+function defaultModelServiceSettings(): ModelServiceSettingsPrivate {
+  return {
+    enabled: false,
+    baseUrl: 'https://api.example.com/v1',
+    apiKey: '',
+    aliases: [],
+    lastModels: [],
+  }
+}
+
+function normalizeModelServiceAlias(value: unknown): ModelServiceAlias | null {
+  if (!isPlainRecord(value)) return null
+  const model = readString(value.model)
+  const alias = readString(value.alias)
+  if (!model || !alias) return null
+  const id = readString(value.id) ?? `alias:${createHash('sha1').update(`${model}:${alias}`).digest('hex').slice(0, 12)}`
+  return {
+    id,
+    model,
+    alias,
+    thinking: value.thinking === true,
+  }
+}
+
+function normalizeModelServiceSettings(
+  value: unknown,
+  base: ModelServiceSettingsPrivate = defaultModelServiceSettings(),
+): ModelServiceSettingsPrivate {
+  const record = isPlainRecord(value) ? value : {}
+  const aliases = Array.isArray(record.aliases)
+    ? record.aliases
+        .map(normalizeModelServiceAlias)
+        .filter((item): item is ModelServiceAlias => Boolean(item))
+    : base.aliases
+  const lastModels = Array.isArray(record.lastModels)
+    ? record.lastModels.map(readString).filter((item): item is string => Boolean(item))
+    : base.lastModels
+  return {
+    enabled: typeof record.enabled === 'boolean' ? record.enabled : base.enabled,
+    baseUrl: readString(record.baseUrl) ?? base.baseUrl,
+    apiKey: readString(record.apiKey) ?? base.apiKey,
+    aliases,
+    lastModels: [...new Set(lastModels)].slice(0, 80),
+    updatedAt: readString(record.updatedAt) ?? base.updatedAt,
+  }
+}
+
+function publicModelServiceSettings(
+  settings: ModelServiceSettingsPrivate,
+): ModelServiceSettingsPublic {
+  return {
+    enabled: settings.enabled,
+    baseUrl: settings.baseUrl,
+    aliases: settings.aliases,
+    lastModels: settings.lastModels,
+    updatedAt: settings.updatedAt,
+    apiKeySet: Boolean(settings.apiKey),
+  }
+}
+
+function loadModelServiceSettings(): ModelServiceSettingsPrivate {
+  if (!fs.existsSync(MODEL_SERVICE_SETTINGS_PATH)) return defaultModelServiceSettings()
+  try {
+    return normalizeModelServiceSettings(
+      JSON.parse(fs.readFileSync(MODEL_SERVICE_SETTINGS_PATH, 'utf-8')),
+    )
+  } catch (error) {
+    log('failed to load model service settings', MODEL_SERVICE_SETTINGS_PATH, error)
+    return defaultModelServiceSettings()
+  }
+}
+
+function persistModelServiceSettings(
+  settings: ModelServiceSettingsPrivate,
+): ModelServiceSettingsPrivate {
+  const normalized = normalizeModelServiceSettings({
+    ...settings,
+    updatedAt: new Date().toISOString(),
+  })
+  fs.mkdirSync(LONGCLAW_RUNTIME_DIR, { recursive: true })
+  fs.writeFileSync(
+    MODEL_SERVICE_SETTINGS_PATH,
+    `${JSON.stringify(normalized, null, 2)}\n`,
+    'utf-8',
+  )
+  try {
+    fs.chmodSync(MODEL_SERVICE_SETTINGS_PATH, 0o600)
+  } catch {
+    // Best effort on platforms that support POSIX permissions.
+  }
+  return normalized
+}
+
+let modelServiceSettings = loadModelServiceSettings()
+
+function getModelServiceSettings(): ModelServiceSettingsPublic {
+  modelServiceSettings = loadModelServiceSettings()
+  return publicModelServiceSettings(modelServiceSettings)
+}
+
+function updateModelServiceSettings(patch: unknown): ModelServiceSettingsPublic {
+  const record = isPlainRecord(patch) ? patch : {}
+  const aliases =
+    'aliases' in record && Array.isArray(record.aliases)
+      ? record.aliases
+          .map(normalizeModelServiceAlias)
+          .filter((item): item is ModelServiceAlias => Boolean(item))
+      : modelServiceSettings.aliases
+  modelServiceSettings = persistModelServiceSettings({
+    ...modelServiceSettings,
+    enabled:
+      typeof record.enabled === 'boolean'
+        ? record.enabled
+        : modelServiceSettings.enabled,
+    baseUrl: readString(record.baseUrl) ?? modelServiceSettings.baseUrl,
+    apiKey:
+      'apiKey' in record
+        ? readString(record.apiKey) ?? modelServiceSettings.apiKey
+        : modelServiceSettings.apiKey,
+    aliases,
+  })
+  return publicModelServiceSettings(modelServiceSettings)
+}
+
+function modelServiceModelsUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
+  if (!trimmed) throw new Error('baseUrl is required')
+  return `${trimmed}/models`
+}
+
+async function fetchModelServiceModels(): Promise<ModelServiceResult> {
+  const settings = modelServiceSettings
+  const url = modelServiceModelsUrl(settings.baseUrl)
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+  }
+  if (settings.apiKey) headers.Authorization = `Bearer ${settings.apiKey}`
+  try {
+    const response = await fetch(url, { headers })
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: `HTTP ${response.status} ${response.statusText}`,
+      }
+    }
+    const payload = (await response.json()) as unknown
+    const data = isPlainRecord(payload) && Array.isArray(payload.data) ? payload.data : []
+    const models = data
+      .map(item => (isPlainRecord(item) ? readString(item.id) : undefined))
+      .filter((item): item is string => Boolean(item))
+    modelServiceSettings = persistModelServiceSettings({
+      ...settings,
+      lastModels: models,
+    })
+    return {
+      ok: true,
+      message: models.length > 0 ? 'models fetched' : 'connection ok; no models returned',
+      models,
+      settings: publicModelServiceSettings(modelServiceSettings),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
 
 function getRuntimeCapabilityRegistry(): RuntimeCapabilityRegistry {
   runtimeCapabilityRegistry = readRuntimeCapabilityRegistry(
@@ -3286,6 +3482,12 @@ app.whenReady().then(() => {
   ipcMain.handle('runtime:set-local-seat-preference', (_event, value: unknown) => ({
     preference: setLocalRuntimeSeatPreference(value),
   }))
+  ipcMain.handle('model-service:get-settings', () => getModelServiceSettings())
+  ipcMain.handle('model-service:update-settings', (_event, patch: unknown) =>
+    updateModelServiceSettings(patch),
+  )
+  ipcMain.handle('model-service:pull-models', () => fetchModelServiceModels())
+  ipcMain.handle('model-service:test-connection', () => fetchModelServiceModels())
 
   // Control plane
   ipcMain.handle('control-plane:get-overview', async () => getControlPlaneClient().getOverview())

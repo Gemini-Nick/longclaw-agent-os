@@ -16,8 +16,16 @@ import type {
   LongclawRun,
   SignalsDashboard,
 } from '../../../../src/services/longclawControlPlane/models.js'
-import { fontStacks, interaction, palette, statusBadgeStyle, tradingDeskTheme } from '../designSystem.js'
+import {
+  designThemeColor,
+  fontStacks,
+  interaction,
+  palette,
+  statusBadgeStyle,
+  tradingDeskTheme,
+} from '../designSystem.js'
 import type { LongclawLocale } from '../i18n.js'
+import type { ShellBackgroundMode } from '../layout.js'
 import { observedFetchJson, recordObservationEvent } from '../observation.js'
 
 type BacktestDashboard = Pick<
@@ -29,6 +37,7 @@ type BacktestWorkbenchProps = {
   locale: LongclawLocale
   dashboard: BacktestDashboard
   signalsWebBaseUrl?: string
+  backgroundMode?: ShellBackgroundMode
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }
@@ -568,8 +577,8 @@ const historyCardStyle: React.CSSProperties = {
   gap: 8,
   border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
   borderRadius: 6,
-  background: 'linear-gradient(135deg, rgba(18, 27, 39, 0.98), rgba(12, 18, 27, 0.96))',
-  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.infoBorder}, 0 8px 20px rgba(0, 0, 0, 0.12)`,
+  background: `linear-gradient(135deg, ${terminalTheme.panelRaised}, ${terminalTheme.panelSoft})`,
+  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.infoBorder}`,
   padding: '8px 7px 8px 8px',
   minWidth: 0,
 }
@@ -3430,21 +3439,47 @@ function backtestMacdIndicatorStyles(): DeepPartial<IndicatorStyle> {
   }
 }
 
-function chartStyles(): DeepPartial<Styles> {
+function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
+  const lightMode = backgroundMode === 'light'
+  const chartPanel = lightMode ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+  const panelSoft = lightMode ? '#F5F7FA' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
+  const border = lightMode ? '#E4E7EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
+  const borderStrong = lightMode ? '#CBD5E1' : designThemeColor(backgroundMode, 'border-strong', '#263244')
+  const muted = lightMode ? '#667085' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
+  const text = lightMode ? '#344054' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
+  const crosshair = lightMode ? '#475467' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
+  const gridHorizontal = lightMode ? 'rgba(148, 163, 184, 0.22)' : tradingDeskTheme.chart.gridHorizontal
+  const gridVertical = lightMode ? 'rgba(148, 163, 184, 0.14)' : tradingDeskTheme.chart.gridVertical
+  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 22, 32, 0.94)'
+  const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
+  const downColor = lightMode ? '#079455' : tradingDeskTheme.market.down
+  const flatColor = lightMode ? '#667085' : tradingDeskTheme.market.flat
   return {
     grid: {
-      horizontal: { color: tradingDeskTheme.chart.gridHorizontal },
-      vertical: { color: tradingDeskTheme.chart.gridVertical },
+      horizontal: { color: gridHorizontal },
+      vertical: { color: gridVertical },
     },
     candle: {
+      area: {
+        backgroundColor: chartPanel,
+      },
       bar: {
-        upColor: tradingDeskTheme.market.up,
-        downColor: tradingDeskTheme.market.down,
-        upBorderColor: tradingDeskTheme.market.up,
-        downBorderColor: tradingDeskTheme.market.down,
-        upWickColor: tradingDeskTheme.market.up,
-        downWickColor: tradingDeskTheme.market.down,
-        noChangeColor: tradingDeskTheme.market.flat,
+        upColor,
+        downColor,
+        upBorderColor: upColor,
+        downBorderColor: downColor,
+        upWickColor: upColor,
+        downWickColor: downColor,
+        noChangeColor: flatColor,
+      },
+      tooltip: {
+        rect: {
+          color: tooltipBackground,
+          borderColor: border,
+        },
+        text: {
+          color: text,
+        },
       },
       priceMark: {
         last: {
@@ -3453,23 +3488,45 @@ function chartStyles(): DeepPartial<Styles> {
         },
       },
     },
+    xAxis: {
+      axisLine: { color: borderStrong },
+      tickLine: { color: border },
+      tickText: { color: muted, size: 11 },
+    },
+    yAxis: {
+      axisLine: { color: borderStrong },
+      tickLine: { color: border },
+      tickText: { color: muted, size: 11 },
+    },
+    separator: {
+      color: border,
+      activeBackgroundColor: panelSoft,
+    },
+    crosshair: {
+      horizontal: {
+        line: { color: crosshair },
+        text: { color: terminalTheme.white, backgroundColor: crosshair },
+      },
+      vertical: {
+        line: { color: crosshair },
+        text: { color: terminalTheme.white, backgroundColor: crosshair },
+      },
+    },
     indicator: {
       lines: BACKTEST_MA_COLORS.map(color => ({ color, size: 1, style: 'solid', dashedValue: [2, 2] })),
+      tooltip: {
+        text: {
+          color: text,
+        },
+      },
       bars: [
         {
-          upColor: tradingDeskTheme.market.up,
-          downColor: tradingDeskTheme.market.down,
-          noChangeColor: tradingDeskTheme.market.flat,
+          upColor,
+          downColor,
+          noChangeColor: flatColor,
         },
       ],
     },
-    xAxis: { tickText: { color: tradingDeskTheme.market.flat, size: 11 } },
-    yAxis: { tickText: { color: tradingDeskTheme.market.flat, size: 11 } },
-    crosshair: {
-      horizontal: { line: { color: tradingDeskTheme.market.flat, size: 1 } },
-      vertical: { line: { color: tradingDeskTheme.market.flat, size: 1 } },
-    },
-    separator: { color: tradingDeskTheme.chart.separator, size: 1 },
   }
 }
 
@@ -3662,6 +3719,7 @@ export function BacktestWorkbench({
   locale,
   dashboard,
   signalsWebBaseUrl,
+  backgroundMode = 'dark',
   onOpenRun,
   onOpenRecord,
 }: BacktestWorkbenchProps) {
@@ -4250,9 +4308,12 @@ export function BacktestWorkbench({
     const chart = init(chartContainerRef.current, {
       locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      styles: chartStyles(),
+      styles: backgroundMode === 'light' ? 'light' : 'dark',
     })
     if (!chart) return
+    chartContainerRef.current.style.backgroundColor =
+      backgroundMode === 'light' ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+    chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setBarSpace(7)
     chart.setOffsetRightDistance(34)
@@ -4287,7 +4348,7 @@ export function BacktestWorkbench({
       chartRef.current = null
       dispose(chart)
     }
-  }, [isBatchView, locale])
+  }, [backgroundMode, isBatchView, locale])
 
   useEffect(() => {
     if (isBatchView) return
@@ -6670,12 +6731,14 @@ function ExpandedKlineChart({
   highlightMarkers,
   height,
   locale,
+  backgroundMode,
   onChartReady,
 }: {
   rows: KLineData[]
   highlightMarkers: MiniKlineTradeMarker[]
   height: number
   locale: LongclawLocale
+  backgroundMode: ShellBackgroundMode
   onChartReady: (chart: Chart | null) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -6688,9 +6751,12 @@ function ExpandedKlineChart({
     const chart = init(containerRef.current, {
       locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      styles: chartStyles(),
+      styles: backgroundMode === 'light' ? 'light' : 'dark',
     })
     if (!chart) return
+    containerRef.current.style.backgroundColor =
+      backgroundMode === 'light' ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+    chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setZoomEnabled(true)
     chart.setScrollEnabled(true)
@@ -6729,7 +6795,7 @@ function ExpandedKlineChart({
       onChartReady(null)
       dispose(chart)
     }
-  }, [locale, onChartReady])
+  }, [backgroundMode, locale, onChartReady])
 
   useEffect(() => {
     const chart = chartRef.current
@@ -7207,6 +7273,7 @@ function ExpandedKlineOverlay({
               highlightMarkers={highlightedMarkers}
               height={effectiveChartHeight}
               locale={locale}
+              backgroundMode={backgroundMode}
               onChartReady={handleChartReady}
             />
           </div>

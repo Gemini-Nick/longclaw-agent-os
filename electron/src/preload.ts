@@ -123,6 +123,14 @@ contextBridge.exposeInMainWorld('longclawRuntime', {
     ipcRenderer.invoke('runtime:set-local-seat-preference', preference),
 })
 
+contextBridge.exposeInMainWorld('longclawModelService', {
+  getSettings: () => ipcRenderer.invoke('model-service:get-settings'),
+  updateSettings: (patch: Record<string, unknown>) =>
+    ipcRenderer.invoke('model-service:update-settings', patch),
+  pullModels: () => ipcRenderer.invoke('model-service:pull-models'),
+  testConnection: () => ipcRenderer.invoke('model-service:test-connection'),
+})
+
 contextBridge.exposeInMainWorld('longclawWindow', {
   setLocale: (locale: 'zh-CN' | 'en-US') => ipcRenderer.invoke('window:set-locale', locale),
 })

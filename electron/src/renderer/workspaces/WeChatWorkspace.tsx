@@ -19,8 +19,9 @@ import {
   tradingDeskTheme,
   utilityStyles,
 } from '../designSystem.js'
-import type { ViewportTier } from '../layout.js'
+import type { ShellBackgroundMode, ViewportTier } from '../layout.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText, t } from '../i18n.js'
+import { VectorIcon, type VectorIconName } from '../vectorIcons.js'
 
 export type WeclawSessionVisibilityFilter = 'active' | 'hidden' | 'archived'
 export type WeclawSessionSourceFilter = 'all' | 'wechat' | 'weclaw'
@@ -89,6 +90,7 @@ export type WeChatArtifactPreview = {
 export type WeChatWorkspaceProps = {
   locale: LongclawLocale
   viewportTier: ViewportTier
+  backgroundMode: ShellBackgroundMode
   sessions: WeclawSessionSummary[]
   sourceStatus: WeclawSessionSourceStatus | null
   bindingStatus: WeChatBindingStatus | null
@@ -1428,9 +1430,120 @@ function agentLabel(name: string): string {
   return labels[name] ?? name
 }
 
+function ChannelManagementPanel({
+  locale,
+  bindingStatus,
+  sourceStatus,
+  clusterStatus,
+  onCreateBindingSession,
+  onRefreshCluster,
+}: {
+  locale: LongclawLocale
+  bindingStatus: WeChatBindingStatus | null
+  sourceStatus: WeclawSessionSourceStatus | null
+  clusterStatus: WeChatClusterState | null
+  onCreateBindingSession: () => void | Promise<void>
+  onRefreshCluster: () => void | Promise<void>
+}) {
+  const zh = locale === 'zh-CN'
+  const wechatReady = bindingStatus?.state === 'bound'
+  const wechatPending = bindingStatus?.state === 'qr_pending'
+  const rows = [
+    {
+      id: 'wechat',
+      label: zh ? '微信' : 'WeChat',
+      icon: 'wechat' as VectorIconName,
+      description: zh ? '扫码绑定后，移动端消息进入同一会话。' : 'Scan to bind; mobile messages stay in one session.',
+      status: wechatReady ? (zh ? '已启用' : 'Enabled') : wechatPending ? (zh ? '扫码中' : 'Pending') : (zh ? '未绑定' : 'Unbound'),
+      tone: wechatReady ? 'open' : wechatPending ? 'running' : 'info',
+      action: wechatReady ? (zh ? '重新验证' : 'Verify') : (zh ? '启用' : 'Enable'),
+      enabled: true,
+    },
+    {
+      id: 'dingtalk',
+      label: zh ? '钉钉' : 'DingTalk',
+      icon: 'channel' as VectorIconName,
+      description: zh ? 'Stream 入站与任务回帖。' : 'Stream inbound and task replies.',
+      status: zh ? '未接入' : 'Not connected',
+      tone: 'info',
+      action: zh ? '配置' : 'Configure',
+      enabled: false,
+    },
+    {
+      id: 'feishu',
+      label: zh ? '飞书' : 'Feishu',
+      icon: 'feishu' as VectorIconName,
+      description: zh ? '长连接入站，任务结束后文本回复。' : 'Long-connection inbound with text replies.',
+      status: zh ? '未接入' : 'Not connected',
+      tone: 'info',
+      action: zh ? '配置' : 'Configure',
+      enabled: false,
+    },
+    {
+      id: 'wecom',
+      label: zh ? '企业微信' : 'WeCom',
+      icon: 'wecom' as VectorIconName,
+      description: zh ? '机器人入站与 markdown 回传。' : 'Bot inbound and markdown replies.',
+      status: zh ? '未接入' : 'Not connected',
+      tone: 'info',
+      action: zh ? '配置' : 'Configure',
+      enabled: false,
+    },
+  ]
+  const nodeCount = clusterStatus?.nodes.length ?? 0
+  return (
+    <section style={channelPanelStyle}>
+      <div style={channelHeaderStyle}>
+        <div>
+          <h2 style={channelTitleStyle}>{zh ? '频道管理' : 'Channel management'}</h2>
+          <div style={wechatMutedTextStyle}>
+            {zh
+              ? `运行时探测：微信 ${sourceStatus?.sessionsDirExists ? '会话可读' : '待连接'} · 节点 ${nodeCount} · 其他通道未接入`
+              : `Runtime: WeChat ${sourceStatus?.sessionsDirExists ? 'sessions readable' : 'pending'} · nodes ${nodeCount} · other channels not connected`}
+          </div>
+        </div>
+        <button
+          type="button"
+          style={wechatButtonStyle()}
+          onClick={() => {
+            void onRefreshCluster()
+          }}
+        >
+          {zh ? '刷新' : 'Refresh'}
+        </button>
+      </div>
+      <div style={channelGridStyle}>
+        {rows.map(row => (
+          <div key={row.id} style={channelCardStyle}>
+            <div style={channelGlyphStyle}>
+              <VectorIcon name={row.icon} size={20} strokeWidth={2} />
+            </div>
+            <div style={channelCopyStyle}>
+              <div style={channelNameStyle}>{row.label}</div>
+              <div style={wechatMutedTextStyle}>{row.description}</div>
+            </div>
+            <span style={statusBadgeStyle(row.tone)}>{row.status}</span>
+            <button
+              type="button"
+              style={wechatButtonStyle(false, !row.enabled)}
+              disabled={!row.enabled}
+              onClick={() => {
+                if (row.enabled) void onCreateBindingSession()
+              }}
+            >
+              {row.action}
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function WeChatWorkspace({
   locale,
   viewportTier,
+  backgroundMode,
   sessions,
   sourceStatus,
   bindingStatus,
@@ -1528,11 +1641,14 @@ export function WeChatWorkspace({
   }
 
   return (
-    <div style={workspaceRootStyle(splitDetail)}>
+    <div style={workspaceRootStyle(splitDetail, backgroundMode)}>
       <div style={listColumnStyle}>
-        <WeChatClusterPanel
+        <ChannelManagementPanel
           locale={locale}
+          bindingStatus={bindingStatus}
+          sourceStatus={sourceStatus}
           clusterStatus={clusterStatus}
+          onCreateBindingSession={onCreateBindingSession}
           onRefreshCluster={onRefreshCluster}
         />
         <WeChatBindingPanel
@@ -1549,7 +1665,6 @@ export function WeChatWorkspace({
           onRouteMessage={onRouteMessage}
           onOpenPluginIssue={onOpenPluginIssue}
         />
-        <AgentSwitcher />
         <div style={sourceCardStyle}>
           <div style={sourceCardLeadStyle}>
             <div style={wechatEyebrowStyle}>{locale === 'zh-CN' ? '入站' : 'Inbound'}</div>
@@ -1639,7 +1754,31 @@ export function WeChatWorkspace({
 
 export default WeChatWorkspace
 
-const wechatDark = tradingDeskTheme.colors
+const wechatDark = {
+  root: 'var(--wechat-root)',
+  rootElevated: 'var(--wechat-root-elevated)',
+  panel: 'var(--wechat-panel)',
+  panelSoft: 'var(--wechat-panel-soft)',
+  panelRaised: 'var(--wechat-panel-raised)',
+  empty: 'var(--wechat-empty)',
+  control: 'var(--wechat-control)',
+  grid: 'var(--wechat-grid)',
+  border: 'var(--wechat-border)',
+  borderStrong: 'var(--wechat-border-strong)',
+  borderMuted: 'var(--wechat-border-muted)',
+  text: 'var(--wechat-text)',
+  textStrong: 'var(--wechat-text-strong)',
+  muted: 'var(--wechat-muted)',
+  mutedStrong: 'var(--wechat-muted-strong)',
+  mono: 'var(--wechat-mono)',
+  controlText: 'var(--wechat-control-text)',
+  white: 'var(--wechat-white)',
+  accent: 'var(--wechat-accent)',
+  accentText: 'var(--wechat-accent-text)',
+  accentSoft: 'var(--wechat-accent-soft)',
+  infoText: 'var(--wechat-info-text)',
+  errorText: 'var(--wechat-error-text)',
+}
 
 const wechatSectionStyle: CSSProperties = {
   display: 'flex',
@@ -1841,16 +1980,145 @@ function wechatButtonStyle(active = false, disabled = false): CSSProperties {
   }
 }
 
-const workspaceRootStyle = (splitDetail: boolean): CSSProperties => ({
-  display: 'grid',
-  gridTemplateColumns: splitDetail ? 'minmax(320px, 420px) minmax(0, 1fr)' : 'minmax(0, 1fr)',
-  gap: 1,
-  alignItems: 'start',
-  minHeight: 0,
-  background: wechatDark.border,
+const channelPanelStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  padding: 14,
+  background: wechatDark.panel,
   color: wechatDark.text,
   border: `1px solid ${wechatDark.border}`,
-})
+  borderRadius: 8,
+}
+
+const channelHeaderStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 14,
+}
+
+const channelTitleStyle: CSSProperties = {
+  margin: '0 0 6px',
+  color: wechatDark.textStrong,
+  fontSize: 20,
+  lineHeight: 1.15,
+  fontWeight: 850,
+}
+
+const channelGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gap: 10,
+}
+
+const channelCardStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '38px minmax(0, 1fr) auto auto',
+  alignItems: 'center',
+  gap: 10,
+  padding: 12,
+  borderRadius: 8,
+  border: `1px solid ${wechatDark.border}`,
+  background: wechatDark.panelSoft,
+}
+
+const channelGlyphStyle: CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 10,
+  background: wechatDark.panel,
+  color: wechatDark.textStrong,
+  display: 'grid',
+  placeItems: 'center',
+}
+
+const channelCopyStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  minWidth: 0,
+}
+
+const channelNameStyle: CSSProperties = {
+  color: wechatDark.textStrong,
+  fontSize: 14,
+  fontWeight: 850,
+  lineHeight: 1.2,
+}
+
+const workspaceRootStyle = (
+  splitDetail: boolean,
+  backgroundMode: ShellBackgroundMode,
+): CSSProperties => {
+  const vars =
+    backgroundMode === 'dark'
+      ? {
+          '--wechat-root': '#070A0F',
+          '--wechat-root-elevated': '#0B1118',
+          '--wechat-panel': '#0D131C',
+          '--wechat-panel-soft': '#141D29',
+          '--wechat-panel-raised': '#101722',
+          '--wechat-empty': '#0A0F16',
+          '--wechat-control': '#151F2D',
+          '--wechat-grid': '#1A2534',
+          '--wechat-border': 'rgba(226, 232, 240, 0.10)',
+          '--wechat-border-strong': 'rgba(226, 232, 240, 0.18)',
+          '--wechat-border-muted': 'rgba(226, 232, 240, 0.14)',
+          '--wechat-text': '#E7ECF3',
+          '--wechat-text-strong': '#F4F7FB',
+          '--wechat-muted': '#8E9AAF',
+          '--wechat-muted-strong': '#B7C2D2',
+          '--wechat-mono': '#AEBBD0',
+          '--wechat-control-text': '#E7ECF3',
+          '--wechat-white': '#0D131C',
+          '--wechat-accent': '#67A7FF',
+          '--wechat-accent-text': '#B9D8FF',
+          '--wechat-accent-soft': 'rgba(103, 167, 255, 0.14)',
+          '--wechat-info-text': '#B9D8FF',
+          '--wechat-error-text': '#FFB4BD',
+        }
+      : {
+          '--wechat-root': '#F6F7F9',
+          '--wechat-root-elevated': '#F0F2F5',
+          '--wechat-panel': '#FFFFFF',
+          '--wechat-panel-soft': '#F4F5F7',
+          '--wechat-panel-raised': '#FFFFFF',
+          '--wechat-empty': '#FAFAFA',
+          '--wechat-control': '#F2F3F5',
+          '--wechat-grid': '#E8EBF0',
+          '--wechat-border': '#E0E3E8',
+          '--wechat-border-strong': '#CBD1DA',
+          '--wechat-border-muted': '#D7DCE3',
+          '--wechat-text': '#20242A',
+          '--wechat-text-strong': '#111827',
+          '--wechat-muted': '#747B86',
+          '--wechat-muted-strong': '#555E6A',
+          '--wechat-mono': '#4B5563',
+          '--wechat-control-text': '#374151',
+          '--wechat-white': '#FFFFFF',
+          '--wechat-accent': '#2563EB',
+          '--wechat-accent-text': '#1D4ED8',
+          '--wechat-accent-soft': 'rgba(37, 99, 235, 0.10)',
+          '--wechat-info-text': '#1D4ED8',
+          '--wechat-error-text': '#B42318',
+        }
+  return {
+    ...vars,
+    display: 'grid',
+    gridTemplateColumns: splitDetail
+      ? backgroundMode === 'dark'
+        ? 'minmax(340px, 440px) minmax(0, 1fr)'
+        : 'minmax(320px, 420px) minmax(0, 1fr)'
+      : 'minmax(0, 1fr)',
+    gap: backgroundMode === 'dark' ? 2 : 1,
+    alignItems: 'start',
+    minHeight: 0,
+    background: wechatDark.root,
+    color: wechatDark.text,
+    border: `1px solid ${wechatDark.border}`,
+  } as CSSProperties
+}
 
 const listColumnStyle: CSSProperties = {
   display: 'flex',
@@ -1864,7 +2132,8 @@ const detailColumnStyle = (splitDetail: boolean): CSSProperties => ({
   flexDirection: 'column',
   gap: 16,
   minWidth: 0,
-  ...(splitDetail ? { alignSelf: 'stretch' } : {}),
+  background: wechatDark.panel,
+  ...(splitDetail ? { alignSelf: 'stretch', minHeight: '100%', padding: 10 } : {}),
 })
 
 const sourceCardStyle: CSSProperties = {

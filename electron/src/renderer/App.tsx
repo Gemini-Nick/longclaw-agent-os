@@ -22,6 +22,7 @@ import type { WeChatClusterState } from '../runtime/wechatCluster.js'
 import {
   buttonStyleForState,
   chromeStyles,
+  designThemeVariables,
   fontStacks,
   humanizeToken,
   navButtonStyle,
@@ -34,21 +35,24 @@ import {
   utilityStyles,
 } from './designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText, t, tf } from './i18n.js'
-import { createShellLayout, getViewportTier } from './layout.js'
+import { createShellLayout, getViewportTier, type ShellBackgroundMode } from './layout.js'
+import { VectorIcon, type VectorIconName } from './vectorIcons.js'
 import {
   ActionButtons,
   QueueRow,
   Section,
   StatusStrip,
 } from './workspaces/shared.js'
+import AgentSessionsWorkspace, { type AgentConversationItem } from './workspaces/AgentSessionsWorkspace.js'
 import { AIFactorFactoryWorkspace, type AiFactorStrategySignal } from './workspaces/AIFactorFactoryWorkspace.js'
 import { PackWorkspace } from './workspaces/PackWorkspace.js'
 import { ExecutionConsole } from './workspaces/TaskWorkspace.js'
 import WeChatWorkspace from './workspaces/WeChatWorkspace.js'
 import CapabilitiesWorkspace from './workspaces/CapabilitiesWorkspace.js'
+import SettingsWorkspace from './workspaces/SettingsWorkspace.js'
 import { recordObservationEvent } from './observation.js'
 
-export type SurfaceId = 'strategy' | 'ai_factor_factory' | 'backtest' | 'execution' | 'wechat' | 'factory'
+export type SurfaceId = 'sessions' | 'strategy' | 'ai_factor_factory' | 'backtest' | 'execution' | 'wechat' | 'factory' | 'settings'
 type Page = SurfaceId
 type PackTab = 'due_diligence' | 'signals'
 export type WorkMode = 'local' | 'cloud_sandbox' | 'weclaw_dispatch'
@@ -59,7 +63,7 @@ type WeclawSessionSourceFilter = 'all' | 'wechat' | 'weclaw'
 type NavItemSpec = {
   id: Page
   label: string
-  glyph: string
+  icon: VectorIconName
   title: string
   group: 'primary' | 'secondary'
 }
@@ -551,6 +555,8 @@ function severityRank(value: string): number {
 }
 
 function pageTitle(locale: LongclawLocale, page: Page): string {
+  if (page === 'sessions') return t(locale, 'page.sessions.title')
+  if (page === 'settings') return t(locale, 'page.settings.title')
   if (page === 'wechat') return t(locale, 'page.wechat.title')
   if (page === 'factory') return t(locale, 'page.plugins.title')
   if (page === 'execution') return t(locale, 'page.execution.title')
@@ -560,6 +566,8 @@ function pageTitle(locale: LongclawLocale, page: Page): string {
 }
 
 function pageEyebrow(locale: LongclawLocale, page: Page): string {
+  if (page === 'sessions') return t(locale, 'page.sessions.eyebrow')
+  if (page === 'settings') return t(locale, 'page.settings.eyebrow')
   if (page === 'wechat') return t(locale, 'page.wechat.eyebrow')
   if (page === 'factory') return t(locale, 'page.plugins.eyebrow')
   if (page === 'execution') return t(locale, 'page.execution.eyebrow')
@@ -569,6 +577,8 @@ function pageEyebrow(locale: LongclawLocale, page: Page): string {
 }
 
 function pageDescription(locale: LongclawLocale, page: Page): string {
+  if (page === 'sessions') return t(locale, 'page.sessions.description')
+  if (page === 'settings') return t(locale, 'page.settings.description')
   if (page === 'wechat') return t(locale, 'page.wechat.description')
   if (page === 'factory') return t(locale, 'page.plugins.description')
   if (page === 'execution') return t(locale, 'page.execution.description')
@@ -1123,6 +1133,14 @@ function preferredHomeWorkMode(runtimeStatus: RuntimeStatusSummary): WorkMode {
 function formatModeMeta(parts: Array<string | undefined>): string | undefined {
   const values = parts.filter((part): part is string => Boolean(part && part.trim()))
   return values.length > 0 ? values.join(' · ') : undefined
+}
+
+function conversationSourceLabel(locale: LongclawLocale, sourceLabel: string): string {
+  if (locale !== 'zh-CN') return sourceLabel
+  const normalized = sourceLabel.toLowerCase()
+  if (normalized.includes('wechat')) return '微信会话'
+  if (normalized.includes('weclaw')) return '接力会话'
+  return localizeSystemText(locale, sourceLabel)
 }
 
 function withMention(previous: string, mention: string): string {
@@ -1798,14 +1816,14 @@ function CapabilityChip({
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>('strategy')
+  const [page, setPage] = useState<Page>('sessions')
   const [overview, setOverview] = useState<LongclawControlPlaneOverview | null>(null)
   const [runs, setRuns] = useState<LongclawRun[]>([])
   const [workItems, setWorkItems] = useState<LongclawWorkItem[]>([])
   const [dashboard, setDashboard] = useState<LongclawPackDashboard | null>(null)
   const [selected, setSelected] = useState<DetailTarget | null>(null)
   const [selectedArtifacts, setSelectedArtifacts] = useState<LongclawArtifact[]>([])
-  const previousPageRef = useRef<Page>('strategy')
+  const previousPageRef = useRef<Page>('sessions')
   const [preview, setPreview] = useState<{ uri: string; text: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1844,6 +1862,15 @@ export default function App() {
       return 'zh-CN'
     }
   })
+  const [shellBackgroundMode, setShellBackgroundMode] = useState<ShellBackgroundMode>(() => {
+    try {
+      return window.localStorage.getItem('longclaw.shellBackgroundMode') === 'dark'
+        ? 'dark'
+        : 'light'
+    } catch {
+      return 'light'
+    }
+  })
   const [localSeatPreference, setLocalSeatPreference] = useState<LocalRuntimeSeatPreference>(() => {
     try {
       return normalizeLocalRuntimeSeatPreference(
@@ -1875,13 +1902,38 @@ export default function App() {
 
   const isFullBleedPackPage = page === 'strategy' || page === 'ai_factor_factory' || page === 'backtest'
   const isWeChatPage = page === 'wechat'
-  const detailPaneEnabled = !isWeChatPage && page !== 'backtest'
+  const isLightUtilityPage = page === 'sessions' || page === 'wechat' || page === 'settings'
+  const detailPaneEnabled =
+    !isWeChatPage &&
+    page !== 'backtest' &&
+    page !== 'sessions' &&
+    page !== 'settings'
   const viewportTier = getViewportTier(viewportWidth)
   const shellLayout = useMemo(
-    () => createShellLayout(viewportWidth, viewportTier, threadSidebarOpen, detailPaneEnabled && Boolean(selected)),
-    [detailPaneEnabled, selected, threadSidebarOpen, viewportTier, viewportWidth],
+    () =>
+      createShellLayout(
+        viewportWidth,
+        viewportTier,
+        threadSidebarOpen,
+        detailPaneEnabled && Boolean(selected),
+        shellBackgroundMode,
+      ),
+    [
+      detailPaneEnabled,
+      selected,
+      shellBackgroundMode,
+      threadSidebarOpen,
+      viewportTier,
+      viewportWidth,
+    ],
   )
-  const hideContextSidebar = isFullBleedPackPage || page === 'execution' || page === 'factory' || page === 'wechat'
+  const hideContextSidebar =
+    isFullBleedPackPage ||
+    page === 'sessions' ||
+    page === 'execution' ||
+    page === 'factory' ||
+    page === 'wechat' ||
+    page === 'settings'
   const wechatBound = wechatBindingStatus?.state === 'bound'
   const wechatIdentityReady = wechatBindingStatus?.identity_status === 'ilink_verified'
   const runtimeStatus = useMemo(
@@ -1951,6 +2003,14 @@ export default function App() {
       void window.longclawWindow.setLocale(locale)
     }
   }, [locale])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('longclaw.shellBackgroundMode', shellBackgroundMode)
+    } catch {
+      // ignore storage failures in constrained environments
+    }
+  }, [shellBackgroundMode])
 
   useEffect(() => {
     if (workModeTouchedRef.current) return
@@ -2217,6 +2277,17 @@ export default function App() {
           loadCapabilitySubstrate(),
         ])
       }
+      if (targetPage === 'sessions') {
+        await Promise.allSettled([
+          loadRuns(),
+          loadLaunchTasks(),
+          loadWorkItems(),
+          loadWeclawSessions(),
+          loadWeclawSessionSourceStatus(),
+          loadWechatRuntime(),
+          loadCapabilitySubstrate(),
+        ])
+      }
       if (targetPage === 'backtest') {
         await Promise.allSettled([loadDashboard('signals'), loadCapabilitySubstrate()])
       }
@@ -2249,6 +2320,9 @@ export default function App() {
           loadCapabilitySubstrate(),
           loadDashboard('signals'),
         ])
+      }
+      if (targetPage === 'settings') {
+        await Promise.allSettled([loadWechatRuntime(), loadCapabilitySubstrate()])
       }
       setLoading(false)
       recordObservationEvent('app.refresh.finish', { page: targetPage })
@@ -2728,40 +2802,52 @@ export default function App() {
     () => {
       const items: Array<Omit<NavItemSpec, 'title'>> = [
         {
+          id: 'sessions',
+          label: t(locale, 'nav.sessions'),
+          icon: 'chat',
+          group: 'primary',
+        },
+        {
           id: 'strategy',
           label: t(locale, 'nav.strategy'),
-          glyph: locale === 'zh-CN' ? '策' : 'S',
+          icon: 'strategy',
           group: 'primary',
         },
         {
           id: 'ai_factor_factory',
           label: t(locale, 'nav.ai_factor_factory'),
-          glyph: locale === 'zh-CN' ? '因' : 'F',
+          icon: 'spark',
           group: 'primary',
         },
         {
           id: 'backtest',
           label: t(locale, 'nav.backtest'),
-          glyph: locale === 'zh-CN' ? '测' : 'B',
+          icon: 'backtest',
           group: 'primary',
         },
         {
           id: 'execution',
           label: t(locale, 'nav.execution'),
-          glyph: locale === 'zh-CN' ? '执' : 'E',
+          icon: 'execution',
           group: 'primary',
         },
         {
           id: 'wechat',
           label: t(locale, 'nav.wechat'),
-          glyph: locale === 'zh-CN' ? '微' : 'W',
+          icon: 'channel',
           group: 'primary',
         },
         {
           id: 'factory',
           label: t(locale, 'nav.plugins'),
-          glyph: locale === 'zh-CN' ? '插' : 'P',
+          icon: 'factory',
           group: 'primary',
+        },
+        {
+          id: 'settings',
+          label: t(locale, 'nav.settings'),
+          icon: 'settings',
+          group: 'secondary',
         },
       ]
       return items.map(item => ({ ...item, title: item.label }))
@@ -2870,6 +2956,44 @@ export default function App() {
       runtimeStatus.signalsAvailable,
       wechatBound,
     ],
+  )
+  const agentConversationItems = useMemo<AgentConversationItem[]>(
+    () => [
+      ...threadSummaries.slice(0, 8).map(thread => ({
+        id: `thread:${thread.id}`,
+        title: thread.title,
+        subtitle: thread.subtitle || (locale === 'zh-CN' ? '继续中的任务' : 'Continuing task'),
+        meta: thread.latestAt ? formatTime(thread.latestAt) : undefined,
+        preview: formatModeMeta([
+          humanizeTokenLocale(locale, thread.status),
+          thread.workMode ? humanizeWorkMode(locale, thread.workMode) : undefined,
+        ]),
+        icon: 'terminal',
+        kind: 'thread' as const,
+      })),
+      ...weclawSessions.slice(0, 8).map(session => ({
+        id: `wechat:${session.sessionId}`,
+        title: session.title,
+        subtitle: session.preview || (locale === 'zh-CN' ? '移动端入站' : 'Mobile inbound'),
+        meta: session.updatedAt ? formatTime(session.updatedAt) : undefined,
+        preview: formatModeMeta([
+          conversationSourceLabel(locale, session.sourceLabel),
+          session.messageCount ? `${session.messageCount}` : undefined,
+        ]),
+        icon: 'wechat',
+        kind: 'wechat' as const,
+      })),
+      ...recentLaunches.slice(0, 6).map(launch => ({
+        id: `launch:${launch.id}`,
+        title: launch.prompt || (locale === 'zh-CN' ? '未命名任务' : 'Untitled task'),
+        subtitle: launch.text || humanizeTokenLocale(locale, launch.status),
+        meta: formatTime(launch.started_at),
+        preview: launch.result_label || launch.error,
+        icon: 'execution',
+        kind: 'run' as const,
+      })),
+    ],
+    [locale, recentLaunches, threadSummaries, weclawSessions],
   )
   const disabledCapabilityCount = capabilityManagerSettings.disabled_capabilities.length
   const capabilityGroupsSummary = Object.entries(capabilityManagerSettings.capability_groups)
@@ -3626,18 +3750,19 @@ export default function App() {
   }, [openRecord])
 
   return (
-    <div style={shellLayout.app}>
+    <div style={{ ...shellLayout.app, ...designThemeVariables(shellBackgroundMode) }}>
       <aside style={shellLayout.rail}>
         <div style={railBrandStyle}>
-          <div style={railMonogramStyle}>LC</div>
-          <div style={railBrandLabelStyle}>{t(locale, 'app.brand')}</div>
-          <div style={railBrandCaptionStyle}>
-            {locale === 'zh-CN' ? '个人金融交易台' : 'Personal trading desk'}
-          </div>
-        </div>
-
-        <div style={railModeLabelStyle}>
-          {locale === 'zh-CN' ? '五个模式' : 'Five modes'}
+          <button
+            type="button"
+            title={t(locale, 'nav.sessions')}
+            style={railLogoButtonStyle(page === 'sessions', shellBackgroundMode)}
+            onClick={() => setPage('sessions')}
+          >
+            <span style={railMonogramStyle(shellBackgroundMode)}>
+              <VectorIcon name="longclaw" size={21} strokeWidth={2.1} />
+            </span>
+          </button>
         </div>
         <nav aria-label="Primary navigation" style={railNavStyle}>
           {primaryNavItems.map(item => (
@@ -3645,60 +3770,92 @@ export default function App() {
               key={item.id}
               type="button"
               title={item.title}
-              style={railNavButtonStyle(page === item.id)}
+              style={railNavButtonStyle(page === item.id, shellBackgroundMode)}
               onClick={() => setPage(item.id)}
             >
-              <span style={railNavButtonGlyphStyle(page === item.id)}>{item.glyph}</span>
-              <span style={railNavButtonLabelStyle}>{item.label}</span>
+              <span style={railNavButtonGlyphStyle(page === item.id, shellBackgroundMode)}>
+                <VectorIcon name={item.icon} size={19} strokeWidth={2} />
+              </span>
             </button>
           ))}
         </nav>
 
-        {secondaryNavItems.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={chromeStyles.eyebrowLight}>
-              {locale === 'zh-CN' ? '入口与能力' : 'Entries and capabilities'}
-            </div>
-            <nav aria-label="Secondary navigation" style={railNavStyle}>
-              {secondaryNavItems.map(item => (
-                <button
-                  key={item.id}
-                  type="button"
-                  title={item.title}
-                  style={railNavButtonStyle(page === item.id)}
-                  onClick={() => setPage(item.id)}
-                >
-                  <span style={railNavButtonGlyphStyle(page === item.id)}>{item.glyph}</span>
-                  <span style={railNavButtonLabelStyle}>{item.label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-        )}
-
         {viewportTier === 'narrow' && (
           <button
             type="button"
-            style={buttonStyleForState(secondaryButtonStyle, false)}
+            style={railNavButtonStyle(threadSidebarOpen, shellBackgroundMode)}
             aria-label={
               threadSidebarOpen ? t(locale, 'sidebar.toggle_close') : t(locale, 'sidebar.toggle_open')
             }
             onClick={() => setThreadSidebarOpen(previous => !previous)}
           >
-            {threadSidebarOpen ? t(locale, 'sidebar.toggle_close') : t(locale, 'sidebar.threads')}
+            <span style={railNavButtonGlyphStyle(threadSidebarOpen, shellBackgroundMode)}>
+              <VectorIcon name="link" size={18} strokeWidth={2} />
+            </span>
           </button>
         )}
 
         <div style={{ marginTop: 'auto' }} />
         <div style={railStatusStackStyle} aria-label={locale === 'zh-CN' ? '交易台状态' : 'Desk status'}>
           {railStatusItems.map(item => (
-            <div key={item.id} style={railStatusItemStyle} title={`${item.label}: ${item.meta}`}>
+            <div
+              key={item.id}
+              style={railStatusItemStyle(shellBackgroundMode)}
+              title={`${item.label}: ${item.meta}`}
+              aria-label={`${item.label}: ${item.meta}`}
+            >
               <span style={railStatusSignalStyle(item.status)} aria-hidden="true" />
-              <div style={railStatusLabelStyle}>{item.label}</div>
-              <div style={railStatusMetaStyle}>{item.meta}</div>
             </div>
           ))}
         </div>
+        <button
+          type="button"
+          title={
+            shellBackgroundMode === 'light'
+              ? locale === 'zh-CN'
+                ? '切换黑色界面'
+                : 'Use dark interface'
+              : locale === 'zh-CN'
+                ? '切换白色界面'
+                : 'Use light interface'
+          }
+          aria-label={
+            shellBackgroundMode === 'light'
+              ? locale === 'zh-CN'
+                ? '切换黑色界面'
+                : 'Use dark interface'
+              : locale === 'zh-CN'
+                ? '切换白色界面'
+                : 'Use light interface'
+          }
+          style={railNavButtonStyle(false, shellBackgroundMode)}
+          onClick={() => setShellBackgroundMode(previous => (previous === 'light' ? 'dark' : 'light'))}
+        >
+          <span style={railNavButtonGlyphStyle(false, shellBackgroundMode)}>
+            <VectorIcon
+              name={shellBackgroundMode === 'light' ? 'moon' : 'sun'}
+              size={18}
+              strokeWidth={2}
+            />
+          </span>
+        </button>
+        {secondaryNavItems.length > 0 && (
+          <nav aria-label="Settings navigation" style={railNavStyle}>
+            {secondaryNavItems.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                title={item.title}
+                style={railNavButtonStyle(page === item.id, shellBackgroundMode)}
+                onClick={() => setPage(item.id)}
+              >
+                <span style={railNavButtonGlyphStyle(page === item.id, shellBackgroundMode)}>
+                  <VectorIcon name={item.icon} size={19} strokeWidth={2} />
+                </span>
+              </button>
+            ))}
+          </nav>
+        )}
       </aside>
 
       {shellLayout.threadBackdrop && (
@@ -3995,22 +4152,22 @@ export default function App() {
             style={
               isFullBleedPackPage
                 ? strategyWorkspaceScrollStyle
-                : isWeChatPage
-                  ? wechatWorkspaceScrollStyle
+                : isLightUtilityPage
+                  ? wechatWorkspaceScrollStyle(shellBackgroundMode)
                 : workspaceScrollStyle
             }
           >
-            {!isFullBleedPackPage && (
-              <div style={isWeChatPage ? wechatPageHeaderShellStyle : pageHeaderShellStyle}>
+            {!isFullBleedPackPage && page !== 'sessions' && page !== 'wechat' && (
+              <div style={isLightUtilityPage ? wechatPageHeaderShellStyle(shellBackgroundMode) : pageHeaderShellStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={isWeChatPage ? wechatPageEyebrowStyle : chromeStyles.eyebrow}>
+                  <div style={isLightUtilityPage ? wechatPageEyebrowStyle(shellBackgroundMode) : chromeStyles.eyebrow}>
                     {pageEyebrow(locale, page)}
                   </div>
-                  <h1 style={isWeChatPage ? wechatPageTitleStyle : chromeStyles.headerTitle}>
+                  <h1 style={isLightUtilityPage ? wechatPageTitleStyle(shellBackgroundMode) : chromeStyles.headerTitle}>
                     {pageHeading}
                   </h1>
                   {viewportTier === 'wide' && (
-                    <div style={isWeChatPage ? wechatPageDescriptionStyle : chromeStyles.subtleText}>
+                    <div style={isLightUtilityPage ? wechatPageDescriptionStyle(shellBackgroundMode) : chromeStyles.subtleText}>
                       {pageDescription(locale, page)}
                     </div>
                   )}
@@ -4018,10 +4175,15 @@ export default function App() {
                 <div style={utilityStyles.buttonCluster}>
                   <button
                     type="button"
-                    style={buttonStyleForState(
-                      isWeChatPage ? wechatSecondaryButtonStyle : secondaryButtonStyle,
-                      loading,
-                    )}
+                    style={
+                      isLightUtilityPage
+                        ? utilityButtonStyleForState(
+                            wechatSecondaryButtonStyle(shellBackgroundMode),
+                            loading,
+                            shellBackgroundMode,
+                          )
+                        : buttonStyleForState(secondaryButtonStyle, loading)
+                    }
                     disabled={loading}
                     onClick={() => {
                       void refresh(page)
@@ -4052,6 +4214,16 @@ export default function App() {
             )}
 
             <div style={isFullBleedPackPage ? strategyPageStackStyle : pageStackStyle}>
+              {page === 'sessions' && (
+                <AgentSessionsWorkspace
+                  locale={locale}
+                  items={agentConversationItems}
+                  backgroundMode={shellBackgroundMode}
+                  onOpenChannels={() => setPage('wechat')}
+                  onOpenSettings={() => setPage('settings')}
+                />
+              )}
+
               {page === 'strategy' && (
                 <PackWorkspace
                   locale={locale}
@@ -4060,6 +4232,7 @@ export default function App() {
                   signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
                   localizedNotice={localizedDashboardNotice}
                   aiFactorStrategySignals={aiFactorStrategySignals}
+                  backgroundMode={shellBackgroundMode}
                   onRunAction={runAction}
                   onOpenRun={openRun}
                   onOpenRecord={openRecord}
@@ -4084,6 +4257,7 @@ export default function App() {
                   dashboard={dashboard}
                   signalsWebBaseUrl={runtimeStatus.signalsWebBaseUrl}
                   localizedNotice={localizedDashboardNotice}
+                  backgroundMode={shellBackgroundMode}
                   onRunAction={runAction}
                   onOpenRun={openRun}
                   onOpenRecord={openRecord}
@@ -4166,6 +4340,7 @@ export default function App() {
                 <WeChatWorkspace
                   locale={locale}
                   viewportTier={viewportTier}
+                  backgroundMode={shellBackgroundMode}
                   sessions={weclawSessions}
                   sourceStatus={weclawSessionSourceStatus}
                   bindingStatus={wechatBindingStatus}
@@ -4262,6 +4437,17 @@ export default function App() {
                     registerPluginDevIssue={registerPluginDevIssueAction}
                   />
                 </>
+              )}
+
+              {page === 'settings' && (
+                <SettingsWorkspace
+                  locale={locale}
+                  backgroundMode={shellBackgroundMode}
+                  runtimeStatus={runtimeStatus}
+                  agentMode={agentMode}
+                  agentCwd={agentCwd}
+                  localSeatPreference={localSeatPreference}
+                />
               )}
             </div>
           </div>
@@ -4832,7 +5018,18 @@ export default function App() {
   )
 }
 
-const wechatShellPalette = tradingDeskTheme.colors
+const wechatShellPalette = {
+  root: '#F6F7F9',
+  panel: '#FFFFFF',
+  text: '#20242A',
+  textStrong: '#111827',
+  muted: '#747B86',
+  mutedStrong: '#555E6A',
+  border: '#E0E3E8',
+  borderStrong: '#CBD1DA',
+  control: '#F2F3F5',
+  controlText: '#374151',
+}
 
 const pageStackStyle: React.CSSProperties = {
   display: 'flex',
@@ -4925,108 +5122,117 @@ const workItemSummaryStyle: React.CSSProperties = {
 const railBrandStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  alignItems: 'stretch',
+  alignItems: 'center',
   gap: 6,
-  paddingBottom: 2,
+  paddingBottom: 4,
 }
 
-const railMonogramStyle: React.CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: 12,
-  background: tradingDeskTheme.gradients.island,
-  border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
-  color: palette.ink,
-  display: 'grid',
-  placeItems: 'center',
-  boxShadow: tradingDeskTheme.shadows.island,
-  fontFamily: fontStacks.mono,
-  fontSize: 14,
-  fontWeight: 700,
-  letterSpacing: '0.08em',
+function railChrome(mode: ShellBackgroundMode) {
+  if (mode === 'light') {
+    return {
+      activeBorder: 'rgba(17, 24, 39, 0.24)',
+      border: 'rgba(17, 24, 39, 0.10)',
+      activeBg: '#FFFFFF',
+      idleBg: 'rgba(255, 255, 255, 0.62)',
+      iconBg: '#F2F3F5',
+      iconActive: '#111827',
+      iconIdle: '#747B86',
+      statusBg: 'rgba(255, 255, 255, 0.50)',
+      statusBorder: 'rgba(17, 24, 39, 0.07)',
+      logoBg: '#05070B',
+      logoColor: '#FFFFFF',
+      shadow: '0 8px 18px rgba(15, 23, 42, 0.10)',
+    }
+  }
+  return {
+    activeBorder: 'rgba(255, 255, 255, 0.26)',
+    border: 'rgba(255, 255, 255, 0.10)',
+    activeBg: 'rgba(255, 255, 255, 0.13)',
+    idleBg: 'rgba(255, 255, 255, 0.05)',
+    iconBg: 'rgba(255, 255, 255, 0.10)',
+    iconActive: '#FFFFFF',
+    iconIdle: '#9AA4B2',
+    statusBg: 'rgba(255, 255, 255, 0.07)',
+    statusBorder: 'rgba(255, 255, 255, 0.09)',
+    logoBg: '#FFFFFF',
+    logoColor: '#05070B',
+    shadow: '0 10px 22px rgba(0, 0, 0, 0.25)',
+  }
 }
 
-const railBrandLabelStyle: React.CSSProperties = {
-  color: tradingDeskTheme.colors.text,
-  fontSize: 13,
-  lineHeight: 1.35,
-  textAlign: 'left',
-  fontWeight: 700,
-  whiteSpace: 'normal',
+function railLogoButtonStyle(active: boolean, mode: ShellBackgroundMode): React.CSSProperties {
+  const chrome = railChrome(mode)
+  return {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    border: `1px solid ${active ? chrome.activeBorder : chrome.border}`,
+    background: active ? chrome.activeBg : chrome.idleBg,
+    display: 'grid',
+    placeItems: 'center',
+    cursor: 'pointer',
+    boxShadow: active ? chrome.shadow : 'none',
+  }
 }
 
-const railBrandCaptionStyle: React.CSSProperties = {
-  color: tradingDeskTheme.colors.muted,
-  fontSize: 10.5,
-  fontWeight: 600,
-  lineHeight: 1.25,
-  textAlign: 'left',
-  maxWidth: 108,
-}
-
-const railModeLabelStyle: React.CSSProperties = {
-  display: 'none',
-  color: tradingDeskTheme.colors.muted,
-  fontFamily: fontStacks.mono,
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: '0.08em',
-  lineHeight: 1,
-  textAlign: 'center',
-  textTransform: 'uppercase',
+function railMonogramStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const chrome = railChrome(mode)
+  return {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    background: chrome.logoBg,
+    border: `1px solid ${mode === 'light' ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.14)'}`,
+    color: chrome.logoColor,
+    display: 'grid',
+    placeItems: 'center',
+  }
 }
 
 const railNavStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 8,
+  alignItems: 'center',
+  gap: 7,
 }
 
-function railNavButtonStyle(active: boolean): React.CSSProperties {
+function railNavButtonStyle(active: boolean, mode: ShellBackgroundMode): React.CSSProperties {
+  const chrome = railChrome(mode)
   return {
-    borderRadius: 11,
-    border: `1px solid ${active ? tradingDeskTheme.alpha.textBorderStrong : 'transparent'}`,
-    background: active
-      ? tradingDeskTheme.gradients.island
-      : tradingDeskTheme.alpha.panelWash,
-    color: active ? palette.ink : tradingDeskTheme.colors.text,
-    minHeight: 38,
-    padding: '6px 7px',
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    border: `1px solid ${active ? chrome.activeBorder : 'transparent'}`,
+    background: active ? chrome.activeBg : 'transparent',
+    color: active ? chrome.iconActive : chrome.iconIdle,
+    padding: 0,
     display: 'flex',
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 8,
-    textAlign: 'left',
+    justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: active
-      ? tradingDeskTheme.shadows.island
-      : 'inset 0 1px rgba(255, 255, 255, 0.02)',
+    boxShadow: active ? chrome.shadow : 'none',
     transition:
       'background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out, box-shadow 160ms ease-out, transform 160ms ease-out, filter 160ms ease-out',
   }
 }
 
-function railNavButtonGlyphStyle(active: boolean): React.CSSProperties {
+function railNavButtonGlyphStyle(active: boolean, mode: ShellBackgroundMode): React.CSSProperties {
+  const chrome = railChrome(mode)
   return {
-    width: 25,
-    height: 25,
-    borderRadius: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     flexShrink: 0,
     display: 'grid',
     placeItems: 'center',
-    background: active ? tradingDeskTheme.alpha.accentSurface : tradingDeskTheme.alpha.panelWash,
-    border: `1px solid ${active ? tradingDeskTheme.alpha.accentBorder : tradingDeskTheme.alpha.textHairline}`,
-    color: active ? tradingDeskTheme.colors.accentText : palette.ink,
-    boxShadow: active ? 'inset 0 0 0 1px rgba(255, 184, 107, 0.16)' : undefined,
-    fontFamily: fontStacks.mono,
-    fontSize: 11,
-    fontWeight: 700,
+    background: active ? chrome.iconBg : 'transparent',
+    color: active ? chrome.iconActive : chrome.iconIdle,
     lineHeight: 1,
   }
 }
 
 const railNavButtonLabelStyle: React.CSSProperties = {
+  display: 'none',
   fontSize: 12.5,
   lineHeight: 1.15,
   fontWeight: 700,
@@ -5037,23 +5243,23 @@ const railNavButtonLabelStyle: React.CSSProperties = {
 
 const railStatusStackStyle: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'row',
+  flexDirection: 'column',
+  alignItems: 'center',
   gap: 6,
 }
 
-const railStatusItemStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 5,
-  flex: 1,
-  minWidth: 0,
-  padding: '6px 5px',
-  borderRadius: 10,
-  background: tradingDeskTheme.alpha.panelWash,
-  border: `1px solid ${tradingDeskTheme.alpha.textHairline}`,
-  boxShadow: 'inset 0 1px rgba(255, 255, 255, 0.035)',
+function railStatusItemStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const chrome = railChrome(mode)
+  return {
+    display: 'grid',
+    placeItems: 'center',
+    width: 42,
+    minWidth: 42,
+    height: 24,
+    borderRadius: 9,
+    background: chrome.statusBg,
+    border: `1px solid ${chrome.statusBorder}`,
+  }
 }
 
 function railStatusSignalStyle(status: string): React.CSSProperties {
@@ -5070,11 +5276,12 @@ function railStatusSignalStyle(status: string): React.CSSProperties {
 }
 
 const railStatusLabelStyle: React.CSSProperties = {
-  color: palette.ink,
-  fontSize: 10.5,
+  display: 'none',
+  color: '#747B86',
+  fontSize: 10,
   lineHeight: 1.25,
   textAlign: 'center',
-  fontWeight: 700,
+  fontWeight: 800,
 }
 
 const railStatusMetaStyle: React.CSSProperties = {
@@ -5278,7 +5485,7 @@ const threadHeaderStyle: React.CSSProperties = {
   gap: 18,
   padding: '22px 24px 16px',
   borderBottom: `1px solid ${palette.border}`,
-  background: 'rgba(21, 31, 45, 0.72)',
+  background: palette.panel,
   backdropFilter: 'blur(14px)',
 }
 
@@ -5489,59 +5696,127 @@ function wechatThreadSidebarShellStyle(base: React.CSSProperties): React.CSSProp
   }
 }
 
-const wechatWorkspaceScrollStyle: React.CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  overflowY: 'auto',
-  padding: '0 14px 16px',
-  background: wechatShellPalette.root,
+function wechatWorkspaceScrollStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  return {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    padding: '0 14px 16px',
+    background: mode === 'dark' ? '#0C1118' : wechatShellPalette.root,
+  }
 }
 
-const wechatPageHeaderShellStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 16,
-  padding: '10px 0 8px',
-  marginBottom: 0,
-  background: wechatShellPalette.root,
+function utilityTheme(mode: ShellBackgroundMode) {
+  if (mode === 'dark') {
+    return {
+      root: '#070A0F',
+      panel: '#0D131C',
+      panelSoft: '#121A25',
+      textStrong: '#F4F7FB',
+      muted: '#93A0B2',
+      mutedStrong: '#B2BECD',
+      border: 'rgba(226, 232, 240, 0.10)',
+      borderStrong: 'rgba(226, 232, 240, 0.18)',
+      control: '#141D29',
+      controlText: '#E7ECF3',
+      disabledBg: '#0F1620',
+      disabledText: '#748195',
+    }
+  }
+  return {
+    root: wechatShellPalette.root,
+    panel: wechatShellPalette.panel,
+    panelSoft: wechatShellPalette.panelSoft,
+    textStrong: wechatShellPalette.textStrong,
+    muted: wechatShellPalette.muted,
+    mutedStrong: wechatShellPalette.mutedStrong,
+    border: wechatShellPalette.border,
+    borderStrong: wechatShellPalette.borderStrong,
+    control: wechatShellPalette.control,
+    controlText: wechatShellPalette.controlText,
+    disabledBg: '#F7F8FA',
+    disabledText: '#9098A4',
+  }
 }
 
-const wechatPageEyebrowStyle: React.CSSProperties = {
-  color: tradingDeskTheme.colors.mutedStrong,
-  fontSize: 11,
-  lineHeight: 1.2,
-  fontWeight: 700,
-  letterSpacing: 0,
-  textTransform: 'uppercase',
+function wechatPageHeaderShellStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const theme = utilityTheme(mode)
+  return {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 16,
+    padding: mode === 'dark' ? '12px 0 10px' : '10px 0 8px',
+    marginBottom: 0,
+    background: theme.root,
+  }
 }
 
-const wechatPageTitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: wechatShellPalette.textStrong,
-  fontSize: 22,
-  lineHeight: 1,
-  fontWeight: 800,
-  letterSpacing: 0,
+function wechatPageEyebrowStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const theme = utilityTheme(mode)
+  return {
+    color: theme.mutedStrong,
+    fontSize: mode === 'dark' ? 10.5 : 11,
+    lineHeight: 1.2,
+    fontWeight: 750,
+    letterSpacing: 0,
+    textTransform: 'uppercase',
+  }
 }
 
-const wechatPageDescriptionStyle: React.CSSProperties = {
-  color: wechatShellPalette.muted,
-  fontSize: 13,
-  lineHeight: 1.45,
-  maxWidth: 760,
+function wechatPageTitleStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const theme = utilityTheme(mode)
+  return {
+    margin: 0,
+    color: theme.textStrong,
+    fontSize: mode === 'dark' ? 23 : 22,
+    lineHeight: 1,
+    fontWeight: 850,
+    letterSpacing: 0,
+  }
 }
 
-const wechatSecondaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${wechatShellPalette.borderStrong}`,
-  borderRadius: 5,
-  background: tradingDeskTheme.colors.control,
-  color: tradingDeskTheme.colors.controlText,
-  padding: '8px 11px',
-  cursor: 'pointer',
-  fontFamily: fontStacks.ui,
-  fontSize: 13,
-  fontWeight: 700,
+function wechatPageDescriptionStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const theme = utilityTheme(mode)
+  return {
+    color: theme.muted,
+    fontSize: mode === 'dark' ? 13.5 : 13,
+    lineHeight: mode === 'dark' ? 1.5 : 1.45,
+    maxWidth: 760,
+  }
+}
+
+function wechatSecondaryButtonStyle(mode: ShellBackgroundMode): React.CSSProperties {
+  const theme = utilityTheme(mode)
+  return {
+    border: `1px solid ${theme.borderStrong}`,
+    borderRadius: 5,
+    background: theme.control,
+    color: theme.controlText,
+    padding: mode === 'dark' ? '8px 12px' : '8px 11px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    fontSize: mode === 'dark' ? 13.5 : 13,
+    fontWeight: 750,
+  }
+}
+
+function utilityButtonStyleForState(
+  base: React.CSSProperties,
+  disabled: boolean,
+  mode: ShellBackgroundMode,
+): React.CSSProperties {
+  if (!disabled) return base
+  const theme = utilityTheme(mode)
+  return {
+    ...base,
+    border: `1px solid ${theme.border}`,
+    background: theme.disabledBg,
+    color: theme.disabledText,
+    cursor: 'not-allowed',
+    boxShadow: 'none',
+    opacity: 1,
+  }
 }
 
 const pageHeaderShellStyle: React.CSSProperties = {
