@@ -67,7 +67,9 @@ export function createShellLayout(
       flexDirection: 'column',
       gap: 8,
       minHeight: 0,
-      overflowY: 'visible',
+      overflow: 'visible',
+      position: 'relative',
+      zIndex: 24,
     },
     threadSidebar: overlayThreadSidebar
       ? {

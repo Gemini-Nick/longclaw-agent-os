@@ -304,7 +304,9 @@ const sessionsShellStyle = (backgroundMode: ShellBackgroundMode): CSSProperties 
           '--session-muted-strong': '#B5C0CF',
           '--session-accent': '#F2B45C',
           '--session-shadow': '0 18px 40px rgba(0, 0, 0, 0.28)',
-          '--session-stage-padding': '28px 34px 148px',
+          '--session-stage-padding': 'clamp(18px, 2.2vh, 28px) clamp(20px, 2.2vw, 34px)',
+          '--session-composer-margin': '0 clamp(16px, 2vw, 28px) clamp(12px, 1.8vh, 22px)',
+          '--session-composer-height': 'clamp(96px, 14vh, 132px)',
           '--session-list-padding': '14px 11px',
           '--session-font-size': '14px',
         }
@@ -322,13 +324,16 @@ const sessionsShellStyle = (backgroundMode: ShellBackgroundMode): CSSProperties 
           '--session-muted-strong': '#555E6A',
           '--session-accent': '#D79A16',
           '--session-shadow': '0 8px 26px rgba(15, 23, 42, 0.08)',
-          '--session-stage-padding': '24px 28px 140px',
+          '--session-stage-padding': 'clamp(16px, 2vh, 24px) clamp(18px, 2vw, 28px)',
+          '--session-composer-margin': '0 clamp(14px, 1.8vw, 24px) clamp(12px, 1.6vh, 18px)',
+          '--session-composer-height': 'clamp(90px, 13vh, 120px)',
           '--session-list-padding': '12px 10px',
           '--session-font-size': '13px',
         }
   return {
     ...vars,
-    minHeight: 'calc(100vh - 28px)',
+    height: '100%',
+    minHeight: 0,
     display: 'grid',
     gridTemplateColumns: backgroundMode === 'dark' ? '296px minmax(0, 1fr)' : '280px minmax(0, 1fr)',
     background: light.app,
@@ -347,6 +352,7 @@ const conversationListStyle: CSSProperties = {
   borderRight: `1px solid ${light.border}`,
   background: light.panel,
   minWidth: 0,
+  minHeight: 0,
 }
 
 const conversationHeaderStyle: CSSProperties = {
@@ -473,8 +479,8 @@ const conversationRowMetaStyle: CSSProperties = {
 }
 
 const chatPaneStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
+  display: 'grid',
+  gridTemplateRows: '62px minmax(0, 1fr) auto',
   minWidth: 0,
   minHeight: 0,
   background: 'var(--session-panel-muted)',
@@ -529,7 +535,6 @@ const chatActionsStyle: CSSProperties = {
 }
 
 const messageStageStyle: CSSProperties = {
-  flex: 1,
   minHeight: 0,
   overflowY: 'auto',
   padding: 'var(--session-stage-padding)',
@@ -586,9 +591,7 @@ const copyButtonStyle: CSSProperties = {
 }
 
 const composerShellStyle: CSSProperties = {
-  position: 'sticky',
-  bottom: 0,
-  margin: '0 20px 16px',
+  margin: 'var(--session-composer-margin)',
   border: `1px solid ${light.borderStrong}`,
   borderRadius: 16,
   background: 'var(--session-card)',
@@ -598,6 +601,7 @@ const composerShellStyle: CSSProperties = {
 
 const composerInputStyle: CSSProperties = {
   width: '100%',
+  height: 'var(--session-composer-height)',
   resize: 'none',
   border: 'none',
   outline: 'none',

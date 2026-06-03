@@ -55,6 +55,76 @@ export function VectorIcon({
   )
 }
 
+export function LongclawBrandMark({
+  size = 32,
+  style,
+}: {
+  size?: number
+  style?: CSSProperties
+}) {
+  const uid = React.useId().replace(/:/g, '')
+  const bgId = `lcBrandBg${uid}`
+  const rimId = `lcBrandRim${uid}`
+  const cyanId = `lcBrandCyan${uid}`
+  const goldId = `lcBrandGold${uid}`
+
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      fill="none"
+      style={{ display: 'block', ...style }}
+    >
+      <defs>
+        <linearGradient id={bgId} x1="8" y1="5" x2="58" y2="60" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#172436" />
+          <stop offset="0.56" stopColor="#0A1017" />
+          <stop offset="1" stopColor="#030508" />
+        </linearGradient>
+        <linearGradient id={rimId} x1="6" y1="7" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#4FA3FF" />
+          <stop offset="0.52" stopColor="#24D7C0" />
+          <stop offset="1" stopColor="#EFB35E" />
+        </linearGradient>
+        <linearGradient id={cyanId} x1="15" y1="46" x2="50" y2="16" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#24D7C0" />
+          <stop offset="0.52" stopColor="#4FA3FF" />
+          <stop offset="1" stopColor="#EAF3FF" />
+        </linearGradient>
+        <linearGradient id={goldId} x1="34" y1="44" x2="53" y2="18" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#F2A84A" />
+          <stop offset="0.76" stopColor="#FFE3A6" />
+          <stop offset="1" stopColor="#FFFFFF" />
+        </linearGradient>
+      </defs>
+      <rect x="3.5" y="3.5" width="57" height="57" rx="14" fill={`url(#${bgId})`} />
+      <rect x="5.5" y="5.5" width="53" height="53" rx="12.5" stroke={`url(#${rimId})`} strokeWidth="1.8" opacity="0.92" />
+      <rect x="11" y="13" width="42" height="38" rx="5.5" fill="#0D1620" stroke="#1C2C3D" strokeWidth="1.2" opacity="0.88" />
+      <g stroke="#CFE8FF" strokeWidth="0.8" opacity="0.18">
+        <path d="M15 22h34M15 31h34M15 40h34" />
+      </g>
+      <g opacity="0.92">
+        <path d="M20 31v10" stroke="#24D7C0" strokeWidth="1.8" strokeLinecap="round" />
+        <rect x="18.8" y="35" width="2.4" height="5" rx="0.7" fill="#24D7C0" />
+        <path d="M27 25v16" stroke="#FF4F64" strokeWidth="1.8" strokeLinecap="round" />
+        <rect x="25.8" y="30" width="2.4" height="7" rx="0.7" fill="#FF4F64" />
+        <path d="M34 22v15" stroke="#24D7C0" strokeWidth="1.8" strokeLinecap="round" />
+        <rect x="32.8" y="27" width="2.4" height="7.4" rx="0.7" fill="#24D7C0" />
+      </g>
+      <path d="M16 45c6.8-6.2 10.9-5.5 15.9-12.2 5-6.5 9.1-7.8 17.1-15.5" stroke="#03070D" strokeWidth="6.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.72" />
+      <path d="M16 45c6.8-6.2 10.9-5.5 15.9-12.2 5-6.5 9.1-7.8 17.1-15.5" stroke={`url(#${cyanId})`} strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M32 44c5.1-5.4 7.7-8.6 11.2-14.5 2.4-4 4.5-7.1 7.4-10.8" stroke="#03070D" strokeWidth="5" strokeLinecap="round" opacity="0.7" />
+      <path d="M32 44c5.1-5.4 7.7-8.6 11.2-14.5 2.4-4 4.5-7.1 7.4-10.8" stroke={`url(#${goldId})`} strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M16 48h32" stroke="#314962" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M16 48h19" stroke="#24D7C0" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="49" cy="17.2" r="2.4" fill="#EAF3FF" />
+      <circle cx="49" cy="17.2" r="1.1" fill="#4FA3FF" />
+    </svg>
+  )
+}
+
 function iconPath(name: VectorIconName): React.ReactNode {
   switch (name) {
     case 'activity':

@@ -556,7 +556,7 @@ const historyChipStyle: React.CSSProperties = {
   border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
   borderRadius: tradingDeskTheme.radius.pill,
   background: tradingDeskTheme.alpha.infoSurface,
-  color: tradingDeskTheme.colors.infoText,
+  color: terminalTheme.infoText,
   fontFamily: fontStacks.mono,
   fontSize: 11,
   fontWeight: 800,
@@ -575,10 +575,10 @@ const historyCardStyle: React.CSSProperties = {
   gridTemplateColumns: 'minmax(0, 1fr) 34px',
   alignItems: 'stretch',
   gap: 8,
-  border: `1px solid ${tradingDeskTheme.alpha.textBorderStrong}`,
+  border: `1px solid ${terminalTheme.borderStrong}`,
   borderRadius: 6,
-  background: `linear-gradient(135deg, ${terminalTheme.panelRaised}, ${terminalTheme.panelSoft})`,
-  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.infoBorder}`,
+  background: `linear-gradient(180deg, ${terminalTheme.panelRaised} 0%, ${terminalTheme.panelSoft} 100%)`,
+  boxShadow: `inset 3px 0 ${terminalTheme.infoText}, 0 1px 2px rgba(15, 23, 42, 0.05)`,
   padding: '8px 7px 8px 8px',
   minWidth: 0,
 }
@@ -604,7 +604,7 @@ const historyTitleTextStyle: React.CSSProperties = {
 const historyCountBadgeStyle: React.CSSProperties = {
   ...historyChipStyle,
   flex: '0 0 auto',
-  color: tradingDeskTheme.chart.line,
+  color: terminalTheme.infoText,
   padding: '2px 7px',
 }
 
@@ -3412,10 +3412,12 @@ function buildBatchBody(
   return body
 }
 
-function backtestMaIndicatorStyles(): DeepPartial<IndicatorStyle> {
+function backtestMaIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const lightMode = backgroundMode === 'light'
+  const colors = lightMode ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E'] : BACKTEST_MA_COLORS
   return {
     lines: BACKTEST_MA_PERIODS.map((period, index) => ({
-      color: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length],
+      color: colors[index % colors.length],
       size: period >= 60 ? 1.5 : 1.8,
       style: 'solid',
       dashedValue: [2, 2],
@@ -3423,17 +3425,19 @@ function backtestMaIndicatorStyles(): DeepPartial<IndicatorStyle> {
   }
 }
 
-function backtestMacdIndicatorStyles(): DeepPartial<IndicatorStyle> {
+function backtestMacdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const lightMode = backgroundMode === 'light'
+  const lineColors = lightMode ? ['#2563EB', '#C26A00'] : [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
+  const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
+  const downColor = lightMode ? '#087443' : tradingDeskTheme.market.down
+  const flatColor = lightMode ? '#536579' : tradingDeskTheme.market.flat
   return {
-    lines: [
-      { color: tradingDeskTheme.chart.line, size: 1.5, style: 'solid', dashedValue: [2, 2] },
-      { color: tradingDeskTheme.chart.orange, size: 1.5, style: 'solid', dashedValue: [2, 2] },
-    ],
+    lines: lineColors.map(color => ({ color, size: 1.5, style: 'solid', dashedValue: [2, 2] })),
     bars: [
       {
-        upColor: tradingDeskTheme.market.up,
-        downColor: tradingDeskTheme.market.down,
-        noChangeColor: tradingDeskTheme.market.flat,
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
       },
     ],
   }
@@ -3441,19 +3445,23 @@ function backtestMacdIndicatorStyles(): DeepPartial<IndicatorStyle> {
 
 function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
   const lightMode = backgroundMode === 'light'
-  const chartPanel = lightMode ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
-  const panelSoft = lightMode ? '#F5F7FA' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
-  const border = lightMode ? '#E4E7EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
-  const borderStrong = lightMode ? '#CBD5E1' : designThemeColor(backgroundMode, 'border-strong', '#263244')
-  const muted = lightMode ? '#667085' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
-  const text = lightMode ? '#344054' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
-  const crosshair = lightMode ? '#475467' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
-  const gridHorizontal = lightMode ? 'rgba(148, 163, 184, 0.22)' : tradingDeskTheme.chart.gridHorizontal
-  const gridVertical = lightMode ? 'rgba(148, 163, 184, 0.14)' : tradingDeskTheme.chart.gridVertical
-  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 22, 32, 0.94)'
+  const chartPanel = lightMode ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+  const panelSoft = lightMode ? '#EEF3F8' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
+  const border = lightMode ? '#D9E2EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
+  const borderStrong = lightMode ? '#B7C4D4' : designThemeColor(backgroundMode, 'border-strong', '#263244')
+  const muted = lightMode ? '#536579' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
+  const text = lightMode ? '#243247' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
+  const crosshair = lightMode ? '#334155' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
+  const gridHorizontal = lightMode ? 'rgba(83, 101, 121, 0.18)' : tradingDeskTheme.chart.gridHorizontal
+  const gridVertical = lightMode ? 'rgba(83, 101, 121, 0.11)' : tradingDeskTheme.chart.gridVertical
+  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.98)' : 'rgba(15, 22, 32, 0.94)'
   const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = lightMode ? '#079455' : tradingDeskTheme.market.down
-  const flatColor = lightMode ? '#667085' : tradingDeskTheme.market.flat
+  const downColor = lightMode ? '#087443' : tradingDeskTheme.market.down
+  const flatColor = lightMode ? '#536579' : tradingDeskTheme.market.flat
+  const lineColor = lightMode ? '#2563EB' : tradingDeskTheme.chart.line
+  const maColors = lightMode
+    ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E']
+    : BACKTEST_MA_COLORS
   return {
     grid: {
       horizontal: { color: gridHorizontal },
@@ -3483,8 +3491,8 @@ function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
       },
       priceMark: {
         last: {
-          line: { show: true, color: tradingDeskTheme.chart.line, size: 1 },
-          text: { show: true, color: terminalTheme.white, backgroundColor: tradingDeskTheme.chart.line, size: 11 },
+          line: { show: true, color: lineColor, size: 1 },
+          text: { show: true, color: terminalTheme.white, backgroundColor: lineColor, size: 11 },
         },
       },
     },
@@ -3513,7 +3521,7 @@ function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
       },
     },
     indicator: {
-      lines: BACKTEST_MA_COLORS.map(color => ({ color, size: 1, style: 'solid', dashedValue: [2, 2] })),
+      lines: maColors.map(color => ({ color, size: 1, style: 'solid', dashedValue: [2, 2] })),
       tooltip: {
         text: {
           color: text,
@@ -4312,19 +4320,19 @@ export function BacktestWorkbench({
     })
     if (!chart) return
     chartContainerRef.current.style.backgroundColor =
-      backgroundMode === 'light' ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+      backgroundMode === 'light' ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
     chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setBarSpace(7)
     chart.setOffsetRightDistance(34)
     chart.createIndicator(
-      { name: 'MA', calcParams: BACKTEST_MA_PERIODS, styles: backtestMaIndicatorStyles() },
+      { name: 'MA', calcParams: BACKTEST_MA_PERIODS, styles: backtestMaIndicatorStyles(backgroundMode) },
       true,
       { id: 'candle_pane' },
     )
     chart.createIndicator('VOL', false, { id: 'volume_pane', minHeight: 58, height: 74 })
     chart.createIndicator(
-      { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles() },
+      { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles(backgroundMode) },
       false,
       { id: 'macd_pane', minHeight: 72, height: 96 },
     )
@@ -6755,7 +6763,7 @@ function ExpandedKlineChart({
     })
     if (!chart) return
     containerRef.current.style.backgroundColor =
-      backgroundMode === 'light' ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+      backgroundMode === 'light' ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
     chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setZoomEnabled(true)
@@ -6763,13 +6771,13 @@ function ExpandedKlineChart({
     chart.setBarSpace(7)
     chart.setOffsetRightDistance(44)
     chart.createIndicator(
-      { name: 'MA', calcParams: BACKTEST_MA_PERIODS, styles: backtestMaIndicatorStyles() },
+      { name: 'MA', calcParams: BACKTEST_MA_PERIODS, styles: backtestMaIndicatorStyles(backgroundMode) },
       true,
       { id: 'candle_pane' },
     )
     chart.createIndicator('VOL', false, { id: 'volume_pane', minHeight: 82, height: 96 })
     chart.createIndicator(
-      { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles() },
+      { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles(backgroundMode) },
       false,
       { id: 'macd_pane', minHeight: 118, height: 138 },
     )

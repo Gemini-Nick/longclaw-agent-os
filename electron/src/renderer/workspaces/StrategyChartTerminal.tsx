@@ -2355,7 +2355,7 @@ function chartCanvasShellStyleForMode(backgroundMode: ShellBackgroundMode): Reac
   if (backgroundMode !== 'light') return chartCanvasShellStyle
   return {
     ...chartCanvasShellStyle,
-    background: '#FBFCFE',
+    background: '#FBFCFF',
     boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.08)',
   }
 }
@@ -2364,7 +2364,7 @@ function chartCanvasStyleForMode(backgroundMode: ShellBackgroundMode): React.CSS
   return {
     ...chartCanvasStyle,
     background: backgroundMode === 'light'
-      ? '#FBFCFE'
+      ? '#FBFCFF'
       : designThemeColor(backgroundMode, 'chart-panel', '#131722'),
   }
 }
@@ -3754,19 +3754,23 @@ async function fetchJson<T>(
 
 function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
   const lightMode = backgroundMode === 'light'
-  const chartPanel = lightMode ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
-  const panelSoft = lightMode ? '#F5F7FA' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
-  const border = lightMode ? '#E4E7EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
-  const borderStrong = lightMode ? '#CBD5E1' : designThemeColor(backgroundMode, 'border-strong', '#263244')
-  const muted = lightMode ? '#667085' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
-  const text = lightMode ? '#344054' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
-  const crosshair = lightMode ? '#475467' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
-  const gridHorizontal = lightMode ? 'rgba(148, 163, 184, 0.22)' : tradingDeskTheme.chart.gridHorizontal
-  const gridVertical = lightMode ? 'rgba(148, 163, 184, 0.14)' : tradingDeskTheme.chart.gridVertical
-  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.96)' : 'rgba(15, 22, 32, 0.94)'
+  const chartPanel = lightMode ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+  const panelSoft = lightMode ? '#EEF3F8' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
+  const border = lightMode ? '#D9E2EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
+  const borderStrong = lightMode ? '#B7C4D4' : designThemeColor(backgroundMode, 'border-strong', '#263244')
+  const muted = lightMode ? '#536579' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
+  const text = lightMode ? '#243247' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
+  const crosshair = lightMode ? '#334155' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
+  const gridHorizontal = lightMode ? 'rgba(83, 101, 121, 0.18)' : tradingDeskTheme.chart.gridHorizontal
+  const gridVertical = lightMode ? 'rgba(83, 101, 121, 0.11)' : tradingDeskTheme.chart.gridVertical
+  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.98)' : 'rgba(15, 22, 32, 0.94)'
   const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = lightMode ? '#079455' : tradingDeskTheme.market.down
-  const flatColor = lightMode ? '#667085' : tradingDeskTheme.market.flat
+  const downColor = lightMode ? '#087443' : tradingDeskTheme.market.down
+  const flatColor = lightMode ? '#536579' : tradingDeskTheme.market.flat
+  const lineColor = lightMode ? '#2563EB' : tradingDeskTheme.chart.line
+  const maColors = lightMode
+    ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E', '#6B7280', '#1D4ED8']
+    : MA_COLORS
   return {
     grid: {
       horizontal: { color: gridHorizontal },
@@ -3800,11 +3804,11 @@ function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
       },
       priceMark: {
         last: {
-          line: { show: true, ...solidLineStyle(tradingDeskTheme.chart.line, 1) },
+          line: { show: true, ...solidLineStyle(lineColor, 1) },
           text: {
             show: true,
             color: terminalTheme.white,
-            backgroundColor: tradingDeskTheme.chart.line,
+            backgroundColor: lineColor,
             size: 11,
             borderRadius: 4,
           },
@@ -3836,7 +3840,7 @@ function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
       },
     },
     indicator: {
-      lines: MA_COLORS.map(color => solidLineStyle(color, 1)),
+      lines: maColors.map(color => solidLineStyle(color, 1)),
       tooltip: {
         text: {
           color: text,
@@ -3859,34 +3863,44 @@ export function maPeriodsForChart(freq?: string, targetKind?: string): number[] 
   return KEY_MA_PERIODS
 }
 
-function maIndicatorStyles(periods: number[]): DeepPartial<IndicatorStyle> {
+function maIndicatorStyles(periods: number[], backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const colors = backgroundMode === 'light'
+    ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E', '#6B7280', '#1D4ED8']
+    : MA_COLORS
   return {
     lines: periods.map((period, index) => ({
-      ...solidLineStyle(MA_COLORS[index % MA_COLORS.length], period >= 100 ? 1 : 1.2),
+      ...solidLineStyle(colors[index % colors.length], period >= 100 ? 1 : 1.2),
     })),
   }
 }
 
-function macdIndicatorStyles(): DeepPartial<IndicatorStyle> {
+function macdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const lineColors = backgroundMode === 'light' ? ['#2563EB', '#C26A00'] : MACD_LINE_COLORS
+  const upColor = backgroundMode === 'light' ? '#D92D20' : tradingDeskTheme.market.up
+  const downColor = backgroundMode === 'light' ? '#087443' : tradingDeskTheme.market.down
+  const flatColor = backgroundMode === 'light' ? '#536579' : tradingDeskTheme.market.flat
   return {
-    lines: MACD_LINE_COLORS.map(color => solidLineStyle(color, 1.2)),
+    lines: lineColors.map(color => solidLineStyle(color, 1.2)),
     bars: [
       {
-        upColor: tradingDeskTheme.market.up,
-        downColor: tradingDeskTheme.market.down,
-        noChangeColor: tradingDeskTheme.market.flat,
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
       },
     ],
   }
 }
 
-function volumeIndicatorStyles(): DeepPartial<IndicatorStyle> {
+function volumeIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const upColor = backgroundMode === 'light' ? '#D92D20' : tradingDeskTheme.market.up
+  const downColor = backgroundMode === 'light' ? '#087443' : tradingDeskTheme.market.down
+  const flatColor = backgroundMode === 'light' ? '#536579' : tradingDeskTheme.market.flat
   return {
     bars: [
       {
-        upColor: tradingDeskTheme.market.up,
-        downColor: tradingDeskTheme.market.down,
-        noChangeColor: tradingDeskTheme.market.flat,
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
       },
     ],
     tooltip: {
@@ -3945,25 +3959,35 @@ function ensureMacdZeroIndicator() {
   macdZeroIndicatorRegistered = true
 }
 
-function applyMovingAverageIndicator(chart: Chart, freq?: string, targetKind?: string) {
+function applyMovingAverageIndicator(
+  chart: Chart,
+  freq: string | undefined,
+  targetKind: string | undefined,
+  backgroundMode: ShellBackgroundMode,
+) {
   const periods = maPeriodsForChart(freq, targetKind)
   chart.overrideIndicator(
     {
       name: 'MA',
       calcParams: periods,
-      styles: maIndicatorStyles(periods),
+      styles: maIndicatorStyles(periods, backgroundMode),
     },
     CANDLE_PANE_ID,
   )
 }
 
-function createChartIndicators(chart: Chart, freq?: string, targetKind?: string) {
+function createChartIndicators(
+  chart: Chart,
+  freq: string | undefined,
+  targetKind: string | undefined,
+  backgroundMode: ShellBackgroundMode,
+) {
   const periods = maPeriodsForChart(freq, targetKind)
   chart.createIndicator(
     {
       name: 'MA',
       calcParams: periods,
-      styles: maIndicatorStyles(periods),
+      styles: maIndicatorStyles(periods, backgroundMode),
     },
     true,
     { id: CANDLE_PANE_ID },
@@ -3971,7 +3995,7 @@ function createChartIndicators(chart: Chart, freq?: string, targetKind?: string)
   chart.createIndicator(
     {
       name: A_SHARE_VOLUME_INDICATOR_NAME,
-      styles: volumeIndicatorStyles(),
+      styles: volumeIndicatorStyles(backgroundMode),
     },
     false,
     { id: VOLUME_PANE_ID, minHeight: 64, height: 82 },
@@ -3980,7 +4004,7 @@ function createChartIndicators(chart: Chart, freq?: string, targetKind?: string)
     {
       name: 'MACD',
       calcParams: MACD_PARAMS,
-      styles: macdIndicatorStyles(),
+      styles: macdIndicatorStyles(backgroundMode),
     },
     false,
     { id: MACD_PANE_ID, minHeight: 86, height: 116 },
@@ -7980,12 +8004,12 @@ export function StrategyChartTerminal({
     })
     if (!chart) return
     chartContainerRef.current.style.backgroundColor =
-      backgroundMode === 'light' ? '#FBFCFE' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+      backgroundMode === 'light' ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
     chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setBarSpace(chartBarSpaceForMode(layoutMode))
     chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
-    createChartIndicators(chart, target.freq, target.kind)
+    createChartIndicators(chart, target.freq, target.kind, backgroundMode)
     resizeObserverRef.current = new ResizeObserver(() => {
       if (resizeFrameRef.current !== null) {
         window.cancelAnimationFrame(resizeFrameRef.current)
@@ -8025,15 +8049,15 @@ export function StrategyChartTerminal({
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
-    applyMovingAverageIndicator(chart, currentFreq, targetKindForMa)
-  }, [currentFreq, targetKindForMa])
+    applyMovingAverageIndicator(chart, currentFreq, targetKindForMa, backgroundMode)
+  }, [backgroundMode, currentFreq, targetKindForMa])
 
   useEffect(() => {
     const chart = chartRef.current
     if (!chart) return
-    chart.setStyles(chartStyles())
+    chart.setStyles(chartStyles(backgroundMode))
     chart.setLocale(locale === 'zh-CN' ? 'zh-CN' : 'en-US')
-  }, [locale])
+  }, [backgroundMode, locale])
 
   useEffect(() => {
     const chart = chartRef.current

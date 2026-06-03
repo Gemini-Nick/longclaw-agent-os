@@ -36,7 +36,7 @@ import {
 } from './designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText, t, tf } from './i18n.js'
 import { createShellLayout, getViewportTier, type ShellBackgroundMode } from './layout.js'
-import { VectorIcon, type VectorIconName } from './vectorIcons.js'
+import { LongclawBrandMark, VectorIcon, type VectorIconName } from './vectorIcons.js'
 import {
   ActionButtons,
   QueueRow,
@@ -1871,6 +1871,7 @@ export default function App() {
       return 'light'
     }
   })
+  const [hoveredRailLabel, setHoveredRailLabel] = useState<string | null>(null)
   const [localSeatPreference, setLocalSeatPreference] = useState<LocalRuntimeSeatPreference>(() => {
     try {
       return normalizeLocalRuntimeSeatPreference(
@@ -2915,6 +2916,7 @@ export default function App() {
       {
         id: 'runtime',
         label: locale === 'zh-CN' ? '运行' : 'Runtime',
+        shortLabel: locale === 'zh-CN' ? '运' : 'R',
         meta: runtimeStatus.localRuntimeAvailable
           ? runtimeStatus.localRuntimeSeat
             ? humanizeTokenLocale(locale, runtimeStatus.localRuntimeSeat)
@@ -2927,6 +2929,7 @@ export default function App() {
       {
         id: 'data',
         label: locale === 'zh-CN' ? '数据' : 'Data',
+        shortLabel: locale === 'zh-CN' ? '数' : 'D',
         meta: runtimeStatus.signalsAvailable
           ? locale === 'zh-CN'
             ? '信号可用'
@@ -2939,6 +2942,7 @@ export default function App() {
       {
         id: 'wechat',
         label: locale === 'zh-CN' ? '微信' : 'WeChat',
+        shortLabel: locale === 'zh-CN' ? '微' : 'W',
         meta: wechatBound
           ? locale === 'zh-CN'
             ? '已绑定'
@@ -3755,12 +3759,17 @@ export default function App() {
         <div style={railBrandStyle}>
           <button
             type="button"
-            title={t(locale, 'nav.sessions')}
+            aria-label={t(locale, 'nav.sessions')}
             style={railLogoButtonStyle(page === 'sessions', shellBackgroundMode)}
+            onMouseEnter={() => setHoveredRailLabel('brand:sessions')}
+            onMouseLeave={() => setHoveredRailLabel(null)}
             onClick={() => setPage('sessions')}
           >
             <span style={railMonogramStyle(shellBackgroundMode)}>
-              <VectorIcon name="longclaw" size={21} strokeWidth={2.1} />
+              <LongclawBrandMark size={31} />
+            </span>
+            <span style={railHoverLabelStyle(hoveredRailLabel === 'brand:sessions', shellBackgroundMode)}>
+              {t(locale, 'nav.sessions')}
             </span>
           </button>
         </div>
@@ -3769,12 +3778,17 @@ export default function App() {
             <button
               key={item.id}
               type="button"
-              title={item.title}
+              aria-label={item.title}
               style={railNavButtonStyle(page === item.id, shellBackgroundMode)}
+              onMouseEnter={() => setHoveredRailLabel(`nav:${item.id}`)}
+              onMouseLeave={() => setHoveredRailLabel(null)}
               onClick={() => setPage(item.id)}
             >
               <span style={railNavButtonGlyphStyle(page === item.id, shellBackgroundMode)}>
                 <VectorIcon name={item.icon} size={19} strokeWidth={2} />
+              </span>
+              <span style={railHoverLabelStyle(hoveredRailLabel === `nav:${item.id}`, shellBackgroundMode)}>
+                {item.title}
               </span>
             </button>
           ))}
@@ -3784,6 +3798,8 @@ export default function App() {
           <button
             type="button"
             style={railNavButtonStyle(threadSidebarOpen, shellBackgroundMode)}
+            onMouseEnter={() => setHoveredRailLabel('nav:toggle')}
+            onMouseLeave={() => setHoveredRailLabel(null)}
             aria-label={
               threadSidebarOpen ? t(locale, 'sidebar.toggle_close') : t(locale, 'sidebar.toggle_open')
             }
@@ -3791,6 +3807,9 @@ export default function App() {
           >
             <span style={railNavButtonGlyphStyle(threadSidebarOpen, shellBackgroundMode)}>
               <VectorIcon name="link" size={18} strokeWidth={2} />
+            </span>
+            <span style={railHoverLabelStyle(hoveredRailLabel === 'nav:toggle', shellBackgroundMode)}>
+              {threadSidebarOpen ? t(locale, 'sidebar.toggle_close') : t(locale, 'sidebar.toggle_open')}
             </span>
           </button>
         )}
@@ -3801,24 +3820,20 @@ export default function App() {
             <div
               key={item.id}
               style={railStatusItemStyle(shellBackgroundMode)}
-              title={`${item.label}: ${item.meta}`}
               aria-label={`${item.label}: ${item.meta}`}
+              onMouseEnter={() => setHoveredRailLabel(`status:${item.id}`)}
+              onMouseLeave={() => setHoveredRailLabel(null)}
             >
               <span style={railStatusSignalStyle(item.status)} aria-hidden="true" />
+              <span style={railStatusLabelStyle}>{item.shortLabel}</span>
+              <span style={railHoverLabelStyle(hoveredRailLabel === `status:${item.id}`, shellBackgroundMode)}>
+                {item.label}: {item.meta}
+              </span>
             </div>
           ))}
         </div>
         <button
           type="button"
-          title={
-            shellBackgroundMode === 'light'
-              ? locale === 'zh-CN'
-                ? '切换黑色界面'
-                : 'Use dark interface'
-              : locale === 'zh-CN'
-                ? '切换白色界面'
-                : 'Use light interface'
-          }
           aria-label={
             shellBackgroundMode === 'light'
               ? locale === 'zh-CN'
@@ -3829,6 +3844,8 @@ export default function App() {
                 : 'Use light interface'
           }
           style={railNavButtonStyle(false, shellBackgroundMode)}
+          onMouseEnter={() => setHoveredRailLabel('nav:theme')}
+          onMouseLeave={() => setHoveredRailLabel(null)}
           onClick={() => setShellBackgroundMode(previous => (previous === 'light' ? 'dark' : 'light'))}
         >
           <span style={railNavButtonGlyphStyle(false, shellBackgroundMode)}>
@@ -3838,6 +3855,15 @@ export default function App() {
               strokeWidth={2}
             />
           </span>
+          <span style={railHoverLabelStyle(hoveredRailLabel === 'nav:theme', shellBackgroundMode)}>
+            {shellBackgroundMode === 'light'
+              ? locale === 'zh-CN'
+                ? '切换黑色界面'
+                : 'Use dark interface'
+              : locale === 'zh-CN'
+                ? '切换白色界面'
+                : 'Use light interface'}
+          </span>
         </button>
         {secondaryNavItems.length > 0 && (
           <nav aria-label="Settings navigation" style={railNavStyle}>
@@ -3845,12 +3871,17 @@ export default function App() {
               <button
                 key={item.id}
                 type="button"
-                title={item.title}
+                aria-label={item.title}
                 style={railNavButtonStyle(page === item.id, shellBackgroundMode)}
+                onMouseEnter={() => setHoveredRailLabel(`nav:${item.id}`)}
+                onMouseLeave={() => setHoveredRailLabel(null)}
                 onClick={() => setPage(item.id)}
               >
                 <span style={railNavButtonGlyphStyle(page === item.id, shellBackgroundMode)}>
                   <VectorIcon name={item.icon} size={19} strokeWidth={2} />
+                </span>
+                <span style={railHoverLabelStyle(hoveredRailLabel === `nav:${item.id}`, shellBackgroundMode)}>
+                  {item.title}
                 </span>
               </button>
             ))}
@@ -4213,7 +4244,7 @@ export default function App() {
               </div>
             )}
 
-            <div style={isFullBleedPackPage ? strategyPageStackStyle : pageStackStyle}>
+            <div style={isFullBleedPackPage ? strategyPageStackStyle : page === 'sessions' ? sessionsPageStackStyle : pageStackStyle}>
               {page === 'sessions' && (
                 <AgentSessionsWorkspace
                   locale={locale}
@@ -5044,6 +5075,13 @@ const strategyPageStackStyle: React.CSSProperties = {
   minHeight: 0,
 }
 
+const sessionsPageStackStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+  minHeight: 0,
+}
+
 const weclawMessageCardStyle: React.CSSProperties = {
   ...surfaceStyles.listRow,
   flexDirection: 'column',
@@ -5134,13 +5172,15 @@ function railChrome(mode: ShellBackgroundMode) {
       border: 'rgba(17, 24, 39, 0.10)',
       activeBg: '#FFFFFF',
       idleBg: 'rgba(255, 255, 255, 0.62)',
-      iconBg: '#F2F3F5',
-      iconActive: '#111827',
-      iconIdle: '#747B86',
-      statusBg: 'rgba(255, 255, 255, 0.50)',
-      statusBorder: 'rgba(17, 24, 39, 0.07)',
-      logoBg: '#05070B',
-      logoColor: '#FFFFFF',
+      iconBg: '#EEF3F8',
+      iconActive: '#142033',
+      iconIdle: '#697789',
+      labelBg: '#142033',
+      labelText: '#FFFFFF',
+      statusBg: '#FFFFFF',
+      statusBorder: 'rgba(20, 32, 51, 0.12)',
+      logoBg: 'transparent',
+      logoColor: '#142033',
       shadow: '0 8px 18px rgba(15, 23, 42, 0.10)',
     }
   }
@@ -5152,10 +5192,12 @@ function railChrome(mode: ShellBackgroundMode) {
     iconBg: 'rgba(255, 255, 255, 0.10)',
     iconActive: '#FFFFFF',
     iconIdle: '#9AA4B2',
+    labelBg: '#F8FAFC',
+    labelText: '#0B1118',
     statusBg: 'rgba(255, 255, 255, 0.07)',
     statusBorder: 'rgba(255, 255, 255, 0.09)',
-    logoBg: '#FFFFFF',
-    logoColor: '#05070B',
+    logoBg: 'transparent',
+    logoColor: '#F8FAFC',
     shadow: '0 10px 22px rgba(0, 0, 0, 0.25)',
   }
 }
@@ -5163,9 +5205,10 @@ function railChrome(mode: ShellBackgroundMode) {
 function railLogoButtonStyle(active: boolean, mode: ShellBackgroundMode): React.CSSProperties {
   const chrome = railChrome(mode)
   return {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    position: 'relative',
+    width: 46,
+    height: 46,
+    borderRadius: 13,
     border: `1px solid ${active ? chrome.activeBorder : chrome.border}`,
     background: active ? chrome.activeBg : chrome.idleBg,
     display: 'grid',
@@ -5178,11 +5221,11 @@ function railLogoButtonStyle(active: boolean, mode: ShellBackgroundMode): React.
 function railMonogramStyle(mode: ShellBackgroundMode): React.CSSProperties {
   const chrome = railChrome(mode)
   return {
-    width: 32,
-    height: 32,
+    width: 33,
+    height: 33,
     borderRadius: 10,
     background: chrome.logoBg,
-    border: `1px solid ${mode === 'light' ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.14)'}`,
+    border: 'none',
     color: chrome.logoColor,
     display: 'grid',
     placeItems: 'center',
@@ -5199,6 +5242,7 @@ const railNavStyle: React.CSSProperties = {
 function railNavButtonStyle(active: boolean, mode: ShellBackgroundMode): React.CSSProperties {
   const chrome = railChrome(mode)
   return {
+    position: 'relative',
     width: 42,
     height: 42,
     borderRadius: 10,
@@ -5241,6 +5285,35 @@ const railNavButtonLabelStyle: React.CSSProperties = {
   textOverflow: 'ellipsis',
 }
 
+function railHoverLabelStyle(visible: boolean, mode: ShellBackgroundMode): React.CSSProperties {
+  const chrome = railChrome(mode)
+  return {
+    position: 'absolute',
+    left: 50,
+    top: '50%',
+    transform: visible ? 'translate(0, -50%)' : 'translate(-4px, -50%)',
+    opacity: visible ? 1 : 0,
+    pointerEvents: 'none',
+    zIndex: 40,
+    maxWidth: 180,
+    borderRadius: 7,
+    border: `1px solid ${mode === 'light' ? 'rgba(20, 32, 51, 0.14)' : 'rgba(255, 255, 255, 0.16)'}`,
+    background: chrome.labelBg,
+    color: chrome.labelText,
+    padding: '6px 9px',
+    boxShadow: mode === 'light'
+      ? '0 12px 28px rgba(15, 23, 42, 0.16)'
+      : '0 14px 30px rgba(0, 0, 0, 0.34)',
+    fontSize: 12,
+    fontWeight: 750,
+    lineHeight: 1.2,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    transition: 'opacity 120ms ease-out, transform 120ms ease-out',
+  }
+}
+
 const railStatusStackStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -5251,12 +5324,15 @@ const railStatusStackStyle: React.CSSProperties = {
 function railStatusItemStyle(mode: ShellBackgroundMode): React.CSSProperties {
   const chrome = railChrome(mode)
   return {
-    display: 'grid',
-    placeItems: 'center',
-    width: 42,
-    minWidth: 42,
-    height: 24,
-    borderRadius: 9,
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    width: 44,
+    minWidth: 44,
+    height: 25,
+    borderRadius: 8,
     background: chrome.statusBg,
     border: `1px solid ${chrome.statusBorder}`,
   }
@@ -5276,10 +5352,11 @@ function railStatusSignalStyle(status: string): React.CSSProperties {
 }
 
 const railStatusLabelStyle: React.CSSProperties = {
-  display: 'none',
-  color: '#747B86',
-  fontSize: 10,
-  lineHeight: 1.25,
+  display: 'block',
+  color: 'inherit',
+  opacity: 0.76,
+  fontSize: 10.5,
+  lineHeight: 1,
   textAlign: 'center',
   fontWeight: 800,
 }
