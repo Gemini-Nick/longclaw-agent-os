@@ -17,7 +17,7 @@ import type {
   SignalsDashboard,
 } from '../../../../src/services/longclawControlPlane/models.js'
 import {
-  designThemeColor,
+  chartColorTokens,
   fontStacks,
   interaction,
   palette,
@@ -329,12 +329,6 @@ const BACKTEST_HISTORY_DELETED_STORAGE_KEY = 'longclaw.backtestWorkbench.history
 const BACKTEST_HISTORY_MIGRATED_STORAGE_KEY = 'longclaw.backtestWorkbench.history.migrated.v2'
 const BACKTEST_HISTORY_LIMIT = 50
 const BACKTEST_MA_PERIODS = [5, 10, 20, 60]
-const BACKTEST_MA_COLORS = [
-  tradingDeskTheme.chart.orange,
-  tradingDeskTheme.chart.line,
-  tradingDeskTheme.chart.violet,
-  tradingDeskTheme.chart.gold,
-]
 const BACKTEST_MACD_PARAMS = [12, 26, 9]
 let markerRegistered = false
 const terminalTheme = tradingDeskTheme.colors
@@ -3413,8 +3407,7 @@ function buildBatchBody(
 }
 
 function backtestMaIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
-  const lightMode = backgroundMode === 'light'
-  const colors = lightMode ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E'] : BACKTEST_MA_COLORS
+  const colors = chartColorTokens(backgroundMode).ma
   return {
     lines: BACKTEST_MA_PERIODS.map((period, index) => ({
       color: colors[index % colors.length],
@@ -3426,11 +3419,11 @@ function backtestMaIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPar
 }
 
 function backtestMacdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
-  const lightMode = backgroundMode === 'light'
-  const lineColors = lightMode ? ['#2563EB', '#C26A00'] : [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
-  const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = lightMode ? '#087443' : tradingDeskTheme.market.down
-  const flatColor = lightMode ? '#536579' : tradingDeskTheme.market.flat
+  const tokens = chartColorTokens(backgroundMode)
+  const lineColors = [tokens.macdDif, tokens.macdDea]
+  const upColor = tokens.macdHistUp
+  const downColor = tokens.macdHistDown
+  const flatColor = tokens.marketFlat
   return {
     lines: lineColors.map(color => ({ color, size: 1.5, style: 'solid', dashedValue: [2, 2] })),
     bars: [
@@ -3443,25 +3436,43 @@ function backtestMacdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepP
   }
 }
 
+function backtestVolumeIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const tokens = chartColorTokens(backgroundMode)
+  return {
+    bars: [
+      {
+        upColor: tokens.volumeUp,
+        downColor: tokens.volumeDown,
+        noChangeColor: tokens.volumeNeutral,
+      },
+    ],
+    tooltip: {
+      text: {
+        color: tokens.text,
+        size: 9,
+        family: 'IBM Plex Mono, Menlo, monospace',
+      },
+    },
+  }
+}
+
 function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
-  const lightMode = backgroundMode === 'light'
-  const chartPanel = lightMode ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
-  const panelSoft = lightMode ? '#EEF3F8' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
-  const border = lightMode ? '#D9E2EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
-  const borderStrong = lightMode ? '#B7C4D4' : designThemeColor(backgroundMode, 'border-strong', '#263244')
-  const muted = lightMode ? '#536579' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
-  const text = lightMode ? '#243247' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
-  const crosshair = lightMode ? '#334155' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
-  const gridHorizontal = lightMode ? 'rgba(83, 101, 121, 0.18)' : tradingDeskTheme.chart.gridHorizontal
-  const gridVertical = lightMode ? 'rgba(83, 101, 121, 0.11)' : tradingDeskTheme.chart.gridVertical
-  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.98)' : 'rgba(15, 22, 32, 0.94)'
-  const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = lightMode ? '#087443' : tradingDeskTheme.market.down
-  const flatColor = lightMode ? '#536579' : tradingDeskTheme.market.flat
-  const lineColor = lightMode ? '#2563EB' : tradingDeskTheme.chart.line
-  const maColors = lightMode
-    ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E']
-    : BACKTEST_MA_COLORS
+  const tokens = chartColorTokens(backgroundMode)
+  const chartPanel = tokens.chartPanel
+  const panelSoft = tokens.panelSoft
+  const border = tokens.chartBorder
+  const borderStrong = tokens.axisStrong
+  const muted = tokens.axis
+  const text = tokens.text
+  const crosshair = tokens.crosshair
+  const gridHorizontal = tokens.gridMajor
+  const gridVertical = tokens.gridMinor
+  const tooltipBackground = tokens.tooltipBg
+  const upColor = tokens.marketUp
+  const downColor = tokens.marketDown
+  const flatColor = tokens.marketFlat
+  const lineColor = tokens.macdDif
+  const maColors = tokens.ma
   return {
     grid: {
       horizontal: { color: gridHorizontal },
@@ -4319,8 +4330,7 @@ export function BacktestWorkbench({
       styles: backgroundMode === 'light' ? 'light' : 'dark',
     })
     if (!chart) return
-    chartContainerRef.current.style.backgroundColor =
-      backgroundMode === 'light' ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+    chartContainerRef.current.style.backgroundColor = chartColorTokens(backgroundMode).chartPanel
     chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setBarSpace(7)
@@ -4330,7 +4340,11 @@ export function BacktestWorkbench({
       true,
       { id: 'candle_pane' },
     )
-    chart.createIndicator('VOL', false, { id: 'volume_pane', minHeight: 58, height: 74 })
+    chart.createIndicator(
+      { name: 'VOL', styles: backtestVolumeIndicatorStyles(backgroundMode) },
+      false,
+      { id: 'volume_pane', minHeight: 58, height: 74 },
+    )
     chart.createIndicator(
       { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles(backgroundMode) },
       false,
@@ -4626,6 +4640,7 @@ export function BacktestWorkbench({
               terminal={batchResult?.terminal}
               selectedCode={selectedBatchCode}
               selectedSignalType={selectedBatchSignalType}
+              backgroundMode={backgroundMode}
               onSelectCode={drillIntoBatchSymbol}
               onSelectSignalType={selectBatchSignalType}
             />
@@ -5097,7 +5112,7 @@ function BatchResearchDrilldownPanel({
             <div style={mutedStyle}>
               {zh ? '成交均利' : 'Avg trade'} {formatPercent(bestSignal.avg_trade_return_pct)} · T+10 {formatPercent(bestSignal.avg_t10_pct)}
             </div>
-            <div style={{ ...mutedStyle, marginTop: 4, color: bestSignalActive ? terminalTheme.accentSoft : terminalTheme.mutedStrong }}>
+            <div style={{ ...mutedStyle, marginTop: 4, color: bestSignalActive ? terminalTheme.accentText : terminalTheme.mutedStrong }}>
               {bestSignalActive
                 ? (zh ? '已同步到中间信号族详情' : 'Synced to signal detail')
                 : (zh ? '点击同步到信号族详情' : 'Click to sync signal detail')}
@@ -5587,6 +5602,7 @@ export function MultiBacktestReport({
   terminal,
   selectedCode,
   selectedSignalType,
+  backgroundMode = 'dark',
   onSelectCode,
   onSelectSignalType,
 }: {
@@ -5594,6 +5610,7 @@ export function MultiBacktestReport({
   terminal?: BacktestTerminal
   selectedCode?: string | null
   selectedSignalType?: string | null
+  backgroundMode?: ShellBackgroundMode
   onSelectCode: (code: string) => void
   onSelectSignalType: (signalType: string | null) => void
 }) {
@@ -5766,6 +5783,7 @@ export function MultiBacktestReport({
           initialFocus={expandedKline.focus}
           datePresets={terminal.chart?.date_presets}
           density={density}
+          backgroundMode={backgroundMode}
           onClose={() => setExpandedKline(null)}
         />
       ) : null}
@@ -6762,8 +6780,7 @@ function ExpandedKlineChart({
       styles: backgroundMode === 'light' ? 'light' : 'dark',
     })
     if (!chart) return
-    containerRef.current.style.backgroundColor =
-      backgroundMode === 'light' ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+    containerRef.current.style.backgroundColor = chartColorTokens(backgroundMode).chartPanel
     chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setZoomEnabled(true)
@@ -6775,7 +6792,11 @@ function ExpandedKlineChart({
       true,
       { id: 'candle_pane' },
     )
-    chart.createIndicator('VOL', false, { id: 'volume_pane', minHeight: 82, height: 96 })
+    chart.createIndicator(
+      { name: 'VOL', styles: backtestVolumeIndicatorStyles(backgroundMode) },
+      false,
+      { id: 'volume_pane', minHeight: 82, height: 96 },
+    )
     chart.createIndicator(
       { name: 'MACD', calcParams: BACKTEST_MACD_PARAMS, styles: backtestMacdIndicatorStyles(backgroundMode) },
       false,
@@ -6990,6 +7011,7 @@ function ExpandedKlineOverlay({
   initialFocus,
   datePresets = [],
   density,
+  backgroundMode,
   presentation = 'overlay',
   onClose,
 }: {
@@ -6998,10 +7020,12 @@ function ExpandedKlineOverlay({
   initialFocus?: ExpandedKlineFocus
   datePresets?: DatePreset[]
   density: MultiReportDensity
+  backgroundMode: ShellBackgroundMode
   presentation?: 'overlay' | 'inline'
   onClose: () => void
 }) {
   const zh = locale === 'zh-CN'
+  const overlayChartTokens = chartColorTokens(backgroundMode)
   const chartRef = useRef<Chart | null>(null)
   const [overlayViewport, setOverlayViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1440 : window.innerWidth,
@@ -7245,7 +7269,7 @@ function ExpandedKlineOverlay({
               step={20}
               value={effectiveChartHeight}
               onChange={event => setChartHeight(Number(event.target.value))}
-              style={{ flex: 1, accentColor: tradingDeskTheme.chart.line }}
+              style={{ flex: 1, accentColor: overlayChartTokens.macdDif }}
               aria-label="调整放大K线高度"
             />
             <span style={monoStyle}>{effectiveChartHeight}px</span>
@@ -7253,7 +7277,7 @@ function ExpandedKlineOverlay({
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {BACKTEST_MA_PERIODS.map((period, index) => (
               <span key={period} style={statusBadgeStyle('open')}>
-                <span style={{ display: 'inline-block', width: 8, height: 8, background: BACKTEST_MA_COLORS[index % BACKTEST_MA_COLORS.length], marginRight: 5 }} />
+                <span style={{ display: 'inline-block', width: 8, height: 8, background: overlayChartTokens.ma[index % overlayChartTokens.ma.length], marginRight: 5 }} />
                 MA{period}
               </span>
             ))}

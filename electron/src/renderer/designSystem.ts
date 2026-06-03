@@ -135,6 +135,122 @@ export const palette = {
   inspectText: tradingDeskTheme.colors.inspectText,
 } as const
 
+export type ChartColorTokens = {
+  chartBg: string
+  chartPanel: string
+  panelSoft: string
+  chartBorder: string
+  gridMajor: string
+  gridMinor: string
+  axis: string
+  axisStrong: string
+  crosshair: string
+  textStrong: string
+  text: string
+  textMuted: string
+  textFaint: string
+  marketUp: string
+  marketDown: string
+  marketFlat: string
+  volumeUp: string
+  volumeDown: string
+  volumeNeutral: string
+  ma: readonly string[]
+  macdDif: string
+  macdDea: string
+  macdHistUp: string
+  macdHistDown: string
+  macdZero: string
+  semanticSuccess: string
+  semanticDanger: string
+  semanticWarning: string
+  semanticInfo: string
+  tooltipBg: string
+  signalCalloutBg: string
+  signalCalloutSelectedBg: string
+  signalCalloutText: string
+  signalCalloutMuted: string
+}
+
+const chartColorTokenMap = {
+  dark: {
+    chartBg: '#101720',
+    chartPanel: '#111923',
+    panelSoft: '#202838',
+    chartBorder: '#2A3444',
+    gridMajor: 'rgba(122, 138, 160, 0.18)',
+    gridMinor: 'rgba(122, 138, 160, 0.11)',
+    axis: '#93A1B5',
+    axisStrong: '#B8C3D2',
+    crosshair: '#7A8AA0',
+    textStrong: '#F4F7FB',
+    text: '#D9E2EC',
+    textMuted: '#A5B1C2',
+    textFaint: '#7E8DA3',
+    marketUp: '#FF4D5E',
+    marketDown: '#22B8A8',
+    marketFlat: '#7F8A99',
+    volumeUp: '#A94A55',
+    volumeDown: '#2D8F86',
+    volumeNeutral: '#687487',
+    ma: ['#F59E0B', '#3B82F6', '#A78BFA', '#22D3EE', '#94A3B8', '#F97316'],
+    macdDif: '#60A5FA',
+    macdDea: '#F59E0B',
+    macdHistUp: '#FF4D5E',
+    macdHistDown: '#22B8A8',
+    macdZero: '#6B7280',
+    semanticSuccess: '#34D399',
+    semanticDanger: '#FB7185',
+    semanticWarning: '#FBBF24',
+    semanticInfo: '#60A5FA',
+    tooltipBg: 'rgba(15, 22, 32, 0.95)',
+    signalCalloutBg: 'rgba(15, 23, 42, 0.94)',
+    signalCalloutSelectedBg: 'rgba(15, 23, 42, 0.98)',
+    signalCalloutText: '#F4F7FB',
+    signalCalloutMuted: '#A5B1C2',
+  },
+  light: {
+    chartBg: '#F8FAFC',
+    chartPanel: '#FFFFFF',
+    panelSoft: '#E8EEF5',
+    chartBorder: '#CBD5E1',
+    gridMajor: 'rgba(100, 116, 139, 0.18)',
+    gridMinor: 'rgba(100, 116, 139, 0.10)',
+    axis: '#64748B',
+    axisStrong: '#334155',
+    crosshair: '#475569',
+    textStrong: '#0F172A',
+    text: '#27364A',
+    textMuted: '#526276',
+    textFaint: '#6B7A90',
+    marketUp: '#D92D20',
+    marketDown: '#087443',
+    marketFlat: '#64748B',
+    volumeUp: '#E07A84',
+    volumeDown: '#42A89B',
+    volumeNeutral: '#8290A3',
+    ma: ['#B45309', '#2563EB', '#9333EA', '#0891B2', '#64748B', '#C2410C'],
+    macdDif: '#1D4ED8',
+    macdDea: '#B45309',
+    macdHistUp: '#D92D20',
+    macdHistDown: '#087443',
+    macdZero: '#94A3B8',
+    semanticSuccess: '#047857',
+    semanticDanger: '#DC2626',
+    semanticWarning: '#B45309',
+    semanticInfo: '#2563EB',
+    tooltipBg: 'rgba(255, 255, 255, 0.98)',
+    signalCalloutBg: 'rgba(255, 255, 255, 0.96)',
+    signalCalloutSelectedBg: 'rgba(248, 250, 252, 0.98)',
+    signalCalloutText: '#0F172A',
+    signalCalloutMuted: '#526276',
+  },
+} as const satisfies Record<'light' | 'dark', ChartColorTokens>
+
+export function chartColorTokens(mode: 'light' | 'dark'): ChartColorTokens {
+  return chartColorTokenMap[mode]
+}
+
 export function designThemeVariables(mode: 'light' | 'dark'): ThemeVariableMap {
   if (mode === 'light') {
     return {

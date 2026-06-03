@@ -16,6 +16,7 @@ import {
 
 import type { SignalsDashboard } from '../../../../src/services/longclawControlPlane/models.js'
 import {
+  chartColorTokens,
   designThemeColor,
   fontStacks,
   interaction,
@@ -437,6 +438,7 @@ type SignalOverlayData = {
   details?: string
   items?: SignalCalloutItem[]
   itemCount?: number
+  backgroundMode?: ShellBackgroundMode
 }
 
 export type SignalChartCallout = SignalOverlayData & {
@@ -516,16 +518,7 @@ const MAX_CHART_LEVEL_OVERLAYS = 4
 const MAX_EVIDENCE_SIGNAL_ROWS = 6
 const CHART_SIGNAL_LOOKBACK_BARS = 140
 const SIGNAL_CALLOUT_BAR_WINDOW = 3
-const MA_COLORS = [
-  tradingDeskTheme.chart.orange,
-  tradingDeskTheme.chart.line,
-  tradingDeskTheme.chart.violet,
-  tradingDeskTheme.market.down,
-  tradingDeskTheme.chart.gold,
-  tradingDeskTheme.colors.textStrong,
-]
 const KEY_MA_PERIODS = [5, 8, 10, 13, 20, 21]
-const MACD_LINE_COLORS = [tradingDeskTheme.chart.line, tradingDeskTheme.chart.orange]
 
 let signalOverlayRegistered = false
 let volumeSignalOverlayRegistered = false
@@ -2041,31 +2034,33 @@ const decisionPathStyle: React.CSSProperties = {
   minWidth: 0,
 }
 
+function decisionGateColor(status: DecisionGateStatus): string {
+  if (status === 'passed') return palette.success
+  if (status === 'blocked') return palette.error
+  if (status === 'waiting') return palette.warning
+  return terminalTheme.borderStrong
+}
+
+function decisionGateSurface(status: DecisionGateStatus): string {
+  if (status === 'passed') return 'rgba(52, 211, 153, 0.12)'
+  if (status === 'blocked') return 'rgba(251, 113, 133, 0.12)'
+  if (status === 'waiting') return 'rgba(251, 191, 36, 0.12)'
+  return terminalTheme.panelSoft
+}
+
 function decisionPathStepStyle(status: DecisionGateStatus): React.CSSProperties {
-  const color = status === 'passed'
-    ? tradingDeskTheme.market.up
-    : status === 'blocked'
-      ? tradingDeskTheme.market.down
-      : status === 'waiting'
-        ? tradingDeskTheme.colors.auroraGold
-        : terminalTheme.borderStrong
+  const color = decisionGateColor(status)
   return {
     border: `1px solid ${color}`,
     borderRadius: 4,
-    background: status === 'context' ? terminalTheme.panelSoft : `${color}18`,
+    background: decisionGateSurface(status),
     padding: '4px 5px',
     minWidth: 0,
   }
 }
 
 function decisionGateDotStyle(status: DecisionGateStatus): React.CSSProperties {
-  const color = status === 'passed'
-    ? tradingDeskTheme.market.up
-    : status === 'blocked'
-      ? tradingDeskTheme.market.down
-      : status === 'waiting'
-        ? tradingDeskTheme.colors.auroraGold
-        : terminalTheme.muted
+  const color = decisionGateColor(status)
   return {
     width: 7,
     height: 7,
@@ -3753,24 +3748,22 @@ async function fetchJson<T>(
 }
 
 function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
-  const lightMode = backgroundMode === 'light'
-  const chartPanel = lightMode ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
-  const panelSoft = lightMode ? '#EEF3F8' : designThemeColor(backgroundMode, 'panel-soft', '#121B27')
-  const border = lightMode ? '#D9E2EC' : designThemeColor(backgroundMode, 'border', '#222D3B')
-  const borderStrong = lightMode ? '#B7C4D4' : designThemeColor(backgroundMode, 'border-strong', '#263244')
-  const muted = lightMode ? '#536579' : designThemeColor(backgroundMode, 'muted', '#7F8EA3')
-  const text = lightMode ? '#243247' : designThemeColor(backgroundMode, 'text', '#D7DEE8')
-  const crosshair = lightMode ? '#334155' : designThemeColor(backgroundMode, 'crosshair', '#2A2E39')
-  const gridHorizontal = lightMode ? 'rgba(83, 101, 121, 0.18)' : tradingDeskTheme.chart.gridHorizontal
-  const gridVertical = lightMode ? 'rgba(83, 101, 121, 0.11)' : tradingDeskTheme.chart.gridVertical
-  const tooltipBackground = lightMode ? 'rgba(255, 255, 255, 0.98)' : 'rgba(15, 22, 32, 0.94)'
-  const upColor = lightMode ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = lightMode ? '#087443' : tradingDeskTheme.market.down
-  const flatColor = lightMode ? '#536579' : tradingDeskTheme.market.flat
-  const lineColor = lightMode ? '#2563EB' : tradingDeskTheme.chart.line
-  const maColors = lightMode
-    ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E', '#6B7280', '#1D4ED8']
-    : MA_COLORS
+  const tokens = chartColorTokens(backgroundMode)
+  const chartPanel = tokens.chartPanel
+  const panelSoft = tokens.panelSoft
+  const border = tokens.chartBorder
+  const borderStrong = tokens.axisStrong
+  const muted = tokens.axis
+  const text = tokens.text
+  const crosshair = tokens.crosshair
+  const gridHorizontal = tokens.gridMajor
+  const gridVertical = tokens.gridMinor
+  const tooltipBackground = tokens.tooltipBg
+  const upColor = tokens.marketUp
+  const downColor = tokens.marketDown
+  const flatColor = tokens.marketFlat
+  const lineColor = tokens.macdDif
+  const maColors = tokens.ma
   return {
     grid: {
       horizontal: { color: gridHorizontal },
@@ -3864,9 +3857,7 @@ export function maPeriodsForChart(freq?: string, targetKind?: string): number[] 
 }
 
 function maIndicatorStyles(periods: number[], backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
-  const colors = backgroundMode === 'light'
-    ? ['#C26A00', '#2563EB', '#A333C8', '#0F766E', '#6B7280', '#1D4ED8']
-    : MA_COLORS
+  const colors = chartColorTokens(backgroundMode).ma
   return {
     lines: periods.map((period, index) => ({
       ...solidLineStyle(colors[index % colors.length], period >= 100 ? 1 : 1.2),
@@ -3875,10 +3866,11 @@ function maIndicatorStyles(periods: number[], backgroundMode: ShellBackgroundMod
 }
 
 function macdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
-  const lineColors = backgroundMode === 'light' ? ['#2563EB', '#C26A00'] : MACD_LINE_COLORS
-  const upColor = backgroundMode === 'light' ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = backgroundMode === 'light' ? '#087443' : tradingDeskTheme.market.down
-  const flatColor = backgroundMode === 'light' ? '#536579' : tradingDeskTheme.market.flat
+  const tokens = chartColorTokens(backgroundMode)
+  const lineColors = [tokens.macdDif, tokens.macdDea]
+  const upColor = tokens.macdHistUp
+  const downColor = tokens.macdHistDown
+  const flatColor = tokens.marketFlat
   return {
     lines: lineColors.map(color => solidLineStyle(color, 1.2)),
     bars: [
@@ -3892,9 +3884,10 @@ function macdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<I
 }
 
 function volumeIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
-  const upColor = backgroundMode === 'light' ? '#D92D20' : tradingDeskTheme.market.up
-  const downColor = backgroundMode === 'light' ? '#087443' : tradingDeskTheme.market.down
-  const flatColor = backgroundMode === 'light' ? '#536579' : tradingDeskTheme.market.flat
+  const tokens = chartColorTokens(backgroundMode)
+  const upColor = tokens.volumeUp
+  const downColor = tokens.volumeDown
+  const flatColor = tokens.volumeNeutral
   return {
     bars: [
       {
@@ -3905,7 +3898,7 @@ function volumeIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial
     ],
     tooltip: {
       text: {
-        color: terminalTheme.text,
+        color: tokens.text,
         size: 9,
         family: 'IBM Plex Mono, Menlo, monospace',
       },
@@ -3929,11 +3922,12 @@ function ensureVolumeIndicator() {
   volumeIndicatorRegistered = true
 }
 
-function macdZeroIndicatorStyles(): DeepPartial<IndicatorStyle> {
+function macdZeroIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const tokens = chartColorTokens(backgroundMode)
   return {
     lines: [
       {
-        color: tradingDeskTheme.alpha.textBorderStrong,
+        color: tokens.macdZero,
         size: 1,
         style: 'dashed',
         dashedValue: [4, 4],
@@ -4012,7 +4006,7 @@ function createChartIndicators(
   chart.createIndicator(
     {
       name: MACD_ZERO_INDICATOR_NAME,
-      styles: macdZeroIndicatorStyles(),
+      styles: macdZeroIndicatorStyles(backgroundMode),
     },
     true,
     { id: MACD_PANE_ID },
@@ -4036,7 +4030,9 @@ function ensureSignalOverlay() {
       const calloutId = compactText(data.calloutId)
       const selected = Boolean(data.selected)
       const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
-      const color = data.color || signalOverlayColor(side)
+      const backgroundMode: ShellBackgroundMode = data.backgroundMode === 'light' ? 'light' : 'dark'
+      const tokens = chartColorTokens(backgroundMode)
+      const color = data.color || signalOverlayColor(side, backgroundMode)
       const rawItems = Array.isArray(data.items) ? data.items : []
       const items = rawItems.length > 0
         ? rawItems.map(item => {
@@ -4045,7 +4041,7 @@ function ensureSignalOverlay() {
           return {
             label: compactText(record.label, label),
             side: itemSide,
-            color: compactText(record.color, signalOverlayColor(itemSide)),
+            color: compactText(record.color, signalOverlayColor(itemSide, backgroundMode)),
             freq: compactText(record.freq),
             scope: compactText(record.scope),
             sourceLabel: compactText(record.sourceLabel),
@@ -4082,10 +4078,12 @@ function ensureSignalOverlay() {
       const rectY = clamp(placeBelow ? bottomRailY : topRailY, 28, chartHeight - height - 2)
       const connectorX = clamp(point.x, rectX + 8, rectX + width - 8)
       const connectorY = point.y < rectY ? rectY : rectY + height
-      const fillColor = selected ? 'rgba(15, 23, 42, 0.98)' : 'rgba(15, 23, 42, 0.94)'
+      const fillColor = selected ? tokens.signalCalloutSelectedBg : tokens.signalCalloutBg
       const headerFillColor = selected
-        ? `${color}30`
-        : data.isCustom ? 'rgba(56, 189, 248, 0.18)' : 'rgba(37, 99, 235, 0.18)'
+        ? `${color}26`
+        : data.isCustom
+          ? (backgroundMode === 'light' ? 'rgba(8, 145, 178, 0.12)' : 'rgba(56, 189, 248, 0.18)')
+          : (backgroundMode === 'light' ? 'rgba(37, 99, 235, 0.10)' : 'rgba(37, 99, 235, 0.18)')
       const borderSize = selected ? 2 : 1
 
       const figures = [
@@ -4156,7 +4154,7 @@ function ensureSignalOverlay() {
             baseline: 'middle',
           },
           styles: {
-            color: terminalTheme.textStrong,
+            color: tokens.signalCalloutText,
             size: 10,
             weight: 800,
             family: 'IBM Plex Mono, Menlo, monospace',
@@ -4177,7 +4175,7 @@ function ensureSignalOverlay() {
               baseline: 'middle',
             },
             styles: {
-              color: terminalTheme.textMuted,
+              color: tokens.signalCalloutMuted,
               size: 9,
               weight: 720,
               family: 'IBM Plex Mono, Menlo, monospace',
@@ -4187,7 +4185,7 @@ function ensureSignalOverlay() {
       }
 
       items.slice(0, 4).forEach((item, index) => {
-        const itemColor = item.color || signalOverlayColor(item.side)
+        const itemColor = item.color || signalOverlayColor(item.side, backgroundMode)
         figures.push({
           type: 'rect',
           attrs: {
@@ -4216,7 +4214,7 @@ function ensureSignalOverlay() {
             baseline: 'middle',
           },
           styles: {
-            color: terminalTheme.textMuted,
+                color: tokens.signalCalloutMuted,
             size: 9,
             weight: 720,
             family: 'IBM Plex Mono, Menlo, monospace',
@@ -4246,13 +4244,15 @@ function ensureVolumeSignalOverlay() {
       const data = recordValue(overlay.extendData) as SignalOverlayData
       const label = data.label || '量能'
       const side = data.side === 'sell' ? 'sell' : data.side === 'buy' ? 'buy' : 'neutral'
-      const color = data.color || signalOverlayColor(side)
+      const backgroundMode: ShellBackgroundMode = data.backgroundMode === 'light' ? 'light' : 'dark'
+      const tokens = chartColorTokens(backgroundMode)
+      const color = data.color || signalOverlayColor(side, backgroundMode)
       const width = Math.max(34, Math.min(58, label.length * 8 + 16))
       const height = 16
       const gap = 5
       const rectX = Math.max(2, Math.min(point.x - width / 2, bounding.width - width - 2))
       const rectY = Math.max(2, point.y - gap - height)
-      const fillColor = 'rgba(15, 23, 42, 0.9)'
+      const fillColor = tokens.signalCalloutBg
 
       return [
         {
@@ -4287,7 +4287,7 @@ function ensureVolumeSignalOverlay() {
             baseline: 'middle',
           },
           styles: {
-            color: terminalTheme.textStrong,
+            color: tokens.signalCalloutText,
             size: 9,
             weight: 800,
             family: 'IBM Plex Mono, Menlo, monospace',
@@ -5059,10 +5059,11 @@ function signalOverlaySide(value?: string): SignalOverlayData['side'] {
   return 'neutral'
 }
 
-function signalOverlayColor(side: SignalOverlayData['side']): string {
-  if (side === 'sell') return tradingDeskTheme.market.down
-  if (side === 'buy') return tradingDeskTheme.chart.orange
-  return tradingDeskTheme.alpha.infoBorder
+function signalOverlayColor(side: SignalOverlayData['side'], backgroundMode: ShellBackgroundMode = 'dark'): string {
+  const tokens = chartColorTokens(backgroundMode)
+  if (side === 'sell') return tokens.semanticDanger
+  if (side === 'buy') return tokens.semanticWarning
+  return tokens.semanticInfo
 }
 
 function isVolumeSignal(signal: StrategySignal): boolean {
@@ -5186,14 +5187,15 @@ export function displaySignalsForChart(data: KLineData[], signals: StrategySigna
     .map(item => item.signal)
 }
 
-function signalCalloutItem(signal: StrategySignal, currentFreq?: string): SignalCalloutItem {
+function signalCalloutItem(signal: StrategySignal, currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark'): SignalCalloutItem {
   const side = signalSideForOverlay(signal)
+  const tokens = chartColorTokens(backgroundMode)
   const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
   const sourceLabel = [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · ')
   return {
     label: signalOverlayLabel(signal),
     side,
-    color: isCustomUserSignal(signal) ? (side === 'sell' ? '#fb7185' : '#38bdf8') : signalOverlayColor(side),
+    color: isCustomUserSignal(signal) ? (side === 'sell' ? tokens.semanticDanger : tokens.semanticInfo) : signalOverlayColor(side, backgroundMode),
     freq: compactScopeLabel(signal, currentFreq),
     scope: scopeLabel,
     sourceLabel,
@@ -5295,7 +5297,7 @@ function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): Sig
   })
 }
 
-export function signalEvidenceCalloutsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): SignalChartCallout[] {
+export function signalEvidenceCalloutsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark'): SignalChartCallout[] {
   if (data.length === 0 || signals.length === 0) return []
   const candidates = displaySignalsForChart(data, signals, currentFreq)
     .map(signal => {
@@ -5315,7 +5317,7 @@ export function signalEvidenceCalloutsForChart(data: KLineData[], signals: Strat
         barIndex,
         priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
         custom: isCustomUserSignal(signal),
-        item: signalCalloutItem(signal, currentFreq),
+        item: signalCalloutItem(signal, currentFreq, backgroundMode),
       } satisfies SignalCalloutCandidate
     })
     .filter((item): item is SignalCalloutCandidate => item !== null)
@@ -5381,6 +5383,7 @@ function createSignalOverlays(
   callouts: SignalChartCallout[],
   selectedCalloutId?: string,
   onSelectCallout?: (calloutId: string) => void,
+  backgroundMode: ShellBackgroundMode = 'dark',
 ) {
   chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
   callouts.forEach(callout => {
@@ -5392,6 +5395,7 @@ function createSignalOverlays(
       extendData: {
         ...callout,
         selected: Boolean(callout.calloutId && callout.calloutId === selectedCalloutId),
+        backgroundMode,
       } satisfies SignalOverlayData,
       onClick: (event: OverlayEvent) => {
         const id = compactText(recordValue(event.overlay.extendData).calloutId)
@@ -5402,7 +5406,7 @@ function createSignalOverlays(
   })
 }
 
-function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string) {
+function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark') {
   chart.removeOverlay({ groupId: VOLUME_SIGNAL_OVERLAY_GROUP })
   const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
   displayVolumeSignalsForChart(data, signals, currentFreq).forEach(signal => {
@@ -5421,10 +5425,11 @@ function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: St
         extendData: {
           label,
           side,
-          color: signalOverlayColor(side),
+          color: signalOverlayColor(side, backgroundMode),
           freq: displayFreqLabel(signal.freq),
           sourceLabel: signalSourceLabel(signal),
           details: signal.details,
+          backgroundMode,
         } satisfies SignalOverlayData,
       },
       VOLUME_PANE_ID,
@@ -5432,8 +5437,9 @@ function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: St
   })
 }
 
-function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: StrategyKeyLevel[]) {
+function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: StrategyKeyLevel[], backgroundMode: ShellBackgroundMode = 'dark') {
   chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
+  const tokens = chartColorTokens(backgroundMode)
   const timestamp = data[data.length - 1]?.timestamp
   if (!timestamp) return
   const close = latestClose(data)
@@ -5467,10 +5473,10 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
       points: [{ timestamp, value }],
       extendData: [level.name, value.toFixed(2)].filter(Boolean).join(' '),
       styles: {
-        line: { color: tradingDeskTheme.alpha.infoBorder, size: 1, style: 'dashed', dashedValue: [4, 5] },
+        line: { color: tokens.semanticInfo, size: 1, style: 'dashed', dashedValue: [4, 5] },
         text: {
           color: terminalTheme.white,
-          backgroundColor: tradingDeskTheme.alpha.infoBorder,
+          backgroundColor: tokens.semanticInfo,
           size: 9,
         },
       },
@@ -5478,11 +5484,12 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
   })
 }
 
-function createDivergenceOverlays(chart: Chart, divergences: MacdDivergenceSignal[]) {
+function createDivergenceOverlays(chart: Chart, divergences: MacdDivergenceSignal[], backgroundMode: ShellBackgroundMode = 'dark') {
   chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
+  const tokens = chartColorTokens(backgroundMode)
   divergences.slice(-MAX_CHART_DIVERGENCE_OVERLAYS).forEach(signal => {
     const bearish = signal.type === 'bearish'
-    const color = bearish ? tradingDeskTheme.market.up : tradingDeskTheme.market.down
+    const color = bearish ? tokens.semanticDanger : tokens.semanticSuccess
     const label = bearish ? '顶背离' : '底背离'
     const side = bearish ? 'top' : 'bottom'
     chart.createOverlay(
@@ -7120,6 +7127,7 @@ export function StrategyChartTerminal({
   const symbolDataCacheRef = useRef<Map<string, SymbolDataCacheEntry>>(new Map())
   const prefetchSymbolKeysRef = useRef<Set<string>>(new Set())
   const autoCollapsedForFocusRef = useRef(false)
+  const activeChartTokens = chartColorTokens(backgroundMode)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
   const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
   const [symbolData, setSymbolData] = useState<WorkbenchSymbolData | null>(null)
@@ -7184,8 +7192,8 @@ export function StrategyChartTerminal({
     [baseChartSignals, currentFreq, klineData, maAcceptance],
   )
   const chartCallouts = useMemo(
-    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq)),
-    [chartSignals, currentFreq, klineData],
+    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq, backgroundMode)),
+    [backgroundMode, chartSignals, currentFreq, klineData],
   )
   const selectedChartCallout = useMemo(
     () => chartCallouts.find(callout => callout.calloutId === selectedChartCalloutId) ?? chartCallouts[0] ?? null,
@@ -8003,8 +8011,7 @@ export function StrategyChartTerminal({
       styles: backgroundMode === 'light' ? 'light' : 'dark',
     })
     if (!chart) return
-    chartContainerRef.current.style.backgroundColor =
-      backgroundMode === 'light' ? '#FBFCFF' : designThemeColor(backgroundMode, 'chart-panel', '#131722')
+    chartContainerRef.current.style.backgroundColor = chartColorTokens(backgroundMode).chartPanel
     chart.setStyles(chartStyles(backgroundMode))
     chartRef.current = chart
     chart.setBarSpace(chartBarSpaceForMode(layoutMode))
@@ -8071,15 +8078,15 @@ export function StrategyChartTerminal({
       return
     }
     chart.applyNewData(chartDisplayData)
-    createSignalOverlays(chart, chartCallouts, selectedChartCallout?.calloutId, selectChartCallout)
-    createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq)
-    createLevelOverlays(chart, chartDisplayData, chartKeyLevels)
-    createDivergenceOverlays(chart, divergences)
+    createSignalOverlays(chart, chartCallouts, selectedChartCallout?.calloutId, selectChartCallout, backgroundMode)
+    createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq, backgroundMode)
+    createLevelOverlays(chart, chartDisplayData, chartKeyLevels, backgroundMode)
+    createDivergenceOverlays(chart, divergences, backgroundMode)
     if (!lastChartUpdateSilentRef.current) {
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences, selectChartCallout, selectedChartCallout?.calloutId])
+  }, [backgroundMode, chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences, selectChartCallout, selectedChartCallout?.calloutId])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
@@ -8807,26 +8814,26 @@ export function StrategyChartTerminal({
               <div style={indicatorLegendStyle}>
                 {activeMaPeriods.map((period, index) => (
                   <span key={`ma-${period}`} style={indicatorLegendItemStyle}>
-                    <span style={{ ...indicatorLegendSwatchStyle, background: MA_COLORS[index % MA_COLORS.length] }} />
+                    <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.ma[index % activeChartTokens.ma.length] }} />
                     {chartMeta.is_price_kline === false ? `热度MA${period}` : `MA${period}`}
                   </span>
                 ))}
                 <span style={indicatorLegendItemStyle}>
-                  <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up }} />
+                  <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.volumeUp }} />
                   {chartMeta.is_price_kline === false ? '热度量能' : 'VOL(万手)'}
                 </span>
-                {MACD_LINE_COLORS.map((color, index) => (
+                {[activeChartTokens.macdDif, activeChartTokens.macdDea].map((color, index) => (
                   <span key={`macd-${index}`} style={indicatorLegendItemStyle}>
                     <span style={{ ...indicatorLegendSwatchStyle, background: color }} />
                     {chartMeta.is_price_kline === false ? (index === 0 ? '热动DIF' : '热动DEA') : (index === 0 ? 'DIF' : 'DEA')}
                   </span>
                 ))}
                 <span style={indicatorLegendItemStyle}>
-                  <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.alpha.textBorderStrong }} />
+                  <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.macdZero }} />
                   {chartMeta.is_price_kline === false ? '热度动量0' : 'MACD 0'}
                 </span>
                 <span style={indicatorLegendItemStyle}>
-                  <span style={{ ...indicatorLegendSwatchStyle, background: tradingDeskTheme.market.up }} />
+                  <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.semanticDanger }} />
                   {locale === 'zh-CN' ? `背离 ${divergences.length}` : `Divergence ${divergences.length}`}
                 </span>
               </div>

@@ -36,7 +36,7 @@ import {
 } from './designSystem.js'
 import { type LongclawLocale, humanizeTokenLocale, localizeSystemText, t, tf } from './i18n.js'
 import { createShellLayout, getViewportTier, type ShellBackgroundMode } from './layout.js'
-import { LongclawBrandMark, VectorIcon, type VectorIconName } from './vectorIcons.js'
+import { VectorIcon, type VectorIconName } from './vectorIcons.js'
 import {
   ActionButtons,
   QueueRow,
@@ -3766,7 +3766,7 @@ export default function App() {
             onClick={() => setPage('sessions')}
           >
             <span style={railMonogramStyle(shellBackgroundMode)}>
-              <LongclawBrandMark size={31} />
+              <VectorIcon name="longclaw" size={22} strokeWidth={2.1} />
             </span>
             <span style={railHoverLabelStyle(hoveredRailLabel === 'brand:sessions', shellBackgroundMode)}>
               {t(locale, 'nav.sessions')}
@@ -5179,8 +5179,8 @@ function railChrome(mode: ShellBackgroundMode) {
       labelText: '#FFFFFF',
       statusBg: '#FFFFFF',
       statusBorder: 'rgba(20, 32, 51, 0.12)',
-      logoBg: 'transparent',
-      logoColor: '#142033',
+      logoBg: '#05070B',
+      logoColor: '#FFFFFF',
       shadow: '0 8px 18px rgba(15, 23, 42, 0.10)',
     }
   }
@@ -5196,8 +5196,8 @@ function railChrome(mode: ShellBackgroundMode) {
     labelText: '#0B1118',
     statusBg: 'rgba(255, 255, 255, 0.07)',
     statusBorder: 'rgba(255, 255, 255, 0.09)',
-    logoBg: 'transparent',
-    logoColor: '#F8FAFC',
+    logoBg: '#05070B',
+    logoColor: '#FFFFFF',
     shadow: '0 10px 22px rgba(0, 0, 0, 0.25)',
   }
 }
@@ -5225,7 +5225,7 @@ function railMonogramStyle(mode: ShellBackgroundMode): React.CSSProperties {
     height: 33,
     borderRadius: 10,
     background: chrome.logoBg,
-    border: 'none',
+    border: `1px solid ${mode === 'light' ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.10)'}`,
     color: chrome.logoColor,
     display: 'grid',
     placeItems: 'center',
