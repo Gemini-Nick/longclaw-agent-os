@@ -4,9 +4,10 @@ import fs from 'fs'
 import os from 'os'
 import http from 'http'
 import net from 'net'
-import { execFileSync } from 'child_process'
+import { execFile, execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { fileURLToPath } from 'url'
+import PptxGenJS from 'pptxgenjs'
 import { createBackend, AgentBackend, AgentMode } from './agent-backend.js'
 import { inspectConfiguredAcpBridge } from './acp-client.js'
 import {
@@ -853,6 +854,10 @@ const CAPABILITY_MANAGER_SETTINGS_PATH = path.join(
 )
 const CAPABILITY_REGISTRY_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'capability-registry.json')
 const MODEL_SERVICE_SETTINGS_PATH = path.join(LONGCLAW_RUNTIME_DIR, 'model-service.json')
+const EMPLOYEE_DEFINITIONS_DIR = path.join(LONGCLAW_RUNTIME_DIR, 'employees')
+const EMPLOYEE_SUPPORT_SKILLS_DIR = path.join(LONGCLAW_RUNTIME_DIR, 'skills')
+const DUE_DILIGENCE_RPA_RUNS_DIR = path.join(LONGCLAW_RUNTIME_DIR, 'rpa-runs')
+const PPT_TOOL_RUNS_DIR = path.join(LONGCLAW_RUNTIME_DIR, 'ppt-tool-runs')
 const WECLAW_SESSION_UI_STATE_PATH = path.join(
   LONGCLAW_RUNTIME_DIR,
   'weclaw-session-state.json',
@@ -1669,6 +1674,869 @@ async function probeTcpOpen(url: string | undefined, timeoutMs = 700): Promise<b
   })
 }
 
+function execFileText(
+  file: string,
+  args: string[],
+  options: { cwd?: string; timeout?: number; maxBuffer?: number } = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      file,
+      args,
+      {
+        cwd: options.cwd,
+        timeout: options.timeout ?? 300_000,
+        maxBuffer: options.maxBuffer ?? 8 * 1024 * 1024,
+        encoding: 'utf-8',
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(Object.assign(error, { stdout, stderr }))
+          return
+        }
+        resolve({ stdout, stderr })
+      },
+    )
+  })
+}
+
+function resolveDueDiligenceRepoRoot(): string | null {
+  const candidates = [
+    process.env.LONGCLAW_DUE_DILIGENCE_REPO,
+    path.join(os.homedir(), 'github代码仓库', 'due-diligence-core'),
+    path.resolve(REPO_ROOT, '..', 'due-diligence-core'),
+    path.resolve(currentCwd, 'due-diligence-core'),
+    path.resolve(currentCwd, '..', 'due-diligence-core'),
+  ].filter((candidate): candidate is string => Boolean(candidate))
+  return (
+    candidates.find(candidate =>
+      fs.existsSync(path.join(candidate, 'scripts', 'python.sh')) &&
+      fs.existsSync(path.join(candidate, 'src', 'due_diligence_core', 'cli.py')),
+    ) ?? null
+  )
+}
+
+function parseJsonFromCommandOutput(stdout: string): Record<string, unknown> | null {
+  const trimmed = stdout.trim()
+  if (!trimmed) return null
+  try {
+    const parsed = JSON.parse(trimmed)
+    return isPlainRecord(parsed) ? parsed : null
+  } catch {
+    const start = trimmed.indexOf('{')
+    const end = trimmed.lastIndexOf('}')
+    if (start < 0 || end <= start) return null
+    try {
+      const parsed = JSON.parse(trimmed.slice(start, end + 1))
+      return isPlainRecord(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+}
+
+function tailText(value: unknown, limit = 2400): string {
+  const text = String(value ?? '')
+  return text.length > limit ? text.slice(-limit) : text
+}
+
+function nestedRecord(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key]
+  return isPlainRecord(value) ? value : {}
+}
+
+function nestedString(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+async function runDueDiligenceRpaDemo(payload: Record<string, unknown>) {
+  const repoRoot = resolveDueDiligenceRepoRoot()
+  const query =
+    readString(payload.query) ??
+    readString(payload.company) ??
+    readString(payload.issuer_name) ??
+    '国泰君安'
+  const siteSlug = readString(payload.site_slug) ?? readString(payload.siteSlug) ?? 'process49_www_baidu_com'
+  const headed = payload.headed === undefined ? true : Boolean(payload.headed)
+  const allowHeadedFallback =
+    payload.allow_headed_fallback === undefined ? headed : Boolean(payload.allow_headed_fallback)
+  const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${siteSlug}`
+  const outputRoot = path.join(DUE_DILIGENCE_RPA_RUNS_DIR, runId)
+  const args = [
+    path.join('scripts', 'python.sh'),
+    '-m',
+    'due_diligence_core.cli',
+    'validate-site',
+    siteSlug,
+    query,
+    '--output-dir',
+    outputRoot,
+    headed ? '--headed' : '--headless',
+    '--browser-backend',
+    readString(payload.browser_backend) ?? 'playwright',
+    '--http-backend',
+    readString(payload.http_backend) ?? 'auto',
+  ]
+  if (!allowHeadedFallback) args.push('--no-headed-fallback')
+  if (readString(payload.credit_code)) args.push('--credit-code', readString(payload.credit_code)!)
+
+  fs.mkdirSync(outputRoot, { recursive: true })
+
+  if (!repoRoot) {
+    return {
+      ok: false,
+      kind: 'run_due_diligence_rpa_demo',
+      message: 'due-diligence-core repo not found',
+      query,
+      site_slug: siteSlug,
+      output_root: outputRoot,
+    }
+  }
+
+  const command = ['bash', ...args].join(' ')
+  try {
+    const { stdout, stderr } = await execFileText('/bin/bash', args, {
+      cwd: repoRoot,
+      timeout: Number(payload.timeout_ms) || 300_000,
+      maxBuffer: 12 * 1024 * 1024,
+    })
+    const report = parseJsonFromCommandOutput(stdout) ?? {}
+    const site = nestedRecord(report, 'site')
+    const executionResult = nestedRecord(report, 'execution_result')
+    const evidence = nestedRecord(executionResult, 'evidence')
+    return {
+      ok: true,
+      kind: 'run_due_diligence_rpa_demo',
+      message: 'due diligence browser RPA completed',
+      run_id: runId,
+      query,
+      site_slug: siteSlug,
+      site_name: nestedString(site, 'display_name') || siteSlug,
+      validation_state: nestedString(report, 'validation_state'),
+      current_automation_status: nestedString(report, 'current_automation_status'),
+      phenomenon_status: nestedString(report, 'phenomenon_status'),
+      risk_rating: nestedString(report, 'risk_rating'),
+      next_action: nestedString(report, 'next_action'),
+      execution_status: nestedString(executionResult, 'status'),
+      execution_summary: nestedString(executionResult, 'summary'),
+      report_path: nestedString(report, 'report_path'),
+      shadow_compare_path: nestedString(report, 'shadow_compare_path'),
+      evidence_root: nestedString(evidence, 'root_dir'),
+      output_root: outputRoot,
+      repo_root: repoRoot,
+      command,
+      stdout_tail: tailText(stdout, 1200),
+      stderr_tail: tailText(stderr, 1200),
+    }
+  } catch (error) {
+    const record = error as Error & { stdout?: string; stderr?: string; code?: string | number | null }
+    return {
+      ok: false,
+      kind: 'run_due_diligence_rpa_demo',
+      message: record.message || 'due diligence browser RPA failed',
+      code: record.code ?? null,
+      query,
+      site_slug: siteSlug,
+      output_root: outputRoot,
+      repo_root: repoRoot,
+      command,
+      stdout_tail: tailText(record.stdout, 2400),
+      stderr_tail: tailText(record.stderr, 2400),
+    }
+  }
+}
+
+function resolveWorkspacePythonExecutable(): string {
+  const bundled = path.join(
+    os.homedir(),
+    '.cache',
+    'codex-runtimes',
+    'codex-primary-runtime',
+    'dependencies',
+    'python',
+    'bin',
+    'python3',
+  )
+  const candidates = [
+    process.env.LONGCLAW_WORKSPACE_PYTHON,
+    process.env.PYTHON_BIN,
+    bundled,
+    '/usr/bin/python3',
+  ].filter((candidate): candidate is string => Boolean(candidate))
+  return candidates.find(candidate => fs.existsSync(candidate)) ?? 'python3'
+}
+
+function safeFileSegment(value: string): string {
+  const cleaned = value
+    .trim()
+    .replace(/[\\/:*?"<>|\s]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return (cleaned || 'deck').slice(0, 48)
+}
+
+function pptxArtifactForRun(
+  runId: string,
+  title: string,
+  outputPath: string,
+  backend: string,
+  slideCount: number,
+  sizeBytes: number,
+  outputRoot: string,
+) {
+  const artifactTitle = `${title}.pptx`
+  const artifact = {
+    artifact_id: `${runId}:pptx`,
+    run_id: runId,
+    kind: 'pptx',
+    uri: outputPath,
+    title: artifactTitle,
+    metadata: {
+      backend,
+      slide_count: slideCount,
+      size_bytes: sizeBytes,
+      output_root: outputRoot,
+    },
+  }
+  return {
+    artifact,
+    artifact_ref: {
+      kind: 'pptx',
+      uri: outputPath,
+      title: artifactTitle,
+    },
+  }
+}
+
+function splitPromptLinesForSlides(text: string): string[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.replace(/^\s*[-*#\d.、]+\s*/, '').trim())
+    .filter(Boolean)
+  if (lines.length > 0) return lines
+  return text
+    .split(/[。；;.!?！？]+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function buildDraftSlidePlan(title: string, prompt: string): Array<{ title: string; bullets: string[] }> {
+  const lines = splitPromptLinesForSlides(prompt)
+  const fallback = ['任务理解', '结构规划', '视觉建议', '下一步完善']
+  const content = lines.length ? lines : fallback
+  return [
+    {
+      title: title || 'Longclaw PPT Draft',
+      bullets: ['PPTXGenJS draft', new Date().toISOString().slice(0, 10)],
+    },
+    { title: '任务理解', bullets: content.slice(0, 3) },
+    { title: '内容结构', bullets: content.slice(3, 7).length ? content.slice(3, 7) : ['封面', '核心论点', '数据与证据', '行动建议'] },
+    { title: '视觉与图表', bullets: content.slice(7, 11).length ? content.slice(7, 11) : ['统一版式', '可复核图表', '来源脚注'] },
+    { title: '待完善项', bullets: content.slice(11, 15).length ? content.slice(11, 15) : ['补充真实数据', '替换模板母版', '渲染和视觉 QA'] },
+  ].slice(0, 8)
+}
+
+async function runPptxgenjsDraft(payload: Record<string, unknown>) {
+  const prompt = readString(payload.prompt) ?? readString(payload.message) ?? ''
+  const title =
+    readString(payload.title) ??
+    prompt.match(/[“"']([^“"']{2,48})[”"']/)?.[1] ??
+    prompt
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(Boolean)
+      ?.slice(0, 48) ??
+    'Longclaw PPT Draft'
+  const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${safeFileSegment(title)}`
+  const outputRoot = path.join(PPT_TOOL_RUNS_DIR, runId)
+  const outputPath = path.join(outputRoot, `${safeFileSegment(title)}.pptx`)
+  fs.mkdirSync(outputRoot, { recursive: true })
+  const slidePlan = buildDraftSlidePlan(title, prompt)
+
+  try {
+    const pptx = new PptxGenJS()
+    pptx.layout = 'LAYOUT_WIDE'
+    pptx.author = 'Longclaw Agent OS'
+    pptx.company = 'Longclaw'
+    pptx.subject = 'PPTXGenJS quick draft'
+    pptx.title = title
+    pptx.lang = 'zh-CN'
+    pptx.theme = {
+      headFontFace: 'Microsoft YaHei',
+      bodyFontFace: 'Microsoft YaHei',
+      lang: 'zh-CN',
+    }
+    for (const [index, planned] of slidePlan.entries()) {
+      const slide = pptx.addSlide()
+      slide.background = { color: index === 0 ? '111827' : 'F8FAFC' }
+      const titleColor = index === 0 ? 'FFFFFF' : '111827'
+      const bodyColor = index === 0 ? 'E5E7EB' : '374151'
+      slide.addText(planned.title, {
+        x: 0.7,
+        y: index === 0 ? 1.35 : 0.5,
+        w: 11.9,
+        h: 0.7,
+        fontFace: 'Microsoft YaHei',
+        fontSize: index === 0 ? 34 : 28,
+        bold: true,
+        color: titleColor,
+        margin: 0.04,
+        fit: 'shrink',
+      })
+      const bulletText = planned.bullets.map(item => `• ${item}`).join('\n')
+      slide.addText(bulletText || '• Draft slide', {
+        x: index === 0 ? 0.9 : 1.0,
+        y: index === 0 ? 2.35 : 1.55,
+        w: index === 0 ? 11.0 : 10.9,
+        h: 4.3,
+        fontFace: 'Microsoft YaHei',
+        fontSize: index === 0 ? 19 : 20,
+        color: bodyColor,
+        breakLine: false,
+        valign: 'top',
+        fit: 'shrink',
+        margin: 0.06,
+      })
+      slide.addText('Generated by Longclaw pptxgenjs tool', {
+        x: 0.7,
+        y: 6.85,
+        w: 11.9,
+        h: 0.25,
+        fontSize: 8,
+        color: index === 0 ? '9CA3AF' : '6B7280',
+        margin: 0.02,
+      })
+    }
+    await pptx.writeFile({ fileName: outputPath })
+    const size = fs.existsSync(outputPath) ? fs.statSync(outputPath).size : 0
+    const artifactBundle = pptxArtifactForRun(
+      runId,
+      title,
+      outputPath,
+      'pptxgenjs',
+      slidePlan.length,
+      size,
+      outputRoot,
+    )
+    return {
+      ok: size > 0,
+      kind: 'run_pptx_draft',
+      message: size > 0 ? 'PPTXGenJS draft generated' : 'PPTXGenJS draft failed',
+      run_id: runId,
+      title,
+      output_path: outputPath,
+      output_root: outputRoot,
+      backend: 'pptxgenjs',
+      slide_count: slidePlan.length,
+      size_bytes: size,
+      artifacts: size > 0 ? [artifactBundle.artifact] : [],
+      artifact_refs: size > 0 ? [artifactBundle.artifact_ref] : [],
+    }
+  } catch (error) {
+    const fallback = await runPythonPptxDraft({ ...payload, title, prompt })
+    return {
+      ...fallback,
+      kind: 'run_pptx_draft',
+      preferred_backend: 'pptxgenjs',
+      backend: fallback.backend ? `fallback:${fallback.backend}` : 'fallback:python',
+      message: `PPTXGenJS failed; ${fallback.message}`,
+      pptxgenjs_error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+async function resolveSignalsWebBaseUrl(): Promise<string | null> {
+  const configured = process.env.LONGCLAW_SIGNALS_WEB_BASE_URL?.replace(/\/$/, '')
+  const candidates = [
+    configured,
+    `http://127.0.0.1:${process.env.LONGCLAW_SIGNALS_WEB_PORT ?? '8011'}`,
+  ].filter((candidate): candidate is string => Boolean(candidate))
+  for (const baseUrl of candidates) {
+    try {
+      await fetchJsonWithTimeout(`${baseUrl}/api/pack/dashboard?recent_limit=5&backlog_limit=5`, 8_000)
+      return baseUrl
+    } catch {
+      // Try the next configured endpoint.
+    }
+  }
+  return null
+}
+
+function compactRecordList(value: unknown, limit: number): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => (isPlainRecord(item) ? item : {}))
+    .filter(item => Object.keys(item).length > 0)
+    .slice(0, limit)
+}
+
+function compactSignalsDashboard(dashboard: Record<string, unknown>) {
+  const cacheStatus = nestedRecord(dashboard, 'cache_status')
+  const dailyBrief = nestedRecord(dashboard, 'daily_brief')
+  return {
+    status: nestedString(dashboard, 'status'),
+    notice: nestedString(dashboard, 'notice'),
+    daily_brief: {
+      as_of: nestedString(dailyBrief, 'as_of') || nestedString(dailyBrief, 'as_of_date'),
+      title: nestedString(dailyBrief, 'title') || nestedString(dailyBrief, 'headline'),
+      summary: nestedString(dailyBrief, 'summary'),
+      market_line: nestedString(dailyBrief, 'market_line') || nestedString(dailyBrief, 'market_bias'),
+      primary_theme: nestedString(dailyBrief, 'primary_theme'),
+      top_candidate: nestedString(dailyBrief, 'top_candidate'),
+      next_actions: Array.isArray(dailyBrief.next_actions)
+        ? dailyBrief.next_actions.slice(0, 5)
+        : Array.isArray(dailyBrief.bullets)
+          ? dailyBrief.bullets.slice(0, 5)
+          : [],
+      risk_notes: Array.isArray(dailyBrief.risk_notes) ? dailyBrief.risk_notes.slice(0, 5) : [],
+    },
+    overview: nestedRecord(dashboard, 'overview'),
+    buy_candidates: compactRecordList(dashboard.buy_candidates, 6).map(item => ({
+      symbol: item.symbol,
+      name: item.name ?? item.display_name,
+      score: item.score,
+      direction: item.direction,
+      reason: item.reason,
+      status: item.status,
+      decision_stage: item.decision_stage,
+      recommended_action: item.recommended_action,
+      metadata: nestedRecord(item, 'metadata'),
+    })),
+    sell_warnings: compactRecordList(dashboard.sell_warnings, 4).map(item => ({
+      symbol: item.symbol,
+      name: item.name ?? item.display_name,
+      score: item.score,
+      reason: item.reason,
+      status: item.status,
+      recommended_action: item.recommended_action,
+    })),
+    chart_context: dashboard.chart_context ?? null,
+    backtest_summary: nestedRecord(dashboard, 'backtest_summary'),
+    backtest_jobs: compactRecordList(dashboard.backtest_jobs, 4),
+    pending_backlog_preview: compactRecordList(dashboard.pending_backlog_preview, 6),
+    strategy_kpis: compactRecordList(dashboard.strategy_kpis, 8),
+    source_confidence: compactRecordList(dashboard.source_confidence, 6),
+    cache_status: {
+      available: Boolean(cacheStatus.available),
+      mode: nestedString(cacheStatus, 'mode'),
+      updated_at: nestedString(cacheStatus, 'updated_at'),
+      trade_date: nestedString(cacheStatus, 'trade_date'),
+      recovery_state: nestedString(cacheStatus, 'recovery_state'),
+      critical_blocker: cacheStatus.critical_blocker ?? null,
+      mongo_stock_cache: cacheStatus.mongo_stock_cache ?? {},
+      provider_health: compactRecordList(cacheStatus.provider_health, 6),
+      blockers: compactRecordList(cacheStatus.blockers, 6),
+    },
+    diagnostics: compactRecordList(dashboard.diagnostics, 6),
+  }
+}
+
+function extractSignalsSymbol(text: string): string {
+  const futu = /\b(?:SH|SZ|HK|US)\.[A-Za-z0-9]{4,8}\b/i.exec(text)
+  if (futu?.[0]) return futu[0].toUpperCase()
+  const cn = /\b[036][0-9]{5}\b/.exec(text)
+  if (cn?.[0]) {
+    return cn[0].startsWith('6') || cn[0].startsWith('5') ? `SH.${cn[0]}` : `SZ.${cn[0]}`
+  }
+  const hk = /\b[0-9]{5}\b/.exec(text)
+  if (hk?.[0]) return `HK.${hk[0]}`
+  return ''
+}
+
+function signalsBacktestCode(symbol: string): string {
+  if (!symbol) return ''
+  const parts = symbol.split('.')
+  return parts.at(-1) ?? symbol
+}
+
+async function runSignalsResearchTool(payload: Record<string, unknown>) {
+  const query = readString(payload.query) ?? readString(payload.message) ?? ''
+  const symbol = readString(payload.symbol) ?? extractSignalsSymbol(query)
+  const freq = readString(payload.freq) ?? (/30m|30min|30分钟/.test(query) ? '30min' : 'daily')
+  const baseUrl = await resolveSignalsWebBaseUrl()
+  if (!baseUrl) {
+    return {
+      ok: false,
+      kind: 'run_signals_research',
+      message: 'Signals web endpoint is unavailable',
+      query,
+      symbol,
+      expected_base_url: process.env.LONGCLAW_SIGNALS_WEB_BASE_URL ?? 'http://127.0.0.1:8011',
+    }
+  }
+  const errors: Record<string, string> = {}
+  let dashboard: Record<string, unknown> | null = null
+  let shell: Record<string, unknown> | null = null
+  let symbolPayload: Record<string, unknown> | null = null
+  let resolvePayload: Record<string, unknown> | null = null
+  let backtestPayload: Record<string, unknown> | null = null
+  try {
+    const value = await fetchJsonWithTimeout(`${baseUrl}/api/pack/dashboard?recent_limit=10&backlog_limit=8`, 25_000)
+    dashboard = isPlainRecord(value) ? value : null
+  } catch (error) {
+    errors.dashboard = error instanceof Error ? error.message : String(error)
+  }
+  try {
+    const value = await fetchJsonWithTimeout(`${baseUrl}/api/workbench/shell`, 25_000)
+    shell = isPlainRecord(value) ? value : null
+  } catch (error) {
+    errors.shell = error instanceof Error ? error.message : String(error)
+  }
+  if (symbol) {
+    try {
+      const codeForResolve = signalsBacktestCode(symbol)
+      const value = await fetchJsonWithTimeout(
+        `${baseUrl}/api/stock/resolve/${encodeURIComponent(codeForResolve || symbol)}`,
+        12_000,
+      )
+      resolvePayload = isPlainRecord(value) ? value : null
+    } catch (error) {
+      errors.resolve = error instanceof Error ? error.message : String(error)
+    }
+    try {
+      const value = await fetchJsonWithTimeout(
+        `${baseUrl}/api/workbench/symbol/${encodeURIComponent(symbol)}?kind=stock&freq=${encodeURIComponent(freq)}`,
+        30_000,
+      )
+      symbolPayload = isPlainRecord(value) ? value : null
+    } catch (error) {
+      errors.symbol = error instanceof Error ? error.message : String(error)
+    }
+    if (/回测|backtest|胜率|收益|信号/.test(query)) {
+      try {
+        const params = new URLSearchParams({
+          code: signalsBacktestCode(symbol),
+          freq: freq === 'weekly' || freq === 'monthly' ? freq : 'daily',
+          signal_group: 'all',
+          lookback: readString(payload.lookback) ?? '120',
+          stop_loss: readString(payload.stop_loss) ?? '5',
+          trail_stop: readString(payload.trail_stop) ?? '50',
+          max_hold: readString(payload.max_hold) ?? '20',
+          slippage: readString(payload.slippage) ?? '0.1',
+        })
+        const value = await fetchJsonWithTimeout(
+          `${baseUrl}/api/backtest/analyze?${params.toString()}`,
+          45_000,
+        )
+        backtestPayload = isPlainRecord(value) ? value : null
+      } catch (error) {
+        errors.backtest = error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+
+  return {
+    ok: Boolean(dashboard || shell || symbolPayload || backtestPayload),
+    kind: 'run_signals_research',
+    message: 'Signals tool result',
+    query,
+    symbol,
+    freq,
+    base_url: baseUrl,
+    resolve: resolvePayload,
+    dashboard: dashboard ? compactSignalsDashboard(dashboard) : null,
+    workbench_shell: shell
+      ? {
+          updated_at: shell.updated_at ?? shell.generated_at ?? '',
+          trade_date: shell.trade_date ?? '',
+          lanes: shell.lanes ?? null,
+          quote_watermark: shell.quote_watermark ?? '',
+          cache: shell.cache ?? null,
+          selected: shell.selected ?? null,
+          watchlist_groups: Array.isArray(shell.watchlist_groups) ? shell.watchlist_groups.slice(0, 4) : [],
+        }
+      : null,
+    symbol_payload: symbolPayload
+      ? {
+          target: symbolPayload.target ?? null,
+          summary: symbolPayload.summary ?? symbolPayload.report ?? null,
+          chart_context: symbolPayload.chart_context ?? null,
+          signals: Array.isArray(symbolPayload.signals) ? symbolPayload.signals.slice(-10) : [],
+          backtest: symbolPayload.backtest ?? null,
+        }
+      : null,
+    backtest: backtestPayload
+      ? {
+          target: backtestPayload.target ?? backtestPayload.meta ?? null,
+          kpi: backtestPayload.kpi ?? backtestPayload.summary ?? backtestPayload.metrics ?? null,
+          signals: Array.isArray(backtestPayload.signals)
+            ? backtestPayload.signals.slice(-10)
+            : Array.isArray(backtestPayload.signal_evals)
+              ? backtestPayload.signal_evals.slice(-10)
+              : [],
+          trades: Array.isArray(backtestPayload.trades) ? backtestPayload.trades.slice(-10) : [],
+          terminal: backtestPayload.terminal ?? null,
+        }
+      : null,
+    errors,
+  }
+}
+
+const PYTHON_PPTX_DRAFT_SCRIPT = String.raw`
+from __future__ import annotations
+
+import datetime
+import html
+import json
+import os
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+
+def split_lines(text: str) -> list[str]:
+    lines = []
+    for raw in re.split(r"[\r\n]+", text or ""):
+        item = re.sub(r"^\s*[-*#\d.、]+\s*", "", raw).strip()
+        if item:
+            lines.append(item)
+    if lines:
+        return lines
+    chunks = re.split(r"[。；;.!?！？]+", text or "")
+    return [chunk.strip() for chunk in chunks if chunk.strip()]
+
+
+def build_slide_plan(title: str, prompt: str) -> list[tuple[str, list[str]]]:
+    lines = split_lines(prompt)
+    slides: list[tuple[str, list[str]]] = [
+        (title or "Longclaw PPT Draft", ["Python PPTX helper draft", datetime.date.today().isoformat()])
+    ]
+    if not lines:
+        lines = ["任务理解", "结构规划", "视觉建议", "下一步完善"]
+    buckets = [
+        ("任务理解", lines[:3]),
+        ("内容结构", lines[3:7] or ["封面", "核心论点", "数据与证据", "行动建议"]),
+        ("视觉与图表", lines[7:11] or ["保留统一版式", "优先使用可复核图表", "保留来源脚注"]),
+        ("待完善项", lines[11:15] or ["补充真实数据", "替换模板母版", "进行渲染和视觉 QA"]),
+    ]
+    slides.extend((heading, bullets[:5]) for heading, bullets in buckets)
+    return slides[:8]
+
+
+def esc(value: str) -> str:
+    return html.escape(str(value), quote=False)
+
+
+def paragraph(text: str, size: int = 2000, bold: bool = False) -> str:
+    return (
+        '<a:p><a:r><a:rPr lang="zh-CN" sz="%d"%s/><a:t>%s</a:t></a:r></a:p>'
+        % (size, ' b="1"' if bold else "", esc(text))
+    )
+
+
+def text_shape(shape_id: int, name: str, x: int, y: int, cx: int, cy: int, paragraphs: list[str], size: int, bold: bool = False) -> str:
+    body = "".join(paragraph(item, size=size, bold=bold and index == 0) for index, item in enumerate(paragraphs))
+    return f'''
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="{shape_id}" name="{esc(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>
+        <p:txBody><a:bodyPr wrap="square" rtlCol="0"/><a:lstStyle/>{body}</p:txBody>
+      </p:sp>'''
+
+
+def slide_xml(title: str, bullets: list[str]) -> str:
+    bullet_lines = [f"• {item}" for item in bullets if item]
+    return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld>
+    <p:bg><p:bgPr><a:solidFill><a:srgbClr val="F8FAFC"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>
+    <p:spTree>
+      <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
+      {text_shape(2, "Title", 548640, 457200, 8046720, 914400, [title], 3400, True)}
+      {text_shape(3, "Body", 731520, 1600200, 7680960, 3657600, bullet_lines or ["• Draft slide"], 2000)}
+      <p:sp>
+        <p:nvSpPr><p:cNvPr id="4" name="Footer"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>
+        <p:spPr><a:xfrm><a:off x="548640" y="6400800"/><a:ext cx="8046720" cy="365760"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr>
+        <p:txBody><a:bodyPr/><a:lstStyle/>{paragraph("Generated by Longclaw python-pptx-helper", 1200)}</p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+  <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>
+</p:sld>'''
+
+
+def write_zip_fallback(output_path: Path, slides: list[tuple[str, list[str]]]) -> None:
+    slide_overrides = "\n".join(
+        f'<Override PartName="/ppt/slides/slide{i}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>'
+        for i in range(1, len(slides) + 1)
+    )
+    slide_ids = "\n".join(
+        f'<p:sldId id="{255 + i}" r:id="rId{i}"/>' for i in range(1, len(slides) + 1)
+    )
+    slide_rels = "\n".join(
+        f'<Relationship Id="rId{i}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide{i}.xml"/>'
+        for i in range(1, len(slides) + 1)
+    )
+    with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>
+  <Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>
+  <Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>
+  {slide_overrides}
+</Types>''')
+        z.writestr("_rels/.rels", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
+</Relationships>''')
+        z.writestr("docProps/app.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>Longclaw Agent OS</Application><PresentationFormat>On-screen Show (16:9)</PresentationFormat><Slides>{len(slides)}</Slides></Properties>''')
+        z.writestr("docProps/core.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>{esc(slides[0][0])}</dc:title><dc:creator>Longclaw Agent OS</dc:creator><cp:lastModifiedBy>Longclaw Agent OS</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">{datetime.datetime.utcnow().isoformat()}Z</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">{datetime.datetime.utcnow().isoformat()}Z</dcterms:modified></cp:coreProperties>''')
+        z.writestr("ppt/presentation.xml", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId{len(slides)+1}"/></p:sldMasterIdLst><p:sldIdLst>{slide_ids}</p:sldIdLst><p:sldSz cx="9144000" cy="5143500" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>''')
+        z.writestr("ppt/_rels/presentation.xml.rels", f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{slide_rels}<Relationship Id="rId{len(slides)+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/></Relationships>''')
+        z.writestr("ppt/theme/theme1.xml", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Longclaw"><a:themeElements><a:clrScheme name="Longclaw"><a:dk1><a:srgbClr val="111827"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F2937"/></a:dk2><a:lt2><a:srgbClr val="F8FAFC"/></a:lt2><a:accent1><a:srgbClr val="2563EB"/></a:accent1><a:accent2><a:srgbClr val="EA580C"/></a:accent2><a:accent3><a:srgbClr val="059669"/></a:accent3><a:accent4><a:srgbClr val="7C3AED"/></a:accent4><a:accent5><a:srgbClr val="DB2777"/></a:accent5><a:accent6><a:srgbClr val="0891B2"/></a:accent6><a:hlink><a:srgbClr val="2563EB"/></a:hlink><a:folHlink><a:srgbClr val="7C3AED"/></a:folHlink></a:clrScheme><a:fontScheme name="Longclaw"><a:majorFont><a:latin typeface="Aptos Display"/><a:ea typeface="Microsoft YaHei"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/><a:ea typeface="Microsoft YaHei"/></a:minorFont></a:fontScheme><a:fmtScheme name="Longclaw"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>''')
+        z.writestr("ppt/slideMasters/slideMaster1.xml", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>''')
+        z.writestr("ppt/slideMasters/_rels/slideMaster1.xml.rels", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/></Relationships>''')
+        z.writestr("ppt/slideLayouts/slideLayout1.xml", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>''')
+        z.writestr("ppt/slideLayouts/_rels/slideLayout1.xml.rels", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>''')
+        for i, (slide_title, bullets) in enumerate(slides, start=1):
+            z.writestr(f"ppt/slides/slide{i}.xml", slide_xml(slide_title, bullets))
+            z.writestr(f"ppt/slides/_rels/slide{i}.xml.rels", '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/></Relationships>''')
+
+
+def write_with_python_pptx(output_path: Path, slides: list[tuple[str, list[str]]]) -> bool:
+    try:
+        from pptx import Presentation  # type: ignore
+        from pptx.util import Inches, Pt  # type: ignore
+    except Exception:
+        return False
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+    for index, (heading, bullets) in enumerate(slides):
+        layout = prs.slide_layouts[0] if index == 0 else prs.slide_layouts[1]
+        slide = prs.slides.add_slide(layout)
+        if slide.shapes.title:
+            slide.shapes.title.text = heading
+        if index == 0:
+            subtitle = slide.placeholders[1] if len(slide.placeholders) > 1 else None
+            if subtitle:
+                subtitle.text = "\n".join(bullets)
+        else:
+            body = slide.placeholders[1] if len(slide.placeholders) > 1 else slide.shapes.add_textbox(Inches(1), Inches(1.8), Inches(11), Inches(4.8))
+            frame = body.text_frame
+            frame.clear()
+            for item in bullets:
+                p = frame.add_paragraph()
+                p.text = item
+                p.level = 0
+                p.font.size = Pt(20)
+    prs.save(output_path)
+    return True
+
+
+def main() -> None:
+    output_path = Path(sys.argv[1])
+    title = sys.argv[2]
+    prompt = sys.argv[3]
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    slides = build_slide_plan(title, prompt)
+    backend = "python-pptx" if write_with_python_pptx(output_path, slides) else "python-openxml-zip"
+    if backend == "python-openxml-zip":
+        write_zip_fallback(output_path, slides)
+    result = {
+        "ok": output_path.exists() and output_path.stat().st_size > 0,
+        "backend": backend,
+        "output_path": str(output_path),
+        "slide_count": len(slides),
+        "title": title,
+        "size_bytes": output_path.stat().st_size if output_path.exists() else 0,
+    }
+    print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()
+`
+
+async function runPythonPptxDraft(payload: Record<string, unknown>) {
+  const prompt = readString(payload.prompt) ?? readString(payload.message) ?? ''
+  const title =
+    readString(payload.title) ??
+    prompt.match(/[“"']([^“"']{2,48})[”"']/)?.[1] ??
+    prompt
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(Boolean)
+      ?.slice(0, 48) ??
+    'Longclaw PPT Draft'
+  const runId = `${new Date().toISOString().replace(/[:.]/g, '-')}-${safeFileSegment(title)}`
+  const outputRoot = path.join(PPT_TOOL_RUNS_DIR, runId)
+  const outputPath = path.join(outputRoot, `${safeFileSegment(title)}.pptx`)
+  fs.mkdirSync(outputRoot, { recursive: true })
+  const python = resolveWorkspacePythonExecutable()
+  try {
+    const { stdout, stderr } = await execFileText(
+      python,
+      ['-c', PYTHON_PPTX_DRAFT_SCRIPT, outputPath, title, prompt],
+      {
+        timeout: Number(payload.timeout_ms) || 180_000,
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    )
+    const parsed = parseJsonFromCommandOutput(stdout) ?? {}
+    const slideCount = Number(parsed.slide_count ?? 0)
+    const sizeBytes = Number(parsed.size_bytes ?? 0)
+    const backend = nestedString(parsed, 'backend') || 'python-openxml-zip'
+    const artifactBundle = pptxArtifactForRun(
+      runId,
+      title,
+      outputPath,
+      backend,
+      slideCount,
+      sizeBytes,
+      outputRoot,
+    )
+    return {
+      ok: Boolean(parsed.ok),
+      kind: 'run_python_pptx_draft',
+      message: parsed.ok ? 'python PPTX draft generated' : 'python PPTX draft failed',
+      run_id: runId,
+      title,
+      output_path: outputPath,
+      output_root: outputRoot,
+      backend,
+      slide_count: slideCount,
+      size_bytes: sizeBytes,
+      artifacts: parsed.ok ? [artifactBundle.artifact] : [],
+      artifact_refs: parsed.ok ? [artifactBundle.artifact_ref] : [],
+      python,
+      stdout_tail: tailText(stdout, 1200),
+      stderr_tail: tailText(stderr, 1200),
+    }
+  } catch (error) {
+    const record = error as Error & { stdout?: string; stderr?: string; code?: string | number | null }
+    return {
+      ok: false,
+      kind: 'run_python_pptx_draft',
+      message: record.message || 'python PPTX draft failed',
+      code: record.code ?? null,
+      title,
+      output_path: outputPath,
+      output_root: outputRoot,
+      python,
+      stdout_tail: tailText(record.stdout, 2400),
+      stderr_tail: tailText(record.stderr, 2400),
+    }
+  }
+}
+
 async function collectRuntimeStatus(
   packs: LongclawDomainPackDescriptor[],
   overviewReady: boolean,
@@ -1745,17 +2613,132 @@ async function collectRuntimeStatus(
   }
 }
 
+function requireExistingAbsolutePath(rawPath: unknown): string {
+  const filePath = readString(rawPath)
+  if (!filePath || !path.isAbsolute(filePath)) {
+    throw new Error('absolute path is required')
+  }
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`file does not exist: ${filePath}`)
+  }
+  return filePath
+}
+
+function uniqueDownloadsPath(sourcePath: string): string {
+  const downloadsDir = app.getPath('downloads') || path.join(os.homedir(), 'Downloads')
+  fs.mkdirSync(downloadsDir, { recursive: true })
+  const parsed = path.parse(sourcePath)
+  const baseName = parsed.name || 'artifact'
+  const extension = parsed.ext || ''
+  let candidate = path.join(downloadsDir, `${baseName}${extension}`)
+  let index = 1
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(downloadsDir, `${baseName}-${index}${extension}`)
+    index += 1
+  }
+  return candidate
+}
+
+async function exportArtifactToDownloads(payload: Record<string, unknown>) {
+  const sourcePath = requireExistingAbsolutePath(payload.path ?? payload.uri)
+  const destinationPath = uniqueDownloadsPath(sourcePath)
+  fs.copyFileSync(sourcePath, destinationPath)
+  const size = fs.statSync(destinationPath).size
+  return {
+    ok: true,
+    kind: 'export_artifact_to_downloads',
+    source_path: sourcePath,
+    download_path: destinationPath,
+    size_bytes: size,
+  }
+}
+
+async function preparePptxPreview(payload: Record<string, unknown>) {
+  const sourcePath = requireExistingAbsolutePath(payload.path ?? payload.uri)
+  const previewDir = path.join(path.dirname(sourcePath), 'preview')
+  fs.mkdirSync(previewDir, { recursive: true })
+  const before = Date.now()
+  try {
+    const { stdout, stderr } = await execFileText(
+      '/usr/bin/qlmanage',
+      ['-t', '-s', String(readNumber(payload.size) ?? 960), '-o', previewDir, sourcePath],
+      {
+        timeout: readNumber(payload.timeout_ms) ?? 30_000,
+        maxBuffer: 4 * 1024 * 1024,
+      },
+    )
+    const previews = fs
+      .readdirSync(previewDir)
+      .filter(fileName => fileName.toLowerCase().endsWith('.png'))
+      .map(fileName => path.join(previewDir, fileName))
+      .filter(candidate => fs.statSync(candidate).mtimeMs >= before - 1000)
+      .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs)
+    const previewPath = previews[0]
+    if (!previewPath) {
+      return {
+        ok: false,
+        kind: 'prepare_pptx_preview',
+        message: 'QuickLook did not produce a PNG preview',
+        source_path: sourcePath,
+        preview_dir: previewDir,
+        stdout_tail: tailText(stdout, 1200),
+        stderr_tail: tailText(stderr, 1200),
+      }
+    }
+    return {
+      ok: true,
+      kind: 'prepare_pptx_preview',
+      message: 'QuickLook preview generated',
+      source_path: sourcePath,
+      preview_path: previewPath,
+      preview_dir: previewDir,
+      size_bytes: fs.statSync(previewPath).size,
+      stdout_tail: tailText(stdout, 1200),
+      stderr_tail: tailText(stderr, 1200),
+    }
+  } catch (error) {
+    const record = error as Error & { stdout?: string; stderr?: string; code?: string | number | null }
+    return {
+      ok: false,
+      kind: 'prepare_pptx_preview',
+      message: record.message || 'QuickLook preview failed',
+      code: record.code ?? null,
+      source_path: sourcePath,
+      preview_dir: previewDir,
+      stdout_tail: tailText(record.stdout, 1200),
+      stderr_tail: tailText(record.stderr, 1200),
+    }
+  }
+}
+
 async function handleLocalAction(_event: Electron.IpcMainInvokeEvent, action: { kind: string; payload?: any }) {
   const payload = action?.payload ?? {}
   switch (action?.kind) {
     case 'open_path':
       return { ok: true, kind: action.kind, result: await shell.openPath(String(payload.path || '')) }
+    case 'reveal_path': {
+      const filePath = requireExistingAbsolutePath(payload.path ?? payload.uri)
+      shell.showItemInFolder(filePath)
+      return { ok: true, kind: action.kind, path: filePath }
+    }
     case 'open_url':
       await shell.openExternal(String(payload.url || ''))
       return { ok: true, kind: action.kind }
     case 'copy_value':
       clipboard.writeText(String(payload.value || ''))
       return { ok: true, kind: action.kind }
+    case 'export_artifact_to_downloads':
+      return exportArtifactToDownloads(payload)
+    case 'prepare_pptx_preview':
+      return preparePptxPreview(payload)
+    case 'run_pptx_draft':
+      return runPptxgenjsDraft(payload)
+    case 'run_python_pptx_draft':
+      return runPythonPptxDraft(payload)
+    case 'run_due_diligence_rpa_demo':
+      return runDueDiligenceRpaDemo(payload)
+    case 'run_signals_research':
+      return runSignalsResearchTool(payload)
     default:
       throw new Error(`Unsupported local action: ${action?.kind}`)
   }
@@ -1963,6 +2946,244 @@ type ModelServiceResult = {
   settings?: ModelServiceSettingsPublic
 }
 
+type ModelServiceChatResult = {
+  ok: boolean
+  message: string
+  text?: string
+  model?: string
+  usage?: unknown
+}
+
+type EmployeeSeedDefinition = {
+  id: string
+  title: string
+  subtitle: string
+  icon: string
+  defaultModel: string
+  order: number
+  preview: string
+  skillMentions: string[]
+  instructions: string
+}
+
+type EmployeeSkillContext = {
+  name: string
+  path: string
+  description: string
+  excerpt: string
+}
+
+type EmployeeSupportSkillSeed = {
+  id: string
+  title: string
+  description: string
+  instructions: string
+}
+
+type EmployeeDefinition = EmployeeSeedDefinition & {
+  enabled: boolean
+  path: string
+  source: 'filesystem'
+  skillContexts: EmployeeSkillContext[]
+}
+
+const DEFAULT_EMPLOYEE_DEFINITIONS: EmployeeSeedDefinition[] = [
+  {
+    id: 'ppt-designer',
+    title: 'PPT设计专员',
+    subtitle: 'PPTX、汇报页与路演 deck',
+    icon: 'document',
+    defaultModel: 'deepseek',
+    order: 5,
+    preview: '生成可编辑 PPTX、汇报页、路演 deck，支持模板继承、渲染预览和视觉 QA。',
+    skillMentions: ['presentations', 'ppt-master', 'pptxgenjs', 'python-pptx'],
+    instructions:
+      '你是 PPT设计专员。收到 PPT 或 deck 任务时，先判断任务模式、backend profile 和 deck profile；如果是从提示创建方案，先输出“已读完 Presentations 技能说明，下面按完整专业流程来设计这套方案。”，再给 Claim Spine、Contact Sheet、设计系统、逐页方案、质量检查。需要实际产出文件时，优先走 Presentations artifact-tool 的可编辑 PPTX、渲染预览和视觉 QA；用户显式要求 ppt-master 时，走 ppt-master SVG 到 DrawingML 的本地流水线；需要快速生成可打开的本地 PPTX 草稿时，默认调用 pptxgenjs 工具；需要数据处理、图表图片或兜底生成时，再调用 python-pptx 辅助 skill。不要把快速草稿夸大为最终高质量交付。',
+  },
+  {
+    id: 'web-assistant',
+    title: '网页助手',
+    subtitle: '检索、登录、下载与网页整理',
+    icon: 'link',
+    defaultModel: 'deepseek',
+    order: 10,
+    preview: '上网检索、页面信息提取、资料下载和浏览器 RPA 执行。',
+    skillMentions: ['browser', 'playwright', 'browser-rpa'],
+    instructions:
+      '你是网页助手。优先完成网页检索、页面阅读、资料下载、链接整理和来源核验。执行类网页任务要连接到执行功能：执行本质是一个可控浏览器，浏览器负责跑 RPA。用户提出尽调、RPA、浏览器执行或模拟流程时，优先触发本机 due-diligence 成熟流程，并基于真实运行结果总结，不要编造网页内容。',
+  },
+  {
+    id: 'data-analyst',
+    title: '数据分析师',
+    subtitle: '表格清洗、统计分析与可视化',
+    icon: 'data',
+    defaultModel: 'deepseek',
+    order: 20,
+    preview: '连接本地文件、表格和数据库，产出可复核的数据结论。',
+    skillMentions: ['spreadsheets', 'python'],
+    instructions:
+      '你是数据分析师。优先完成数据清洗、统计口径说明、可视化建议和结果复核。回答时先给结论，再列数据口径、异常值和可复现步骤。',
+  },
+  {
+    id: 'sales-assistant',
+    title: '销售助手',
+    subtitle: '客户跟进、材料整理与行动计划',
+    icon: 'chat',
+    defaultModel: 'deepseek',
+    order: 30,
+    preview: '整理客户背景、跟进邮件、会议纪要和下一步销售动作。',
+    skillMentions: ['sales'],
+    instructions:
+      '你是销售助手。优先整理客户背景、会议纪要、跟进话术、采购风险和下一步行动。输出要克制、具体、可直接执行。',
+  },
+  {
+    id: 'research-assistant',
+    title: '投研助手',
+    subtitle: '市场线索、产业链与策略复盘',
+    icon: 'strategy',
+    defaultModel: 'deepseek',
+    order: 40,
+    preview: '围绕市场主线、产业链、公司线索和策略复盘做结构化研究。',
+    skillMentions: ['signals-research', 'signals', 'daloopa'],
+    instructions:
+      '你是投研助手。核心能力绑定 Signals 系统的识别信号、策略复盘、回测能力和本地数据库上下文；优先通过 Signals Pack/API/MCP 边界读取本机真实上下文，再结合产业链和公司研究做结构化输出。避免直接买卖指令，明确证据、风险、回测口径和待验证信号。',
+  },
+  {
+    id: 'document-specialist',
+    title: '文档与版式专员',
+    subtitle: 'PPT、文档结构与版式方案',
+    icon: 'document',
+    defaultModel: 'deepseek',
+    order: 50,
+    preview: '生成 PPT 大纲、文档结构、页面叙事和版式建议。',
+    skillMentions: ['presentations', 'documents'],
+    instructions:
+      '你是文档与版式专员。优先完成 PPT 大纲、页面叙事、版式建议、图表建议和演讲备注。输出要按页组织，便于直接交给制作工具。',
+  },
+]
+
+const DEFAULT_EMPLOYEE_SUPPORT_SKILLS: EmployeeSupportSkillSeed[] = [
+  {
+    id: 'pptxgenjs',
+    title: 'PPTXGenJS 快速草稿生成',
+    description: '用 Electron 内置 Node 依赖生成可打开、可编辑的 PPTX 快速草稿，是 Agent OS 本地 PPT tool 的默认轻量后端。',
+    instructions: `# PPTXGenJS 快速草稿生成
+
+该 skill 是 PPT设计专员的默认本地 tool backend，用来快速生成可打开的 PPTX 草稿。它不替代 Presentations artifact-tool 的最终高质量 deck 流水线。
+
+## 适用场景
+
+- 用户明确要求“生成文件”“做一份 PPTX”“先出草稿”。
+- 需要在 Electron Agent OS 内稳定打包、离线生成基础 PPTX。
+- 需要输出可打开的占位页、结构页、会议初稿，供后续 Presentations/ppt-master 精修。
+
+## 不适用场景
+
+- 高保真模板继承、复杂设计系统、视觉 QA 后的最终交付。
+- 需要严肃 finance/IR deck 的精确来源脚注、复杂图表和渲染预览闭环。
+- 用户显式要求 ppt-master 或 Presentations artifact-tool 时。
+
+## 打包原则
+
+- Node runtime 随 Electron 一起存在，只需要把 pptxgenjs 作为 app 依赖打包。
+- 不把 Python 作为硬依赖塞进第一版 Agent；Python 只作为可选 sidecar/fallback。
+- 回答时标注 backend profile：pptxgenjs-draft，并说明它是快速草稿。
+`,
+  },
+  {
+    id: 'python-pptx',
+    title: 'Python PPTX 辅助生成',
+    description: '用 Python 生成快速 PPTX 草稿、数据图表页、图片式页面和批量占位页，作为 Presentations/ppt-master 的辅助流水线。',
+    instructions: `# Python PPTX 辅助生成
+
+该 skill 是 PPT设计专员的辅助 backend profile，不是高质量商务 deck 的默认最终产线。
+
+## 适用场景
+
+- 快速生成可打开的 PPTX 草稿、批量占位页、会议初稿。
+- 用 Python 数据处理生成图表图片，再嵌入 PPTX。
+- 将已有图片、截图、SVG/PNG 预览组合成图片式 PPT。
+- 在 artifact-tool 或 ppt-master 不适合时，作为临时 fallback 或中间产物。
+
+## 不适用场景
+
+- 高保真模板跟随、复杂版式、精细可编辑图形、最终交付级视觉 QA。
+- 用户要求“高质量可编辑 deck”时，默认仍应使用 Presentations artifact-tool。
+- 用户显式要求 ppt-master 时，走 SVG 到 DrawingML 的本地流水线。
+
+## 推荐实现
+
+- 使用 Codex workspace dependencies 提供的 Python 运行时和库，不依赖系统 Python。
+- 优先使用 python-pptx 创建基础 PPTX；用 matplotlib/Pillow 生成数据图或页面图片。
+- 输出前检查：PPTX 存在、非空、页数符合预期；必要时渲染/截图抽检。
+- 回答时明确标注 backend profile：python-pptx-helper 或 python-image-deck。
+
+## 路由关系
+
+- presentations-artifact-tool：默认高质量可编辑 PPTX。
+- ppt-master-svg-drawingml：显式要求 ppt-master 或 SVG 到 DrawingML。
+- python-pptx-helper：快速草稿、数据图、批量页、图片式 deck 辅助。
+`,
+  },
+  {
+    id: 'browser-rpa',
+    title: '浏览器 RPA 执行',
+    description: '把网页助手连接到执行页浏览器能力，优先复用 due-diligence-core 的成熟 Playwright 尽调流程。',
+    instructions: `# 浏览器 RPA 执行
+
+该 skill 绑定给网页助手，用来把“网页理解/检索”升级为“浏览器执行/RPA”。
+
+## 运行模型
+
+- 执行本质是一个可控浏览器。
+- 浏览器负责点击、输入、等待、截图、下载和证据留存。
+- 网页助手负责理解目标、选择流程、总结真实运行结果。
+
+## 默认成熟流程
+
+- 默认复用本机仓库：/Users/zhangqilong/github代码仓库/due-diligence-core
+- 默认命令：bash scripts/python.sh -m due_diligence_core.cli validate-site process49_www_baidu_com "国泰君安"
+- 输出会写入 ~/.longclaw/runtime-v2/rpa-runs/<run-id>
+- 结果以 validation_state、current_automation_status、report_path、shadow_compare_path、evidence_root 为准。
+
+## 触发规则
+
+- 用户提到“尽调”“RPA”“浏览器执行”“模拟流程”“跑通流程”时，优先触发本地 RPA action。
+- 如果用户只要求资料整理或链接核验，可以只走 browser/playwright 阅读流程。
+- 不要声称已经访问网页或生成证据，除非本地 action 返回了真实路径或报告。
+
+## 输出要求
+
+- 先给运行结论，再给站点、查询词、状态、证据路径和下一步。
+- 失败时要给命令、错误摘要和可复现输出目录。
+- 需要完整交付 zip 时，再升级到 due-diligence-core 的 desktop-server simulation。
+	`,
+  },
+  {
+    id: 'signals-research',
+    title: 'Signals 投研工具',
+    description: '把投研助手绑定到 Signals Pack/API、信号识别、策略复盘、回测和本地数据库上下文。',
+    instructions: `# Signals 投研工具
+
+该 skill 绑定给投研助手，用来读取本机 Signals 系统中的真实市场上下文。优先走 Signals Web/Pack API；只有本地 MCP 服务可用且权限明确时，才通过 MCP 读取数据库。
+
+## 默认读取边界
+
+- /api/pack/dashboard：市场线、主线、候选池、风险提示和 cache/provider 状态。
+- /api/workbench/shell：交易台 shell、watchlist 分组、行情水位和策略摘要。
+- /api/workbench/symbol/{symbol}：单标的上下文、最新信号、图表上下文。
+- /api/backtest/analyze：指定标的、频率和参数的只读回测分析。
+
+## 输出要求
+
+- 先给结论，再给证据来源和回测口径。
+- 明确数据状态：cache、provider blocker、trade_date、freq、lookback、stop_loss、max_hold、slippage。
+- 不输出直接买/卖指令；只输出研究判断、风险和待验证动作。
+- 不声称读取了数据库/MCP，除非 tool result 明确包含该来源。
+`,
+  },
+]
+
 function defaultModelServiceSettings(): ModelServiceSettingsPrivate {
   return {
     enabled: false,
@@ -2093,6 +3314,12 @@ function modelServiceModelsUrl(baseUrl: string): string {
   return `${trimmed}/models`
 }
 
+function modelServiceChatUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, '')
+  if (!trimmed) throw new Error('baseUrl is required')
+  return `${trimmed}/chat/completions`
+}
+
 async function fetchModelServiceModels(): Promise<ModelServiceResult> {
   const settings = modelServiceSettings
   const url = modelServiceModelsUrl(settings.baseUrl)
@@ -2128,6 +3355,409 @@ async function fetchModelServiceModels(): Promise<ModelServiceResult> {
       ok: false,
       message: error instanceof Error ? error.message : String(error),
     }
+  }
+}
+
+function resolveModelServiceModel(settings: ModelServiceSettingsPrivate, requested?: string): string | null {
+  const match = requested
+    ? settings.aliases.find(item => item.alias === requested || item.model === requested)
+    : settings.aliases[0]
+  return match?.model ?? requested ?? settings.lastModels[0] ?? null
+}
+
+function extractModelServiceChatText(payload: unknown): string {
+  if (!isPlainRecord(payload) || !Array.isArray(payload.choices)) return ''
+  const first = payload.choices[0]
+  if (!isPlainRecord(first)) return ''
+  const message = first.message
+  if (isPlainRecord(message) && typeof message.content === 'string') return message.content
+  if (typeof first.text === 'string') return first.text
+  return ''
+}
+
+function employeeDefinitionMarkdown(seed: EmployeeSeedDefinition): string {
+  return `---
+id: ${seed.id}
+title: ${seed.title}
+subtitle: ${seed.subtitle}
+icon: ${seed.icon}
+default_model: ${seed.defaultModel}
+order: ${seed.order}
+enabled: true
+skill_mentions: ${seed.skillMentions.join(', ')}
+preview: ${seed.preview}
+---
+
+# ${seed.title}
+
+${seed.instructions}
+
+## Skill
+
+- 默认模型：${seed.defaultModel}
+- 绑定技能：${seed.skillMentions.map(item => `@skill ${item}`).join('、') || '无'}
+- 输出要求：先给结论，再给可执行步骤；需要资料时说明要读取的资源。
+`
+}
+
+function employeeSupportSkillMarkdown(seed: EmployeeSupportSkillSeed): string {
+  return `---
+id: ${seed.id}
+title: ${seed.title}
+description: ${seed.description}
+---
+
+${seed.instructions}
+`
+}
+
+function parseEmployeeFrontmatter(content: string): {
+  frontmatter: Record<string, string>
+  body: string
+} {
+  if (!content.startsWith('---\n')) {
+    return { frontmatter: {}, body: content.trim() }
+  }
+  const endIndex = content.indexOf('\n---', 4)
+  if (endIndex < 0) return { frontmatter: {}, body: content.trim() }
+  const rawFrontmatter = content.slice(4, endIndex).trim()
+  const body = content.slice(endIndex + 4).trim()
+  const frontmatter: Record<string, string> = {}
+  for (const line of rawFrontmatter.split(/\r?\n/)) {
+    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line)
+    if (!match) continue
+    const key = match[1].trim()
+    const value = match[2].trim().replace(/^['"]|['"]$/g, '')
+    if (key) frontmatter[key] = value
+  }
+  return { frontmatter, body }
+}
+
+function parseEmployeeBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (!value) return fallback
+  if (/^(false|0|no|off)$/i.test(value)) return false
+  if (/^(true|1|yes|on)$/i.test(value)) return true
+  return fallback
+}
+
+function parseEmployeeList(value: string | undefined): string[] {
+  if (!value) return []
+  return value
+    .replace(/^\[|\]$/g, '')
+    .split(',')
+    .map(item => item.trim().replace(/^['"]|['"]$/g, ''))
+    .filter(Boolean)
+}
+
+function employeePreviewFromBody(body: string): string {
+  return (
+    body
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(line => line && !line.startsWith('#') && !line.startsWith('-')) ?? ''
+  ).slice(0, 140)
+}
+
+function findNewestSkillPath(root: string, relativeSkillPath: string): string | null {
+  if (!fs.existsSync(root)) return null
+  try {
+    const candidates = fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(root, entry.name, relativeSkillPath))
+      .filter(candidate => fs.existsSync(candidate))
+      .sort()
+    return candidates.at(-1) ?? null
+  } catch {
+    return null
+  }
+}
+
+function ensureEmployeeSupportSkillSeeds(): void {
+  fs.mkdirSync(EMPLOYEE_SUPPORT_SKILLS_DIR, { recursive: true })
+  for (const seed of DEFAULT_EMPLOYEE_SUPPORT_SKILLS) {
+    const skillDir = path.join(EMPLOYEE_SUPPORT_SKILLS_DIR, seed.id)
+    const skillPath = path.join(skillDir, 'SKILL.md')
+    fs.mkdirSync(skillDir, { recursive: true })
+    if (fs.existsSync(skillPath)) continue
+    fs.writeFileSync(skillPath, employeeSupportSkillMarkdown(seed), 'utf-8')
+  }
+}
+
+function knownEmployeeSkillPath(skillName: string): string | null {
+  const normalized = skillName.trim().toLowerCase()
+  if (normalized === 'pptxgenjs' || normalized === 'pptxgenjs-draft') {
+    ensureEmployeeSupportSkillSeeds()
+    const direct = path.join(EMPLOYEE_SUPPORT_SKILLS_DIR, 'pptxgenjs', 'SKILL.md')
+    return fs.existsSync(direct) ? direct : null
+  }
+  if (normalized === 'python-pptx' || normalized === 'python') {
+    ensureEmployeeSupportSkillSeeds()
+    const direct = path.join(EMPLOYEE_SUPPORT_SKILLS_DIR, 'python-pptx', 'SKILL.md')
+    return fs.existsSync(direct) ? direct : null
+  }
+  if (normalized === 'browser-rpa' || normalized === 'execution-browser') {
+    ensureEmployeeSupportSkillSeeds()
+    const direct = path.join(EMPLOYEE_SUPPORT_SKILLS_DIR, 'browser-rpa', 'SKILL.md')
+    return fs.existsSync(direct) ? direct : null
+  }
+  if (normalized === 'signals-research' || normalized === 'signals') {
+    ensureEmployeeSupportSkillSeeds()
+    const direct = path.join(EMPLOYEE_SUPPORT_SKILLS_DIR, 'signals-research', 'SKILL.md')
+    return fs.existsSync(direct) ? direct : null
+  }
+  if (normalized === 'presentations') {
+    return findNewestSkillPath(
+      path.join(os.homedir(), '.codex', 'plugins', 'cache', 'openai-primary-runtime', 'presentations'),
+      path.join('skills', 'presentations', 'SKILL.md'),
+    )
+  }
+  if (normalized === 'documents') {
+    return findNewestSkillPath(
+      path.join(os.homedir(), '.codex', 'plugins', 'cache', 'openai-primary-runtime', 'documents'),
+      path.join('skills', 'documents', 'SKILL.md'),
+    )
+  }
+  if (normalized === 'spreadsheets') {
+    return findNewestSkillPath(
+      path.join(os.homedir(), '.codex', 'plugins', 'cache', 'openai-primary-runtime', 'spreadsheets'),
+      path.join('skills', 'spreadsheets', 'SKILL.md'),
+    )
+  }
+  if (normalized === 'ppt-master') {
+    const direct = path.join(
+      os.homedir(),
+      'github代码仓库',
+      'aippt',
+      'ppt-master',
+      'skills',
+      'ppt-master',
+      'SKILL.md',
+    )
+    return fs.existsSync(direct) ? direct : null
+  }
+  return null
+}
+
+function compactSkillExcerpt(content: string): string {
+  const lines = content
+    .split(/\r?\n/)
+    .map(line => line.trimEnd())
+    .filter(line => line.trim())
+  const preferred = lines.filter(line => {
+    const trimmed = line.trim()
+    return (
+      trimmed.startsWith('#') ||
+      /^[-*]\s/.test(trimmed) ||
+      /task mode|profile|workflow|quality|render|pptx|claim|contact|editable|template|SVG|DrawingML|QA/i.test(
+        trimmed,
+      )
+    )
+  })
+  const excerpt = (preferred.length ? preferred : lines).slice(0, 90).join('\n')
+  return excerpt.slice(0, 2800)
+}
+
+function resolveEmployeeSkillContext(skillName: string): EmployeeSkillContext | null {
+  const directPath = knownEmployeeSkillPath(skillName)
+  const discovered =
+    directPath === null
+      ? discoverAllSkills().find(skill => {
+          const normalizedName = skill.name.toLowerCase()
+          const target = skillName.toLowerCase()
+          return normalizedName === target || normalizedName.endsWith(`/${target}`)
+        })
+      : null
+  const skillPath = directPath ?? discovered?.path
+  if (!skillPath || !fs.existsSync(skillPath)) return null
+  try {
+    const content = fs.readFileSync(skillPath, 'utf-8')
+    return {
+      name: skillName,
+      path: skillPath,
+      description:
+        discovered?.description ??
+        content
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .find(line => line && !line.startsWith('#') && !line.startsWith('---')) ??
+        skillName,
+      excerpt: compactSkillExcerpt(content),
+    }
+  } catch (error) {
+    log('failed to read employee skill context', skillPath, error)
+    return null
+  }
+}
+
+function resolveEmployeeSkillContexts(skillMentions: string[]): EmployeeSkillContext[] {
+  return skillMentions
+    .map(resolveEmployeeSkillContext)
+    .filter((context): context is EmployeeSkillContext => context !== null)
+}
+
+function normalizeEmployeeDefinition(filePath: string, content: string): EmployeeDefinition | null {
+  const { frontmatter, body } = parseEmployeeFrontmatter(content)
+  const id = readString(frontmatter.id) ?? path.basename(filePath, path.extname(filePath))
+  const title = readString(frontmatter.title) ?? id
+  const orderValue = Number(frontmatter.order)
+  const instructions = body.trim() || title
+  const skillMentions = parseEmployeeList(frontmatter.skill_mentions ?? frontmatter.skillMentions)
+  return {
+    id,
+    title,
+    subtitle: readString(frontmatter.subtitle) ?? '未命名任务',
+    icon: readString(frontmatter.icon) ?? 'agent',
+    defaultModel: readString(frontmatter.default_model) ?? readString(frontmatter.defaultModel) ?? 'auto',
+    order: Number.isFinite(orderValue) ? orderValue : 100,
+    preview: readString(frontmatter.preview) ?? employeePreviewFromBody(instructions),
+    skillMentions,
+    instructions,
+    enabled: parseEmployeeBoolean(frontmatter.enabled, true),
+    path: filePath,
+    source: 'filesystem',
+    skillContexts: resolveEmployeeSkillContexts(skillMentions),
+  }
+}
+
+function ensureEmployeeDefinitionSeeds(): void {
+  fs.mkdirSync(EMPLOYEE_DEFINITIONS_DIR, { recursive: true })
+  for (const seed of DEFAULT_EMPLOYEE_DEFINITIONS) {
+    const filePath = path.join(EMPLOYEE_DEFINITIONS_DIR, `${seed.id}.md`)
+    if (fs.existsSync(filePath)) continue
+    fs.writeFileSync(filePath, employeeDefinitionMarkdown(seed), 'utf-8')
+  }
+}
+
+function listEmployeeDefinitions(): EmployeeDefinition[] {
+  ensureEmployeeDefinitionSeeds()
+  const definitions: EmployeeDefinition[] = []
+  for (const entry of fs.readdirSync(EMPLOYEE_DEFINITIONS_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.md')) continue
+    const filePath = path.join(EMPLOYEE_DEFINITIONS_DIR, entry.name)
+    try {
+      const definition = normalizeEmployeeDefinition(filePath, fs.readFileSync(filePath, 'utf-8'))
+      if (definition?.enabled) definitions.push(definition)
+    } catch (error) {
+      log('failed to read employee definition', filePath, error)
+    }
+  }
+  return definitions.sort((left, right) => {
+    const byOrder = left.order - right.order
+    return byOrder || left.title.localeCompare(right.title)
+  })
+}
+
+function findEmployeeDefinition(idOrPath: string): EmployeeDefinition | null {
+  const candidate = readString(idOrPath)
+  if (!candidate) return null
+  return (
+    listEmployeeDefinitions().find(item => item.id === candidate || item.path === candidate) ??
+    null
+  )
+}
+
+async function openEmployeeDefinitionFile(idOrPath: string): Promise<{ ok: boolean; path?: string; message?: string }> {
+  const definition = findEmployeeDefinition(idOrPath)
+  if (!definition) return { ok: false, message: 'employee definition not found' }
+  const message = await shell.openPath(definition.path)
+  return message ? { ok: false, path: definition.path, message } : { ok: true, path: definition.path }
+}
+
+async function openEmployeeDefinitionsFolder(): Promise<{ ok: boolean; path: string; message?: string }> {
+  ensureEmployeeDefinitionSeeds()
+  const message = await shell.openPath(EMPLOYEE_DEFINITIONS_DIR)
+  return message
+    ? { ok: false, path: EMPLOYEE_DEFINITIONS_DIR, message }
+    : { ok: true, path: EMPLOYEE_DEFINITIONS_DIR }
+}
+
+async function runModelServiceChat(input: unknown): Promise<ModelServiceChatResult> {
+  const record = isPlainRecord(input) ? input : {}
+  const message = readString(record.message)
+  if (!message) {
+    return { ok: false, message: 'message is required' }
+  }
+
+  modelServiceSettings = loadModelServiceSettings()
+  const settings = modelServiceSettings
+  if (!settings.enabled) {
+    return { ok: false, message: 'model service is disabled' }
+  }
+  if (!settings.apiKey) {
+    return { ok: false, message: 'API key is not configured' }
+  }
+
+  const model = resolveModelServiceModel(settings, readString(record.alias))
+  if (!model) {
+    return { ok: false, message: 'model alias is not configured' }
+  }
+
+  const body = {
+    model,
+    messages: [
+      {
+        role: 'system',
+        content:
+          readString(record.systemPrompt) ??
+          readString(record.system) ??
+          '你是隆小侠 Agent OS 的会话助手。用中文简洁回答，优先说明已经完成的动作和可验证结果。',
+      },
+      { role: 'user', content: message },
+    ],
+    temperature: 0.2,
+    max_tokens: readNumber(record.maxTokens) ?? 1400,
+    stream: false,
+  }
+
+  const timeoutMs = readNumber(record.timeoutMs) ?? 60_000
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(modelServiceChatUrl(settings.baseUrl), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${settings.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    const raw = await response.text()
+    let payload: unknown = null
+    try {
+      payload = raw ? JSON.parse(raw) : null
+    } catch {
+      payload = null
+    }
+    if (!response.ok) {
+      const detail =
+        isPlainRecord(payload) && isPlainRecord(payload.error)
+          ? readString(payload.error.message) ?? raw
+          : raw
+      return {
+        ok: false,
+        message: `HTTP ${response.status} ${response.statusText}${detail ? `: ${detail.slice(0, 500)}` : ''}`,
+        model,
+      }
+    }
+    const text = extractModelServiceChatText(payload)
+    return {
+      ok: Boolean(text),
+      message: text ? 'chat completed' : 'chat response did not include text',
+      text,
+      model,
+      usage: isPlainRecord(payload) ? payload.usage : undefined,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+      model,
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -3488,6 +5118,12 @@ app.whenReady().then(() => {
   )
   ipcMain.handle('model-service:pull-models', () => fetchModelServiceModels())
   ipcMain.handle('model-service:test-connection', () => fetchModelServiceModels())
+  ipcMain.handle('model-service:chat', (_event, payload: unknown) => runModelServiceChat(payload))
+  ipcMain.handle('employees:list', () => listEmployeeDefinitions())
+  ipcMain.handle('employees:open-definition', (_event, idOrPath: string) =>
+    openEmployeeDefinitionFile(idOrPath),
+  )
+  ipcMain.handle('employees:open-folder', () => openEmployeeDefinitionsFolder())
 
   // Control plane
   ipcMain.handle('control-plane:get-overview', async () => getControlPlaneClient().getOverview())

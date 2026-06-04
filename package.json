@@ -112,6 +112,7 @@
     "marked": "^15.0.0",
     "p-map": "^7.0.0",
     "picomatch": "^4.0.0",
+    "pptxgenjs": "^4.0.1",
     "proper-lockfile": "^4.1.2",
     "qrcode": "^1.5.4",
     "react": "^19.2.4",

@@ -129,6 +129,13 @@ contextBridge.exposeInMainWorld('longclawModelService', {
     ipcRenderer.invoke('model-service:update-settings', patch),
   pullModels: () => ipcRenderer.invoke('model-service:pull-models'),
   testConnection: () => ipcRenderer.invoke('model-service:test-connection'),
+  chat: (payload: Record<string, unknown>) => ipcRenderer.invoke('model-service:chat', payload),
+})
+
+contextBridge.exposeInMainWorld('longclawEmployees', {
+  list: () => ipcRenderer.invoke('employees:list'),
+  openDefinition: (idOrPath: string) => ipcRenderer.invoke('employees:open-definition', idOrPath),
+  openFolder: () => ipcRenderer.invoke('employees:open-folder'),
 })
 
 contextBridge.exposeInMainWorld('longclawWindow', {
