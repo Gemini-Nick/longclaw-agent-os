@@ -258,6 +258,19 @@ const fallbackAgents: AgentConversationItem[] = [
     skillMentions: ['signals-research', 'signals', 'daloopa'],
   },
   {
+    id: 'employee:replay-review-assistant',
+    title: '复盘助手',
+    subtitle: '盘后长复盘、板块卡位与次日验证',
+    meta: 'deepseek',
+    preview: '按截图样例口吻复原全天资金流、板块15、三池共性、尾盘情绪和明日验证点。',
+    icon: 'strategy',
+    kind: 'agent',
+    defaultModel: 'deepseek',
+    instructions:
+      '你是复盘助手。默认按用户截图样例写盘后长复盘：先讲市场真实结构，再讲资金流时间链、板块15卡位、三池共性、尾盘情绪和明日验证点。优先读取 Signals 本机真实数据，尤其是 /api/workbench/shell 的 indices、watchlist_groups.sector_boards、focus_stocks、watch_stocks、risk_stocks，以及 /api/pack/dashboard 的 overview.cluster_summary。需要生成正文时，默认运行 `bash scripts/python.sh -m signals.notify.trading_workbench_summary --window postmarket --max-items 5 --ignore-time --format narrative`；需要接入工具时，使用 `bash scripts/python.sh -m signals.mcp.review_assistant_server`。不要输出直接买卖指令，不要把 runtime/Mongo/cache 状态写进交易复盘。',
+    skillMentions: ['signals-replay-review', 'signals-review', 'signals-research'],
+  },
+  {
     id: 'employee:document-specialist',
     title: '文档与版式专员',
     subtitle: 'PPT、文档结构与版式方案',
