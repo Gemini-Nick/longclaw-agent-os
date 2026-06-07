@@ -15,7 +15,9 @@ import {
 } from './designSystem.js'
 import { PackWorkspace } from './workspaces/PackWorkspace.js'
 import TaskWorkspace, { onComposerKeyDown } from './workspaces/TaskWorkspace.js'
-import WeChatWorkspace from './workspaces/WeChatWorkspace.js'
+import WeChatWorkspace, {
+  weChatQrRenderSourceFromValue,
+} from './workspaces/WeChatWorkspace.js'
 
 function makeRuntimeStatus(
   overrides: Partial<RuntimeStatusSummary> = {},
@@ -41,6 +43,56 @@ function makeRuntimeStatus(
     runtimeProfile: 'dev_local_acp_bridge',
     stackEnvLoaded: true,
     stackEnvPath: '/Users/zhangqilong/.longclaw/runtime-v2/stack.env',
+    ...overrides,
+  }
+}
+
+function makeWeChatWorkspaceProps(
+  overrides: Partial<React.ComponentProps<typeof WeChatWorkspace>> = {},
+): React.ComponentProps<typeof WeChatWorkspace> {
+  return {
+    locale: 'zh-CN',
+    viewportTier: 'wide',
+    backgroundMode: 'dark',
+    sessions: [],
+    sourceStatus: {
+      workspaceRoot: '/tmp/weclaw',
+      workspaceSource: 'config',
+      sessionsDir: '/tmp/weclaw/sessions',
+      sessionsDirExists: true,
+      sessionCount: 0,
+    },
+    bindingStatus: null,
+    clusterStatus: null,
+    routeReceipts: [],
+    pluginDevIssues: [],
+    search: '',
+    sourceFilter: 'all',
+    visibilityFilter: 'active',
+    selectedSessionId: null,
+    selectedSession: null,
+    linkedTasks: [],
+    linkedRuns: [],
+    linkedWorkItems: [],
+    preview: null,
+    onSearchChange: () => undefined,
+    onSourceFilterChange: () => undefined,
+    onVisibilityFilterChange: () => undefined,
+    onSelectSession: () => undefined,
+    onClearSelection: () => undefined,
+    onToggleHidden: () => undefined,
+    onToggleArchived: () => undefined,
+    onOpenLinkedTask: () => undefined,
+    onOpenLinkedRun: () => undefined,
+    onOpenLinkedWorkItem: () => undefined,
+    onOpenAttachment: () => undefined,
+    onCreateBindingSession: () => undefined,
+    onRefreshCluster: () => undefined,
+    onCreateLocalBindingSession: () => undefined,
+    onCompleteBindingSession: () => undefined,
+    onRevokeBinding: () => undefined,
+    onRouteMessage: async () => null,
+    onOpenPluginIssue: () => undefined,
     ...overrides,
   }
 }
@@ -347,5 +399,46 @@ describe('Chinese IA surface scoping', () => {
     expect(markup).toContain('消息与回复')
     expect(markup).not.toContain('Canonical 会话')
     expect(markup).not.toContain('ctx-1')
+  })
+})
+
+describe('WeChat QR rendering', () => {
+  it('uses official QR image content directly instead of encoding it again', () => {
+    expect(weChatQrRenderSourceFromValue('data:image/png;base64,abc123')).toEqual({
+      kind: 'image',
+      src: 'data:image/png;base64,abc123',
+    })
+    expect(weChatQrRenderSourceFromValue(' iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB ')).toEqual({
+      kind: 'image',
+      src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+    })
+    expect(weChatQrRenderSourceFromValue('http://192.168.0.2:18744/wechat/bind?session=bind-1')).toEqual({
+      kind: 'payload',
+      payload: 'http://192.168.0.2:18744/wechat/bind?session=bind-1',
+    })
+  })
+
+  it('renders iLink image QR sources on the server pass', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(
+        WeChatWorkspace,
+        makeWeChatWorkspaceProps({
+          bindingStatus: {
+            state: 'qr_pending',
+            provider: 'ilink_service_account',
+            identity_status: 'ilink_pending',
+            qr_url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB',
+            binding_session_id: 'bind-1',
+            expires_at: '2026-04-22T10:02:00Z',
+            scan_status: 'wait',
+            allowed_routes: ['knowledge_note', 'dev_issue', 'dev_plugin', 'signals', 'backtest'],
+            recent_inbound: [],
+          },
+        }),
+      ),
+    )
+
+    expect(markup).toContain('src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"')
+    expect(markup).toContain('官方二维码图片')
   })
 })

@@ -225,6 +225,32 @@ function compactInlineText(value: string | undefined, maxLength: number): string
   return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`
 }
 
+export type WeChatQrRenderSource =
+  | { kind: 'image'; src: string }
+  | { kind: 'payload'; payload: string }
+
+function normalizeQrImageSource(value: string): string | null {
+  const trimmed = value.trim()
+  if (/^data:image\/[a-z0-9.+-]+[,;]/i.test(trimmed)) return trimmed
+  if (trimmed.startsWith('<svg')) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmed)}`
+  }
+
+  const compact = trimmed.replace(/\s+/g, '')
+  if (compact.startsWith('iVBORw0KGgo')) return `data:image/png;base64,${compact}`
+  if (compact.startsWith('/9j/')) return `data:image/jpeg;base64,${compact}`
+  if (compact.startsWith('R0lGOD')) return `data:image/gif;base64,${compact}`
+  if (compact.startsWith('UklGR')) return `data:image/webp;base64,${compact}`
+  return null
+}
+
+export function weChatQrRenderSourceFromValue(value?: string): WeChatQrRenderSource | null {
+  if (!value?.trim()) return null
+  const imageSource = normalizeQrImageSource(value)
+  if (imageSource) return { kind: 'image', src: imageSource }
+  return { kind: 'payload', payload: value.trim() }
+}
+
 function sessionSourceLabel(locale: LongclawLocale, sourceLabel: string): string {
   if (locale !== 'zh-CN') return sourceLabel
   const normalized = sourceLabel.toLowerCase()
@@ -425,6 +451,11 @@ function bindingRuntimeHint(locale: LongclawLocale, status: WeChatBindingStatus)
       ? '二维码已过期，重新生成后再扫码。'
       : 'The QR code has expired. Generate a new one and scan again.'
   }
+  if (status.state === 'qr_pending' && status.provider === 'local_lan_callback') {
+    return locale === 'zh-CN'
+      ? '手机与本机在同一局域网时可扫码验证本机链路。'
+      : 'Scan from the same LAN to verify the local callback path.'
+  }
   if (status.identity_status === 'ilink_failed') {
     return locale === 'zh-CN'
       ? '认证失败，请重新生成二维码。'
@@ -453,33 +484,24 @@ function formatRemainingTime(locale: LongclawLocale, seconds: number): string {
   return `Expires in ${minutes}:${String(rest).padStart(2, '0')}`
 }
 
-function identityTone(status?: string): 'open' | 'running' | 'degraded' | 'info' {
-  if (status === 'ilink_verified') return 'open'
-  if (status === 'ilink_pending' || status === 'ilink_scanned') return 'running'
-  if (status === 'ilink_failed') return 'degraded'
-  return 'info'
+function bindingIdentityLabel(locale: LongclawLocale, status?: WeChatBindingStatus | null): string {
+  if (status?.provider === 'local_lan_callback' && status.state === 'qr_pending') {
+    return locale === 'zh-CN' ? '本机链路' : 'Local path'
+  }
+  if (status?.provider === 'local_lan_callback' && status.identity_status === 'local_runtime_bound') {
+    return locale === 'zh-CN' ? '本机已验证' : 'Local verified'
+  }
+  return identityLabel(locale, status?.identity_status)
 }
 
-function bindingStepTone(
-  status: WeChatBindingStatus,
-  step: 'qr' | 'scan' | 'runtime' | 'identity',
-): 'open' | 'running' | 'degraded' | 'info' {
-  if (status.state === 'expired' || status.identity_status === 'ilink_failed') return 'degraded'
-  if (step === 'qr') return status.qr_url || status.state === 'bound' ? 'open' : 'info'
-  if (step === 'scan') {
-    if (status.state === 'bound' || status.scan_status === 'scaned' || status.scan_status === 'confirmed') {
-      return 'open'
-    }
-    return status.state === 'qr_pending' ? 'running' : 'info'
+function bindingIdentityTone(status?: WeChatBindingStatus | null): 'open' | 'running' | 'degraded' | 'info' {
+  if (status?.provider === 'local_lan_callback' && status.state === 'qr_pending') return 'running'
+  if (status?.identity_status === 'ilink_verified') return 'open'
+  if (status?.identity_status === 'ilink_pending' || status?.identity_status === 'ilink_scanned') {
+    return 'running'
   }
-  if (step === 'runtime') return status.state === 'bound' ? 'open' : status.state === 'qr_pending' ? 'running' : 'info'
-  return status.identity_status === 'ilink_verified'
-    ? 'open'
-    : status.identity_status === 'local_runtime_bound'
-      ? 'info'
-      : status.state === 'qr_pending'
-        ? 'running'
-        : 'degraded'
+  if (status?.identity_status === 'ilink_failed') return 'degraded'
+  return 'info'
 }
 
 function clusterNodeTone(status: WeChatClusterNodeStatus): string {
@@ -597,6 +619,11 @@ function WeChatBindingPanel({
   const [clock, setClock] = useState(() => Date.now())
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [qrError, setQrError] = useState('')
+  const qrRenderSource = useMemo(
+    () => weChatQrRenderSourceFromValue(status.qr_url),
+    [status.qr_url],
+  )
+  const qrImageSrc = qrRenderSource?.kind === 'image' ? qrRenderSource.src : qrDataUrl
 
   useEffect(() => {
     if (!pending) return undefined
@@ -627,29 +654,36 @@ function WeChatBindingPanel({
 
   useEffect(() => {
     let cancelled = false
-    if (!pending || !status.qr_url) {
+    if (!pending || !qrRenderSource) {
       setQrDataUrl('')
       setQrError('')
       return () => {
         cancelled = true
       }
     }
-    qrToDataURL(status.qr_url, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 196,
+    if (qrRenderSource.kind === 'image') {
+      setQrDataUrl('')
+      setQrError('')
+      return () => {
+        cancelled = true
+      }
+    }
+    qrToDataURL(qrRenderSource.payload, {
+      errorCorrectionLevel: 'Q',
+      margin: 4,
+      width: 260,
       color: {
-        dark: tradingDeskTheme.colors.control,
-        light: tradingDeskTheme.colors.white,
+        dark: '#000000',
+        light: '#FFFFFF',
       },
     })
-      .then(value => {
+      .then((value: string) => {
         if (!cancelled) {
           setQrDataUrl(value)
           setQrError('')
         }
       })
-      .catch(error => {
+      .catch((error: unknown) => {
         if (!cancelled) {
           setQrDataUrl('')
           setQrError(error instanceof Error ? error.message : String(error))
@@ -658,14 +692,14 @@ function WeChatBindingPanel({
     return () => {
       cancelled = true
     }
-  }, [pending, status.qr_url])
+  }, [pending, qrRenderSource])
 
   return (
     <WeChatSection
-      title={locale === 'zh-CN' ? '绑定' : 'Binding'}
+      title={locale === 'zh-CN' ? '扫码绑定' : 'QR binding'}
     >
       <div style={utilityStyles.stackedList}>
-        <div style={wechatRowStyle}>
+        <div style={bindingSummaryStyle}>
           <div style={queueLeadStyle}>
             <div style={queueTitleStyle}>
               {bound
@@ -682,7 +716,7 @@ function WeChatBindingPanel({
             </div>
             <div style={wechatMutedTextStyle}>
               {formatModeMeta([
-                identityLabel(locale, status.identity_status),
+                bindingIdentityLabel(locale, status),
                 bound
                   ? locale === 'zh-CN'
                     ? '可用'
@@ -695,19 +729,17 @@ function WeChatBindingPanel({
               ])}
             </div>
           </div>
-          <div style={bindingBadgeStackStyle}>
-            <span style={statusBadgeStyle(bound ? 'open' : pending ? 'running' : 'degraded')}>
-              {bindingStateLabel(locale, status.state)}
-            </span>
-          </div>
+          <span style={statusBadgeStyle(bound ? 'open' : pending ? 'running' : 'degraded')}>
+            {bindingStateLabel(locale, status.state)}
+          </span>
         </div>
         {pending && (
           <div style={qrPanelStyle}>
             <div style={qrImageShellStyle}>
-              {qrDataUrl ? (
+              {qrImageSrc ? (
                 <img
                   alt={locale === 'zh-CN' ? '微信绑定二维码' : 'WeChat binding QR code'}
-                  src={qrDataUrl}
+                  src={qrImageSrc}
                   style={qrImageStyle}
                 />
               ) : (
@@ -727,20 +759,27 @@ function WeChatBindingPanel({
                     ? '扫码绑定本机 Agent OS'
                     : 'Scan to bind this Agent OS'}
               </div>
+              <div style={bindingHintStyle}>
+                {bindingRuntimeHint(locale, status)}
+              </div>
               <div style={queueDescriptionStyle}>
                 {ilinkMode
                   ? locale === 'zh-CN'
-                    ? '二维码约 2 分钟有效。扫码并确认后，微信入口会变为可用。'
-                    : 'The QR expires in about 2 minutes. Scan and confirm to enable the WeChat entry.'
+                    ? '微信授权成功后，移动端消息会进入当前工作台。'
+                    : 'After authorization, mobile messages enter this workspace.'
                   : locale === 'zh-CN'
-                    ? '二维码 10 分钟有效。手机需与本机在同一局域网；用于验证本机扫码链路。'
-                    : 'QR code expires in 10 minutes. The phone must be on the same LAN; this verifies the local scan path.'}
+                    ? '这是本机回调模式，用来确认扫码链路。'
+                    : 'This local callback mode verifies the scan path.'}
               </div>
-              {secondsRemaining !== null && (
-                <div style={qrCountdownStyle}>
-                  {formatRemainingTime(locale, secondsRemaining)}
-                </div>
-              )}
+              <div style={bindingMetaRowStyle}>
+                {secondsRemaining !== null && (
+                  <span style={bindingMetaPillStyle}>
+                    {formatRemainingTime(locale, secondsRemaining)}
+                  </span>
+                )}
+                <span style={bindingMetaPillStyle}>{bindingIdentityLabel(locale, status)}</span>
+                <span style={bindingMetaPillStyle}>{scanStatusLabel(locale, status.scan_status)}</span>
+              </div>
             </div>
           </div>
         )}
@@ -776,11 +815,6 @@ function WeChatBindingPanel({
               {locale === 'zh-CN' ? '解除绑定' : 'Revoke binding'}
             </button>
           )}
-          <span style={statusBadgeStyle('info')}>
-            {locale === 'zh-CN'
-              ? `${status.allowed_routes.length} 入口`
-              : `${status.allowed_routes.length} routes`}
-          </span>
         </div>
       </div>
     </WeChatSection>
@@ -1448,49 +1482,46 @@ function ChannelManagementPanel({
   const zh = locale === 'zh-CN'
   const wechatReady = bindingStatus?.state === 'bound'
   const wechatPending = bindingStatus?.state === 'qr_pending'
-  const rows = [
-    {
-      id: 'wechat',
-      label: zh ? '微信' : 'WeChat',
-      icon: 'wechat' as VectorIconName,
-      description: zh ? '扫码绑定后，移动端消息进入同一会话。' : 'Scan to bind; mobile messages stay in one session.',
-      status: wechatReady ? (zh ? '已启用' : 'Enabled') : wechatPending ? (zh ? '扫码中' : 'Pending') : (zh ? '未绑定' : 'Unbound'),
-      tone: wechatReady ? 'open' : wechatPending ? 'running' : 'info',
-      action: wechatReady ? (zh ? '重新验证' : 'Verify') : (zh ? '启用' : 'Enable'),
-      enabled: true,
-    },
+  const wechatProvider = bindingStatus?.provider
+  const nodeCount = clusterStatus?.nodes.length ?? 0
+  const onlineNodeCount = clusterStatus?.nodes.filter(node => node.status === 'online').length ?? 0
+  const enabledRouteCount = bindingStatus?.allowed_routes.length ?? 0
+  const inboundCount = sourceStatus?.sessionCount ?? 0
+  const wechatMeta = formatModeMeta([
+    wechatProvider === 'ilink_service_account'
+      ? zh ? 'iLink 服务号' : 'iLink service account'
+      : wechatProvider === 'local_lan_callback'
+        ? zh ? '本机回调' : 'Local callback'
+        : zh ? '待配置' : 'Pending setup',
+    `${onlineNodeCount}/${nodeCount} ${zh ? '节点' : 'nodes'}`,
+    `${enabledRouteCount} ${zh ? '路由' : 'routes'}`,
+    `${inboundCount} ${zh ? '入站' : 'inbound'}`,
+  ])
+  const wechatStatus = wechatReady
+    ? zh ? '可用' : 'Ready'
+    : wechatPending
+      ? zh ? '扫码中' : 'Pending'
+      : zh ? '未绑定' : 'Unbound'
+  const secondaryRows = [
     {
       id: 'dingtalk',
       label: zh ? '钉钉' : 'DingTalk',
       icon: 'channel' as VectorIconName,
-      description: zh ? 'Stream 入站与任务回帖。' : 'Stream inbound and task replies.',
       status: zh ? '未接入' : 'Not connected',
-      tone: 'info',
-      action: zh ? '配置' : 'Configure',
-      enabled: false,
     },
     {
       id: 'feishu',
       label: zh ? '飞书' : 'Feishu',
       icon: 'feishu' as VectorIconName,
-      description: zh ? '长连接入站，任务结束后文本回复。' : 'Long-connection inbound with text replies.',
       status: zh ? '未接入' : 'Not connected',
-      tone: 'info',
-      action: zh ? '配置' : 'Configure',
-      enabled: false,
     },
     {
       id: 'wecom',
       label: zh ? '企业微信' : 'WeCom',
       icon: 'wecom' as VectorIconName,
-      description: zh ? '机器人入站与 markdown 回传。' : 'Bot inbound and markdown replies.',
       status: zh ? '未接入' : 'Not connected',
-      tone: 'info',
-      action: zh ? '配置' : 'Configure',
-      enabled: false,
     },
   ]
-  const nodeCount = clusterStatus?.nodes.length ?? 0
   return (
     <section style={channelPanelStyle}>
       <div style={channelHeaderStyle}>
@@ -1498,8 +1529,8 @@ function ChannelManagementPanel({
           <h2 style={channelTitleStyle}>{zh ? '频道管理' : 'Channel management'}</h2>
           <div style={wechatMutedTextStyle}>
             {zh
-              ? `运行时探测：微信 ${sourceStatus?.sessionsDirExists ? '会话可读' : '待连接'} · 节点 ${nodeCount} · 其他通道未接入`
-              : `Runtime: WeChat ${sourceStatus?.sessionsDirExists ? 'sessions readable' : 'pending'} · nodes ${nodeCount} · other channels not connected`}
+              ? `微信 ${sourceStatus?.sessionsDirExists ? '会话可读' : '待连接'} · 其他通道保留`
+              : `WeChat ${sourceStatus?.sessionsDirExists ? 'sessions readable' : 'pending'} · other channels reserved`}
           </div>
         </div>
         <button
@@ -1512,27 +1543,44 @@ function ChannelManagementPanel({
           {zh ? '刷新' : 'Refresh'}
         </button>
       </div>
-      <div style={channelGridStyle}>
-        {rows.map(row => (
-          <div key={row.id} style={channelCardStyle}>
-            <div style={channelGlyphStyle}>
-              <VectorIcon name={row.icon} size={20} strokeWidth={2} />
+      <div style={channelPrimaryStyle}>
+        <div style={channelGlyphStyle}>
+          <VectorIcon name="wechat" size={20} strokeWidth={2} />
+        </div>
+        <div style={channelCopyStyle}>
+          <div style={channelPrimaryTitleRowStyle}>
+            <span style={channelNameStyle}>{zh ? '微信' : 'WeChat'}</span>
+            <span style={statusBadgeStyle(bindingIdentityTone(bindingStatus))}>
+              {bindingIdentityLabel(locale, bindingStatus)}
+            </span>
+          </div>
+          <div style={wechatMutedTextStyle}>{wechatMeta}</div>
+        </div>
+        <span style={statusBadgeStyle(wechatReady ? 'open' : wechatPending ? 'running' : 'info')}>
+          {wechatStatus}
+        </span>
+        <button
+          type="button"
+          style={wechatButtonStyle()}
+          onClick={() => {
+            void onCreateBindingSession()
+          }}
+        >
+          {wechatPending
+            ? zh ? '刷新二维码' : 'Refresh QR'
+            : wechatReady
+              ? zh ? '重新验证' : 'Verify'
+              : zh ? '启用' : 'Enable'}
+        </button>
+      </div>
+      <div style={secondaryChannelRowStyle}>
+        {secondaryRows.map(row => (
+          <div key={row.id} style={secondaryChannelStyle}>
+            <div style={secondaryChannelIconStyle}>
+              <VectorIcon name={row.icon} size={15} strokeWidth={2} />
             </div>
-            <div style={channelCopyStyle}>
-              <div style={channelNameStyle}>{row.label}</div>
-              <div style={wechatMutedTextStyle}>{row.description}</div>
-            </div>
-            <span style={statusBadgeStyle(row.tone)}>{row.status}</span>
-            <button
-              type="button"
-              style={wechatButtonStyle(false, !row.enabled)}
-              disabled={!row.enabled}
-              onClick={() => {
-                if (row.enabled) void onCreateBindingSession()
-              }}
-            >
-              {row.action}
-            </button>
+            <span style={secondaryChannelNameStyle}>{row.label}</span>
+            <span style={secondaryChannelStatusStyle}>{row.status}</span>
           </div>
         ))}
       </div>
@@ -2008,13 +2056,38 @@ const channelTitleStyle: CSSProperties = {
 
 const channelGridStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
   gap: 10,
+}
+
+const channelStatusGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))',
+  gap: 8,
+}
+
+const channelStatusTileStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  minWidth: 0,
+  padding: '8px 10px',
+  borderRadius: 5,
+  border: `1px solid ${wechatDark.border}`,
+  background: wechatDark.empty,
+}
+
+const channelStatusLabelStyle: CSSProperties = {
+  color: wechatDark.muted,
+  fontSize: 12,
+  lineHeight: 1.35,
+  whiteSpace: 'nowrap',
 }
 
 const channelCardStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '38px minmax(0, 1fr) auto auto',
+  gridTemplateColumns: '38px minmax(0, 1fr) auto',
   alignItems: 'center',
   gap: 10,
   padding: 12,
@@ -2045,6 +2118,13 @@ const channelNameStyle: CSSProperties = {
   fontSize: 14,
   fontWeight: 850,
   lineHeight: 1.2,
+}
+
+const channelActionStackStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 8,
 }
 
 const workspaceRootStyle = (
@@ -2258,10 +2338,10 @@ const routeTextareaStyle: CSSProperties = {
 
 const qrPanelStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'auto minmax(0, 1fr)',
-  gap: 14,
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+  gap: 16,
   alignItems: 'center',
-  padding: 12,
+  padding: 14,
   borderRadius: 5,
   border: `1px solid ${wechatDark.border}`,
   background: wechatDark.panelSoft,
@@ -2334,19 +2414,23 @@ const linkedRowActionStyle: CSSProperties = {
 }
 
 const qrImageShellStyle: CSSProperties = {
-  width: 208,
-  minHeight: 208,
+  width: 280,
+  minHeight: 280,
+  padding: 10,
+  boxSizing: 'border-box',
   display: 'grid',
   placeItems: 'center',
   borderRadius: 5,
-  border: `1px solid ${wechatDark.borderStrong}`,
-  background: wechatDark.white,
+  border: '1px solid rgba(0, 0, 0, 0.18)',
+  background: '#FFFFFF',
+  justifySelf: 'center',
 }
 
 const qrImageStyle: CSSProperties = {
-  width: 196,
-  height: 196,
+  width: 260,
+  height: 260,
   display: 'block',
+  objectFit: 'contain',
 }
 
 const qrPlaceholderStyle: CSSProperties = {
