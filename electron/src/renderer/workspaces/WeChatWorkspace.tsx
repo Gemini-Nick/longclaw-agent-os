@@ -485,17 +485,20 @@ function formatRemainingTime(locale: LongclawLocale, seconds: number): string {
 }
 
 function bindingIdentityLabel(locale: LongclawLocale, status?: WeChatBindingStatus | null): string {
-  if (status?.provider === 'local_lan_callback' && status.state === 'qr_pending') {
-    return locale === 'zh-CN' ? '本机链路' : 'Local path'
-  }
   if (status?.provider === 'local_lan_callback' && status.identity_status === 'local_runtime_bound') {
     return locale === 'zh-CN' ? '本机已验证' : 'Local verified'
+  }
+  if (status?.provider === 'local_lan_callback') {
+    return locale === 'zh-CN' ? '本机链路' : 'Local path'
   }
   return identityLabel(locale, status?.identity_status)
 }
 
 function bindingIdentityTone(status?: WeChatBindingStatus | null): 'open' | 'running' | 'degraded' | 'info' {
+  if (status?.provider === 'local_lan_callback' && status.identity_status === 'local_runtime_bound') return 'open'
   if (status?.provider === 'local_lan_callback' && status.state === 'qr_pending') return 'running'
+  if (status?.provider === 'local_lan_callback' && status.state === 'expired') return 'degraded'
+  if (status?.provider === 'local_lan_callback') return 'info'
   if (status?.identity_status === 'ilink_verified') return 'open'
   if (status?.identity_status === 'ilink_pending' || status?.identity_status === 'ilink_scanned') {
     return 'running'
@@ -699,6 +702,7 @@ function WeChatBindingPanel({
       title={locale === 'zh-CN' ? '扫码绑定' : 'QR binding'}
     >
       <div style={utilityStyles.stackedList}>
+        {!pending && (
         <div style={bindingSummaryStyle}>
           <div style={queueLeadStyle}>
             <div style={queueTitleStyle}>
@@ -733,6 +737,7 @@ function WeChatBindingPanel({
             {bindingStateLabel(locale, status.state)}
           </span>
         </div>
+        )}
         {pending && (
           <div style={qrPanelStyle}>
             <div style={qrImageShellStyle}>
@@ -784,15 +789,17 @@ function WeChatBindingPanel({
           </div>
         )}
         <div style={utilityStyles.buttonCluster}>
-          <button
-            type="button"
-            style={wechatButtonStyle()}
-            onClick={() => {
-              void onCreateBindingSession()
-            }}
-          >
-            {primaryActionLabel}
-          </button>
+          {!bound && (
+            <button
+              type="button"
+              style={wechatButtonStyle()}
+              onClick={() => {
+                void onCreateBindingSession()
+              }}
+            >
+              {primaryActionLabel}
+            </button>
+          )}
           {pending && !ilinkMode && (
             <button
               type="button"
@@ -1482,18 +1489,23 @@ function ChannelManagementPanel({
   const zh = locale === 'zh-CN'
   const wechatReady = bindingStatus?.state === 'bound'
   const wechatPending = bindingStatus?.state === 'qr_pending'
+  const wechatExpired = bindingStatus?.state === 'expired'
   const wechatProvider = bindingStatus?.provider
   const nodeCount = clusterStatus?.nodes.length ?? 0
   const onlineNodeCount = clusterStatus?.nodes.filter(node => node.status === 'online').length ?? 0
   const enabledRouteCount = bindingStatus?.allowed_routes.length ?? 0
   const inboundCount = sourceStatus?.sessionCount ?? 0
+  const wechatNodeMeta =
+    wechatProvider === 'ilink_service_account'
+      ? `${onlineNodeCount}/${nodeCount} ${zh ? '节点' : 'nodes'}`
+      : undefined
   const wechatMeta = formatModeMeta([
     wechatProvider === 'ilink_service_account'
       ? zh ? 'iLink 服务号' : 'iLink service account'
       : wechatProvider === 'local_lan_callback'
         ? zh ? '本机回调' : 'Local callback'
         : zh ? '待配置' : 'Pending setup',
-    `${onlineNodeCount}/${nodeCount} ${zh ? '节点' : 'nodes'}`,
+    wechatNodeMeta,
     `${enabledRouteCount} ${zh ? '路由' : 'routes'}`,
     `${inboundCount} ${zh ? '入站' : 'inbound'}`,
   ])
@@ -1501,7 +1513,9 @@ function ChannelManagementPanel({
     ? zh ? '可用' : 'Ready'
     : wechatPending
       ? zh ? '扫码中' : 'Pending'
-      : zh ? '未绑定' : 'Unbound'
+      : wechatExpired
+        ? zh ? '已过期' : 'Expired'
+        : zh ? '未绑定' : 'Unbound'
   const secondaryRows = [
     {
       id: 'dingtalk',
@@ -1556,22 +1570,30 @@ function ChannelManagementPanel({
           </div>
           <div style={wechatMutedTextStyle}>{wechatMeta}</div>
         </div>
-        <span style={statusBadgeStyle(wechatReady ? 'open' : wechatPending ? 'running' : 'info')}>
-          {wechatStatus}
-        </span>
-        <button
-          type="button"
-          style={wechatButtonStyle()}
-          onClick={() => {
-            void onCreateBindingSession()
-          }}
-        >
-          {wechatPending
-            ? zh ? '刷新二维码' : 'Refresh QR'
-            : wechatReady
-              ? zh ? '重新验证' : 'Verify'
-              : zh ? '启用' : 'Enable'}
-        </button>
+        <div style={channelPrimaryActionsStyle}>
+          <span
+            style={statusBadgeStyle(
+              wechatReady ? 'open' : wechatPending ? 'running' : wechatExpired ? 'degraded' : 'info',
+            )}
+          >
+            {wechatStatus}
+          </span>
+          <button
+            type="button"
+            style={wechatButtonStyle()}
+            onClick={() => {
+              void onCreateBindingSession()
+            }}
+          >
+            {wechatPending
+              ? zh ? '刷新二维码' : 'Refresh QR'
+              : wechatReady
+                ? zh ? '重新验证' : 'Verify'
+                : wechatExpired
+                  ? zh ? '重新生成二维码' : 'Generate QR'
+                  : zh ? '启用' : 'Enable'}
+          </button>
+        </div>
       </div>
       <div style={secondaryChannelRowStyle}>
         {secondaryRows.map(row => (
@@ -2031,8 +2053,8 @@ function wechatButtonStyle(active = false, disabled = false): CSSProperties {
 const channelPanelStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 12,
-  padding: 14,
+  gap: 10,
+  padding: 12,
   background: wechatDark.panel,
   color: wechatDark.text,
   border: `1px solid ${wechatDark.border}`,
@@ -2041,57 +2063,26 @@ const channelPanelStyle: CSSProperties = {
 
 const channelHeaderStyle: CSSProperties = {
   display: 'flex',
-  alignItems: 'flex-start',
+  alignItems: 'center',
   justifyContent: 'space-between',
   gap: 14,
 }
 
 const channelTitleStyle: CSSProperties = {
-  margin: '0 0 6px',
+  margin: '0 0 4px',
   color: wechatDark.textStrong,
-  fontSize: 20,
-  lineHeight: 1.15,
-  fontWeight: 850,
+  fontSize: 16,
+  lineHeight: 1.2,
+  fontWeight: 800,
 }
 
-const channelGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-  gap: 10,
-}
-
-const channelStatusGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))',
-  gap: 8,
-}
-
-const channelStatusTileStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  minWidth: 0,
-  padding: '8px 10px',
-  borderRadius: 5,
-  border: `1px solid ${wechatDark.border}`,
-  background: wechatDark.empty,
-}
-
-const channelStatusLabelStyle: CSSProperties = {
-  color: wechatDark.muted,
-  fontSize: 12,
-  lineHeight: 1.35,
-  whiteSpace: 'nowrap',
-}
-
-const channelCardStyle: CSSProperties = {
+const channelPrimaryStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '38px minmax(0, 1fr) auto',
   alignItems: 'center',
-  gap: 10,
-  padding: 12,
-  borderRadius: 8,
+  gap: 12,
+  padding: '12px 14px',
+  borderRadius: 6,
   border: `1px solid ${wechatDark.border}`,
   background: wechatDark.panelSoft,
 }
@@ -2120,11 +2111,58 @@ const channelNameStyle: CSSProperties = {
   lineHeight: 1.2,
 }
 
-const channelActionStackStyle: CSSProperties = {
+const channelPrimaryTitleRowStyle: CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-end',
+  alignItems: 'center',
   gap: 8,
+  minWidth: 0,
+  flexWrap: 'wrap',
+}
+
+const channelPrimaryActionsStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  justifyContent: 'flex-end',
+  flexWrap: 'wrap',
+}
+
+const secondaryChannelRowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+}
+
+const secondaryChannelStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  minHeight: 28,
+  padding: '5px 9px',
+  borderRadius: 5,
+  border: `1px solid ${wechatDark.border}`,
+  background: wechatDark.empty,
+  color: wechatDark.muted,
+}
+
+const secondaryChannelIconStyle: CSSProperties = {
+  color: wechatDark.mutedStrong,
+  display: 'grid',
+  placeItems: 'center',
+}
+
+const secondaryChannelNameStyle: CSSProperties = {
+  color: wechatDark.mutedStrong,
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.2,
+}
+
+const secondaryChannelStatusStyle: CSSProperties = {
+  color: wechatDark.muted,
+  fontSize: 11,
+  lineHeight: 1.2,
 }
 
 const workspaceRootStyle = (
@@ -2338,23 +2376,13 @@ const routeTextareaStyle: CSSProperties = {
 
 const qrPanelStyle: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-  gap: 16,
+  gridTemplateColumns: 'minmax(220px, 260px) minmax(0, 1fr)',
+  gap: 20,
   alignItems: 'center',
-  padding: 14,
+  padding: 18,
   borderRadius: 5,
   border: `1px solid ${wechatDark.border}`,
   background: wechatDark.panelSoft,
-}
-
-const bindingStepGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))',
-  gap: 8,
-}
-
-const bindingStepStyle: CSSProperties = {
-  minWidth: 0,
 }
 
 const bindingHintStyle: CSSProperties = {
@@ -2363,40 +2391,37 @@ const bindingHintStyle: CSSProperties = {
   lineHeight: 1.45,
 }
 
-const bindingRuntimeGridStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-  gap: 8,
-}
-
-const bindingRuntimeTileStyle: CSSProperties = {
+const bindingSummaryStyle: CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-  padding: '8px 10px',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+  minWidth: 0,
+  padding: '9px 10px',
   borderRadius: 5,
   border: `1px solid ${wechatDark.border}`,
-  background: wechatDark.empty,
+  background: wechatDark.panelSoft,
 }
 
-const bindingRuntimeTileLabelStyle: CSSProperties = {
-  color: wechatDark.muted,
-  fontSize: 12,
-  lineHeight: 1.35,
-}
-
-const bindingRuntimeTileValueStyle: CSSProperties = {
-  color: wechatDark.textStrong,
-  fontSize: 14,
-  lineHeight: 1.35,
-  fontWeight: 700,
-}
-
-const bindingBadgeStackStyle: CSSProperties = {
+const bindingMetaRowStyle: CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-end',
-  gap: 6,
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+}
+
+const bindingMetaPillStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 24,
+  padding: '3px 8px',
+  borderRadius: 999,
+  border: `1px solid ${wechatDark.border}`,
+  background: wechatDark.empty,
+  color: wechatDark.mutedStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 12,
+  lineHeight: 1.2,
 }
 
 const linkedRowAsideStyle: CSSProperties = {
@@ -2414,8 +2439,8 @@ const linkedRowActionStyle: CSSProperties = {
 }
 
 const qrImageShellStyle: CSSProperties = {
-  width: 280,
-  minHeight: 280,
+  width: 'min(260px, 100%)',
+  aspectRatio: '1',
   padding: 10,
   boxSizing: 'border-box',
   display: 'grid',
@@ -2427,8 +2452,8 @@ const qrImageShellStyle: CSSProperties = {
 }
 
 const qrImageStyle: CSSProperties = {
-  width: 260,
-  height: 260,
+  width: 'min(240px, 100%)',
+  aspectRatio: '1',
   display: 'block',
   objectFit: 'contain',
 }
@@ -2439,13 +2464,6 @@ const qrPlaceholderStyle: CSSProperties = {
   lineHeight: 1.4,
   padding: 12,
   textAlign: 'center',
-}
-
-const qrCountdownStyle: CSSProperties = {
-  color: wechatDark.accentText,
-  fontSize: 13,
-  lineHeight: 1.35,
-  fontWeight: 700,
 }
 
 const queueLeadStyle: CSSProperties = {

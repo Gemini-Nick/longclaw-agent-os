@@ -439,6 +439,7 @@ describe('WeChat QR rendering', () => {
     )
 
     expect(markup).toContain('src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"')
-    expect(markup).toContain('官方二维码图片')
+    expect(markup).toContain('扫码并在手机确认授权')
+    expect(markup).not.toContain('官方二维码图片')
   })
 })
