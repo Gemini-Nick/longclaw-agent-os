@@ -275,6 +275,7 @@ type ScanResult = {
 type BatchBacktestResult = {
   summary?: Record<string, unknown>
   stocks?: Array<Record<string, unknown>>
+  universe?: Record<string, unknown>
   warnings?: string[]
   error?: string
   terminal?: BacktestTerminal
@@ -1314,9 +1315,25 @@ function urlFromBacktestDashboard(dashboard: BacktestDashboard): string {
   return trimTrailingSlash(terminalLink?.url)
 }
 
+const ALL_ETF_UNIVERSE_TOKEN = 'all_etf'
+
+function isAllEtfUniverseInput(value: string): boolean {
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, '')
+  return normalized === 'alletf' || normalized === 'etfall' || normalized === '全量etf' || normalized === '全市场etf'
+}
+
+function isAllEtfUniverseCode(value: string): boolean {
+  return isAllEtfUniverseInput(value)
+}
+
+function isAllEtfUniverseSelection(codes: string[]): boolean {
+  return codes.length === 1 && isAllEtfUniverseCode(codes[0] ?? '')
+}
+
 function normalizeSymbolCode(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return ''
+  if (isAllEtfUniverseInput(trimmed)) return ALL_ETF_UNIVERSE_TOKEN
   const withoutPrefix = trimmed.replace(/^(SZ|SH|HK|US)\./i, '')
   const suffixMatch = withoutPrefix.match(/^([A-Za-z0-9]+)\.(SZ|SH|HK|US)$/i)
   return (suffixMatch?.[1] ?? withoutPrefix).toUpperCase()
@@ -1328,6 +1345,7 @@ const SYMBOL_NAME_LOOKUP_TIMEOUT_MS = 45_000
 
 function isBacktestUnsupportedBoardCode(code: string): boolean {
   const normalized = normalizeSymbolCode(code)
+  if (isAllEtfUniverseCode(normalized)) return false
   return /^(4|8|920)\d{3,5}$/.test(normalized)
 }
 
@@ -1342,6 +1360,7 @@ function orderBacktestCandidateOptions(options: SymbolOption[]): SymbolOption[] 
 }
 
 function extractSymbolCandidates(value: string): string[] {
+  if (isAllEtfUniverseInput(value)) return [ALL_ETF_UNIVERSE_TOKEN]
   const normalized = normalizeSymbolCode(value)
   if (!normalized) return []
   if (/^\d{5,6}$/.test(normalized) || /^[A-Z]{1,6}$/.test(normalized)) return [normalized]
@@ -2805,7 +2824,7 @@ export function backtestRestoreStateFromHistory(entry: BacktestHistoryEntry, fal
 
 function parseCodeList(value: string): string[] {
   const seen = new Set<string>()
-  return value
+  const codes = value
     .split(/[\s,，、;；]+/)
     .flatMap(item => extractSymbolCandidates(item))
     .filter(Boolean)
@@ -2815,6 +2834,7 @@ function parseCodeList(value: string): string[] {
       seen.add(key)
       return true
     })
+  return codes.some(isAllEtfUniverseCode) ? [ALL_ETF_UNIVERSE_TOKEN] : codes
 }
 
 function symbolOptionKey(option: SymbolOption): string {
@@ -2865,6 +2885,7 @@ function symbolOptionsEqual(left: SymbolOption[], right: SymbolOption[]): boolea
 
 function symbolLabel(code: string, option?: SymbolOption): string {
   const normalized = normalizeSymbolCode(code)
+  if (isAllEtfUniverseCode(normalized)) return 'all_etf 全量ETF'
   const name = option?.name?.trim()
   return name && name.toUpperCase() !== normalized.toUpperCase()
     ? `${normalized} ${name}`
@@ -2983,6 +3004,13 @@ function symbolOptionMatches(option: SymbolOption, query: string): boolean {
 
 function directSymbolOptionsFromQuery(query: string): SymbolOption[] {
   const chunks = query.split(/[\s,，、;；]+/).map(item => item.trim()).filter(Boolean)
+  const universeOptions = chunks.some(isAllEtfUniverseInput)
+    ? [{
+      code: ALL_ETF_UNIVERSE_TOKEN,
+      name: '全量ETF',
+      group: '全市场',
+    }]
+    : []
   const codes = chunks.flatMap(item => {
     const normalized = normalizeSymbolCode(item)
     const hasMarketPrefix = /^(SZ|SH|HK|US)\./i.test(item)
@@ -2991,11 +3019,11 @@ function directSymbolOptionsFromQuery(query: string): SymbolOption[] {
     if (!hasMarketPrefix && !hasMarketSuffix && !numericCode) return []
     return extractSymbolCandidates(item)
   })
-  return uniqueSymbolOptions(codes.map(code => ({
+  return uniqueSymbolOptions([...universeOptions, ...codes.map(code => ({
     code,
     name: code,
     group: '直接输入',
-  })))
+  }))])
 }
 
 function symbolOptionsMatchingQuery(query: string, options: SymbolOption[]): SymbolOption[] {
@@ -3171,7 +3199,11 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
   const result = input.result as BacktestResult | null | undefined
   const batchResult = input.batchResult as BatchBacktestResult | null | undefined
   const selectedCodes = input.selectedCodes ?? []
-  const batchSelected = selectedCodes.length > 1
+  const universeSelected = isAllEtfUniverseSelection(selectedCodes)
+  const batchSelected = selectedCodes.length > 1 || universeSelected
+  const selectedCountLabel = universeSelected
+    ? (zh ? '全量ETF' : 'All ETF')
+    : formatNumber(selectedCodes.length || 1, 0)
   if (input.loading) {
     return {
       tone: 'running',
@@ -3181,12 +3213,12 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
         ? (batchSelected ? '先等成功/失败标的、排名、信号拆解和成交样本返回，再判断规则共性。' : '先等数据、K线、信号和成交同时返回，再做策略判断。')
         : 'Wait for candles, signals, and trades before judging the rule.',
       cards: [
-        { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? '标的' : 'Symbols', value: selectedCountLabel },
         { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
         { label: zh ? '状态' : 'Status', value: zh ? '运行中' : 'Running' },
       ],
       flow: [
-        { label: zh ? (batchSelected ? '样本' : '盘中观察') : 'Sample', value: zh ? (batchSelected ? `${selectedCodes.length}只候选` : '保留候选') : 'Keep candidates', tone: 'open' },
+        { label: zh ? (batchSelected ? '样本' : '盘中观察') : 'Sample', value: universeSelected ? (zh ? 'ETF universe' : 'ETF universe') : (zh ? (batchSelected ? `${selectedCodes.length}只候选` : '保留候选') : 'Keep candidates'), tone: 'open' },
         { label: zh ? (batchSelected ? '批量证据' : '盘后验证') : 'Evidence', value: zh ? '等待结果' : 'Waiting', tone: 'running' },
         { label: zh ? (batchSelected ? '下一步' : '研发推进') : 'Next step', value: zh ? '暂不下结论' : 'No verdict yet', tone: 'open' },
       ],
@@ -3201,7 +3233,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
       headline: zh ? '先处理回测异常，再判断策略质量' : 'Resolve the backtest issue before judging the strategy',
       detail: input.error,
       cards: [
-        { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? '标的' : 'Symbols', value: selectedCountLabel },
         { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
         { label: zh ? '状态' : 'Status', value: zh ? '失败' : 'Failed', tone: 'down' },
       ],
@@ -3225,12 +3257,14 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
       return {
         tone: 'open',
         statusLabel: zh ? '待批量验证' : 'Batch not run',
-        headline: zh ? `${selectedCodes.length}只候选待验证` : `${selectedCodes.length} candidates ready`,
+        headline: universeSelected
+          ? (zh ? '全量ETF universe 待验证' : 'All ETF universe ready')
+          : (zh ? `${selectedCodes.length}只候选待验证` : `${selectedCodes.length} candidates ready`),
         detail: zh
           ? '批量回测用于判断规则能不能跨标的重复出现；先看共性和失败样本，再下钻单票。'
           : 'Use batch backtest to test repeatability, then drill into representative symbols.',
         cards: [
-          { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length, 0) },
+          { label: zh ? '标的' : 'Symbols', value: selectedCountLabel },
           { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
           { label: zh ? '成交' : 'Trades', value: emptyDisplay },
         ],
@@ -3241,7 +3275,9 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
         ],
         issues: [],
         actions: [
-          zh ? '运行批量回测后，先看强弱排名、失败样本和信号族拆解。' : 'Run batch, then inspect ranking, failures, and signal families.',
+          universeSelected
+            ? (zh ? '运行后先看 universe selected/total，再看强弱排名和失败样本。' : 'After running, read universe selected/total before ranking and failures.')
+            : (zh ? '运行批量回测后，先看强弱排名、失败样本和信号族拆解。' : 'Run batch, then inspect ranking, failures, and signal families.'),
           zh ? '不要直接用两三只样本优化参数，先扩到同一主线 5-10 只。' : 'Do not optimize on a tiny basket; expand to 5-10 comparable names first.',
         ],
       }
@@ -3254,7 +3290,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
         ? '从买点池、盯盘池或产业链组合选标的，盘后用日线/周线验证，再用扫描看参数稳定性。'
         : 'Pick names from candidates or baskets, validate daily/weekly, then scan parameter stability.',
       cards: [
-        { label: zh ? '标的' : 'Symbols', value: formatNumber(selectedCodes.length || 1, 0) },
+        { label: zh ? '标的' : 'Symbols', value: selectedCountLabel },
         { label: zh ? '周期' : 'Freq', value: freqLabel(input.freq, locale) || emptyDisplay },
         { label: zh ? '成交' : 'Trades', value: emptyDisplay },
       ],
@@ -3375,7 +3411,16 @@ function buildBatchBody(
   signalType: SignalType,
   simParams: Record<string, string>,
 ): Record<string, unknown> {
-  const body: Record<string, unknown> = { codes, freq, lookback: BATCH_BACKTEST_LOOKBACK_BARS }
+  const universeMode = isAllEtfUniverseSelection(codes)
+  const body: Record<string, unknown> = {
+    codes: universeMode ? [ALL_ETF_UNIVERSE_TOKEN] : codes,
+    freq,
+    lookback: BATCH_BACKTEST_LOOKBACK_BARS,
+  }
+  if (universeMode) {
+    body.universe = ALL_ETF_UNIVERSE_TOKEN
+    body.require_daily_bars = true
+  }
   if (signalType === 'all' || signalType === 'macd' || signalType === 'czsc') {
     body.signal_group = signalType
   } else {
@@ -3819,7 +3864,8 @@ export function BacktestWorkbench({
   const dataSourceLabel = backtestDataSourceLabel(result, locale)
   const dataHealthLabel = dataHealthText(result, locale)
   const selectedCodes = useMemo(() => parseCodeList(code), [code])
-  const isBatchView = selectedCodes.length > 1 || isMultiMode
+  const isUniverseBatchView = isAllEtfUniverseSelection(selectedCodes)
+  const isBatchView = selectedCodes.length > 1 || isMultiMode || isUniverseBatchView
   const resultSymbolOptions = useMemo(() => symbolOptionsFromBacktestOutputs(result, batchResult), [batchResult, result])
   const dashboardHistory = useMemo(() => dashboardBacktestHistoryEntries(dashboard), [dashboard])
   const restorableHistory = useMemo(
@@ -3938,13 +3984,18 @@ export function BacktestWorkbench({
   }, [baseUrl, deletedHistoryIds, localHistory])
 
   const setCodeList = useCallback((codes: string[]) => {
-    setCode(selectedSymbolText(parseCodeList(codes.join(','))))
+    const parsed = parseCodeList(codes.join(','))
+    setCode(selectedSymbolText(parsed.some(isAllEtfUniverseCode) ? [ALL_ETF_UNIVERSE_TOKEN] : parsed))
   }, [])
 
   const toggleSymbolCode = useCallback((nextCode: string) => {
     const normalized = normalizeSymbolCode(nextCode)
     if (!normalized) return
-    const current = parseCodeList(code)
+    if (isAllEtfUniverseCode(normalized)) {
+      setCodeList([ALL_ETF_UNIVERSE_TOKEN])
+      return
+    }
+    const current = parseCodeList(code).filter(item => !isAllEtfUniverseCode(item))
     const exists = current.some(item => item.toUpperCase() === normalized.toUpperCase())
     setCodeList(exists
       ? current.filter(item => item.toUpperCase() !== normalized.toUpperCase())
@@ -3972,14 +4023,15 @@ export function BacktestWorkbench({
     }
     const normalizedCodeText = selectedSymbolText(codeList)
     if (normalizedCodeText !== code.trim()) setCode(normalizedCodeText)
-    const multiMode = codeList.length > 1
+    const universeMode = isAllEtfUniverseSelection(codeList)
+    const multiMode = codeList.length > 1 || universeMode
     if (!multiMode && isBacktestUnsupportedBoardCode(codeList[0] ?? '')) {
       setError(locale === 'zh-CN'
         ? `当前回测暂不支持北交所/新三板标的：${codeList[0]}。请选择沪深或 HK 标的。`
         : `${codeList[0]} is not supported by the current backtest data path. Pick an SH/SZ or HK symbol.`)
       return
     }
-    if (multiMode && codeList.length > MAX_BACKTEST_BATCH_CODES) {
+    if (multiMode && !universeMode && codeList.length > MAX_BACKTEST_BATCH_CODES) {
       setError(locale === 'zh-CN'
         ? `批量回测最多支持 ${MAX_BACKTEST_BATCH_CODES} 只；请先缩小已选池。`
         : `Batch backtest supports up to ${MAX_BACKTEST_BATCH_CODES} symbols. Narrow the selected pool first.`)
@@ -3992,7 +4044,7 @@ export function BacktestWorkbench({
       freq,
       signal_type: signalType,
       had_result: hadResult,
-      mode: multiMode ? 'multi' : 'single',
+      mode: universeMode ? 'universe' : (multiMode ? 'multi' : 'single'),
       start_date: simParams.start_date,
       end_date: simParams.end_date,
     })
@@ -4037,6 +4089,7 @@ export function BacktestWorkbench({
         const summary = recordValue(data.summary)
         recordObservationEvent('backtest.batch.success', {
           code_count: codeList.length,
+          universe: universeMode ? ALL_ETF_UNIVERSE_TOKEN : undefined,
           total_stocks: summary.total_stocks,
           ok_stocks: summary.ok_stocks,
           total_signals: summary.total_signals,
@@ -4531,6 +4584,7 @@ export function BacktestWorkbench({
         selectedCodes={selectedCodes}
         options={symbolOptions}
         onApplyBasket={codes => setCodeList(codes)}
+        onApplyUniverse={() => setCodeList([ALL_ETF_UNIVERSE_TOKEN])}
         onToggleCode={toggleSymbolCode}
         onSymbolOptionsSeen={rememberSymbolOptions}
         onClearCodes={() => {
@@ -4988,13 +5042,20 @@ function BatchSamplePanel({
 }) {
   const zh = locale === 'zh-CN'
   const summary = recordValue(batchResult?.summary)
+  const universe = recordValue(batchResult?.universe)
   const metrics = recordValue(batchResult?.terminal?.metrics)
   const target = recordValue(batchResult?.terminal?.target)
   const totalStocks = numberValue(summary.total_stocks) ?? selectedCodes.length
+  const universeTotal = numberValue(universe.total)
+  const universeSelected = numberValue(universe.selected) ?? numberValue(universe.backtest_ready_total)
   const okStocks = numberValue(summary.ok_stocks)
   const failedStocks = okStocks === undefined ? undefined : Math.max(0, totalStocks - okStocks)
   const cards = [
     { label: zh ? '周期' : 'Freq', value: freqLabel(target.freq, locale) || emptyDisplay },
+    ...(universeTotal !== undefined ? [{
+      label: zh ? 'ETF范围' : 'Universe',
+      value: `${formatNumber(universeSelected ?? totalStocks, 0)} / ${formatNumber(universeTotal, 0)}`,
+    }] : []),
     { label: zh ? '截至' : 'As of', value: stringValue(target.as_of) ?? emptyDisplay },
     { label: zh ? '新鲜度' : 'Freshness', value: freshnessLabel(target.freshness, locale) || emptyDisplay },
     { label: zh ? '成功/失败' : 'OK/failed', value: failedStocks === undefined ? `${formatNumber(totalStocks, 0)} / --` : `${formatNumber(okStocks, 0)} / ${formatNumber(failedStocks, 0)}` },
@@ -5135,6 +5196,7 @@ function SymbolBasketBar({
   selectedCodes,
   options,
   onApplyBasket,
+  onApplyUniverse,
   onToggleCode,
   onSymbolOptionsSeen,
   onClearCodes,
@@ -5145,6 +5207,7 @@ function SymbolBasketBar({
   selectedCodes: string[]
   options: SymbolOption[]
   onApplyBasket: (codes: string[]) => void
+  onApplyUniverse: () => void
   onToggleCode: (code: string) => void
   onSymbolOptionsSeen: (options: SymbolOption[]) => void
   onClearCodes: () => void
@@ -5164,6 +5227,7 @@ function SymbolBasketBar({
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupMessage, setLookupMessage] = useState('')
   const selectedSet = new Set(selectedCodes.map(item => item.toUpperCase()))
+  const allEtfSelected = isAllEtfUniverseSelection(selectedCodes)
   const dynamicOptions = useMemo(() => uniqueSymbolOptions(dynamicBaskets.flatMap(basket => basket.codes)), [dynamicBaskets])
   const baseOptions = useMemo(
     () => uniqueSymbolOptions([...directSymbolOptionsFromQuery(query), ...dynamicOptions, ...options]),
@@ -5242,6 +5306,7 @@ function SymbolBasketBar({
     const missingCodes = selectedCodes
       .map(normalizeSymbolCode)
       .filter(Boolean)
+      .filter(code => !isAllEtfUniverseCode(code))
       .filter(code => {
         const option = optionByCode.get(code.toUpperCase())
         return !option || !hasReadableSymbolName(option)
@@ -5456,6 +5521,20 @@ function SymbolBasketBar({
 
       <div style={labelStyle}>{locale === 'zh-CN' ? '样本来源' : 'Sample source'}</div>
       <div style={chipRowStyle}>
+        <button
+          type="button"
+          aria-pressed={allEtfSelected}
+          style={buttonStyle(allEtfSelected)}
+          onClick={() => {
+            onApplyUniverse()
+            setSelectedExpanded(false)
+          }}
+          title={locale === 'zh-CN'
+            ? '用 all_etf universe 进入批量回测，由 Signals 返回 selected/total。'
+            : 'Use the all_etf universe for batch backtest; Signals returns selected/total.'}
+        >
+          {locale === 'zh-CN' ? '全量ETF universe' : 'All ETF universe'}
+        </button>
         {filteredBaskets.length ? filteredBaskets.slice(0, 6).map(basket => {
           const basketCodes = basket.codes.map(item => item.code)
           const active = sameCodeSet(selectedCodes, basketCodes)

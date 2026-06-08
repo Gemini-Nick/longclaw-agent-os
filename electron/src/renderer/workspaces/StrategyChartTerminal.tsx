@@ -137,6 +137,7 @@ type WorkbenchShell = {
   watchlist_groups?: {
     major_indices?: Record<string, unknown>[]
     industry_etfs?: Record<string, unknown>[]
+    all_etfs?: Record<string, unknown>[]
     macro_indices?: Record<string, unknown>[]
     sector_boards?: Record<string, unknown>[]
     buy_candidates?: Record<string, unknown>[]
@@ -373,7 +374,7 @@ type WatchlistRow = {
   raw: Record<string, unknown>
 }
 
-type WatchlistTabKey = 'ai_focus' | 'major_indices' | 'industry_etfs' | 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
+type WatchlistTabKey = 'ai_focus' | 'major_indices' | 'industry_etfs' | 'all_etfs' | 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
 type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
 type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
 type TradeRoleKey = 'all' | 'left_attack' | 'right_attack' | 'watch' | 'clue' | 'risk_first' | 'mainline_attack' | 'climax_risk' | 'chain_watch' | 'defensive_weight' | 'second_wave' | 'risk_review' | 'ordinary_watch'
@@ -390,7 +391,7 @@ type TradeMapItem = {
   source?: string
 }
 
-const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['major_indices', 'industry_etfs', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['major_indices', 'industry_etfs', 'all_etfs', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
 const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
 const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
 const SHELL_REQUEST_TIMEOUT_MS = 12_000
@@ -7344,6 +7345,7 @@ export function StrategyChartTerminal({
         const group = macroRowGroup(row)
         return group === 'industry_etfs' || (!group && macroRowKind(row) === 'stock')
       })
+    const allEtfRows = Array.isArray(groups.all_etfs) ? groups.all_etfs : []
     const sectorRows = Array.isArray(groups.sector_boards) && groups.sector_boards.length > 0
       ? groups.sector_boards
       : clusterRows
@@ -7363,6 +7365,7 @@ export function StrategyChartTerminal({
     return {
       major_indices: buildRowsForGroup(majorRows, 'index', visibleRangeColumns, 'major_indices'),
       industry_etfs: buildRowsForGroup(industryEtfRows, 'stock', visibleRangeColumns, 'industry_etfs'),
+      all_etfs: buildRowsForGroup(allEtfRows, 'stock', visibleRangeColumns, 'all_etfs'),
       macro_indices: buildRowsForGroup(macroRows, 'index', visibleRangeColumns, 'macro_indices'),
       sector_boards: buildRowsForGroup(sectorRows, 'industry', visibleRangeColumns, 'sector_boards'),
       buy_candidates: buildRowsForGroup(candidateRows, 'stock', visibleRangeColumns, 'buy_candidates'),
@@ -7377,6 +7380,7 @@ export function StrategyChartTerminal({
     return {
       major_indices: groupedWatchlistRows.major_indices,
       industry_etfs: groupedWatchlistRows.industry_etfs,
+      all_etfs: groupedWatchlistRows.all_etfs,
       macro_indices: groupedWatchlistRows.macro_indices,
       sector_boards: groupedWatchlistRows.sector_boards,
       buy_candidates: groupedWatchlistRows.buy_candidates.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
@@ -7460,6 +7464,8 @@ export function StrategyChartTerminal({
       : (locale === 'zh-CN' ? '买点池为空，先看盯盘池。' : 'Entry pool empty. Check the watch pool.'))
     : activeWatchlistTab === 'risk_stocks'
       ? (locale === 'zh-CN' ? '暂无暂不参与标的。' : 'No skip-now names.')
+    : activeWatchlistTab === 'all_etfs'
+      ? (locale === 'zh-CN' ? '全量ETF分析还未返回，等待 Signals strategy snapshot 刷新。' : 'All-ETF analysis is not available yet; waiting for the Signals strategy snapshot.')
     : activeWatchlistTab === 'watch_stocks'
         ? (locale === 'zh-CN' ? '暂无盯盘标的。' : 'No watch-pool names.')
     : activeWatchlistTab === 'buy_candidates'
@@ -10244,6 +10250,7 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
     ai_focus: ['因子观察', '降噪排序后逐票复核', '日涨幅=实时快照', 'Factor watch', 'ranked candidates for single-name review', 'Day=realtime quote'],
     major_indices: ['大盘指数', '市场方向和风险偏好锚点', '日涨幅=指数当日涨跌幅', 'Major indices', 'broad-market direction and risk appetite', 'Day=latest index change'],
     industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '日涨幅=实时快照', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
+    all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '日涨幅=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
     macro_indices: ['宏观方向', '指数关键位和环境判断', '日涨幅=指数当日涨跌幅', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
     sector_boards: ['产业链异动', '源板块 -> 链主确认 -> 弹性跟随', '涨幅=源行业/概念', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
     focus_stocks: ['买点池', '低吸/右侧进攻，先复核位置和失效条件', '日涨幅=实时快照', 'Entry pool', 'left/right attack; review level and invalidation first', 'Day=realtime quote'],
@@ -10310,6 +10317,7 @@ function WatchlistTabbedTable({
     ai_focus: WatchlistRow[]
     major_indices: WatchlistRow[]
     industry_etfs: WatchlistRow[]
+    all_etfs: WatchlistRow[]
     macro_indices: WatchlistRow[]
     sector_boards: WatchlistRow[]
     buy_candidates: WatchlistRow[]
@@ -10333,10 +10341,17 @@ function WatchlistTabbedTable({
   onCandidateSelect: (row: Record<string, unknown>) => void
   onDeleteManualClue: (row: WatchlistRow) => void
 }) {
-  const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: number }> = [
-    { key: 'major_indices', label: locale === 'zh-CN' ? '大盘指数' : 'Major', count: groups.major_indices.length },
-    { key: 'industry_etfs', label: locale === 'zh-CN' ? '行业ETF' : 'ETF', count: groups.industry_etfs.length },
-    { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: groups.sector_boards.length },
+  const allEtfMeta = recordValue(groupMeta.all_etfs)
+  const allEtfReviewCount = numberValue(allEtfMeta.review_count) ?? groups.all_etfs.length
+  const allEtfTotalCount = numberValue(allEtfMeta.count)
+  const allEtfCountText = allEtfTotalCount !== undefined && allEtfTotalCount > allEtfReviewCount
+    ? `${countText(allEtfReviewCount)} / ${countText(allEtfTotalCount)}`
+    : countText(groups.all_etfs.length)
+  const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: string }> = [
+    { key: 'major_indices', label: locale === 'zh-CN' ? '大盘指数' : 'Major', count: countText(groups.major_indices.length) },
+    { key: 'industry_etfs', label: locale === 'zh-CN' ? '行业ETF' : 'ETF', count: countText(groups.industry_etfs.length) },
+    { key: 'all_etfs', label: locale === 'zh-CN' ? '全量ETF' : 'All ETF', count: allEtfCountText },
+    { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: countText(groups.sector_boards.length) },
   ]
   const panelMeta = watchlistPanelMeta(activeTab, locale)
   const watchCount = groups.watch_stocks.length
@@ -10521,6 +10536,14 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
       locale === 'zh-CN' ? '驱动涨幅' : 'Driver',
       locale === 'zh-CN' ? '源行业/概念' : 'Source/concept',
       locale === 'zh-CN' ? '确认/链主' : 'Confirm/core',
+    ]
+  }
+  if (activeTab === 'all_etfs') {
+    return [
+      locale === 'zh-CN' ? '全量ETF' : 'All ETF',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '分类/成交额' : 'Class/turnover',
     ]
   }
   if (activeTab === 'focus_stocks') {
