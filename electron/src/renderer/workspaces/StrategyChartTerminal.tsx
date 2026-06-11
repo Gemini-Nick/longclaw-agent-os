@@ -5713,6 +5713,47 @@ function percentTone(value: string): React.CSSProperties {
   return { color: terminalTheme.muted }
 }
 
+export function compactPercentTextStyle(value: string, minWidth = 46, maxWidth = 76): React.CSSProperties {
+  return {
+    ...percentTone(value),
+    minWidth,
+    maxWidth,
+    textAlign: 'right',
+    fontFamily: fontStacks.mono,
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  }
+}
+
+function watchlistPercentCellStyle(value: string): React.CSSProperties {
+  return {
+    ...watchlistCellStyle,
+    ...compactPercentTextStyle(value, 44, 68),
+    paddingLeft: 2,
+    paddingRight: 2,
+  }
+}
+
+function inlinePercentValueStyle(value: string, minWidth = 46, maxWidth = 76): React.CSSProperties {
+  return {
+    ...monoTextStyle,
+    ...compactPercentTextStyle(value, minWidth, maxWidth),
+    flex: '0 0 auto',
+  }
+}
+
+function percentBadgeStyle(value: string, minWidth = 46, maxWidth = 76): React.CSSProperties {
+  return {
+    ...miniNeutralSignalBadgeStyle,
+    ...compactPercentTextStyle(value, minWidth, maxWidth),
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  }
+}
+
 function formatConfidence(value: unknown): string {
   const number = numberValue(value)
   if (number === undefined) return compactText(value, 'N/A')
@@ -8864,7 +8905,10 @@ export function StrategyChartTerminal({
                 ].map(([label, value]) => (
                   <div key={label} style={headerMetricStyle}>
                     <div style={eyebrowDarkStyle}>{label}</div>
-                    <div style={headerMetricValueStyle}>{value}</div>
+                    <div style={{
+                      ...headerMetricValueStyle,
+                      ...(label === (locale === 'zh-CN' ? '涨幅' : 'Change') ? compactPercentTextStyle(value, 44, 64) : {}),
+                    }}>{value}</div>
                   </div>
                 ))}
               </div>
@@ -9370,7 +9414,7 @@ function TimeframeMarketPanel({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                   <span style={{ ...miniNeutralSignalBadgeStyle, flex: '0 0 auto' }}>{row.label}</span>
                   <span style={rowTitleStyle}>{row.latestPrice}</span>
-                  <span style={{ ...monoTextStyle, ...percentTone(row.periodChange) }}>{row.periodChange}</span>
+                  <span style={inlinePercentValueStyle(row.periodChange)}>{row.periodChange}</span>
                 </div>
                 <span style={statusBadgeStyle(timeframeSnapshotBadgeTone(row.status))}>
                   {timeframeSnapshotStatusLabel(row.status, locale)}
@@ -10513,14 +10557,14 @@ function WatchlistTabbedTable({
 
 export function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
   const stockTab = activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks'
-  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, minmax(54px, 0.58fr))` : ''
+  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, minmax(52px, 0.55fr))` : ''
   if (activeTab === 'sector_boards') {
-    return `minmax(88px, 1.15fr) minmax(42px, 0.45fr) minmax(48px, 0.5fr) minmax(58px, 0.55fr)${rangeColumns}`
+    return `minmax(86px, 1.12fr) minmax(42px, 0.44fr) minmax(46px, 0.48fr) minmax(56px, 0.54fr)${rangeColumns}`
   }
   if (stockTab) {
-    return `minmax(118px, 1.35fr) minmax(44px, 0.48fr) minmax(48px, 0.52fr) minmax(60px, 0.58fr)${rangeColumns}`
+    return `minmax(108px, 1.32fr) minmax(42px, 0.46fr) minmax(46px, 0.5fr) minmax(58px, 0.58fr)${rangeColumns}`
   }
-  return `minmax(86px, 1.1fr) minmax(40px, 0.42fr) minmax(46px, 0.48fr) minmax(60px, 0.58fr)${rangeColumns}`
+  return `minmax(86px, 1.1fr) minmax(40px, 0.42fr) minmax(46px, 0.48fr) minmax(66px, 0.64fr)${rangeColumns}`
 }
 
 function watchlistRangeHeaderLabel(column: WatchlistRangeColumn): string {
@@ -10991,7 +11035,7 @@ function ChainHeatVisualization({
 	            >
 	              <div style={chainVizTopLineStyle}>
 	                <div style={chainVizTitleStyle}>{sectorTitle}</div>
-	                <div style={{ ...chainVizMetricStyle, ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+	                <div style={{ ...chainVizMetricStyle, ...compactPercentTextStyle(row.dayChange, 44, 68) }}>{row.dayChange}</div>
 	              </div>
               <div style={chainVizBarTrackStyle}>
                 <div style={{ ...chainVizBarStyle, width, background: chainVizBarColor(phase) }} />
@@ -11225,8 +11269,8 @@ function WatchlistTable({
                   </>
                 )}
               </div>
-              <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? percentTone(firstMetric) : {}) }}>{firstMetric}</div>
-              <div style={{ ...watchlistCellStyle, ...(activeTab === 'sector_boards' ? {} : percentTone(secondMetric)) }}>{secondMetric}</div>
+              <div style={activeTab === 'sector_boards' ? watchlistPercentCellStyle(firstMetric) : watchlistCellStyle}>{firstMetric}</div>
+              <div style={activeTab === 'sector_boards' ? watchlistCellStyle : watchlistPercentCellStyle(secondMetric)}>{secondMetric}</div>
               <div style={activeTab === 'sector_boards' || activeTab === 'ai_focus' || stockDecision ? watchlistCellStyle : watchlistSignalCellStyle}>
                 {activeTab === 'sector_boards' ? (
                   sectorCarrierForWatchlist(row, locale)
@@ -11266,7 +11310,7 @@ function WatchlistTable({
                 )}
               </div>
               {row.rangeValues.map((value, index) => (
-                <div key={`${row.id}-range-${index}`} style={{ ...watchlistCellStyle, ...percentTone(value) }}>
+                <div key={`${row.id}-range-${index}`} style={watchlistPercentCellStyle(value)}>
                   {value}
                 </div>
               ))}
@@ -11384,7 +11428,7 @@ function StrategyDecisionPanel({
                 <div style={rowTitleStyle}>{targetIdentity}</div>
                 <div style={mutedLineStyle}>{[compactText(summary.subtitle), identity, chainText].filter(Boolean).join(' · ')}</div>
               </div>
-              <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(dayChange) }}>{dayChange}</div>
+              <div style={inlinePercentValueStyle(dayChange)}>{dayChange}</div>
             </div>
             <div style={mutedTwoLineStyle}>{read}</div>
           </div>
@@ -11454,7 +11498,7 @@ function StrategyDecisionPanel({
               <div style={rowTitleStyle}>{rowIdentity}</div>
               <div style={mutedLineStyle}>{[opportunity, timeframeSummary, action].filter(Boolean).join(' · ')}</div>
             </div>
-            <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(row.dayChange) }}>{row.dayChange}</div>
+            <div style={inlinePercentValueStyle(row.dayChange)}>{row.dayChange}</div>
           </div>
           <div style={decisionPathStyle}>
             {timeframeSteps.map(step => (
@@ -11612,7 +11656,7 @@ function ChainTargetDrawer({
                     {[displayLabel, relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier), compactText(candidate.chain_role) || compactText(candidate.relation)].filter(Boolean).join(' · ')}
                   </div>
                 </div>
-                <div style={{ ...monoTextStyle, textAlign: 'right', ...percentTone(formatPercent(candidate.day_change_pct)) }}>
+                <div style={inlinePercentValueStyle(formatPercent(candidate.day_change_pct))}>
                   {formatPercent(candidate.day_change_pct)}
                 </div>
                 <div style={{ ...monoTextStyle, textAlign: 'right' }}>
@@ -11701,7 +11745,7 @@ function ChainContextRail({
           </div>
           <div style={chartMetaRowStyle}>
             <span style={miniNeutralSignalBadgeStyle}>热度 {formatNumber(source.heat_score)}</span>
-            <span style={{ ...miniNeutralSignalBadgeStyle, ...percentTone(formatPercent(source.change_pct)) }}>{formatPercent(source.change_pct)}</span>
+            <span style={percentBadgeStyle(formatPercent(source.change_pct))}>{formatPercent(source.change_pct)}</span>
             <span style={miniNeutralSignalBadgeStyle}>5m {formatNumber(source.momentum_5m)}</span>
             <span style={miniNeutralSignalBadgeStyle}>15m {formatNumber(source.momentum_15m)}</span>
             <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span>
@@ -11795,7 +11839,7 @@ function ChainContextRail({
           <div style={signalBlockStyle}>
             <div style={candidateGroupHeaderStyle}>
               <span>{locale === 'zh-CN' ? '本次涨幅驱动' : 'Move driver'}</span>
-              <span style={{ ...miniNeutralSignalBadgeStyle, ...percentTone(formatPercent(activeDriver.change_pct)) }}>
+              <span style={percentBadgeStyle(formatPercent(activeDriver.change_pct))}>
                 {formatPercent(activeDriver.change_pct)}
               </span>
             </div>
@@ -11815,7 +11859,7 @@ function ChainContextRail({
             )}
             <div style={chartMetaRowStyle}>
               {driverCandidates.slice(0, 5).map((driver, index) => (
-                <span key={`${compactText(driver.name)}-${index}`} style={{ ...miniNeutralSignalBadgeStyle, ...percentTone(formatPercent(driver.change_pct)) }}>
+                <span key={`${compactText(driver.name)}-${index}`} style={percentBadgeStyle(formatPercent(driver.change_pct), 52, 96)}>
                   {[compactText(driver.name), formatPercent(driver.change_pct)].filter(Boolean).join(' ')}
                 </span>
               ))}

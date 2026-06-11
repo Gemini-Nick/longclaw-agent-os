@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  compactPercentTextStyle,
   dailyMaAcceptanceSignalForChart,
   displaySignalsForChart,
   looksLikeIndexValue,
@@ -61,10 +62,38 @@ describe('StrategyChartTerminal default timeframe', () => {
 
 describe('StrategyChartTerminal watchlist range layout', () => {
   it('uses compact responsive range columns for narrow and wide screens', () => {
-    expect(watchlistGridTemplate('all_etfs', 1)).toContain('minmax(54px, 0.58fr)')
-    expect(watchlistGridTemplate('focus_stocks', 1)).toContain('minmax(118px, 1.35fr)')
+    expect(watchlistGridTemplate('all_etfs', 1)).toContain('minmax(52px, 0.55fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).toContain('minmax(108px, 1.32fr)')
     expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('72px')
     expect(watchlistGridTemplate('major_indices', 1)).not.toContain('64px')
+  })
+
+  it('applies the same compact range column to every return-bearing watchlist tab', () => {
+    const tabs = [
+      'major_indices',
+      'industry_etfs',
+      'all_etfs',
+      'sector_boards',
+      'focus_stocks',
+      'risk_stocks',
+      'watch_stocks',
+      'buy_candidates',
+    ] as const
+    for (const tab of tabs) {
+      expect(watchlistGridTemplate(tab, 1)).toContain('minmax(52px, 0.55fr)')
+    }
+  })
+
+  it('keeps percent text tabular and bounded for 13-inch and 27-inch layouts', () => {
+    expect(compactPercentTextStyle('+123.45%')).toMatchObject({
+      minWidth: 46,
+      maxWidth: 76,
+      textAlign: 'right',
+      fontVariantNumeric: 'tabular-nums',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    })
   })
 
   it('labels ETF spot-only range returns without treating them as missing K lines', () => {
