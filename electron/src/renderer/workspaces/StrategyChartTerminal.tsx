@@ -1162,7 +1162,7 @@ const watchlistTableStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   minWidth: 0,
-  overflowX: 'auto',
+  overflowX: 'hidden',
   border: `1px solid ${terminalTheme.border}`,
   borderRadius: 4,
   background: terminalTheme.panelInset,
@@ -6528,6 +6528,17 @@ function readRangeReturn(row: Record<string, unknown>, column: WatchlistRangeCol
   return undefined
 }
 
+export function missingRangeReturnLabel(row: Record<string, unknown>, targetKind: string): string {
+  if (targetKind !== 'stock' && targetKind !== 'index') return 'N/A'
+  const status = compactText(row.range_return_status).toLowerCase()
+  if (status === 'lazy') return '待计算'
+  if (status === 'spot_only') return '现货'
+  if (status === 'partial_history' || status.startsWith('range_returns_incomplete')) return '历史不足'
+  if (status.includes('kline_empty') || status.includes('kline_missing') || status === 'missing') return '缺K'
+  if (status === 'error' || status.includes('failed') || status.includes('error')) return '计算失败'
+  return 'N/A'
+}
+
 function readTimeframeBadgeItems(value: unknown, side: WatchlistSignalBadge['side']): WatchlistSignalBadge[] {
   if (!Array.isArray(value)) return []
   return value
@@ -6677,7 +6688,7 @@ function toWatchlistRow(
   const rangeValues = rangeColumns.map(column => {
     const explicit = readRangeReturn(row, column)
     if (explicit !== undefined) return formatPercent(explicit)
-    return targetKind === 'stock' ? '计算失败' : 'N/A'
+    return missingRangeReturnLabel(row, targetKind)
   })
   const targetLabel = compactText(row.target_label) || label
   const signalBadges = timeframeSignalBadges(row)
@@ -10500,17 +10511,16 @@ function WatchlistTabbedTable({
   )
 }
 
-function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
+export function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
   const stockTab = activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks'
-  const rangeWidth = stockTab ? 72 : 64
-  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, ${rangeWidth}px)` : ''
+  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, minmax(54px, 0.58fr))` : ''
   if (activeTab === 'sector_boards') {
-    return `minmax(100px, 1fr) 50px 60px 62px${rangeColumns}`
+    return `minmax(88px, 1.15fr) minmax(42px, 0.45fr) minmax(48px, 0.5fr) minmax(58px, 0.55fr)${rangeColumns}`
   }
   if (stockTab) {
-    return `minmax(176px, 1.5fr) 56px 58px minmax(78px, 0.7fr)${rangeColumns}`
+    return `minmax(118px, 1.35fr) minmax(44px, 0.48fr) minmax(48px, 0.52fr) minmax(60px, 0.58fr)${rangeColumns}`
   }
-  return `minmax(104px, 1fr) 46px 52px minmax(96px, 0.95fr)${rangeColumns}`
+  return `minmax(86px, 1.1fr) minmax(40px, 0.42fr) minmax(46px, 0.48fr) minmax(60px, 0.58fr)${rangeColumns}`
 }
 
 function watchlistRangeHeaderLabel(column: WatchlistRangeColumn): string {

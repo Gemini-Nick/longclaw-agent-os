@@ -7,6 +7,7 @@ import {
   maAcceptanceFromSymbolData,
   maPeriodsForChart,
   marketSnapshotFromSymbolData,
+  missingRangeReturnLabel,
   mongoCoverageState,
   sectorTargetCountForContext,
   sectorTargetRowsForContext,
@@ -24,6 +25,7 @@ import {
   symbolDataCacheKey,
   terminalListTargetFreq,
   timeframeBadgeDisplayLabel,
+  watchlistGridTemplate,
   withSignalCalloutIds,
 } from './StrategyChartTerminal.js'
 
@@ -54,6 +56,21 @@ describe('StrategyChartTerminal default timeframe', () => {
   it('still preserves an explicit timeframe when supplied', () => {
     expect(terminalListTargetFreq('30m')).toBe('30min')
     expect(terminalListTargetFreq('15分钟')).toBe('15min')
+  })
+})
+
+describe('StrategyChartTerminal watchlist range layout', () => {
+  it('uses compact responsive range columns for narrow and wide screens', () => {
+    expect(watchlistGridTemplate('all_etfs', 1)).toContain('minmax(54px, 0.58fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).toContain('minmax(118px, 1.35fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('72px')
+    expect(watchlistGridTemplate('major_indices', 1)).not.toContain('64px')
+  })
+
+  it('labels ETF spot-only range returns without treating them as missing K lines', () => {
+    expect(missingRangeReturnLabel({ range_return_status: 'spot_only' }, 'stock')).toBe('现货')
+    expect(missingRangeReturnLabel({ range_return_status: 'range_returns_kline_empty' }, 'stock')).toBe('缺K')
+    expect(missingRangeReturnLabel({ range_return_status: 'range_returns_kline_empty' }, 'index')).toBe('缺K')
   })
 })
 
