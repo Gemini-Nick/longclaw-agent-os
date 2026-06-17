@@ -28,6 +28,7 @@ import {
   type LongclawWorkItem,
   LongclawWorkItemSchema,
   type SignalsDashboard,
+  SignalsCacheStatusSchema,
   SignalsDashboardSchema,
 } from './models.js'
 
@@ -1028,12 +1029,19 @@ export class LongclawControlPlaneClient {
         })
       }
 
+      const canonicalDashboardUrl = web1 ? `${web1}/api/pack/dashboard?recent_limit=5&backlog_limit=5` : undefined
+      const cacheStatusPromise = fetchJsonOrNull(
+        web1 ? `${web1}/api/pack/cache-status` : undefined,
+        value => SignalsCacheStatusSchema.parse(value),
+        this.fetchImpl,
+      )
       const canonicalDashboard = await fetchJsonOrNull(
-        web1 ? `${web1}/api/pack/dashboard` : undefined,
+        canonicalDashboardUrl,
         value => SignalsDashboardSchema.parse(value),
         this.fetchImpl,
       )
       if (canonicalDashboard) return canonicalDashboard
+      const cacheStatus = await cacheStatusPromise
 
       try {
         const runs = await this.listRuns()
@@ -1170,7 +1178,8 @@ export class LongclawControlPlaneClient {
         }))
 
         const web1Available = Boolean(
-          marketContext ||
+          cacheStatus ||
+            marketContext ||
             indexReports ||
             predictionOverview ||
             reviewResults ||
@@ -1643,6 +1652,7 @@ export class LongclawControlPlaneClient {
           connector_health: connectorHealth,
           deep_links: deepLinks,
           operator_actions: operatorActions,
+          cache_status: cacheStatus ?? undefined,
         })
       } catch (error) {
         const message =
@@ -1651,6 +1661,7 @@ export class LongclawControlPlaneClient {
             : 'Signals runtime is configured but currently unavailable.'
         return SignalsDashboardSchema.parse({
           ...degradedSignalsDashboard('degraded', message),
+          cache_status: cacheStatus ?? undefined,
           diagnostics: [
             packDiagnostic(
               'signals-runtime',

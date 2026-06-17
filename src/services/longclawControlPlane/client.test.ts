@@ -455,7 +455,7 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       const url = String(input)
       requests.push(url)
 
-      if (url === 'http://signals-web.local/api/pack/dashboard') {
+      if (url === 'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5') {
         return new Response(
           JSON.stringify({
             pack_id: 'signals',
@@ -571,7 +571,62 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.buy_candidates[0]?.technical_evidence).toEqual({ signal_type: '三买', freq: '30分钟' })
     expect(dashboard.buy_candidates[0]?.knowledge_confirmation).toEqual({ status: 'conflict' })
     expect(dashboard.buy_candidates[0]?.resonance_context).toEqual({ grade: 'multi_period', tags: ['多周期共振'] })
-    expect(requests).toEqual(['http://signals-web.local/api/pack/dashboard'])
+    expect(requests).toContain('http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5')
+  })
+
+  it('uses lightweight Signals cache status when canonical dashboard is unavailable', async () => {
+    const signalsStateRoot = makeTempDir('signals-state-')
+    fs.mkdirSync(path.join(signalsStateRoot, 'runs'), { recursive: true })
+
+    const fetchImpl: typeof fetch = async input => {
+      const url = String(input)
+      if (url === 'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5') {
+        throw new Error('dashboard timed out')
+      }
+      if (url === 'http://signals-web.local/api/pack/cache-status') {
+        return new Response(
+          JSON.stringify({
+            available: true,
+            mode: 'mongo',
+            trade_date: '2026-06-17',
+            live_low_latency: {
+              modules: [],
+              summary: { ok_modules: 7, total_modules: 8, strict_status: 'degraded' },
+            },
+            postmarket_backfill: {
+              run: { status: 'running', phase: 'market_data' },
+              tasks: [],
+              summary: { critical_status: 'running', critical_progress_pct: 67.07 },
+            },
+            mongo_stock_cache: {
+              freqs: [{ freq: '日线', symbols: 5509, today_symbols: 113 }],
+              summary: { daily_symbols: 5509, daily_today_symbols: 113 },
+            },
+            terminal_outputs: [],
+            provider_health: [],
+            blockers: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      throw new Error(`unavailable:${url}`)
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsStateRoot,
+      signalsWebBaseUrl: 'http://signals-web.local',
+      fetchImpl,
+    })
+
+    const dashboard = await client.getPackDashboard('signals')
+
+    expect(dashboard.pack_id).toBe('signals')
+    expect(dashboard.cache_status.available).toBe(true)
+    expect(dashboard.cache_status.trade_date).toBe('2026-06-17')
+    expect(dashboard.cache_status.postmarket_backfill.summary.critical_progress_pct).toBe(67.07)
+    expect(dashboard.cache_status.mongo_stock_cache.summary.daily_today_symbols).toBe(113)
+    expect(dashboard.cache_status.mongo_stock_cache.freqs[0]?.symbols).toBe(5509)
+    expect(dashboard.connector_health.find(item => item.connector_id === 'signals-web1')?.status).toBe('available')
   })
 
   it('synthesizes a mixed web1+web2 Signals dashboard with native panels populated', async () => {
@@ -706,7 +761,7 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       const url = String(input)
       requests.push(url)
 
-      if (url === 'http://signals-web.local/api/pack/dashboard') {
+      if (url === 'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5') {
         return new Response(JSON.stringify({ error: 'not found' }), {
           status: 404,
           headers: { 'Content-Type': 'application/json' },

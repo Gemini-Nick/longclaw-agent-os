@@ -2055,7 +2055,7 @@ async function resolveSignalsWebBaseUrl(): Promise<string | null> {
   ].filter((candidate): candidate is string => Boolean(candidate))
   for (const baseUrl of candidates) {
     try {
-      await fetchJsonWithTimeout(`${baseUrl}/api/pack/dashboard?recent_limit=5&backlog_limit=5`, 8_000)
+      await fetchJsonWithTimeout(`${baseUrl}/api/pack/descriptor`, 3_000)
       return baseUrl
     } catch {
       // Try the next configured endpoint.
@@ -2569,7 +2569,7 @@ async function collectRuntimeStatus(
         ? `${dueDiligenceBaseUrl.replace(/\/$/, '')}/healthz`
         : undefined,
     ),
-    probeHttpOk(`${signalsWebCandidateUrl}/api/pack/dashboard`),
+    probeHttpOk(`${signalsWebCandidateUrl}/api/pack/descriptor`),
     probeTcpOpen(signalsWebCandidateUrl),
   ])
   const signalsWebBaseUrl = configuredSignalsWebBaseUrl || (signalsWebReady || signalsWebPortOpen ? signalsWebCandidateUrl : '')
