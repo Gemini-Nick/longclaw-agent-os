@@ -571,13 +571,13 @@ function classifyPluginBucket(
 
 function bucketLabel(locale: LongclawLocale, bucket: CapabilitySourceBucket): string {
   if (bucket === 'runtime-managed') {
-    return locale === 'zh-CN' ? '运行时托管' : 'Runtime-managed'
+    return locale === 'zh-CN' ? '已安装扩展' : 'Runtime-managed'
   }
   if (bucket === 'agents') return '~/.agents'
   if (bucket === 'claude') return '~/.claude'
   if (bucket === 'codex') return '~/.codex'
   if (bucket === 'workspace-repos') return locale === 'zh-CN' ? '工作区' : 'Workspace repos'
-  return locale === 'zh-CN' ? '其他来源' : 'Other sources'
+  return locale === 'zh-CN' ? '其他入口' : 'Other sources'
 }
 
 function bucketSubtitle(
@@ -587,7 +587,7 @@ function bucketSubtitle(
 ): string {
   if (bucket === 'runtime-managed') {
     return locale === 'zh-CN'
-      ? '运行时托管的插件。'
+      ? '已加入工具箱的扩展项。'
       : 'Plugins installed into the runtime overlay. Overlay removal stays available.'
   }
   if (bucket === 'agents') {
@@ -607,7 +607,7 @@ function bucketSubtitle(
         : 'Plugins discovered inside the current workspace.'
   }
   return locale === 'zh-CN'
-    ? '未归类来源。'
+    ? '未归类入口。'
     : 'Plugins that do not fall into a known source root.'
 }
 
@@ -933,7 +933,7 @@ function PluginDevIssueRow({
             {humanizeTokenLocale(locale, issue.status)}
           </span>
           <span style={statusBadgeStyle(issue.ci_status === 'failed' ? 'degraded' : 'info')}>
-            {locale === 'zh-CN' ? '检查' : 'CI'} {humanizeTokenLocale(locale, issue.ci_status)}
+            {locale === 'zh-CN' ? '验证' : 'CI'} {humanizeTokenLocale(locale, issue.ci_status)}
           </span>
           <span style={statusBadgeStyle(issue.merge_status === 'merged' ? 'open' : 'info')}>
             {locale === 'zh-CN' ? '合并' : 'MR'} {humanizeTokenLocale(locale, issue.merge_status)}
@@ -969,7 +969,7 @@ function PluginDevIssueRow({
             void onRunCi(issue.issue_id)
           }}
         >
-          {locale === 'zh-CN' ? '跑检查' : 'Run CI'}
+          {locale === 'zh-CN' ? '跑验证' : 'Run CI'}
         </button>
         <button
           type="button"
@@ -1089,11 +1089,11 @@ export function CapabilitiesWorkspace({
     },
     {
       id: 'skills' as const,
-      label: locale === 'zh-CN' ? '技能' : 'Skills',
+      label: locale === 'zh-CN' ? '工具' : 'Skills',
     },
     {
       id: 'runtime' as const,
-      label: locale === 'zh-CN' ? '运行环境' : 'Runtime',
+      label: locale === 'zh-CN' ? '本机通道' : 'Runtime',
     },
   ]
 
@@ -1375,7 +1375,7 @@ export function CapabilitiesWorkspace({
       {activePanel === 'installed' && (
         <Section
           title={t(locale, 'section.capabilities.plugins.title')}
-          subtitle={locale === 'zh-CN' ? '按来源分组，只展开需关注项。' : 'Grouped by source. Attention buckets expand first.'}
+          subtitle={locale === 'zh-CN' ? '按入口分组，只展开需关注项。' : 'Grouped by source. Attention buckets expand first.'}
         >
           {pluginBuckets.length === 0 ? (
             <div style={utilityStyles.emptyState}>{t(locale, 'empty.no_capability_plugins')}</div>
@@ -1458,10 +1458,10 @@ export function CapabilitiesWorkspace({
       {activePanel === 'runtime' && (
         <>
           <Section
-            title={locale === 'zh-CN' ? '托管插件' : 'Runtime-managed plugins'}
+            title={locale === 'zh-CN' ? '工具箱扩展' : 'Runtime-managed plugins'}
         subtitle={
           locale === 'zh-CN'
-            ? '注册、重扫、移除托管副本。'
+            ? '添加、重扫、移除工具箱副本。'
             : 'Register skills/plugins into the runtime overlay. Removal only deletes the overlay, never the repo source.'
         }
       >
@@ -1596,7 +1596,7 @@ export function CapabilitiesWorkspace({
             title={t(locale, 'section.capabilities.plugins.title')}
             subtitle={
               locale === 'zh-CN'
-                ? '按来源分组，默认只展开需关注项。'
+                ? '按入口分组，默认只展开需关注项。'
                 : 'Manage plugins by source bucket. Only overlay and attention buckets expand by default.'
             }
           >

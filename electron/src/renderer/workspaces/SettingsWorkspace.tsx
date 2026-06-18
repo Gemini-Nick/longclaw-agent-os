@@ -224,7 +224,7 @@ export function SettingsWorkspace({
           <input
             value={apiKey}
             type="password"
-            placeholder={settings.apiKeySet ? (zh ? 'API Key 已保存，留空则保留' : 'API Key saved; leave blank to keep it') : 'API Key'}
+            placeholder={settings.apiKeySet ? (zh ? '密钥已保存，留空则保留' : 'API Key saved; leave blank to keep it') : (zh ? '输入密钥' : 'API Key')}
             style={settingsInputStyle}
             onChange={event => setApiKey(event.target.value)}
           />
@@ -238,7 +238,7 @@ export function SettingsWorkspace({
             <button type="button" style={successButtonStyle} onClick={() => void saveSettings('test')}>
               {busy === 'test' ? (zh ? '测试中' : 'Testing') : (zh ? '测试连接' : 'Test connection')}
             </button>
-            {settings.apiKeySet && <span style={statusBadgeStyle('open')}>{zh ? 'API Key 已保存' : 'API key saved'}</span>}
+            {settings.apiKeySet && <span style={statusBadgeStyle('open')}>{zh ? '密钥已保存' : 'API key saved'}</span>}
           </div>
 
           <div style={aliasEditorStyle}>
@@ -302,7 +302,7 @@ export function SettingsWorkspace({
           <h2 style={settingsTitleStyle}>{zh ? '工作目录' : 'Working directory'}</h2>
           <p style={settingsTextStyle}>
             {zh
-              ? 'Agent OS 会把任务文件、运行环境和相关缓存统一存放到当前目录。'
+              ? 'Agent OS 会把任务文件、本机通道和相关行情文件统一存放到当前目录。'
               : 'Agent OS stores task files, runtime assets, and caches in the current directory.'}
           </p>
           <SettingRow
@@ -313,7 +313,7 @@ export function SettingsWorkspace({
         </div>
 
         <div style={settingsCardStyle}>
-          <h2 style={settingsTitleStyle}>{zh ? '执行端系统版本' : 'Runtime system'}</h2>
+          <h2 style={settingsTitleStyle}>{zh ? '执行端版本' : 'Runtime system'}</h2>
           <div style={settingsRowsStyle}>
             <SettingRow
               label={zh ? '本机 Agent' : 'Local agent'}
@@ -325,7 +325,7 @@ export function SettingsWorkspace({
               note={agentMode?.alive ? (zh ? '运行中' : 'Running') : (zh ? '未确认运行' : 'Not confirmed running')}
             />
             <SettingRow
-              label={zh ? '本机执行席位' : 'Local runtime seat'}
+              label={zh ? '本机通道' : 'Local runtime seat'}
               value={runtimeStatus.localRuntimeSeat ? humanizeTokenLocale(locale, runtimeStatus.localRuntimeSeat) : humanizeTokenLocale(locale, 'unavailable')}
               note={zh ? `偏好：${humanizeTokenLocale(locale, localSeatPreference)}` : `Preference: ${humanizeTokenLocale(locale, localSeatPreference)}`}
             />

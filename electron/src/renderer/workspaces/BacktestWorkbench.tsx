@@ -979,13 +979,13 @@ function backtestDataSourceLabel(result: BacktestResult | null, locale: Longclaw
   if (dataSourceDetail) return dataSourceDetail
   const labels: Record<string, string> = locale === 'zh-CN'
     ? {
-        disk_cache: '磁盘缓存',
-        daily_cache_resampled_weekly: '日线聚合周线',
-        daily_cache_resampled_monthly: '日线聚合月线',
-        mongodb: 'MongoDB',
-        mongodb_bars: 'MongoDB K线',
-        mongodb_daily_resampled_weekly: 'Mongo日线聚合周线',
-        mongodb_daily_resampled_monthly: 'Mongo日线聚合月线',
+        disk_cache: '本地行情',
+        daily_cache_resampled_weekly: '日线转周线',
+        daily_cache_resampled_monthly: '日线转月线',
+        mongodb: '日线库',
+        mongodb_bars: '日线库K线',
+        mongodb_daily_resampled_weekly: '日线库转周线',
+        mongodb_daily_resampled_monthly: '日线库转月线',
         eastmoney: '东财',
         eastmoney_minute: '东财分钟线',
         sina: '新浪',
@@ -3102,7 +3102,7 @@ function compactApiError(rawError: ApiError, locale: LongclawLocale, fallback: s
   if (!rawMessage) return fallback
   if (/timeout|timed out|abort/i.test(rawMessage)) {
     return locale === 'zh-CN'
-      ? 'Signals 回测接口超时。先缩小标的篮子或换成日线单票；如果连续超时，再看数据源和回测队列。'
+      ? 'Signals 回测接口超时。先缩小标的篮子或换成日线单票；如果连续超时，再看数据源和回测池。'
       : 'Signals backtest timed out. Narrow the basket or run one daily symbol first.'
   }
   if (/traceback|File\s+["'].*\.py["']|^\s*at\s+/i.test(rawMessage)) {
@@ -3208,7 +3208,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
     return {
       tone: 'running',
       statusLabel: zh ? (batchSelected ? '批量验证中' : '正在验证') : 'Running',
-      headline: zh ? (batchSelected ? '正在拉取批量回测证据' : '正在拉取回测证据') : 'Collecting backtest evidence',
+      headline: zh ? (batchSelected ? '正在拉取批量回测依据' : '正在拉取回测依据') : 'Collecting backtest evidence',
       detail: zh
         ? (batchSelected ? '先等成功/失败标的、排名、信号拆解和成交样本返回，再判断规则共性。' : '先等数据、K线、信号和成交同时返回，再做策略判断。')
         : 'Wait for candles, signals, and trades before judging the rule.',
@@ -3219,7 +3219,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
       ],
       flow: [
         { label: zh ? (batchSelected ? '样本' : '盘中观察') : 'Sample', value: universeSelected ? (zh ? 'ETF universe' : 'ETF universe') : (zh ? (batchSelected ? `${selectedCodes.length}只候选` : '保留候选') : 'Keep candidates'), tone: 'open' },
-        { label: zh ? (batchSelected ? '批量证据' : '盘后验证') : 'Evidence', value: zh ? '等待结果' : 'Waiting', tone: 'running' },
+        { label: zh ? (batchSelected ? '批量依据' : '盘后验证') : 'Evidence', value: zh ? '等待结果' : 'Waiting', tone: 'running' },
         { label: zh ? (batchSelected ? '下一步' : '研发推进') : 'Next step', value: zh ? '暂不下结论' : 'No verdict yet', tone: 'open' },
       ],
       issues: [],
@@ -3239,7 +3239,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
       ],
       flow: [
         { label: zh ? '盘中观察' : 'Intraday', value: zh ? '保留原始线索' : 'Keep clues', tone: 'warning' },
-        { label: zh ? '盘后验证' : 'Post-close', value: zh ? '数据/接口异常' : 'Data/API issue', tone: 'failed' },
+        { label: zh ? '盘后验证' : 'Post-close', value: zh ? '数据/通道异常' : 'Data/API issue', tone: 'failed' },
         { label: zh ? '研发推进' : 'Research', value: zh ? '暂停结论' : 'Pause verdict', tone: 'warning' },
       ],
       issues: [input.error],
@@ -3302,7 +3302,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
       issues: [],
       actions: [
         zh ? '先运行当前单票，确认有K线、信号和成交。' : 'Run the current symbol and confirm candles, signals, and trades.',
-        zh ? '再换成产业链组合，检查规则是否只对单票有效。' : 'Then test a basket to see whether the rule generalizes.',
+        zh ? '再换成产业链组合，核对规则是否只对单票有效。' : 'Then test a basket to see whether the rule generalizes.',
       ],
     }
   }
@@ -3347,7 +3347,7 @@ export function buildStrategyResearchSummary(input: StrategyResearchSummaryInput
     tradeCount < 8 ? (zh ? '扩大标的篮子或拉长区间，避免用薄样本研发。' : 'Widen the basket or range before optimizing.') : '',
     maxDrawdown > 20 ? (zh ? '优先扫描止损、移动止盈、均线离场，先压回撤。' : 'Scan stop loss, trailing stop, and MA exits to reduce drawdown.') : '',
     excess !== undefined && excess < 0 ? (zh ? '把同一主线强势股一起回测，确认是不是选股弱于基准。' : 'Backtest stronger peers in the same theme to separate selection from rule weakness.') : '',
-    sharpe !== undefined && sharpe >= 1 && tradeCount >= 8 ? (zh ? '进入参数扫描，检查收益是否对单一参数过敏。' : 'Run parameter scans and check sensitivity.') : '',
+    sharpe !== undefined && sharpe >= 1 && tradeCount >= 8 ? (zh ? '进入参数扫描，核对收益是否对单一参数过敏。' : 'Run parameter scans and check sensitivity.') : '',
     tone === 'success' ? (zh ? '用产业链组合复验，若仍稳定再沉淀为候选策略。' : 'Re-test on a basket, then promote if stable.') : '',
   ])
   return {
@@ -4478,7 +4478,7 @@ export function BacktestWorkbench({
       <div style={{ ...rootStyle, gridTemplateRows: 'auto minmax(0, 1fr)' }}>
         <div style={{ ...warningStyle, margin: 9 }}>
           {locale === 'zh-CN'
-            ? 'Signals 服务未连接，先查看本地历史回测与待处理任务。'
+            ? 'Signals 服务未连接，先查看本地历史回测与待复核任务。'
             : 'Signals service is not connected. Showing local history and pending backtests.'}
         </div>
         <FallbackBacktest
@@ -4681,7 +4681,7 @@ export function BacktestWorkbench({
             />
           </Panel>
           {!isBatchView && !result ? (
-            <Panel title={locale === 'zh-CN' ? '待处理线索' : 'Pending signals'}>
+            <Panel title={locale === 'zh-CN' ? '待复核线索' : 'Pending signals'}>
               <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
             </Panel>
           ) : null}
@@ -5063,7 +5063,7 @@ function BatchSamplePanel({
     { label: zh ? '均回撤' : 'Avg DD', value: formatDrawdown(metrics.max_drawdown_pct) },
   ]
   return (
-    <Panel title={zh ? '样本证据' : 'Sample evidence'}>
+    <Panel title={zh ? '样本依据' : 'Sample evidence'}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
         {cards.map(item => (
           <div key={item.label} style={metricCardStyle}>
@@ -5377,7 +5377,7 @@ function SymbolBasketBar({
             : `${localMatches.length} matching symbols. Toggle them below.`)
         } else {
           setLookupMessage(data.error || (matches.length
-            ? (locale === 'zh-CN' ? `找到${matches.length}个匹配来源，选择后点“载入成分股”。` : `${matches.length} matching sources. Pick one and load.`)
+            ? (locale === 'zh-CN' ? `找到${matches.length}个匹配线索，选择后点“载入成分股”。` : `${matches.length} matching sources. Pick one and load.`)
             : (locale === 'zh-CN' ? '没有找到成分股，换一个产业链、板块名或股票代码试试。' : 'No constituents found. Try another chain, board name, or symbol code.')))
         }
         return
@@ -5480,7 +5480,7 @@ function SymbolBasketBar({
           {lookupLoading || basketLoading ? (locale === 'zh-CN' ? '搜索中' : 'Loading') : (locale === 'zh-CN' ? '搜索/载入' : 'Search')}
         </button>
         <select
-          aria-label={locale === 'zh-CN' ? '匹配来源' : 'Matched source'}
+          aria-label={locale === 'zh-CN' ? '匹配线索' : 'Matched source'}
           style={{ ...selectStyle, height: 28, flex: '1 1 210px' }}
           disabled={displayBoardMatches.length === 0}
           value={selectedBoardName}
@@ -5491,7 +5491,7 @@ function SymbolBasketBar({
           }}
         >
           {displayBoardMatches.length === 0 ? (
-            <option value="">{locale === 'zh-CN' ? '先搜索来源' : 'Search a source first'}</option>
+            <option value="">{locale === 'zh-CN' ? '先搜索线索' : 'Search a source first'}</option>
           ) : displayBoardMatches.map(match => {
             const name = stringValue(match.name) ?? ''
             const total = numberValue(match.total)
@@ -5519,7 +5519,7 @@ function SymbolBasketBar({
         </div>
       </div>
 
-      <div style={labelStyle}>{locale === 'zh-CN' ? '样本来源' : 'Sample source'}</div>
+      <div style={labelStyle}>{locale === 'zh-CN' ? '样本线索' : 'Sample source'}</div>
       <div style={chipRowStyle}>
         <button
           type="button"
@@ -6060,7 +6060,7 @@ function BatchTradeSnapshot({
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
         <div>
           <div style={labelStyle}>交易明细</div>
-          <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>{formatNumber(tradeGroups.length, 0)} 笔可检查</div>
+          <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>{formatNumber(tradeGroups.length, 0)} 笔可核对</div>
         </div>
         <span style={statusBadgeStyle('open')}>点一笔放大</span>
       </div>
@@ -6088,7 +6088,7 @@ function BatchTradeSnapshot({
                   minWidth: 0,
                 }}
                 onClick={() => onOpenGroup(group)}
-                aria-label={`放大检查 ${miniTradeEventGroupTitle(group)}`}
+                aria-label={`放大查看 ${miniTradeEventGroupTitle(group)}`}
                 title={miniTradeEventGroupDetailLine(group)}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' }}>
@@ -6160,7 +6160,7 @@ function BatchSymbolSlicePanel({
             </div>
           </div>
           <button type="button" style={buttonStyle(true)} onClick={() => onOpen()}>
-            {zh ? '放大检查K线 / 交易明细' : 'Inspect chart / trades'}
+            {zh ? '放大查看K线 / 交易明细' : 'Inspect chart / trades'}
           </button>
         </div>
         <div style={batchSliceChartPreviewStyle(density)}>
@@ -6168,11 +6168,11 @@ function BatchSymbolSlicePanel({
             type="button"
             style={klinePreviewButtonStyle}
             onClick={() => onOpen()}
-            aria-label={zh ? '放大检查当前K线切片' : 'Inspect current chart slice'}
-            title={zh ? '点击放大检查K线和交易明细' : 'Click to inspect chart and trades'}
+            aria-label={zh ? '放大查看当前K线切片' : 'Inspect current chart slice'}
+            title={zh ? '点击放大查看K线和交易明细' : 'Click to inspect chart and trades'}
           >
             <MiniKlineSvg rows={rows} regimes={regimes} tradeMarkers={markers} density={density} variant="expanded" />
-            <span style={klinePreviewActionStyle}>{zh ? '放大检查' : 'Inspect'}</span>
+            <span style={klinePreviewActionStyle}>{zh ? '放大查看' : 'Inspect'}</span>
           </button>
           <div style={{ marginTop: 7 }}>
             <KlineMarkerLegend compact={density === 'compact'} />
@@ -6276,7 +6276,7 @@ function BatchSignalFamilyDetail({
                 : `${formatNumber(matchedItems.length, 0)} chart slices contain markers; samples open the chart overlay and highlight this family.`)
             : bestItem
               ? (zh
-                  ? '当前批量 K线切片没有这个信号族的图上标注；可打开最佳标的走势核对，但不要当作已标记证据。'
+                  ? '当前批量 K线切片没有这个信号族的图上标注；可打开最佳标的走势核对，但不要当作已标记依据。'
                   : 'No chart markers were found for this family; open the best symbol chart for context, not marked evidence.')
               : (zh ? '当前批量 K线切片里没有找到这个信号族的标注。' : 'No matching markers were found in the current batch chart slices.')}
         </div>
@@ -7405,7 +7405,7 @@ function ExpandedKlineOverlay({
               <>
                 <ExpandedKlineStatsGrid stats={stats} statValue={statValue} />
                 <div style={metricCardStyle}>
-                  <div style={labelStyle}>事件证据</div>
+                  <div style={labelStyle}>事件依据</div>
                   <div style={{ color: terminalTheme.textStrong, fontWeight: 900 }}>选择左侧交易事件</div>
                   <div style={mutedStyle}>点击后图表会围绕买卖点居中；右侧统计切到事件窗口。</div>
                 </div>
@@ -7456,7 +7456,7 @@ function SelectedMarkerNarrative({
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
         <div>
-          <div style={labelStyle}>{zh ? '一笔交易 / 事件证据' : 'Trade / event evidence'}</div>
+          <div style={labelStyle}>{zh ? '一笔交易 / 事件依据' : 'Trade / event evidence'}</div>
           <div style={{ color: terminalTheme.textStrong, fontSize: 15, fontWeight: 900 }}>{direction}</div>
         </div>
         <span style={statusBadgeStyle(resultPct === undefined ? 'open' : resultPct >= 0 ? 'success' : 'failed')}>
@@ -8266,7 +8266,7 @@ function FallbackRows({
   return (
     <div style={compactListStyle}>
       {rows.length === 0 ? (
-        <div style={emptyStyle}>暂无待处理回测。</div>
+        <div style={emptyStyle}>暂无待复核回测。</div>
       ) : (
         rows.slice(0, 8).map((row, index) => (
           <button
@@ -8323,7 +8323,7 @@ function FallbackBacktest({
       <Panel title={locale === 'zh-CN' ? '回测记录' : 'Backtest records'}>
         <BacktestHistoryRows locale={locale} entries={historyEntries} onRestore={onRestoreHistory} onDelete={onDeleteHistory} />
       </Panel>
-      <Panel title={locale === 'zh-CN' ? '待处理线索' : 'Pending signals'}>
+      <Panel title={locale === 'zh-CN' ? '待复核线索' : 'Pending signals'}>
         <FallbackRows dashboard={dashboard} onOpenRun={onOpenRun} onOpenRecord={onOpenRecord} />
       </Panel>
     </div>

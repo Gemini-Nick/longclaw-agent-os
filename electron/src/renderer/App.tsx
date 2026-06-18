@@ -1088,9 +1088,9 @@ export function formatLaunchFailureMessage(
 
   if (locale === 'zh-CN') {
     if (controlPlaneBaseUrl) {
-      return `Longclaw Core 不可达：${controlPlaneBaseUrl}。启动 Hermes Agent OS，或检查 ${stackEnvPath}。`
+      return `工作台暂时连不上：${controlPlaneBaseUrl}。请启动隆小侠桌面服务，或确认 ${stackEnvPath}。`
     }
-    return `Longclaw Core 未配置。检查 ${stackEnvPath}。`
+    return `工作台还没有配置。请确认 ${stackEnvPath}。`
   }
 
   if (controlPlaneBaseUrl) {
@@ -4000,7 +4000,7 @@ export default function App() {
               <div style={threadSidebarQuickListStyle}>
                 <div style={wechatSidebarMetaStyle}>
                   {locale === 'zh-CN'
-                    ? '仅展示最近入站与审计队列，不暴露本地目录。'
+                    ? '仅展示最近入站与复核池，不暴露本地目录。'
                     : 'Shows recent inbound and audit queue without local paths.'}
                 </div>
                 {(filteredWeclawSessions.length === 0 ? [] : filteredWeclawSessions.slice(0, 5)).map(session => (
@@ -4302,11 +4302,11 @@ export default function App() {
                       executionJumpContext.canonicalUserId ||
                       executionJumpContext.contextToken) && (
                       <Section
-                        title={locale === 'zh-CN' ? '微信跳转上下文' : 'WeChat jump context'}
+                        title={locale === 'zh-CN' ? '微信跳转背景' : 'WeChat jump context'}
                         subtitle={
                           executionJumpContext.sessionTitle ||
                           (locale === 'zh-CN'
-                            ? '从微信会话进入执行治理页时保留 canonical 锚点。'
+                            ? '从微信会话进入执行页时保留关联记录。'
                             : 'Preserve the canonical anchor when jumping from WeChat into execution.')
                         }
                       >
@@ -4696,7 +4696,7 @@ export default function App() {
                           )}
                           {readMetadataString(selected.record, 'connector_id') && (
                             <div style={chromeStyles.quietMeta}>
-                              {locale === 'zh-CN' ? '连接器' : 'Connector'}:{' '}
+                              {locale === 'zh-CN' ? '数据通道' : 'Connector'}:{' '}
                               {humanizeTokenLocale(
                                 locale,
                                 readMetadataString(selected.record, 'connector_id'),

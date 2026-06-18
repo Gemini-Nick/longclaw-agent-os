@@ -348,7 +348,7 @@ function SearchToolbar({
           style={wechatButtonStyle(sourceFilter === 'all')}
           onClick={() => onSourceFilterChange('all')}
         >
-          {locale === 'zh-CN' ? '全部来源' : 'All'}
+          {locale === 'zh-CN' ? '全部入口' : 'All'}
         </button>
         <button
           type="button"
@@ -832,8 +832,8 @@ function RouteMapPanel({ locale }: { locale: LongclawLocale }) {
   const rows = [
     {
       command: '/kb',
-      target: locale === 'zh-CN' ? '知识库审核' : 'Knowledge review',
-      note: locale === 'zh-CN' ? '小作文、复盘笔记先人工审核再晋升。' : 'Long notes and retros go through review before promotion.',
+      target: locale === 'zh-CN' ? '知识库复核' : 'Knowledge review',
+      note: locale === 'zh-CN' ? '小作文、复盘笔记先人工看过再沉淀。' : 'Long notes and retros go through review before promotion.',
       tone: 'info',
     },
     {

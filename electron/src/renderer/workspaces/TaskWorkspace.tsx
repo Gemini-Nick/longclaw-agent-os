@@ -520,7 +520,7 @@ export function ExecutionConsole({
           title={locale === 'zh-CN' ? '任务收件箱' : 'Task inbox'}
           subtitle={
             locale === 'zh-CN'
-              ? '继续项与待处理项。'
+              ? '继续项与待复核事项。'
               : 'Resumable and pending items.'
           }
         >
@@ -850,7 +850,7 @@ export function TaskWorkspace({
             title={locale === 'zh-CN' ? '任务收件箱' : 'Task inbox'}
             subtitle={
               locale === 'zh-CN'
-                ? '继续项与待处理项。'
+                ? '继续项与待复核事项。'
                 : 'Resumable and pending items.'
             }
           >

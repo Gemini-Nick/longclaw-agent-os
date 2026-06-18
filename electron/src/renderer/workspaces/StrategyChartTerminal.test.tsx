@@ -62,25 +62,36 @@ describe('StrategyChartTerminal default timeframe', () => {
 
 describe('StrategyChartTerminal watchlist range layout', () => {
   it('uses compact responsive range columns for narrow and wide screens', () => {
-    expect(watchlistGridTemplate('all_etfs', 1)).toContain('minmax(52px, 0.55fr)')
-    expect(watchlistGridTemplate('focus_stocks', 1)).toContain('minmax(108px, 1.32fr)')
+    expect(watchlistGridTemplate('all_etfs', 1)).toContain('minmax(44px, 0.44fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).toContain('minmax(166px, 1.62fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('minmax(108px, 1.32fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('minmax(150px, 1.72fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('minmax(46px, 0.42fr)')
     expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('72px')
     expect(watchlistGridTemplate('major_indices', 1)).not.toContain('64px')
   })
 
-  it('applies the same compact range column to every return-bearing watchlist tab', () => {
+  it('keeps non-stock return columns compact', () => {
     const tabs = [
       'major_indices',
       'industry_etfs',
       'all_etfs',
       'sector_boards',
+    ] as const
+    for (const tab of tabs) {
+      expect(watchlistGridTemplate(tab, 1)).toContain('minmax(44px, 0.44fr)')
+    }
+  })
+
+  it('gives stock decision tabs enough room for the selected range return', () => {
+    const tabs = [
       'focus_stocks',
       'risk_stocks',
       'watch_stocks',
       'buy_candidates',
     ] as const
     for (const tab of tabs) {
-      expect(watchlistGridTemplate(tab, 1)).toContain('minmax(52px, 0.55fr)')
+      expect(watchlistGridTemplate(tab, 1)).toContain('minmax(58px, 0.56fr)')
     }
   })
 
@@ -182,7 +193,7 @@ describe('StrategyChartTerminal source monitor', () => {
 
     expect(summary.value).toBe('2')
     expect(summary.statusLabel).toBe('OK')
-    expect(summary.detail).toBe('无阻塞源')
+    expect(summary.detail).toBe('行情通道畅通')
   })
 
   it('marks provider health as not loaded when no source records arrive', () => {
@@ -191,7 +202,7 @@ describe('StrategyChartTerminal source monitor', () => {
     expect(summary.value).toBe('0')
     expect(summary.status).toBe('partial')
     expect(summary.statusLabel).toBe('未加载')
-    expect(summary.detail).toBe('provider_health 未加载')
+    expect(summary.detail).toBe('行情通道未加载')
   })
 
   it('shows the concrete provider endpoint when fullmarket is blocked', () => {
@@ -226,7 +237,7 @@ describe('StrategyChartTerminal source monitor', () => {
 
     expect(summary.status).toBe('ok')
     expect(summary.statusLabel).toBe('OK')
-    expect(summary.detail).toBe('无阻塞源')
+    expect(summary.detail).toBe('行情通道畅通')
   })
 })
 
@@ -302,7 +313,7 @@ describe('StrategyChartTerminal mongo coverage', () => {
     expect(summary.status).toBe('partial')
     expect(summary.isCurrent).toBe(false)
     expect(summary.compactLabel).toBe('2026-05-12 5,498/5,498')
-    expect(summary.detail).toContain('旧缓存可读')
+    expect(summary.detail).toContain('旧行情可读')
   })
 })
 
@@ -402,7 +413,7 @@ describe('StrategyChartTerminal timeframe market snapshots', () => {
 
     expect(snapshot.status).toBe('loading')
     expect(snapshot.latestPrice).toBe('N/A')
-    expect(snapshot.statusText).toContain('股票分钟缓存未就绪')
+    expect(snapshot.statusText).toContain('股票分钟行情未就绪')
   })
 })
 
@@ -678,7 +689,7 @@ describe('StrategyChartTerminal signal callouts', () => {
     )
 
     expect(callouts).toHaveLength(1)
-    expect(callouts[0].label).toBe('多周期证据')
+    expect(callouts[0].label).toBe('多周期共振')
     expect(callouts[0].itemCount).toBe(3)
     expect(callouts[0].items.map(item => item.freq)).toEqual(expect.arrayContaining(['30m', '日↧', '15m↥']))
   })
@@ -689,7 +700,7 @@ describe('StrategyChartTerminal signal callouts', () => {
       { label: '多头上行', side: 'buy', color: '#f59e0b', freq: '日↧' },
       { label: '一卖', side: 'sell', color: '#ef4444', freq: '15m↥' },
       { label: 'MA承接', side: 'buy', color: '#f59e0b', freq: '周↧' },
-    ], 4, '多周期证据')
+    ], 4, '多周期共振')
 
     expect(summary.title).toBe('共振 4')
     expect(summary.subtitle).toBe('二买/多头上行')

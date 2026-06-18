@@ -204,7 +204,7 @@ const fallbackAgents: AgentConversationItem[] = [
     kind: 'agent',
     defaultModel: 'deepseek',
     instructions:
-      '你是 PPT设计专员。收到 PPT 或 deck 任务时，先判断任务模式、backend profile 和 deck profile；如果是从提示创建方案，先输出“已读完 Presentations 技能说明，下面按完整专业流程来设计这套方案。”，再给 Claim Spine、Contact Sheet、设计系统、逐页方案、质量检查。需要实际产出文件时，优先走 Presentations artifact-tool 的可编辑 PPTX、渲染预览和视觉 QA；用户显式要求 ppt-master 时，走 ppt-master SVG 到 DrawingML 的本地流水线；需要快速生成可打开的本地 PPTX 草稿时，默认调用 pptxgenjs 工具；需要数据处理、图表图片或兜底生成时，再调用 python-pptx 辅助 skill。',
+      '你是 PPT设计专员。收到 PPT 或 deck 任务时，先判断任务模式、backend profile 和 deck profile；如果是从提示创建方案，先输出“已读完 Presentations 技能说明，下面按完整专业流程来设计这套方案。”，再给 Claim Spine、Contact Sheet、设计系统、逐页方案、质量确认。需要实际产出文件时，优先走 Presentations artifact-tool 的可编辑 PPTX、渲染预览和视觉 QA；用户显式要求 ppt-master 时，走 ppt-master SVG 到 DrawingML 的本地流水线；需要快速生成可打开的本地 PPTX 草稿时，默认调用 pptxgenjs 工具；需要数据处理、图表图片或兜底生成时，再调用 python-pptx 辅助 skill。',
     skillMentions: ['presentations', 'ppt-master', 'pptxgenjs', 'python-pptx'],
   },
   {
@@ -254,7 +254,7 @@ const fallbackAgents: AgentConversationItem[] = [
     kind: 'agent',
     defaultModel: 'deepseek',
     instructions:
-      '你是投研助手。核心能力绑定 Signals 系统的识别信号、策略复盘、回测能力和本地数据库上下文；优先通过 Signals Pack/API/MCP 边界读取本机真实上下文，再结合产业链和公司研究做结构化输出。避免直接买卖指令，明确证据、风险、回测口径和待验证信号。',
+      '你是投研助手。核心能力绑定 Signals 系统的识别信号、策略复盘、回测能力和本机盘面数据；优先通过 Signals Pack 和工具通道读取本机真实盘面背景，再结合产业链和公司研究做结构化输出。避免直接买卖指令，明确盘面依据、风险、回测口径和待验证信号。',
     skillMentions: ['signals-research', 'signals', 'daloopa'],
   },
   {
@@ -267,7 +267,7 @@ const fallbackAgents: AgentConversationItem[] = [
     kind: 'agent',
     defaultModel: 'deepseek',
     instructions:
-      '你是复盘助手。默认按用户截图样例写盘后长复盘：先讲市场真实结构，再讲资金流时间链、板块15卡位、三池共性、尾盘情绪和明日验证点。优先读取 Signals 本机真实数据，尤其是 /api/workbench/shell 的 indices、watchlist_groups.sector_boards、focus_stocks、watch_stocks、risk_stocks，以及 /api/pack/dashboard 的 overview.cluster_summary。需要生成正文时，默认运行 `bash scripts/python.sh -m signals.notify.trading_workbench_summary --window postmarket --max-items 5 --ignore-time --format narrative`；需要接入工具时，使用 `bash scripts/python.sh -m signals.mcp.review_assistant_server`。不要输出直接买卖指令，不要把 runtime/Mongo/cache 状态写进交易复盘。',
+      '你是复盘助手。默认按用户截图样例写盘后长复盘：先讲市场真实结构，再讲资金流时间链、板块15卡位、三池共性、尾盘情绪和明日验证点。优先读取 Signals 本机真实数据，尤其是 /api/workbench/shell 的 indices、watchlist_groups.sector_boards、focus_stocks、watch_stocks、risk_stocks，以及 /api/pack/dashboard 的 overview.cluster_summary。需要生成正文时，默认运行 `bash scripts/python.sh -m signals.notify.trading_workbench_summary --window postmarket --max-items 5 --ignore-time --format narrative`；需要接入工具时，使用 `bash scripts/python.sh -m signals.mcp.review_assistant_server`。不要输出直接买卖指令，不要把通道状态和补数状态写进交易复盘。',
     skillMentions: ['signals-replay-review', 'signals-review', 'signals-research'],
   },
   {
@@ -885,7 +885,7 @@ function formatSignalsToolResult(result: Record<string, unknown> | undefined, lo
   const lines =
     locale === 'zh-CN'
       ? [
-          ok ? 'Signals tool 已返回研究上下文。' : 'Signals tool 未取到有效上下文。',
+          ok ? 'Signals tool 已返回研究背景。' : 'Signals tool 未取到有效研究背景。',
           `base_url：${recordString(result, 'base_url') || '-'}`,
           `查询：${recordString(result, 'query') || '-'}`,
           `标的：${recordString(result, 'symbol') || recordString(chartContext, 'symbol') || '-'}`,
@@ -908,7 +908,7 @@ function formatSignalsToolResult(result: Record<string, unknown> | undefined, lo
         ]
   const errors = result.errors && typeof result.errors === 'object' ? result.errors : null
   if (errors && Object.keys(errors).length > 0) {
-    lines.push(`${locale === 'zh-CN' ? '接口提示' : 'API notes'}：${JSON.stringify(errors)}`)
+    lines.push(`${locale === 'zh-CN' ? '通道提示' : 'API notes'}：${JSON.stringify(errors)}`)
   }
   return lines.filter(Boolean).join('\n')
 }
@@ -926,7 +926,7 @@ function formatRpaResult(result: Record<string, unknown> | undefined, locale: Lo
           `站点：${recordString(result, 'site_name') || recordString(result, 'site_slug') || '-'}`,
           `状态：${recordString(result, 'validation_state') || recordString(result, 'execution_status') || '-'}`,
           `自动化：${recordString(result, 'current_automation_status') || '-'}`,
-          `证据目录：${recordString(result, 'evidence_root') || recordString(result, 'output_root') || '-'}`,
+          `依据目录：${recordString(result, 'evidence_root') || recordString(result, 'output_root') || '-'}`,
           `报告：${recordString(result, 'report_path') || '-'}`,
           `下一步：${recordString(result, 'next_action') || recordString(result, 'message') || '-'}`,
         ]
@@ -1003,7 +1003,7 @@ function formatLaunchReceipt(receipt: LaunchAutomationReceipt | undefined, local
   const runId = receipt.run?.run_id
   if (locale === 'zh-CN') {
     return [
-      '已登记到执行队列。',
+      '已进入执行池。',
       taskId ? `task_id：${taskId}` : '',
       runId ? `run_id：${runId}` : '',
       receipt.task?.status ? `任务状态：${receipt.task.status}` : '',
@@ -1029,12 +1029,12 @@ function agentIntro(locale: LongclawLocale, item: AgentConversationItem): string
   }
   if (item.kind === 'wechat') {
     return locale === 'zh-CN'
-      ? '这是一条移动端入站会话。你可以继续查看附件、上下文和关联任务。'
+      ? '这是一条移动端入站会话。你可以继续查看附件、任务背景和关联任务。'
       : 'This is a mobile inbound session. Continue with attachments, context, and linked work.'
   }
   if (item.kind === 'thread' || item.kind === 'run') {
     return locale === 'zh-CN'
-      ? '这是一个已有任务会话。你可以从这里继续，不必重新解释上下文。'
+      ? '这是一个已有任务会话。你可以从这里继续，不必重新交代背景。'
       : 'This is an existing work session. Continue without restating the context.'
   }
   const intro = cleanIntroText(item.instructions)
@@ -1075,7 +1075,7 @@ function employeeSystemPrompt(item: AgentConversationItem, locale: LongclawLocal
   if (hasPresentationSkill) {
     parts.push(
       locale === 'zh-CN'
-        ? '当用户提出 PPT、deck、汇报页、路演材料任务时，先输出“已读完 Presentations 技能说明，下面按完整专业流程来设计这套方案。”；然后按「任务模式 & 路由」「Claim Spine」「Contact Sheet」「设计系统」「逐页详细方案」「质量检查」「输出标记」组织。任务模式必须在 create、template-following、targeted-edit 中选择；backend profile 必须在 presentations-artifact-tool、ppt-master-svg-drawingml、pptxgenjs-draft、python-pptx-helper、python-image-deck 中选择。用户只要求方案时，不要声称已经生成 PPTX；用户要求文件时，先使用本地 tool 生成快速草稿，再说明最终高质量 deck 仍需可编辑 PPTX、渲染预览和视觉 QA 流程。'
+        ? '当用户提出 PPT、deck、汇报页、路演材料任务时，先输出“已读完 Presentations 技能说明，下面按完整专业流程来设计这套方案。”；然后按「任务模式 & 路由」「Claim Spine」「Contact Sheet」「设计系统」「逐页详细方案」「质量确认」「输出标记」组织。任务模式必须在 create、template-following、targeted-edit 中选择；backend profile 必须在 presentations-artifact-tool、ppt-master-svg-drawingml、pptxgenjs-draft、python-pptx-helper、python-image-deck 中选择。用户只要求方案时，不要声称已经生成 PPTX；用户要求文件时，先使用本地 tool 生成快速草稿，再说明最终高质量 deck 仍需可编辑 PPTX、渲染预览和视觉 QA 流程。'
         : 'For PPT, deck, and presentation tasks, first acknowledge that the Presentations skill has been read, then organize the answer by task routing, claim spine, contact sheet, design system, slide-by-slide plan, quality checks, and output marker.',
     )
   }
@@ -1364,7 +1364,7 @@ export function AgentSessionsWorkspace({
                 ...message,
                 text:
                   locale === 'zh-CN'
-                    ? '正在调用 Signals tool 读取信号、策略和回测上下文…'
+                    ? '正在调用 Signals tool 读取信号、策略和回测背景…'
                     : 'Calling Signals tool for signals, strategy, and backtest context...',
               }
             : message,
@@ -1390,7 +1390,7 @@ export function AgentSessionsWorkspace({
       localExecutionSummary = formatSignalsToolResult(signalsResult, locale)
       messageForModel =
         locale === 'zh-CN'
-          ? `用户原始任务：${text}\n\n以下是 Agent OS 已经完成的 Signals tool use 结果，请基于这些真实结果做投研总结。不要输出直接买卖指令；必须说明证据来源、回测/信号口径、数据状态、风险和待验证动作：\n${JSON.stringify(
+          ? `用户原始任务：${text}\n\n以下是 Agent OS 已经完成的 Signals tool use 结果，请基于这些真实结果做投研总结。不要输出直接买卖指令；必须说明盘面依据、回测/信号口径、数据状态、风险和待验证动作：\n${JSON.stringify(
               { signals: signalsResult ?? null },
               null,
               2,
@@ -1462,7 +1462,7 @@ export function AgentSessionsWorkspace({
         formatLaunchReceipt(launchReceipt, locale) ||
         (launchError
           ? locale === 'zh-CN'
-            ? `执行队列登记失败：${launchError}`
+            ? `执行池登记失败：${launchError}`
             : `Execution queue registration failed: ${launchError}`
           : '')
       const rpaSummary = formatRpaResult(rpaResult, locale)
@@ -1699,7 +1699,7 @@ export function AgentSessionsWorkspace({
               <p style={messageParagraphStyle}>
                 {selected.preview ||
                   (locale === 'zh-CN'
-                    ? '请直接输入你要完成的结果。需要资料时用 @ 选择数据资源，系统会把上下文放进同一个会话里。'
+                    ? '请直接输入你要完成的结果。需要资料时用 @ 选择数据资源，系统会把任务背景放进同一个会话里。'
                     : 'Describe the outcome directly. Use @ to attach data resources; context stays in this session.')}
               </p>
               {selected.skillMentions?.length ? (

@@ -267,10 +267,10 @@ function RuntimeDiagnostics({
   if (diagnostics.length === 0) return null
   return (
     <Section
-      title={locale === 'zh-CN' ? '运行诊断' : 'Runtime diagnostics'}
+      title={locale === 'zh-CN' ? '通道状态' : 'Runtime diagnostics'}
       subtitle={
         locale === 'zh-CN'
-          ? '服务未连通时也要明确暴露当前状态和排查入口。'
+          ? '通道未连通时也要明确展示当前状态和处理入口。'
           : 'Expose runtime state and operator entry points even when the service is degraded.'
       }
     >
@@ -335,7 +335,7 @@ function DueDiligencePackView({
               tone: 'warning',
             },
             {
-              label: locale === 'zh-CN' ? '站点风险' : 'Site risks',
+              label: locale === 'zh-CN' ? '入口风险' : 'Site risks',
               value: dashboard.site_health.length,
               tone: 'degraded',
             },
@@ -367,7 +367,9 @@ function DueDiligencePackView({
         rows={dashboard.manual_review_queue as Array<Record<string, unknown>>}
         onOpen={item =>
           onOpenRecord(
-            `Review ${String(item.site_slug ?? item.review_id ?? 'record')}`,
+            locale === 'zh-CN'
+              ? `复核 ${String(item.site_slug ?? item.review_id ?? '记录')}`
+              : `Review ${String(item.site_slug ?? item.review_id ?? 'record')}`,
             item,
             operatorActionsFromRecord(item),
           )
@@ -392,10 +394,10 @@ function DueDiligencePackView({
       />
       <PackListSection
         locale={locale}
-        title={locale === 'zh-CN' ? '执行环境与站点诊断' : 'Execution and site diagnostics'}
+        title={locale === 'zh-CN' ? '执行通道与入口状态' : 'Execution and site diagnostics'}
         subtitle={
           locale === 'zh-CN'
-            ? '只有当流程无法继续推进时，才回到站点健康和环境排查。'
+            ? '只有当流程无法继续推进时，才回到入口状态和通道状态。'
             : 'Only drop back to site health and environment diagnostics when the flow can no longer advance.'
         }
         rows={dashboard.site_health as Array<Record<string, unknown>>}
@@ -441,7 +443,7 @@ function SignalsPackView({
     { id: 'chart', label: locale === 'zh-CN' ? '图表' : 'Chart' },
     { id: 'review', label: locale === 'zh-CN' ? '复核' : 'Review' },
     { id: 'backtest', label: locale === 'zh-CN' ? '回测' : 'Backtest' },
-    { id: 'connectors', label: locale === 'zh-CN' ? '连接器' : 'Connectors' },
+    { id: 'connectors', label: locale === 'zh-CN' ? '数据通道' : 'Connectors' },
   ]
 
   return (
@@ -450,7 +452,7 @@ function SignalsPackView({
         title={locale === 'zh-CN' ? '策略终端' : 'Signals Terminal'}
         subtitle={
           locale === 'zh-CN'
-            ? '按 TradingView 的工作台心智来组织观察、图表、review 和回测，但仍然坚持状态驱动原生渲染。'
+            ? '按 TradingView 的工作台心智来组织观察、图表、复核和回测，盘面状态直接驱动界面。'
             : 'Organized like a TradingView-style terminal for observation, charting, review, and backtesting while staying state-driven and native.'
         }
       >
@@ -476,7 +478,7 @@ function SignalsPackView({
                 tone: 'open',
               },
               {
-                label: locale === 'zh-CN' ? 'Review' : 'Review',
+                label: locale === 'zh-CN' ? '复核' : 'Review',
                 value: dashboard.review_runs.length,
                 tone: 'running',
               },
@@ -486,7 +488,7 @@ function SignalsPackView({
                 tone: 'needs_review',
               },
               {
-                label: locale === 'zh-CN' ? '连接器' : 'Connectors',
+                label: locale === 'zh-CN' ? '数据通道' : 'Connectors',
                 value: dashboard.connector_health.length,
                 tone: 'info',
               },
@@ -646,16 +648,16 @@ function SignalsPackView({
             }
           />
           <Section
-            title={locale === 'zh-CN' ? 'Source confidence' : 'Source confidence'}
+            title={locale === 'zh-CN' ? '线索强度' : 'Source confidence'}
             subtitle={
               locale === 'zh-CN'
-                ? '显示每个策略数据源在当前 dashboard 中的置信度和状态。'
+                ? '显示每条策略线索在当前看盘面板中的强弱和状态。'
                 : 'Confidence and status for each strategy source in the current dashboard.'
             }
           >
             {sourceConfidence.length === 0 ? (
               <div style={utilityStyles.emptyState}>
-                {locale === 'zh-CN' ? '暂无来源置信度。' : 'No source confidence yet.'}
+                {locale === 'zh-CN' ? '暂无线索强度。' : 'No source confidence yet.'}
               </div>
             ) : (
               <div style={denseListStyle}>
@@ -683,7 +685,7 @@ function SignalsPackView({
             title={locale === 'zh-CN' ? '买入候选' : 'Buy candidates'}
             subtitle={
               locale === 'zh-CN'
-                ? '来自 review 和 prediction 的融合候选。'
+                ? '来自复核和预判的融合候选。'
                 : 'Merged candidates from review and prediction.'
             }
             rows={dashboard.buy_candidates as Array<Record<string, unknown>>}
@@ -850,10 +852,10 @@ function SignalsPackView({
           <div style={terminalColumnStyle}>
             <PackListSection
               locale={locale}
-              title={locale === 'zh-CN' ? 'Signal inspector' : 'Signal inspector'}
+              title={locale === 'zh-CN' ? '信号查看' : 'Signal inspector'}
               subtitle={
                 locale === 'zh-CN'
-                  ? '右侧检查最近买卖点、置信度和 review 入口。'
+                  ? '右侧查看最近买卖点、强弱和复核入口。'
                   : 'Inspect recent markers, confidence, and review entry points on the right.'
               }
               rows={(chartContext?.signal_markers ?? []) as Array<Record<string, unknown>>}
@@ -864,7 +866,7 @@ function SignalsPackView({
               title={t(locale, 'section.pack.signals.review_runs.title')}
               subtitle={
                 locale === 'zh-CN'
-                  ? '把 review run 当成图表侧边检查器。'
+                  ? '把复核记录放到图表侧边查看。'
                   : 'Keep review runs as the side inspector feed.'
               }
               rows={dashboard.review_runs as Array<Record<string, unknown>>}
@@ -981,7 +983,7 @@ function SignalsPackView({
             title={locale === 'zh-CN' ? '回测作业' : 'Backtest jobs'}
             subtitle={
               locale === 'zh-CN'
-                ? '来自 Signals canonical 分析和本地运行记录的回测摘要。'
+                ? '来自 Signals 回测明细和本地执行记录的摘要。'
                 : 'Backtest summaries from Signals canonical analysis and local runs.'
             }
             rows={dashboard.backtest_jobs as Array<Record<string, unknown>>}
@@ -1007,7 +1009,7 @@ function SignalsPackView({
             onOpen={item =>
               onOpenRecord(
                 locale === 'zh-CN'
-                  ? `连接器 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
+                  ? `数据通道 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
                   : `Connector ${String(item.connector_id ?? 'record')}`,
                 item,
               )
@@ -1204,7 +1206,7 @@ function SignalsFactoryView({
         onOpen={item =>
           onOpenRecord(
             locale === 'zh-CN'
-              ? `连接器 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
+              ? `数据通道 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
               : `Connector ${String(item.connector_id ?? 'record')}`,
             item,
           )
@@ -1275,15 +1277,15 @@ export function PackWorkspace({
   const headerSubtitle =
     surface === 'strategy'
       ? locale === 'zh-CN'
-        ? '策略页围绕 chart、观察列表、买卖点和轻量连接器摘要来组织。'
+        ? '策略页围绕图表、观察列表、买卖点和轻量数据通道摘要来组织。'
         : 'Strategy is organized around charts, watchlists, signals, and a light connector summary.'
       : surface === 'backtest'
         ? locale === 'zh-CN'
-          ? '回测页只承接 Signals canonical 回测、输入候选和作业列表。'
+          ? '回测页只承接 Signals 回测明细、输入候选和作业列表。'
           : 'Backtest only carries Signals canonical backtests, input queues, and jobs.'
         : surface === 'factory'
           ? locale === 'zh-CN'
-            ? '插件页承接连接器详情、运行诊断、能力底座和可复用能力治理。'
+            ? '工具箱承接数据通道详情、通道状态、工具入口和可复用能力管理。'
             : 'Plugins carries connector diagnostics, capability substrate state, and reusable capability governance.'
           : locale === 'zh-CN'
             ? '执行页服务 RPA 控制台、确认边界、失败修复与交接。'

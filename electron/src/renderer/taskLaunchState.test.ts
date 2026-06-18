@@ -289,7 +289,7 @@ describe('Chinese IA surface scoping', () => {
     expect(strategyMarkup).toContain('信号实时入口未配置，当前显示降级摘要。')
     expect(strategyMarkup).toContain('买入候选')
     expect(strategyMarkup).not.toContain('Signals 回测')
-    expect(backtestMarkup).toContain('Signals 服务未连接，先查看本地历史回测与待处理任务。')
+    expect(backtestMarkup).toContain('Signals 服务未连接，先查看本地历史回测与待复核任务。')
     expect(backtestMarkup).toContain('回测记录')
     expect(backtestMarkup).not.toContain('买入候选')
   })

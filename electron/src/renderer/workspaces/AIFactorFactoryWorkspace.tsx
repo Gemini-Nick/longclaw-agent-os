@@ -1684,7 +1684,7 @@ function researchSteps(locale: LongclawLocale): Array<{ id: WorkflowStageKey; la
   }
   return [
     { id: 'idea', label: '提出假设', detail: '行业 beta / 预期 alpha' },
-    { id: 'signals', label: '拆量价证据', detail: '趋势、震荡、背驰、量能' },
+    { id: 'signals', label: '拆量价依据', detail: '趋势、震荡、背驰、量能' },
     { id: 'event', label: '形成观察条件', detail: '必须满足/任选确认/风险覆盖' },
     { id: 'validation', label: '复盘样本', detail: '收益、失败、回撤、扩散率' },
     { id: 'lifecycle', label: '策略赋能', detail: '候选排序/观察池/风险覆盖' },
@@ -1869,7 +1869,7 @@ function attributionSummaryText(candidate: AIFactorRecord, locale: LongclawLocal
     if (locale !== 'zh-CN') {
       return `System attributed this cluster to ${theme}; ${supportCount} source names overlap, confidence ${percentText(confidence)}. You can edit it, but you do not need to start from scratch.`
     }
-    return `系统已自动归因为「${theme}」；${supportCount} 个来源标的重合，置信度 ${percentText(confidence)}。你可以改，但不需要从零归因。`
+    return `系统已自动归因为「${theme}」；${supportCount} 个线索标的重合，置信度 ${percentText(confidence)}。你可以改，但不需要从零归因。`
   }
   if (locale !== 'zh-CN') {
     return `System did not find a strong board/concept overlap, so it keeps the attribution as ${theme}. Continue by replaying predictive power; attribution is not a manual prerequisite.`
@@ -2521,7 +2521,7 @@ function ResearchWorkflowPanel({
                   <span style={statusBadgeStyle(signal.layer)}>{signal.layer}</span>
                   <span style={chromeStyles.monoMeta}>{signal.name}</span>
                 </div>
-                <WorkflowField label={locale === 'zh-CN' ? '来源' : 'Source'} value={signal.source} />
+                <WorkflowField label={locale === 'zh-CN' ? '线索' : 'Source'} value={signal.source} />
                 <p style={paragraphStyle}>{signal.definition}</p>
               </div>
             ))}
@@ -2695,7 +2695,7 @@ function ResearchWorkflowPanel({
             disabled={!String(ideaPayload.idea ?? '').trim()}
           />
           <button type="button" style={secondaryButtonStyle} onClick={() => onStageChange('signals')}>
-            {locale === 'zh-CN' ? '拆量价证据' : 'Break down evidence'}
+            {locale === 'zh-CN' ? '拆量价依据' : 'Break down evidence'}
           </button>
         </div>
       </div>
@@ -2711,7 +2711,7 @@ function ResearchWorkflowPanel({
           </h2>
           <div style={chromeStyles.subtleText}>
             {locale === 'zh-CN'
-              ? '从行业故事开始，逐层拆成量价证据、观察条件、样本复盘和策略使用。'
+              ? '从行业故事开始，逐层拆成量价依据、观察条件、样本复盘和策略使用。'
               : 'Start from an idea, then build signals, event, evidence, and lifecycle gates.'}
           </div>
         </div>
@@ -2885,7 +2885,7 @@ function MarketDriverPanel({ factor, locale }: { factor: AIFactorRecord; locale:
             <TokenList tokens={node.symbols} />
             {node.conditional_symbols.length > 0 ? (
               <div style={chromeStyles.quietMeta}>
-                {locale === 'zh-CN' ? '条件证据：' : 'Conditional: '}
+                {locale === 'zh-CN' ? '条件依据：' : 'Conditional: '}
                 {node.conditional_symbols.join(' / ')}
               </div>
             ) : null}
@@ -2957,7 +2957,7 @@ function KlineFusionPanel({ factor, locale }: { factor: AIFactorRecord; locale: 
       title={locale === 'zh-CN' ? 'K线融合与路径样本' : 'K-line fusion and path samples'}
       subtitle={
         locale === 'zh-CN'
-          ? 'demo 只检查前台交互路径；真实指标必须来自历史样本复盘。'
+          ? 'demo 只确认前台交互路径；真实指标必须来自历史样本复盘。'
           : 'Demo validates the UI path only; real metrics must come from validation artifacts.'
       }
     >
@@ -3225,7 +3225,7 @@ function PendingFactorGeneratorPanel({
     ? [
         ['输入假设', '先保留你的原始判断，不套旧模板。'],
         ['生成草案', '产出因子ID、股票池、触发、回避、失效和复盘口径。'],
-        ['进入研发', '生成后再拆量价证据、复盘样本和观察池。'],
+        ['进入研发', '生成后再拆量价依据、复盘样本和观察池。'],
       ]
     : [
         ['Input thesis', 'Keep the raw hypothesis without reusing the old template.'],
@@ -3382,7 +3382,7 @@ function FactorGenerationResultPanel({
         </div>
         <div style={strategyTwoColumnStyle}>
           <div style={panelBlockStyle}>
-            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '量价证据骨架' : 'Signal skeleton'}</div>
+            <div style={fieldLabelStyle}>{locale === 'zh-CN' ? '量价依据骨架' : 'Signal skeleton'}</div>
             {factor.workflow.signals.slice(0, 4).map(signal => (
               <div key={signal.name} style={fieldValueStyle}>
                 <span style={chromeStyles.monoMeta}>{signal.name}</span>
@@ -3400,7 +3400,7 @@ function FactorGenerationResultPanel({
         </div>
         <div style={actionRowStyle}>
           <button type="button" style={secondaryButtonStyle} onClick={() => onStageChange('signals')}>
-            {locale === 'zh-CN' ? '继续拆量价证据' : 'Break down evidence'}
+            {locale === 'zh-CN' ? '继续拆量价依据' : 'Break down evidence'}
           </button>
           <button type="button" style={secondaryButtonStyle} onClick={() => onStageChange('validation')}>
             {locale === 'zh-CN' ? '查看复盘口径' : 'Review replay setup'}
@@ -3550,7 +3550,7 @@ function TechnicalDiscoveryQueue({
                   </div>
                   <div style={cardTitleStyle}>{factorResearchQuestion(candidate, locale)}</div>
                   <div style={chromeStyles.quietMeta}>
-                    {locale === 'zh-CN' ? '来源线索：' : 'Source clues: '}
+                    {locale === 'zh-CN' ? '线索：' : 'Source clues: '}
                     {candidate.title}
                   </div>
                 </div>
@@ -3781,7 +3781,7 @@ function TechnicalFactorResearchPanel({
 
         <details style={advancedDetailsStyle}>
           <summary style={detailsSummaryStyle}>
-            {locale === 'zh-CN' ? '高级：检查或修改系统生成字段' : 'Advanced: inspect or edit generated fields'}
+            {locale === 'zh-CN' ? '高级：查看或修改系统生成字段' : 'Advanced: inspect or edit generated fields'}
           </summary>
           <div style={{ ...discoveryStepGridStyle, marginTop: 8 }}>
             {steps.map((step, index) => {
@@ -3942,14 +3942,14 @@ function TechnicalResearchProgressPanel({
       </Section>
       <Section
         title={locale === 'zh-CN' ? '原始盘面线索' : 'Raw market clues'}
-        subtitle={locale === 'zh-CN' ? '这里只是证据来源，不是交易结论。' : 'These are evidence sources, not trading conclusions.'}
+        subtitle={locale === 'zh-CN' ? '这里只是盘面线索，不是交易结论。' : 'These are evidence sources, not trading conclusions.'}
       >
         <div style={columnStyle}>
           {sourceSignals.length > 0 ? sourceSignals.slice(0, 6).map(line => (
             <div key={line} style={fieldValueStyle}>{line}</div>
           )) : (
             <div style={fieldValueStyle}>
-              {locale === 'zh-CN' ? '暂无来源信号。' : 'No source signals.'}
+              {locale === 'zh-CN' ? '暂无线索信号。' : 'No source signals.'}
             </div>
           )}
           {exposureGroups.length > 0 ? (
@@ -4155,7 +4155,7 @@ export function AIFactorFactoryWorkspace({
       label: locale === 'zh-CN' ? '应用草案调整' : 'Apply draft edits',
       state: 'completed',
       message: locale === 'zh-CN'
-        ? '草案调整已应用到当前因子；下一步可以拆量价证据或复盘样本。'
+        ? '草案调整已应用到当前因子；下一步可以拆量价依据或复盘样本。'
         : 'Draft edits applied; next step is evidence breakdown or sample replay.',
     })
   }, [draftValues, factors.length, locale, selectedFactor])
@@ -4372,7 +4372,7 @@ export function AIFactorFactoryWorkspace({
                   </div>
                   <div style={checklistRowStyle}>
                     <span style={checkDotStyle(Boolean(pendingIdeaSource))} />
-                    <span>{locale === 'zh-CN' ? '如果来自技术异动，保留来源线索' : 'Keep source evidence if it came from a discovery'}</span>
+                    <span>{locale === 'zh-CN' ? '如果来自技术异动，保留线索' : 'Keep source evidence if it came from a discovery'}</span>
                   </div>
                   <div style={checklistRowStyle}>
                     <span style={checkDotStyle(false)} />

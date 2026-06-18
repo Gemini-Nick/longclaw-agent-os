@@ -626,10 +626,10 @@ const searchInputStyle: React.CSSProperties = {
 
 function terminalGridLayoutStyle(leftCollapsed: boolean, rightCollapsed: boolean, mode: TerminalLayoutMode): React.CSSProperties {
   const leftExpanded: Record<TerminalLayoutMode, string> = {
-    cinema: 'clamp(350px, 18vw, 398px)',
-    desk: 'clamp(340px, 24vw, 356px)',
-    balanced: 'clamp(318px, 31vw, 336px)',
-    focus: 'clamp(304px, 39vw, 322px)',
+    cinema: 'clamp(380px, 19vw, 456px)',
+    desk: 'clamp(360px, 25vw, 384px)',
+    balanced: 'clamp(330px, 32vw, 356px)',
+    focus: 'clamp(314px, 40vw, 336px)',
   }
   const rightExpanded: Record<TerminalLayoutMode, string> = {
     cinema: 'clamp(292px, 16vw, 388px)',
@@ -1324,6 +1324,32 @@ const stockWatchlistNameCellStyle: React.CSSProperties = {
   ...watchlistNameCellStyle,
   padding: '7px 6px',
   whiteSpace: 'normal',
+}
+
+const stockWatchlistTitleRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+}
+
+const stockWatchlistNameTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 850,
+  lineHeight: 1.22,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+  wordBreak: 'break-word',
+}
+
+const stockWatchlistMetaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  minWidth: 0,
 }
 
 const stockWatchlistTitleMetaStyle: React.CSSProperties = {
@@ -2137,15 +2163,6 @@ const contextSignalBadgeRowStyle: React.CSSProperties = {
   maxHeight: 34,
 }
 
-const stockDecisionBadgeStackStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
-  justifyContent: 'center',
-  alignItems: 'flex-end',
-  minWidth: 0,
-}
-
 const miniSignalBadgeStyle: React.CSSProperties = {
   border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
   borderRadius: 3,
@@ -2856,7 +2873,7 @@ function decisionStageMeta(stage: DecisionStage, locale: LongclawLocale): string
 
 function decisionGateLabel(key: DecisionGateKey, locale: LongclawLocale): string {
   const labels: Record<DecisionGateKey, [string, string]> = {
-    source: ['来源', 'Source'],
+    source: ['线索', 'Source'],
     hard_technical: ['硬技术', 'Hard tech'],
     theme_alignment: ['主线强度', 'Mainline'],
     upper_context: ['大周期', 'Big cycle'],
@@ -2941,12 +2958,12 @@ function decisionSourceLabel(source: string, locale: LongclawLocale): string {
     ['concept', ['板块/概念', 'Board/concept']],
     ['signals', ['历史信号', 'Signals']],
     ['fallback_watch', ['降级观察', 'Fallback watch']],
-    ['source_leader', ['领涨来源', 'Source leader']],
+    ['source_leader', ['领涨线索', 'Source leader']],
     ['constituent_hot', ['成分股异动', 'Constituent heat']],
   ]
   const match = labels.find(([key]) => normalized.includes(key))
   if (match) return locale === 'zh-CN' ? match[1][0] : match[1][1]
-  return source || (locale === 'zh-CN' ? '未知来源' : 'Unknown source')
+  return source || (locale === 'zh-CN' ? '未知线索' : 'Unknown source')
 }
 
 function decisionActionFallback(stage: DecisionStage, missingGates: DecisionGateKey[], locale: LongclawLocale): string {
@@ -3373,7 +3390,7 @@ export function sourceMonitorSummary(
       progress: 0,
       status: 'degraded',
       statusLabel: 'OFF',
-      detail: locale === 'zh-CN' ? '缓存不可用' : 'cache unavailable',
+      detail: locale === 'zh-CN' ? '行情不可用' : 'cache unavailable',
       subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type)),
     }
   }
@@ -3389,7 +3406,7 @@ export function sourceMonitorSummary(
       status: 'error',
       statusLabel: 'BLOCKED',
       detail: `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`,
-      subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看 provider_health 定位数据源' : 'check provider_health for source detail')),
+      subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看行情通道定位问题' : 'check provider_health for source detail')),
     }
   }
 
@@ -3401,9 +3418,9 @@ export function sourceMonitorSummary(
       progress: 0,
       status: 'partial',
       statusLabel: locale === 'zh-CN' ? '未加载' : 'NO DATA',
-      detail: locale === 'zh-CN' ? 'provider_health 未加载' : 'provider_health not loaded',
+      detail: locale === 'zh-CN' ? '行情通道未加载' : 'provider_health not loaded',
       subdetail: locale === 'zh-CN'
-        ? `${countText(taskBlockerCount)} 个任务阻塞在补数区展示`
+        ? `${countText(taskBlockerCount)} 个补数任务等待`
         : `${countText(taskBlockerCount)} task blockers shown in data tasks`,
     }
   }
@@ -3415,9 +3432,9 @@ export function sourceMonitorSummary(
     progress: 100,
     status: 'ok',
     statusLabel: 'OK',
-    detail: locale === 'zh-CN' ? '无阻塞源' : 'no blocking source',
+    detail: locale === 'zh-CN' ? '行情通道畅通' : 'no blocking source',
     subdetail: locale === 'zh-CN'
-      ? `${countText(sourceTotalCount)} 个 provider 记录 · ${countText(taskBlockerCount)} 个任务阻塞在补数区展示`
+      ? `${countText(sourceTotalCount)} 个行情通道 · ${countText(taskBlockerCount)} 个补数任务等待`
       : `${countText(sourceTotalCount)} provider records · ${countText(taskBlockerCount)} task blockers shown in data tasks`,
   }
 }
@@ -3445,7 +3462,7 @@ function recoveryStateLabel(value: unknown, locale: LongclawLocale): string {
   if (state === 'waiting_for_source' || state === 'source_blocked' || state === 'partial/source_blocked') {
     return locale === 'zh-CN' ? '源阻塞' : 'SOURCE'
   }
-  if (state === 'old_cache_readable') return locale === 'zh-CN' ? '旧缓存可读' : 'OLD CACHE'
+  if (state === 'old_cache_readable') return locale === 'zh-CN' ? '旧行情可读' : 'OLD CACHE'
   if (state === 'postmarket_running') return locale === 'zh-CN' ? '恢复中' : 'RUNNING'
   if (state === 'terminal_ready') return locale === 'zh-CN' ? '终端池已刷新' : 'TERMINAL READY'
   return ''
@@ -3491,7 +3508,7 @@ export function mongoCoverageState(
   const detail = locale === 'zh-CN'
     ? (isCurrent
       ? `当日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
-      : `旧缓存可读 ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
+      : `旧行情可读 ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
     : (isCurrent
       ? `current daily ${countText(dailyToday)}/${countText(dailySymbols)}`
       : `old cache readable ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
@@ -3529,13 +3546,13 @@ export function mongoCoverageState(
 
 function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
-  if (reason === 'index_minute_unsupported') return zh ? '该市场未接入指数分钟缓存' : 'index minute cache is not connected for this market'
-  if (reason === 'index_minute_not_ready') return zh ? '指数分钟缓存未就绪' : 'index minute cache is not ready'
-  if (reason === 'stock_minute_not_ready') return zh ? '股票分钟缓存未就绪' : 'stock minute cache is not ready'
+  if (reason === 'index_minute_unsupported') return zh ? '该市场未接入指数分钟行情' : 'index minute cache is not connected for this market'
+  if (reason === 'index_minute_not_ready') return zh ? '指数分钟行情未就绪' : 'index minute cache is not ready'
+  if (reason === 'stock_minute_not_ready') return zh ? '股票分钟行情未就绪' : 'stock minute cache is not ready'
   if (reason === 'board_heat_not_ready') return zh ? '板块分钟热度未就绪' : 'sector minute heat is not ready'
-  if (reason === 'daily_cache_missing') return zh ? '日线缓存缺失' : 'daily cache is missing'
-  if (reason === 'weekly_cache_missing') return zh ? '周线缓存缺失' : 'weekly cache is missing'
-  return reason || (zh ? '缓存未就绪' : 'cache is not ready')
+  if (reason === 'daily_cache_missing') return zh ? '日线行情缺失' : 'daily cache is missing'
+  if (reason === 'weekly_cache_missing') return zh ? '周线行情缺失' : 'weekly cache is missing'
+  return reason || (zh ? '行情未就绪' : 'cache is not ready')
 }
 
 function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
@@ -3581,12 +3598,12 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
   if (locale === 'zh-CN') {
     return [
       hasCandles
-        ? `${label || '当前标的'} ${requested || requestedLabel || ''} 缓存陈旧`
+        ? `${label || '当前标的'} ${requested || requestedLabel || ''} 行情滞后`
         : `${label || '当前标的'} ${requested || requestedLabel || ''} 没有可用 K 线`,
       reason ? cacheReasonLabel(reason, locale) : '',
       loadLine,
-      probeStatus ? `probe=${probeStatus}` : '',
-      hitLine ? `已有缓存 ${hitLine}` : '',
+      probeStatus ? `确认=${probeStatus}` : '',
+      hitLine ? `已有行情 ${hitLine}` : '',
     ].filter(Boolean).join(' · ')
   }
   return [
@@ -5283,7 +5300,7 @@ function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): Sig
     return {
       timestamp: anchor.alignedTimestamp,
       price: anchor.price,
-      label: dedupedItems.length > 1 ? '多周期证据' : (dedupedItems[0]?.label ?? '信号'),
+      label: dedupedItems.length > 1 ? '多周期共振' : (dedupedItems[0]?.label ?? '信号'),
       side,
       color: anchor.item.color,
       isCustom: ranked.some(candidate => candidate.custom),
@@ -5676,7 +5693,7 @@ export function marketSnapshotFromSymbolData(
     cacheNotice,
     compactText(meta.collection) || compactText(meta.source),
     compactMarketTimeLabel(meta.latest_bar_time) || compactMarketTimeLabel(meta.data_as_of),
-    status === 'stale' ? (compactText(meta.stale_reason) || (locale === 'zh-CN' ? '缓存陈旧' : 'stale cache')) : '',
+    status === 'stale' ? (compactText(meta.stale_reason) || (locale === 'zh-CN' ? '行情滞后' : 'stale cache')) : '',
   ].filter(Boolean).join(' · ')
 
   return {
@@ -5789,7 +5806,7 @@ function sourceConfidenceLabel(row: Record<string, unknown>): string {
 }
 
 function decisionSourceSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
-  if (decision.sourceKeys.length === 0) return locale === 'zh-CN' ? '暂无明确来源' : 'No explicit source'
+  if (decision.sourceKeys.length === 0) return locale === 'zh-CN' ? '暂无明确线索' : 'No explicit source'
   return decision.sourceKeys.slice(0, 4).map(source => decisionSourceLabel(source, locale)).join(' / ')
 }
 
@@ -6006,12 +6023,32 @@ function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
   return compactText(row.raw.display_action) || decisionActionLabel(row.decision, locale)
 }
 
+function traderDisplayText(value: string, locale: LongclawLocale): string {
+  if (locale !== 'zh-CN') return value
+  return value
+    .replace(/terminal_manual_clues/g, '临时线索')
+    .replace(/terminal_stock_pool/g, '股票池')
+    .replace(/terminal_technical_signals/g, '技术信号')
+    .replace(/quote_snapshots/g, '行情快照')
+    .replace(/provider_health/g, '行情通道')
+    .replace(/setup_mode/g, '交易角色')
+    .replace(/\bMongo\b/g, '日线库')
+    .replace(/\bcache\b/gi, '行情')
+    .replace(/网络源/g, '行情通道')
+    .replace(/缓存/g, '行情')
+    .replace(/图形盘面依据/g, '图形')
+    .replace(/图形证据/g, '图形')
+    .replace(/证据来源/g, '盘面依据')
+    .replace(/证据/g, '盘面依据')
+    .replace(/来源/g, '线索')
+}
+
 function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
   const role = stockTradeRoleForRow(row)
   const missing = compactText(row.raw.missing_condition)
   const setup = compactText(row.raw.setup_explanation)
   const sectorReason = compactText(row.raw.sector_policy_reason)
-  const withSector = (text: string) => [sectorReason, text].filter(Boolean).join(locale === 'zh-CN' ? '；' : '; ')
+  const withSector = (text: string) => [sectorReason, text].filter(Boolean).map(value => traderDisplayText(value, locale)).join(locale === 'zh-CN' ? '；' : '; ')
   const displaySummary = compactText(row.raw.display_summary)
   if (displaySummary) return withSector(displaySummary)
   const explicit = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
@@ -6019,8 +6056,8 @@ function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
   if (role === 'left_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '低吸进攻：左侧买点叠加关键均线，复核位置和失效条件。' : 'Left attack: review level and invalidation.'))
   if (role === 'right_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '右侧进攻：执行周期买点和均线确认，复核下单节奏。' : 'Right attack: review execution timing.'))
   if (role === 'watch') return withSector(setup || missing || (locale === 'zh-CN' ? '盯盘观察：买点还缺确认。' : 'Watch: entry still needs confirmation.'))
-  if (role === 'clue') return withSector(setup || missing || (locale === 'zh-CN' ? '线索池：只有来源，还不是买点。' : 'Clue only, not an entry.'))
-  if (role === 'risk_first') return locale === 'zh-CN' ? '暂不参与：不在机会池，非持仓不作为风险动作推送。' : 'Skip now; not an opportunity task.'
+  if (role === 'clue') return withSector(setup || missing || (locale === 'zh-CN' ? '线索池：只有线索，还不是买点。' : 'Clue only, not an entry.'))
+  if (role === 'risk_first') return traderDisplayText(locale === 'zh-CN' ? '暂不参与：不在机会池，非持仓不作为风险动作推送。' : 'Skip now; not an opportunity task.', locale)
   return withSector(setup || missing || row.rankReason || row.explanation || watchlistRowSignalLine(row, locale))
 }
 
@@ -6030,28 +6067,29 @@ function stockContextLine(row: WatchlistRow, locale: LongclawLocale): string {
   const invalidates = compactText(row.decision.invalidatesWhen || row.invalidatesWhen)
   return [breakout, evidence, invalidates ? `${locale === 'zh-CN' ? '失效' : 'Invalid'} ${invalidates}` : '']
     .filter(Boolean)
+    .map(value => traderDisplayText(value, locale))
     .join(' · ')
 }
 
 function traderEvidenceSummary(row: WatchlistRow, locale: LongclawLocale): string {
   const explicit = compactText(row.raw.evidence_summary)
   if (explicit) {
-    return [
+    return traderDisplayText([
       sectorPolicyLabelForRow(row) ? `${locale === 'zh-CN' ? '板块' : 'Sector'} ${sectorPolicyLabelForRow(row)}` : '',
       explicit,
-    ].filter(Boolean).join(' · ')
+    ].filter(Boolean).join(' · '), locale)
   }
   const chain = chainBriefForWatchlist(row)
   const cycle = timeframeSignalSideSummary(row, locale)
   const source = Array.isArray(row.raw.source_collections)
     ? row.raw.source_collections.map(item => compactText(item)).filter(Boolean).slice(0, 2).join('/')
     : compactText(row.raw.source_collection || row.raw.source)
-  return [
+  return traderDisplayText([
     sectorPolicyLabelForRow(row) ? `${locale === 'zh-CN' ? '板块' : 'Sector'} ${sectorPolicyLabelForRow(row)}` : '',
     chain ? `${locale === 'zh-CN' ? '链' : 'Chain'} ${chain}` : '',
     cycle ? `${locale === 'zh-CN' ? '技术' : 'Tech'} ${cycle}` : '',
-    source ? `${locale === 'zh-CN' ? '来源' : 'Source'} ${source}` : '',
-  ].filter(Boolean).join(' · ')
+    source ? `${locale === 'zh-CN' ? '线索' : 'Source'} ${source}` : '',
+  ].filter(Boolean).join(' · '), locale)
 }
 
 function traderPositionSummary(row: WatchlistRow, locale: LongclawLocale): string {
@@ -6132,7 +6170,7 @@ export function strategyTradeActionPlanFromState(
       action: zh ? '等' : 'Wait',
       tone: 'open',
       reason: identity || (zh ? '线索池' : 'Clue pool'),
-      next: confirmation || (zh ? '先等来源延续、承接和执行周期买点。' : 'Wait for source persistence, support, and execution trigger.'),
+      next: confirmation || (zh ? '先等线索延续、承接和执行周期买点。' : 'Wait for source persistence, support, and execution trigger.'),
       postmarket: zh ? '盘后作为候选样本做批量回测，不直接交易。' : 'Use it as a postmarket batch-backtest sample, not a direct trade.',
     }
   }
@@ -6149,16 +6187,16 @@ export function strategyTradeActionPlanFromState(
     return {
       action: zh ? '忽略' : 'Skip',
       tone: 'warning',
-      reason: identity || (zh ? '无机会池证据' : 'No pool evidence'),
+      reason: identity || (zh ? '不在机会池' : 'No pool evidence'),
       next: zh ? '不占用盘中注意力，等重新入池。' : 'Do not spend intraday attention until it re-enters a pool.',
-      postmarket: zh ? '不用回测，除非重新出现来源或技术信号。' : 'No backtest unless a source or technical signal returns.',
+      postmarket: zh ? '不用回测，除非重新出现线索或技术信号。' : 'No backtest unless a source or technical signal returns.',
     }
   }
   return {
     action: zh ? '等' : 'Wait',
     tone: 'running',
     reason: identity || (zh ? '池外观察' : 'Off-pool watch'),
-    next: confirmation || (zh ? '等入池来源、30m承接和5m/15m下单确认。' : 'Wait for pool source, 30m support, and 5m/15m confirmation.'),
+    next: confirmation || (zh ? '等入池线索、30m承接和5m/15m下单确认。' : 'Wait for pool source, 30m support, and 5m/15m confirmation.'),
     postmarket: zh ? '盘后只做观察样本，不直接执行。' : 'Keep as an observation sample after close; no direct action.',
   }
 }
@@ -6263,7 +6301,7 @@ function sourceConfidenceAlias(source: string): string[] {
 }
 
 function decisionConfidenceSummary(decision: WatchlistDecision, sourceConfidence: Record<string, unknown>[], locale: LongclawLocale): string {
-  if (sourceConfidence.length === 0) return locale === 'zh-CN' ? '暂无来源置信度' : 'No source confidence'
+  if (sourceConfidence.length === 0) return locale === 'zh-CN' ? '线索强度待确认' : 'No source confidence'
   const sourceAliases = new Set(decision.sourceKeys.flatMap(sourceConfidenceAlias))
   const matched = sourceConfidence.filter(row => {
     const key = compactText(row.source_id) || compactText(row.label) || compactText(row.name) || compactText(row.source)
@@ -6276,7 +6314,7 @@ function decisionConfidenceSummary(decision: WatchlistDecision, sourceConfidence
     const rowValue = numberValue(row.confidence ?? row.score) ?? 1
     return rowValue < currentValue ? row : current
   }, null)
-  if (!weakest) return locale === 'zh-CN' ? '暂无来源置信度' : 'No source confidence'
+  if (!weakest) return locale === 'zh-CN' ? '线索强度待确认' : 'No source confidence'
   const confidence = numberValue(weakest.confidence ?? weakest.score)
   const label = sourceConfidenceLabel(weakest)
   const status = compactText(weakest.status) || compactText(weakest.freshness)
@@ -6467,9 +6505,9 @@ function chartLineageLabel(symbolData: WorkbenchSymbolData | null, locale: Longc
     : '')
   return [
     type,
-    source ? `${locale === 'zh-CN' ? '来源' : 'Source'} ${source}` : '',
+    source ? `${locale === 'zh-CN' ? '线索' : 'Source'} ${source}` : '',
     collection && collection !== source ? `${locale === 'zh-CN' ? '集合' : 'Collection'} ${collection}` : '',
-    cacheStatus ? `${locale === 'zh-CN' ? '缓存' : 'Cache'} ${cacheStatus}` : '',
+    cacheStatus ? `${locale === 'zh-CN' ? '行情' : 'Cache'} ${cacheStatus}` : '',
     latest ? `${locale === 'zh-CN' ? '最新' : 'Latest'} ${latest}` : '',
     semantics ? `${locale === 'zh-CN' ? '时间' : 'Time'} ${semantics}` : '',
   ].filter(Boolean).join(' · ')
@@ -7077,7 +7115,7 @@ function chartModePurpose(mode: ChartModeKey, locale: LongclawLocale): string {
     stock_price: ['真实个股 OHLCV，用来复核买卖点和技术联动。', 'Real stock OHLCV for entry/exit and technical linkage checks.'],
   }
   const label = labels[mode]
-  return localizedPair(label, locale, locale === 'zh-CN' ? '等待图表上下文。' : 'Waiting for chart context.')
+  return localizedPair(label, locale, locale === 'zh-CN' ? '等待图表背景。' : 'Waiting for chart context.')
 }
 
 function hiddenReasonLabel(reason: string, locale: LongclawLocale): string {
@@ -7104,7 +7142,7 @@ function riskFlagLabel(flag: string, locale: LongclawLocale): string {
     freq_fallback: ['周期降级', 'Frequency fallback'],
     breadth_weak: ['广度偏弱', 'Weak breadth'],
     K线未预热: ['K线未预热', 'K-line not preheated'],
-    仅成分股证据: ['仅成分股证据', 'Constituent only'],
+    仅成分股证据: ['仅成分股带动', 'Constituent only'],
   }
   const label = labels[flag]
   return label ? (locale === 'zh-CN' ? label[0] : label[1]) : humanizeTokenLocale(locale, flag)
@@ -7523,7 +7561,7 @@ export function StrategyChartTerminal({
     : activeWatchlistTab === 'buy_candidates'
       ? (traderFacingEmptyReason(recordValue(recordValue(shell?.watchlist_groups_meta).buy_candidates).empty_reason, locale)
         || (locale === 'zh-CN' ? '暂无线索。' : 'No clues.'))
-      : (locale === 'zh-CN' ? '暂无可用证据，等待机会池刷新。' : 'No evidence yet; waiting for opportunity pools.')
+      : (locale === 'zh-CN' ? '暂无可用盘面依据，等待机会池刷新。' : 'No evidence yet; waiting for opportunity pools.')
   const visibleWatchlistEmptyText = activeWatchlistRows.length === 0 && activeWatchlistBaseRows.length > 0
     ? (locale === 'zh-CN'
         ? `当前交易角色「${tradeRoleLabel(activeTradeRole, locale)}」下没有标的。`
@@ -8338,9 +8376,9 @@ export function StrategyChartTerminal({
         source_confidence: sourceConfidence.slice(0, 8),
         cache_status: dashboard.cache_status,
         guardrails: [
-          '只基于输入证据判断',
+          '只基于输入盘面依据判断',
           '不能自动下单',
-          '证据不足必须明说',
+          '盘面依据不足必须明说',
         ],
       })
       if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? '因子观察刷新失败。' : 'Factor watch refresh failed.'))
@@ -8419,7 +8457,7 @@ export function StrategyChartTerminal({
         guardrails: [
           '只给复核结论和等待条件',
           '不能自动下单',
-          '没有证据就返回证据不足',
+          '没有盘面依据就返回盘面依据不足',
         ],
       })
       if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? '因子复核失败。' : 'Factor review failed.'))
@@ -8652,7 +8690,7 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? '策略证据' : 'Strategy evidence'}
+            title={locale === 'zh-CN' ? '策略看盘依据' : 'Strategy evidence'}
             rows={strategyKpis.map(item => ({
               ...item,
               name: compactText(item.label) || compactText(item.kpi_id),
@@ -8687,7 +8725,7 @@ export function StrategyChartTerminal({
             onOpen={item =>
               onOpenRecord(
                 locale === 'zh-CN'
-                  ? `来源 ${String(item.label ?? item.source_id ?? 'source')}`
+                  ? `线索 ${String(item.label ?? item.source_id ?? 'source')}`
                   : `Source ${String(item.label ?? item.source_id ?? 'source')}`,
                 item,
               )
@@ -8695,12 +8733,12 @@ export function StrategyChartTerminal({
           />
           <FallbackList
             locale={locale}
-            title={locale === 'zh-CN' ? '连接器' : 'Connectors'}
+            title={locale === 'zh-CN' ? '数据通道' : 'Connectors'}
             rows={dashboard.connector_health as Array<Record<string, unknown>>}
             onOpen={item =>
               onOpenRecord(
                 locale === 'zh-CN'
-                  ? `连接器 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
+                  ? `数据通道 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
                   : `Connector ${String(item.connector_id ?? 'record')}`,
                 item,
               )
@@ -8945,7 +8983,7 @@ export function StrategyChartTerminal({
                     ? (locale === 'zh-CN' ? '正在等待 Signals 输出热度K线。' : 'Waiting for Signals heat candles.')
                     : (locale === 'zh-CN' ? '正在等待 Signals 输出 K 线和买卖点。' : 'Waiting for Signals to provide candles and signals.'))
                   : chartCacheNotice || (chartMeta.is_price_kline === false
-                    ? (locale === 'zh-CN' ? '热度缓存未就绪，不能静默替换成代表股K线。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
+                    ? (locale === 'zh-CN' ? '热度行情未就绪，不能静默替换成代表股K线。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
                     : (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.'))}
               </div>
             ) : null}
@@ -9012,7 +9050,7 @@ export function StrategyChartTerminal({
           />
 
           <Panel
-            title={locale === 'zh-CN' ? '交易证据' : 'Trade evidence'}
+            title={locale === 'zh-CN' ? '交易看盘依据' : 'Trade evidence'}
             meta={customSignalCount > 0 ? `${customSignalCount}自定义` : String(signals.length + chartKeyLevels.length + divergences.length)}
           >
             {signals.length === 0 && chartCallouts.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? (
@@ -9147,7 +9185,7 @@ export function StrategyChartTerminal({
                 {higherTimeframeSignals.length > 0 ? (
                   <div style={signalBlockStyle}>
                     <div style={candidateGroupHeaderStyle}>
-                      <span>{locale === 'zh-CN' ? '上级周期上下文' : 'Higher timeframe context'}</span>
+                      <span>{locale === 'zh-CN' ? '上级周期背景' : 'Higher timeframe context'}</span>
                       <span>{higherTimeframeSignals.length}</span>
                     </div>
                     {higherTimeframeSignals.map((signal, index) => (
@@ -9573,8 +9611,8 @@ function tradeMapItemsFromShell(
           ? '执行周期买点叠加均线确认'
           : role === 'watch'
             ? '买点还缺确认'
-            : '只有来源线索，还不是买点',
-      source: 'terminal_stock_pool.setup_mode',
+            : '只有线索，还不是买点',
+      source: '交易角色',
     })
   })
   return {
@@ -9674,7 +9712,7 @@ function TradeMapStrip({
           const title = [
             `${item.name} · ${item.summary}`,
             item.definition ? `${locale === 'zh-CN' ? '定义' : 'Definition'}: ${item.definition}` : '',
-            item.source ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${item.source}` : '',
+            item.source ? `${locale === 'zh-CN' ? '线索' : 'Source'}: ${item.source}` : '',
             locale === 'zh-CN' ? '点击后筛选左侧列表' : 'Click to filter the left list',
           ].filter(Boolean).join('\n')
           return (
@@ -9692,8 +9730,8 @@ function TradeMapStrip({
       </div>
       <div style={tradeMapDefinitionStyle}>
         {locale === 'zh-CN'
-          ? '定义：低吸/右侧来自 setup_mode；风险池只表示暂不参与，不作为非持仓风险动作推送。'
-          : 'Definitions come from setup_mode. Risk rows mean skip-now, not a non-held risk action.'}
+          ? '口径：低吸/右侧按交易角色归类；风险池只表示暂不参与，不作为非持仓风险动作推送。'
+          : 'Definitions come from trade roles. Risk rows mean skip-now, not a non-held risk action.'}
       </div>
       {alerts.length > 0 ? (
         <div style={aiAlertStripStyle}>
@@ -10182,14 +10220,14 @@ function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? `盘中 ${liveStatusLabel} · 盘后 ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · Mongo ${mongoCoverage.compactLabel} · 网络源 ${sourceSummary.statusLabel}`
+      ? `盘中 ${liveStatusLabel} · 盘后 ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · 日线 ${mongoCoverage.compactLabel} · 行情通道 ${sourceSummary.statusLabel}`
       : `live ${liveStatusLabel} · post ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
         <div style={cacheMonitorToolbarStyle}>
           <div style={cacheMonitorToolbarTitleStyle}>
             <span style={cacheStatusDotStyle(monitorColor)} />
-            {locale === 'zh-CN' ? 'Signals 缓存监控' : 'Signals cache monitor'}
+            {locale === 'zh-CN' ? '行情更新' : 'Signals cache monitor'}
           </div>
           <div style={cacheMonitorToolbarMetaStyle} title={summaryLine}>{summaryLine}</div>
           {onToggleCompact ? (
@@ -10207,7 +10245,7 @@ function CacheMonitorStrip({
       <div style={cacheMonitorToolbarStyle}>
         <div style={cacheMonitorToolbarTitleStyle}>
           <span style={cacheStatusDotStyle(monitorColor)} />
-          {locale === 'zh-CN' ? 'Signals 缓存监控' : 'Signals cache monitor'}
+          {locale === 'zh-CN' ? '行情更新' : 'Signals cache monitor'}
         </div>
         <div style={cacheMonitorToolbarMetaStyle}>
           {locale === 'zh-CN'
@@ -10240,7 +10278,7 @@ function CacheMonitorStrip({
           subdetail={postSubdetail}
         />
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? 'Mongo 覆盖' : 'Mongo coverage'}
+          title={locale === 'zh-CN' ? '日线覆盖' : 'Mongo coverage'}
           value={`${Math.round(mongoCoverage.progress)}%`}
           progress={mongoCoverage.progress}
           status={mongoStatus}
@@ -10249,7 +10287,7 @@ function CacheMonitorStrip({
           subdetail={mongoCoverage.subdetail}
         />
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '网络源' : 'Sources'}
+          title={locale === 'zh-CN' ? '行情通道' : 'Sources'}
           value={sourceSummary.value}
           progress={sourceSummary.progress}
           status={sourceSummary.status}
@@ -10302,25 +10340,25 @@ function watchlistPoolCountText(
 function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
-    ai_focus: ['因子观察', '降噪排序后逐票复核', '日涨幅=实时快照', 'Factor watch', 'ranked candidates for single-name review', 'Day=realtime quote'],
-    major_indices: ['大盘指数', '市场方向和风险偏好锚点', '日涨幅=指数当日涨跌幅', 'Major indices', 'broad-market direction and risk appetite', 'Day=latest index change'],
-    industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '日涨幅=实时快照', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
-    all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '日涨幅=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
-    macro_indices: ['宏观方向', '指数关键位和环境判断', '日涨幅=指数当日涨跌幅', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
+    ai_focus: ['因子观察', '降噪排序后逐票复核', '最新涨跌=实时快照', 'Factor watch', 'ranked candidates for single-name review', 'Day=realtime quote'],
+    major_indices: ['大盘指数', '市场方向和风险偏好锚点', '最新涨跌=指数快照', 'Major indices', 'broad-market direction and risk appetite', 'Day=latest index change'],
+    industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '最新涨跌=实时快照', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
+    all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '最新涨跌=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
+    macro_indices: ['宏观方向', '指数关键位和环境判断', '最新涨跌=指数快照', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
     sector_boards: ['产业链异动', '源板块 -> 链主确认 -> 弹性跟随', '涨幅=源行业/概念', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
-    focus_stocks: ['买点池', '低吸/右侧进攻，先复核位置和失效条件', '日涨幅=实时快照', 'Entry pool', 'left/right attack; review level and invalidation first', 'Day=realtime quote'],
-    risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '日涨幅=实时快照', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
-    watch_stocks: ['盯盘池', '买点或均线共振还差一环', '日涨幅=实时快照', 'Watch pool', 'setup or MA confirmation still missing', 'Day=realtime quote'],
-    buy_candidates: ['线索池', '有来源但还不是硬买点', '日涨幅=实时快照', 'Clue pool', 'sourced clue, not a hard entry yet', 'Day=realtime quote'],
+    focus_stocks: ['买点池', '低吸/右侧进攻，先复核位置和失效条件', '最新涨跌=实时快照', 'Entry pool', 'left/right attack; review level and invalidation first', 'Day=realtime quote'],
+    risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '最新涨跌=实时快照', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
+    watch_stocks: ['盯盘池', '买点或均线共振还差一环', '最新涨跌=实时快照', 'Watch pool', 'setup or MA confirmation still missing', 'Day=realtime quote'],
+    buy_candidates: ['线索池', '有线索但还不是硬买点', '最新涨跌=实时快照', 'Clue pool', 'sourced clue, not a hard entry yet', 'Day=realtime quote'],
   }
   const item = meta[tab]
   if (!item) {
     return zh
-      ? `证据 ${watchlistStockTabLabel(tab, locale)} · 判断 先分池再逐票复核 · 日涨幅=实时快照 · 区间=历史收益`
+      ? `盘面 ${watchlistStockTabLabel(tab, locale)} · 读法 先分池再逐票复核 · 最新涨跌=实时快照 · 自选区间=历史收益`
       : `Evidence ${watchlistStockTabLabel(tab, locale)} · Read pool first, then review names · Day=realtime quote · Range=historical return`
   }
   return zh
-    ? `证据 ${item[0]} · 判断 ${item[1]} · ${item[2]} · 区间=历史收益`
+    ? `盘面 ${item[0]} · 读法 ${item[1]} · ${item[2]} · 自选区间=历史收益`
     : `Evidence ${item[3]} · Read ${item[4]} · ${item[5]} · Range=historical return`
 }
 
@@ -10329,7 +10367,7 @@ function traderFacingEmptyReason(value: unknown, locale: LongclawLocale): string
   if (!text) return ''
   if (/signals shell/i.test(text) || text.includes('Signals shell')) {
     return locale === 'zh-CN'
-      ? '机会池还在刷新，先看大盘和已缓存图表。'
+      ? '机会池还在刷新，先看大盘和已有图表。'
       : 'Opportunity pools are refreshing; read the market and cached charts first.'
   }
   return text
@@ -10469,7 +10507,7 @@ function WatchlistTabbedTable({
           </select>
         </label>
       </div>
-      <div style={tradeRoleFilterStyle} title={locale === 'zh-CN' ? '按 setup_mode 筛选：低吸进攻、右侧进攻、盯盘观察、线索池。' : 'Filter by setup mode: left attack, right attack, watch, clue.'}>
+      <div style={tradeRoleFilterStyle} title={locale === 'zh-CN' ? '按交易角色筛选：低吸进攻、右侧进攻、盯盘观察、线索池。' : 'Filter by setup mode: left attack, right attack, watch, clue.'}>
         {TRADE_ROLE_FILTERS.map(role => {
           const count = role.key === 'all'
             ? groups.buy_candidates.length + groups.watch_stocks.length + groups.focus_stocks.length
@@ -10508,7 +10546,7 @@ function WatchlistTabbedTable({
                 </div>
                 <div style={funnelButtonMetaStyle}>
                   {tabKey === 'buy_candidates'
-                    ? (locale === 'zh-CN' ? '有来源，还不是买点' : 'Sourced clue, not an entry')
+                    ? (locale === 'zh-CN' ? '有线索，还不是买点' : 'Sourced clue, not an entry')
                     : tabKey === 'watch_stocks'
                       ? (locale === 'zh-CN' ? '缺买点/均线/执行确认' : 'Missing setup, MA, or execution confirmation')
                       : (locale === 'zh-CN' ? '低吸/右侧进攻，复核位置和失效条件' : 'Left/right attack; review level and invalidation')}
@@ -10556,13 +10594,18 @@ function WatchlistTabbedTable({
 }
 
 export function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
-  const stockTab = activeTab === 'ai_focus' || activeTab === 'focus_stocks' || activeTab === 'buy_candidates' || activeTab === 'risk_stocks' || activeTab === 'watch_stocks'
-  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, minmax(52px, 0.55fr))` : ''
+  const stockDecisionTab = STOCK_WATCHLIST_TABS.includes(activeTab)
+  const aiFocusTab = activeTab === 'ai_focus'
+  const rangeColumnSize = stockDecisionTab ? 'minmax(58px, 0.56fr)' : 'minmax(44px, 0.44fr)'
+  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, ${rangeColumnSize})` : ''
   if (activeTab === 'sector_boards') {
     return `minmax(86px, 1.12fr) minmax(42px, 0.44fr) minmax(46px, 0.48fr) minmax(56px, 0.54fr)${rangeColumns}`
   }
-  if (stockTab) {
-    return `minmax(108px, 1.32fr) minmax(42px, 0.46fr) minmax(46px, 0.5fr) minmax(58px, 0.58fr)${rangeColumns}`
+  if (stockDecisionTab) {
+    return `minmax(166px, 1.62fr) minmax(48px, 0.46fr) minmax(52px, 0.5fr)${rangeColumns}`
+  }
+  if (aiFocusTab) {
+    return `minmax(150px, 1.72fr) minmax(36px, 0.34fr) minmax(40px, 0.38fr) minmax(46px, 0.42fr)${rangeColumns}`
   }
   return `minmax(86px, 1.1fr) minmax(40px, 0.42fr) minmax(46px, 0.48fr) minmax(66px, 0.64fr)${rangeColumns}`
 }
@@ -10575,12 +10618,22 @@ function watchlistRangeHeaderLabel(column: WatchlistRangeColumn): string {
   return column.label
 }
 
+function watchlistStockRangeHeaderLabel(column: WatchlistRangeColumn, locale: LongclawLocale): string {
+  const base = watchlistRangeHeaderLabel(column)
+  if (locale !== 'zh-CN') return column.key === 'ytd' ? 'YTD chg' : `${base} chg`
+  const dated = column.label.match(/(?:^|\()(\d{4})-(\d{2})-(\d{2})/)
+  if (dated) return `自${dated[2]}-${dated[3]}涨幅`
+  const ytd = base.match(/^(\d{4})年以来$/)
+  if (ytd?.[1]) return `自${ytd[1]}涨幅`
+  return `自${base.replace(/涨幅$/u, '')}涨幅`
+}
+
 function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [string, string, string, string] {
   if (activeTab === 'ai_focus') {
     return [
       locale === 'zh-CN' ? '因子观察' : 'Factor watch',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
       locale === 'zh-CN' ? '因子理由' : 'Factor reason',
     ]
   }
@@ -10596,39 +10649,39 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '全量ETF' : 'All ETF',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
       locale === 'zh-CN' ? '分类/成交额' : 'Class/turnover',
     ]
   }
   if (activeTab === 'focus_stocks') {
     return [
       locale === 'zh-CN' ? '买点' : 'Entry',
-      locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
       locale === 'zh-CN' ? '动作' : 'Action',
     ]
   }
   if (activeTab === 'risk_stocks') {
     return [
       locale === 'zh-CN' ? '提醒' : 'Reminder',
-      locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
       locale === 'zh-CN' ? '动作' : 'Action',
     ]
   }
   if (activeTab === 'watch_stocks') {
     return [
       locale === 'zh-CN' ? '盯盘' : 'Watch',
-      locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
       locale === 'zh-CN' ? '还差' : 'Missing',
     ]
   }
   if (activeTab === 'buy_candidates') {
     return [
       locale === 'zh-CN' ? '线索' : 'Clue',
-      locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
       locale === 'zh-CN' ? '背景' : 'Context',
     ]
   }
@@ -10636,7 +10689,7 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '大盘指数' : 'Major index',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
       locale === 'zh-CN' ? '信号' : 'Signal',
     ]
   }
@@ -10644,14 +10697,14 @@ function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [
     return [
       locale === 'zh-CN' ? '行业ETF' : 'Industry ETF',
       locale === 'zh-CN' ? '最新' : 'Last',
-      locale === 'zh-CN' ? '日涨幅' : 'Day',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
       locale === 'zh-CN' ? '信号' : 'Signal',
     ]
   }
   return [
     locale === 'zh-CN' ? '指数' : 'Index',
     locale === 'zh-CN' ? '最新' : 'Last',
-    locale === 'zh-CN' ? '日涨幅' : 'Day',
+    locale === 'zh-CN' ? '涨幅' : 'Day',
     locale === 'zh-CN' ? '信号' : 'Signal',
   ]
 }
@@ -11129,6 +11182,7 @@ function WatchlistTable({
   }
   const headers = watchlistHeaders(activeTab, locale)
   const gridTemplateColumns = watchlistGridTemplate(activeTab, rangeColumns.length)
+  const stockDecisionTab = STOCK_WATCHLIST_TABS.includes(activeTab)
   const headerRowStyle = { ...watchlistGridRowStyle, gridTemplateColumns }
   const buttonRowStyle = { ...watchlistButtonRowStyle, gridTemplateColumns }
   const activeButtonRowStyle = { ...watchlistButtonActiveRowStyle, gridTemplateColumns }
@@ -11138,9 +11192,11 @@ function WatchlistTable({
         <div style={watchlistNameHeaderCellStyle}>{headers[0]}</div>
         <div style={watchlistHeaderCellStyle}>{headers[1]}</div>
         <div style={watchlistHeaderCellStyle}>{headers[2]}</div>
-        <div style={watchlistHeaderCellStyle}>{headers[3]}</div>
+        {!stockDecisionTab ? <div style={watchlistHeaderCellStyle}>{headers[3]}</div> : null}
         {rangeColumns.map(column => (
-          <div key={column.key} style={watchlistHeaderCellStyle}>{watchlistRangeHeaderLabel(column)}</div>
+          <div key={column.key} style={watchlistHeaderCellStyle}>
+            {stockDecisionTab ? watchlistStockRangeHeaderLabel(column, locale) : watchlistRangeHeaderLabel(column)}
+          </div>
         ))}
       </div>
       {rows.map(row => {
@@ -11164,11 +11220,6 @@ function WatchlistTable({
         const contextLine = stockDecision ? stockContextLine(row, locale) : ''
         const displayBadges = stockDecision ? stockDisplayBadges(row) : []
         const signalDetailLine = stockDecision ? '' : watchlistSignalDetailLine(row)
-        const stageBadgeStyle = row.decision.opportunitySide === 'risk'
-          ? miniSellSignalBadgeStyle
-          : row.decision.opportunitySide === 'right'
-            ? miniSignalBadgeStyle
-            : miniNeutralSignalBadgeStyle
         const manualClue = rowIsManualClue(row)
         return (
           <React.Fragment key={row.id}>
@@ -11184,9 +11235,9 @@ function WatchlistTable({
 	              title={[
 	                sectorTitle,
 	                activeTab === 'sector_boards' && row.name !== sectorTitle ? `${locale === 'zh-CN' ? '原链路' : 'Raw chain'}: ${row.name}` : '',
-	                rowSource ? `${locale === 'zh-CN' ? '来源' : 'Source'}: ${rowSource}` : '',
-	                compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '报价源' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
-	                compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间收益源' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
+	                rowSource ? `${locale === 'zh-CN' ? '线索' : 'Source'}: ${traderDisplayText(rowSource, locale)}` : '',
+	                compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '行情通道' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
+	                compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间行情' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
 	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'}: ${sectorPrimaryDomainForWatchlist(row)}` : '',
 	                activeTab === 'sector_boards' && sectorConceptOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '概念叠加' : 'Concept overlay'}: ${sectorConceptOverlayForWatchlist(row)}` : '',
 	                activeTab === 'sector_boards' && sectorConceptOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源概念' : 'Source concepts'}: ${sectorConceptOverlayDetailForWatchlist(row)}` : '',
@@ -11199,9 +11250,9 @@ function WatchlistTable({
                 !stockDecision && signalDetailLine ? `${locale === 'zh-CN' ? '说明' : 'Detail'}: ${signalDetailLine}` : '',
                 !stockDecision && row.signalBadges.length > 0 ? `${locale === 'zh-CN' ? '周期' : 'Timeframes'}: ${row.signalBadges.map(badge => signalBadgeDisplayLabel(badge, locale)).join(' / ')}` : '',
                 stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
-                stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '证据' : 'Evidence'}: ${evidenceLine}` : '',
-                row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${row.rankReason}` : '',
-                row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${row.traceSummary}` : '',
+                stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '盘面依据' : 'Evidence'}: ${evidenceLine}` : '',
+                row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${traderDisplayText(row.rankReason, locale)}` : '',
+                row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${traderDisplayText(row.traceSummary, locale)}` : '',
                 rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
               ].filter(Boolean).join(' · ')}
               onClick={() => onSelect(row)}
@@ -11213,29 +11264,39 @@ function WatchlistTable({
               }}
 	            >
 	              <div style={stockDecision ? stockWatchlistNameCellStyle : watchlistNameCellStyle}>
+                {stockDecision ? (
+                  <div style={stockWatchlistTitleRowStyle}>
+                    <div style={stockWatchlistNameTitleStyle}>{sectorTitle}</div>
+                    {(row.code || manualClue) ? (
+                      <div style={stockWatchlistMetaRowStyle}>
+                        {row.code ? (
+                          <div style={stockWatchlistTitleMetaStyle}>{row.code}</div>
+                        ) : null}
+                        {manualClue ? (
+                          <button
+                            type="button"
+                            aria-label={locale === 'zh-CN' ? `移除临时线索 ${row.name}` : `Remove temporary clue ${row.name}`}
+                            title={armedDeleteRowId === row.id
+                              ? (locale === 'zh-CN' ? '再次点击确认移除。只删除临时线索，不影响自动股票池。' : 'Click again to confirm removal. Automatic pool is untouched.')
+                              : (locale === 'zh-CN' ? '临时线索移除。需要二次确认。' : 'Remove temporary clue. Requires confirmation.')}
+                            style={manualClueInlineDeleteStyle(armedDeleteRowId === row.id)}
+                            onMouseDown={event => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                            }}
+                            onClick={event => handleManualClueDeleteClick(event, row)}
+                          >
+                            {armedDeleteRowId === row.id ? (locale === 'zh-CN' ? '确认' : 'Sure') : '×'}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
 	                <div style={watchlistNameTitleRowStyle}>
 	                  <div style={watchlistNameStyle}>{sectorTitle}</div>
-                  {stockDecision && row.code ? (
-                    <div style={stockWatchlistTitleMetaStyle}>{row.code}</div>
-                  ) : null}
-                  {manualClue ? (
-                    <button
-                      type="button"
-                      aria-label={locale === 'zh-CN' ? `移除临时线索 ${row.name}` : `Remove temporary clue ${row.name}`}
-                      title={armedDeleteRowId === row.id
-                        ? (locale === 'zh-CN' ? '再次点击确认移除。只删除临时线索，不影响自动股票池。' : 'Click again to confirm removal. Automatic pool is untouched.')
-                        : (locale === 'zh-CN' ? '临时线索移除。需要二次确认。' : 'Remove temporary clue. Requires confirmation.')}
-                      style={manualClueInlineDeleteStyle(armedDeleteRowId === row.id)}
-                      onMouseDown={event => {
-                        event.preventDefault()
-                        event.stopPropagation()
-                      }}
-                      onClick={event => handleManualClueDeleteClick(event, row)}
-	                    >
-                      {armedDeleteRowId === row.id ? (locale === 'zh-CN' ? '确认' : 'Sure') : '×'}
-                    </button>
-                  ) : null}
 	                </div>
+                )}
                 {stockDecision ? (
                   <>
                     <div style={stockWatchlistBadgeRowStyle}>
@@ -11271,44 +11332,34 @@ function WatchlistTable({
               </div>
               <div style={activeTab === 'sector_boards' ? watchlistPercentCellStyle(firstMetric) : watchlistCellStyle}>{firstMetric}</div>
               <div style={activeTab === 'sector_boards' ? watchlistCellStyle : watchlistPercentCellStyle(secondMetric)}>{secondMetric}</div>
-              <div style={activeTab === 'sector_boards' || activeTab === 'ai_focus' || stockDecision ? watchlistCellStyle : watchlistSignalCellStyle}>
-                {activeTab === 'sector_boards' ? (
-                  sectorCarrierForWatchlist(row, locale)
-                ) : activeTab === 'ai_focus' ? (
-                  <span style={mutedTwoLineStyle}>{row.rankReason || row.traderAction || actionLabel}</span>
-                ) : stockDecision ? (
-                  <span style={stockDecisionBadgeStackStyle}>
-                    <span style={stageBadgeStyle}>{actionLabel}</span>
-                    {displayBadges
-                      .filter(badge => ['risk', 'hot', 'wait'].includes(badge.tone))
-                      .slice(0, 2)
-                      .map(badge => (
-                        <span key={`${row.id}-action-${badge.tone}-${badge.label}`} style={stockDisplayBadgeStyle(badge.tone)}>
-                          {badge.label}
+              {!stockDecision ? (
+                <div style={activeTab === 'sector_boards' || activeTab === 'ai_focus' ? watchlistCellStyle : watchlistSignalCellStyle}>
+                  {activeTab === 'sector_boards' ? (
+                    sectorCarrierForWatchlist(row, locale)
+                  ) : activeTab === 'ai_focus' ? (
+                    <span style={mutedTwoLineStyle}>{row.rankReason || row.traderAction || actionLabel}</span>
+                  ) : (
+                    <span style={watchlistSignalStackStyle}>
+                      <span style={watchlistSignalMainStyle}>{row.signal || 'N/A'}</span>
+                      {signalDetailLine ? (
+                        <span style={watchlistSignalDetailStyle}>{signalDetailLine}</span>
+                      ) : null}
+                      {row.signalBadges.length > 0 ? (
+                        <span style={contextSignalBadgeRowStyle}>
+                          {row.signalBadges.slice(0, 4).map(badge => (
+                            <span
+                              key={`${row.id}-${badge.side}-${badge.label}`}
+                              style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                            >
+                              {signalBadgeDisplayLabel(badge, locale)}
+                            </span>
+                          ))}
                         </span>
-                      ))}
-                  </span>
-                ) : (
-                  <span style={watchlistSignalStackStyle}>
-                    <span style={watchlistSignalMainStyle}>{row.signal || 'N/A'}</span>
-                    {signalDetailLine ? (
-                      <span style={watchlistSignalDetailStyle}>{signalDetailLine}</span>
-                    ) : null}
-                    {row.signalBadges.length > 0 ? (
-                      <span style={contextSignalBadgeRowStyle}>
-                        {row.signalBadges.slice(0, 4).map(badge => (
-                          <span
-                            key={`${row.id}-${badge.side}-${badge.label}`}
-                            style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
-                          >
-                            {signalBadgeDisplayLabel(badge, locale)}
-                          </span>
-                        ))}
-                      </span>
-                    ) : null}
-                  </span>
-                )}
-              </div>
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+              ) : null}
               {row.rangeValues.map((value, index) => (
                 <div key={`${row.id}-range-${index}`} style={watchlistPercentCellStyle(value)}>
                   {value}
@@ -11380,11 +11431,11 @@ function StrategyDecisionPanel({
     const summary = recordValue(symbolData?.summary)
     const chain = recordValue(summary.chain_position)
     const chainText = uniqueCompact([chain.chain, chain.node, chain.role, chain.board_or_concept]).slice(0, 2).join(' · ')
-    const identity = compactText(summary.setup_mode_label) || compactText(summary.trade_role_label) || (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch')
-    const read = compactText(summary.trader_read) || (chainText
+    const identity = traderDisplayText(compactText(summary.setup_mode_label) || compactText(summary.trade_role_label) || (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch'), locale)
+    const read = traderDisplayText(compactText(summary.trader_read), locale) || (chainText
       ? `${chainText}: ${locale === 'zh-CN' ? '当前不在机会池，先按图表位置观察，等重新进入盯盘池或买点池。' : 'outside the opportunity pool; wait for watch or entry state.'}`
-      : `${target.label} ${locale === 'zh-CN' ? '当前不在机会池，只显示图表和背景证据。' : 'is outside the opportunity pool; chart and context only.'}`)
-    const evidence = compactText(summary.evidence_summary) || [
+      : `${target.label} ${locale === 'zh-CN' ? '当前不在机会池，只显示图表和盘面背景。' : 'is outside the opportunity pool; chart and context only.'}`)
+    const evidence = traderDisplayText(compactText(summary.evidence_summary), locale) || [
       chainText ? `${locale === 'zh-CN' ? '产业链' : 'Chain'} ${chainText}` : '',
       compactText(summary.conclusion) ? `${locale === 'zh-CN' ? '图表' : 'Chart'} ${compactText(summary.conclusion)}` : '',
     ].filter(Boolean).join(' · ')
@@ -11403,7 +11454,7 @@ function StrategyDecisionPanel({
     const actionPlan = strategyTradeActionPlanFromState({
       targetKind: target.kind,
       identity,
-      confirmation: isIndexTarget ? '' : (locale === 'zh-CN' ? '还差入池来源、30m承接和5m/15m下单确认。' : 'Needs pool source, 30m support, and 5m/15m confirmation.'),
+      confirmation: isIndexTarget ? '' : (locale === 'zh-CN' ? '还差入池线索、30m承接和5m/15m下单确认。' : 'Needs pool source, 30m support, and 5m/15m confirmation.'),
       evidence,
       hasEvidence: Boolean(evidence || chainText || compactText(summary.conclusion)),
     }, locale)
@@ -11411,7 +11462,7 @@ function StrategyDecisionPanel({
       ? (locale === 'zh-CN' ? '只作市场环境判断，不作为单票买卖。' : 'Market context only, not a single-name entry.')
       : actionPlan.action === (locale === 'zh-CN' ? '忽略' : 'Skip')
         ? (locale === 'zh-CN' ? '不处理，等重新进入线索池或出现技术信号。' : 'No action; wait for a clue reset or technical signal.')
-        : (locale === 'zh-CN' ? '不能直接执行；没进入线索池/盯盘池/买点池前，只看图表证据。' : 'No direct action; wait for clue, watch, or entry state.')
+        : (locale === 'zh-CN' ? '不能直接执行；没进入线索池/盯盘池/买点池前，只看图表盘面。' : 'No direct action; wait for clue, watch, or entry state.')
     const invalidationText = isIndexTarget
       ? (locale === 'zh-CN' ? '30m转弱、日线关键位跌破或主线继续退潮。' : '30m weakens, daily key level breaks, or themes keep fading.')
       : (locale === 'zh-CN' ? '回踩破位、右侧不修复或主线继续退潮。' : 'Breakdown, no right-side repair, or theme continues fading.')
@@ -11439,7 +11490,7 @@ function StrategyDecisionPanel({
             [locale === 'zh-CN' ? '能不能动' : 'Actionable?', canActText],
             [locale === 'zh-CN' ? '还差什么' : 'Missing', actionPlan.next],
             [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidationText],
-            [locale === 'zh-CN' ? '证据来源' : 'Evidence', evidence || (locale === 'zh-CN' ? '图表缓存和个股分析' : 'Chart cache and stock analysis')],
+            [locale === 'zh-CN' ? '盘面依据' : 'Evidence', evidence || (locale === 'zh-CN' ? '图表行情和个股分析' : 'Chart cache and stock analysis')],
           ].map(([label, value]) => (
             <div key={String(label)} style={decisionExplainRowStyle}>
               <div style={decisionExplainLabelStyle}>{label}</div>
@@ -11452,7 +11503,7 @@ function StrategyDecisionPanel({
   }
   const decision = row.decision
   const action = decisionActionLabel(decision, locale)
-  const invalidates = decision.invalidatesWhen || (locale === 'zh-CN' ? '触发条件失效或关键位被破坏' : 'Setup fails or key level breaks')
+  const invalidates = traderDisplayText(decision.invalidatesWhen || (locale === 'zh-CN' ? '触发条件失效或关键位被破坏' : 'Setup fails or key level breaks'), locale)
   const opportunity = decision.opportunityLabel || opportunitySideLabel(decision.opportunitySide, locale)
   const lineage = strategyLineageLabel(decision.strategyLineage, locale)
   const leftSignals = technicalSignalSummary(row, 'left', locale)
@@ -11524,7 +11575,7 @@ function StrategyDecisionPanel({
           [locale === 'zh-CN' ? '能不能动' : 'Actionable?', canActDetail || entryLogic || row.signal],
           [locale === 'zh-CN' ? '还差什么' : 'Missing', confirmationDetail],
           [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidates],
-          [locale === 'zh-CN' ? '证据来源' : 'Evidence', evidenceDetail || [cycleDetail, themeDetail, leftSignals !== noSignalText ? leftSignals : '', rightSignals !== noSignalText ? rightSignals : ''].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '盘面依据' : 'Evidence', evidenceDetail || [cycleDetail, themeDetail, leftSignals !== noSignalText ? leftSignals : '', rightSignals !== noSignalText ? rightSignals : ''].filter(Boolean).join(' · ')],
         ].map(([label, value]) => (
           <div key={String(label)} style={decisionExplainRowStyle}>
             <div style={decisionExplainLabelStyle}>{label}</div>
@@ -11534,7 +11585,7 @@ function StrategyDecisionPanel({
         {primaryLevels.length > 0 || primarySignals.length > 0 || latestDivergence ? (
           <div style={signalBlockStyle}>
             <div style={candidateGroupHeaderStyle}>
-              <span>{locale === 'zh-CN' ? '证据来源：关键价位和技术信号' : 'Evidence: levels and signals'}</span>
+              <span>{locale === 'zh-CN' ? '看盘依据：关键价位和技术信号' : 'Evidence: levels and signals'}</span>
               <span>{primaryLevels.length + primarySignals.length + (latestDivergence ? 1 : 0)}</span>
             </div>
             {primaryLevels.map(level => (
@@ -11607,7 +11658,7 @@ function ChainTargetDrawer({
     return (
       <div style={chainDrawerStyle}>
         <div style={emptyStateDarkStyle}>
-          {locale === 'zh-CN' ? '暂无产业链标的，等待盘后图谱或成分股缓存补齐。' : 'No chain targets yet.'}
+          {locale === 'zh-CN' ? '暂无产业链标的，等待盘后图谱或成分股行情补齐。' : 'No chain targets yet.'}
         </div>
       </div>
     )
@@ -11723,7 +11774,7 @@ function ChainContextRail({
     || candidates.length > 0
   const panelTitle = isSectorContext
     ? (locale === 'zh-CN' ? '板块标的' : 'Sector targets')
-    : (locale === 'zh-CN' ? '产业链上下文' : 'Chain context')
+    : (locale === 'zh-CN' ? '产业链背景' : 'Chain context')
   const panelMeta = [
     candidates.length > 0 ? `${candidates.length}` : '',
     compactText(source.phase) || compactText(mapping.mapping_status) || compactText(viewpoint.status) || 'context',
