@@ -1312,6 +1312,13 @@ export class LongclawControlPlaneClient {
                 { value: `curl -fsS ${clusterCheckUrl}` },
               )
             : null,
+              web1
+            ? signalsApiAction(
+                'pack:signals:refresh',
+                '刷新 Signals 数据',
+                { reason: 'manual', force_live: true, force_postmarket: true, run_optional_tasks: true },
+              )
+            : null,
           web1
             ? signalsApiAction(
                 'pack:signals:ai_factor:draft',
@@ -1736,6 +1743,22 @@ export class LongclawControlPlaneClient {
   }
 
   async executeAction(actionId: string, payload: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
+    if (actionId === 'pack:signals:refresh') {
+      if (!this.signalsWebBaseUrl) {
+        throw new Error(`Signals web endpoint is required for action: ${actionId}`)
+      }
+      return fetchJson(
+        `${this.signalsWebBaseUrl}/api/pack/refresh`,
+        value => value as Record<string, unknown>,
+        this.fetchImpl,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      )
+    }
+
     if (actionId.startsWith('pack:signals:ai_factor:')) {
       if (!this.signalsWebBaseUrl) {
         throw new Error(`Signals web endpoint is required for action: ${actionId}`)

@@ -52,6 +52,7 @@ type StrategyChartTerminalProps = {
   signalsWebBaseUrl?: string
   aiFactorStrategySignals?: AiFactorStrategySignal[]
   backgroundMode?: ShellBackgroundMode
+  onRefreshSignals?: () => Promise<void> | void
   onOpenRecord: (title: string, record: Record<string, unknown>) => void
 }
 
@@ -7195,6 +7196,7 @@ export function StrategyChartTerminal({
   signalsWebBaseUrl,
   aiFactorStrategySignals = [],
   backgroundMode = 'dark',
+  onRefreshSignals,
   onOpenRecord,
 }: StrategyChartTerminalProps) {
   const baseUrl =
@@ -7220,6 +7222,7 @@ export function StrategyChartTerminal({
   const autoCollapsedForFocusRef = useRef(false)
   const activeChartTokens = chartColorTokens(backgroundMode)
   const [shell, setShell] = useState<WorkbenchShell | null>(null)
+  const [cacheStatusOverride, setCacheStatusOverride] = useState<StrategyDashboard['cache_status'] | null>(null)
   const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
   const [symbolData, setSymbolData] = useState<WorkbenchSymbolData | null>(null)
   const [searchDraft, setSearchDraft] = useState(target.label)
@@ -7354,6 +7357,10 @@ export function StrategyChartTerminal({
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
   const liveRefresh = shouldUseLiveRefresh(shell?.session)
+  const effectiveCacheStatus = useMemo(
+    () => normalizeCacheStatus(cacheStatusOverride ?? dashboard.cache_status),
+    [cacheStatusOverride, dashboard.cache_status],
+  )
   const connectorAlerts = useMemo(
     () =>
       dashboard.connector_health.filter(item => {
@@ -7808,6 +7815,24 @@ export function StrategyChartTerminal({
     [baseUrl],
   )
 
+  const loadCacheStatus = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!baseUrl) return null
+      const nextStatus = await fetchJson<StrategyDashboard['cache_status']>(
+        baseUrl,
+        '/api/pack/cache-status',
+        signal,
+        'strategy.cache-status',
+        undefined,
+        { timeoutMs: 12_000 },
+      )
+      const normalized = normalizeCacheStatus(nextStatus)
+      setCacheStatusOverride(normalized)
+      return normalized
+    },
+    [baseUrl],
+  )
+
   const loadSymbol = useCallback(
     async (nextTarget: ChartTarget, options: { signal?: AbortSignal; silent?: boolean } = {}) => {
       if (!baseUrl) return
@@ -8000,6 +8025,7 @@ export function StrategyChartTerminal({
     if (!baseUrl) return
     const controller = new AbortController()
     setShell(null)
+    setCacheStatusOverride(null)
     setSymbolData(null)
     setError(null)
     setBooting(false)
@@ -8012,6 +8038,7 @@ export function StrategyChartTerminal({
       })
       setTarget(fallbackTarget)
       setSearchDraft(fallbackTarget.label)
+      void loadCacheStatus(controller.signal).catch(() => undefined)
       void loadShell(controller.signal).catch(() => undefined)
       const symbolOutcome = await Promise.allSettled([loadSymbol(fallbackTarget, { signal: controller.signal })])
       if (controller.signal.aborted) return
@@ -8023,7 +8050,7 @@ export function StrategyChartTerminal({
       setLoading(false)
     })()
     return () => controller.abort()
-  }, [baseUrl, loadShell, loadSymbol, locale])
+  }, [baseUrl, loadCacheStatus, loadShell, loadSymbol, locale])
 
   useEffect(() => {
     if (!baseUrl) return
@@ -8044,6 +8071,26 @@ export function StrategyChartTerminal({
       controllers.clear()
     }
   }, [baseUrl, liveRefresh, loadShell, shell])
+
+  useEffect(() => {
+    if (!baseUrl) return
+    const controllers = new Set<AbortController>()
+    const refreshMs = Math.max(10_000, Math.min(cacheRefreshSeconds(effectiveCacheStatus) * 1000, 60_000))
+    const refreshCacheStatus = () => {
+      const controller = new AbortController()
+      controllers.add(controller)
+      void loadCacheStatus(controller.signal).catch(() => undefined)
+        .finally(() => {
+          controllers.delete(controller)
+        })
+    }
+    const timer = window.setInterval(refreshCacheStatus, refreshMs)
+    return () => {
+      window.clearInterval(timer)
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
+    }
+  }, [baseUrl, effectiveCacheStatus, loadCacheStatus])
 
   useEffect(() => {
     if (!baseUrl || !target.label) return
@@ -8345,9 +8392,13 @@ export function StrategyChartTerminal({
   const refreshNow = useCallback(() => {
     if (!target.label) return
     recordObservationEvent('strategy.refresh.click', { target })
-    void loadShell().catch(() => undefined)
-    void loadSymbol(target)
-  }, [loadShell, loadSymbol, target])
+    void (async () => {
+      await onRefreshSignals?.()
+      void loadCacheStatus().catch(() => undefined)
+      void loadShell().catch(() => undefined)
+      void loadSymbol(target)
+    })()
+  }, [loadCacheStatus, loadShell, loadSymbol, onRefreshSignals, target])
 
   const runAiRanking = useCallback(async () => {
     if (aiCandidateInputs.length === 0) {
@@ -8374,7 +8425,7 @@ export function StrategyChartTerminal({
         },
         market_session: shell?.session ?? null,
         source_confidence: sourceConfidence.slice(0, 8),
-        cache_status: dashboard.cache_status,
+        cache_status: effectiveCacheStatus,
         guardrails: [
           '只基于输入盘面依据判断',
           '不能自动下单',
@@ -8418,7 +8469,7 @@ export function StrategyChartTerminal({
     aiCandidateInputs,
     allStockWatchlistRows,
     currentFreq,
-    dashboard.cache_status,
+    effectiveCacheStatus,
     locale,
     shell?.session,
     sourceConfidence,
@@ -8618,7 +8669,7 @@ export function StrategyChartTerminal({
         </div>
         <CacheMonitorStrip
           locale={locale}
-          cacheStatus={dashboard.cache_status}
+          cacheStatus={effectiveCacheStatus}
           mode={layoutMode}
           compact={!showTopDiagnosticsDetail}
           onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
@@ -8798,7 +8849,7 @@ export function StrategyChartTerminal({
 
       <CacheMonitorStrip
         locale={locale}
-        cacheStatus={dashboard.cache_status}
+        cacheStatus={effectiveCacheStatus}
         mode={layoutMode}
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}

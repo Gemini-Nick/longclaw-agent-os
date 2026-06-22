@@ -40,6 +40,7 @@ type PackWorkspaceProps = {
   localizedNotice?: string | null
   aiFactorStrategySignals?: AiFactorStrategySignal[]
   backgroundMode: ShellBackgroundMode
+  onRefreshSignals?: () => Promise<void> | void
   onRunAction: (action: LongclawOperatorAction) => Promise<void>
   onOpenRun: (run: LongclawRun) => Promise<void>
   onOpenRecord: (
@@ -1126,6 +1127,7 @@ function SignalsStrategyView({
   signalsWebBaseUrl,
   aiFactorStrategySignals,
   backgroundMode,
+  onRefreshSignals,
   onOpenRecord,
 }: {
   locale: LongclawLocale
@@ -1133,6 +1135,7 @@ function SignalsStrategyView({
   signalsWebBaseUrl?: string
   aiFactorStrategySignals?: AiFactorStrategySignal[]
   backgroundMode: ShellBackgroundMode
+  onRefreshSignals?: () => Promise<void> | void
   onOpenRecord: (
     title: string,
     record: Record<string, unknown>,
@@ -1146,6 +1149,7 @@ function SignalsStrategyView({
       signalsWebBaseUrl={signalsWebBaseUrl}
       aiFactorStrategySignals={aiFactorStrategySignals}
       backgroundMode={backgroundMode}
+      onRefreshSignals={onRefreshSignals}
       onOpenRecord={onOpenRecord}
     />
   )
@@ -1258,6 +1262,7 @@ export function PackWorkspace({
   localizedNotice,
   aiFactorStrategySignals,
   backgroundMode,
+  onRefreshSignals,
   onRunAction,
   onOpenRun,
   onOpenRecord,
@@ -1305,6 +1310,7 @@ export function PackWorkspace({
           signalsWebBaseUrl={signalsWebBaseUrl}
           aiFactorStrategySignals={aiFactorStrategySignals}
           backgroundMode={backgroundMode}
+          onRefreshSignals={onRefreshSignals}
           onOpenRecord={onOpenRecord}
         />
       </div>

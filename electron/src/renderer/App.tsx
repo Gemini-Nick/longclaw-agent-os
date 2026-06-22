@@ -82,6 +82,27 @@ function signalsDashboardPollingMs(page: Page, dashboard: LongclawPackDashboard 
   return postmarketActive || liveActive ? 10_000 : 60_000
 }
 
+function signalsRefreshWatchdogNeeded(page: Page, dashboard: LongclawPackDashboard | null): boolean {
+  if (page !== 'strategy' || !dashboard || dashboard.pack_id !== 'signals') return false
+  const cache = dashboard.cache_status
+  if (!cache?.available) return false
+  const liveSummary = cache.live_low_latency?.summary
+  if (String(liveSummary?.strict_status ?? '').toLowerCase() === 'degraded') return true
+  if (Array.isArray(liveSummary?.problem_modules) && liveSummary.problem_modules.length > 0) return true
+  const postSummary = cache.postmarket_backfill?.summary
+  const criticalStatus = String(postSummary?.critical_status ?? '').toLowerCase()
+  if (criticalStatus && criticalStatus !== 'ok') return true
+  const runStatus = String(cache.postmarket_backfill?.run?.status ?? '').toLowerCase()
+  if (['running', 'partial', 'stale', 'error', 'degraded'].includes(runStatus)) return true
+  const recoveryState = String(cache.recovery_state ?? '').toLowerCase()
+  if (recoveryState && !['ok', 'unavailable'].includes(recoveryState)) return true
+  return Array.isArray(cache.blockers) && cache.blockers.length > 0
+}
+
+function signalsRefreshWatchdogMs(dashboard: LongclawPackDashboard | null): number {
+  return Math.max(60_000, signalsDashboardPollingMs('strategy', dashboard) * 3)
+}
+
 type WeclawSessionAttachment = {
   attachmentId: string
   title: string
@@ -1828,6 +1849,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const signalsWatchdogRequestedAtRef = useRef(0)
   const [aiFactorStrategySignals, setAiFactorStrategySignals] = useState<AiFactorStrategySignal[]>([])
   const [taskFlowFilter, setTaskFlowFilter] = useState<TaskFlowFilter>('all')
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
@@ -2264,12 +2286,58 @@ export default function App() {
     }
   }, [loadCapabilitySubstrate])
 
+  const triggerSignalsDataRefresh = useCallback(
+    async (reason: 'manual' | 'watchdog') => {
+      try {
+        const result = await window.longclawControlPlane.executeAction('pack:signals:refresh', {
+          reason,
+          requested_by: 'longclaw-agent-os',
+          force_live: reason === 'manual',
+          force_postmarket: reason === 'manual',
+          run_optional_tasks: true,
+        })
+        recordObservationEvent('signals.refresh.trigger', {
+          reason,
+          triggered: Boolean(result.triggered),
+          status: String(result.status ?? ''),
+          message: String(result.message ?? ''),
+        })
+        if (reason === 'manual') {
+          setActionMessage(
+            locale === 'zh-CN'
+              ? '已触发 Signals 全链路刷新。'
+              : 'Signals data refresh triggered.',
+          )
+        }
+      } catch (err) {
+        recordObservationEvent('signals.refresh.trigger_failed', {
+          reason,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        if (reason === 'manual') {
+          setActionMessage(
+            locale === 'zh-CN'
+              ? 'Signals 数据刷新触发失败，继续刷新工作台。'
+              : 'Signals data refresh trigger failed; refreshing the workspace.',
+          )
+        }
+      }
+    },
+    [locale],
+  )
+
   const refresh = useCallback(
-    async (targetPage: Page = page) => {
+    async (
+      targetPage: Page = page,
+      options: { triggerSignalsRefresh?: boolean } = {},
+    ) => {
       recordObservationEvent('app.refresh.start', { page: targetPage })
       setLoading(true)
       setError(null)
       if (targetPage === 'strategy') {
+        if (options.triggerSignalsRefresh) {
+          await triggerSignalsDataRefresh('manual')
+        }
         await Promise.allSettled([
           loadDashboard('signals'),
           loadRuns(),
@@ -2339,6 +2407,7 @@ export default function App() {
       loadWeclawSessions,
       loadWorkItems,
       page,
+      triggerSignalsDataRefresh,
     ],
   )
 
@@ -2354,6 +2423,20 @@ export default function App() {
     }, intervalMs)
     return () => window.clearInterval(timer)
   }, [dashboard, page, refresh])
+
+  useEffect(() => {
+    if (!signalsRefreshWatchdogNeeded(page, dashboard)) return
+    const intervalMs = signalsRefreshWatchdogMs(dashboard)
+    const triggerWatchdog = () => {
+      const now = Date.now()
+      if (now - signalsWatchdogRequestedAtRef.current < intervalMs) return
+      signalsWatchdogRequestedAtRef.current = now
+      void triggerSignalsDataRefresh('watchdog')
+    }
+    const timer = window.setInterval(triggerWatchdog, intervalMs)
+    triggerWatchdog()
+    return () => window.clearInterval(timer)
+  }, [dashboard, page, triggerSignalsDataRefresh])
 
   const openRun = useCallback(async (run: LongclawRun) => {
     setSelected({
@@ -3963,7 +4046,7 @@ export default function App() {
                   style={buttonStyleForState(secondaryButtonStyle, loading)}
                   disabled={loading}
                   onClick={() => {
-                    void refresh(page)
+                    void refresh(page, { triggerSignalsRefresh: true })
                   }}
                 >
                   {loading ? t(locale, 'action.refreshing') : t(locale, 'action.refresh')}
@@ -4217,7 +4300,7 @@ export default function App() {
                     }
                     disabled={loading}
                     onClick={() => {
-                      void refresh(page)
+                      void refresh(page, { triggerSignalsRefresh: true })
                     }}
                   >
                     {loading ? t(locale, 'action.refreshing') : t(locale, 'action.refresh')}
@@ -4264,6 +4347,7 @@ export default function App() {
                   localizedNotice={localizedDashboardNotice}
                   aiFactorStrategySignals={aiFactorStrategySignals}
                   backgroundMode={shellBackgroundMode}
+                  onRefreshSignals={() => refresh('strategy', { triggerSignalsRefresh: true })}
                   onRunAction={runAction}
                   onOpenRun={openRun}
                   onOpenRecord={openRecord}

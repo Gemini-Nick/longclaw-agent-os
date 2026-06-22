@@ -986,4 +986,44 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       },
     ])
   })
+
+  it('routes Signals refresh actions directly to the Signals API in local mode', async () => {
+    const requests: Array<{ url: string; method: string; body: unknown }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      requests.push({
+        url,
+        method: init?.method ?? 'GET',
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      })
+      return new Response(
+        JSON.stringify({
+          triggered: true,
+          status: 'running',
+          message: 'refresh_started',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsWebBaseUrl: 'http://signals-web.local',
+      fetchImpl,
+    })
+
+    const result = await client.executeAction('pack:signals:refresh', {
+      reason: 'manual',
+      force_live: true,
+    })
+
+    expect(result.triggered).toBe(true)
+    expect(result.message).toBe('refresh_started')
+    expect(requests).toEqual([
+      {
+        url: 'http://signals-web.local/api/pack/refresh',
+        method: 'POST',
+        body: { reason: 'manual', force_live: true },
+      },
+    ])
+  })
 })
