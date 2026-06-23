@@ -4,6 +4,7 @@ import {
   compactPercentTextStyle,
   dailyMaAcceptanceSignalForChart,
   displaySignalsForChart,
+  isMovingAverageLevelName,
   looksLikeIndexValue,
   maAcceptanceFromSymbolData,
   maPeriodsForChart,
@@ -740,6 +741,30 @@ describe('StrategyChartTerminal signal callouts', () => {
     ).title).toBe('G1 共振 2')
   })
 
+  it('carries explicit dates into chart callouts and item metadata', () => {
+    const callouts = signalEvidenceCalloutsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[2].timestamp / 1000,
+          type: '二买',
+          freq: 'daily',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.stock_report',
+        },
+      ] as any,
+      'daily',
+      'dark',
+      'Asia/Shanghai',
+    )
+
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0].dateLabel).toBe('2026-05-12')
+    expect(callouts[0].signalDateLabel).toBe('2026-05-12')
+    expect(callouts[0].items[0].dateLabel).toBe('2026-05-12')
+  })
+
   it('keeps volume and price-volume markers out of main chart callouts', () => {
     const signals = [
       {
@@ -763,5 +788,19 @@ describe('StrategyChartTerminal signal callouts', () => {
     expect(callouts).toHaveLength(1)
     expect(callouts[0].items).toHaveLength(1)
     expect(callouts[0].items[0].label).not.toContain('量')
+  })
+})
+
+describe('StrategyChartTerminal chart display filters', () => {
+  it('treats moving-average level names as duplicate chart overlays', () => {
+    expect(isMovingAverageLevelName('MA5')).toBe(true)
+    expect(isMovingAverageLevelName('日MA5')).toBe(true)
+    expect(isMovingAverageLevelName('周MA21')).toBe(true)
+    expect(isMovingAverageLevelName('日线MA20')).toBe(true)
+    expect(isMovingAverageLevelName('10日线')).toBe(true)
+    expect(isMovingAverageLevelName('5周线')).toBe(true)
+    expect(isMovingAverageLevelName('21日线')).toBe(true)
+    expect(isMovingAverageLevelName('二买 日')).toBe(false)
+    expect(isMovingAverageLevelName('前高压力')).toBe(false)
   })
 })

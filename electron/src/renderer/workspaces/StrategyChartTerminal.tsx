@@ -5,6 +5,7 @@ import {
   IndicatorSeries,
   registerIndicator,
   registerOverlay,
+  TooltipShowRule,
   type Chart,
   type DeepPartial,
   type IndicatorStyle,
@@ -421,6 +422,8 @@ export type SignalCalloutItem = {
   side: 'buy' | 'sell' | 'neutral'
   color: string
   freq?: string
+  dateLabel?: string
+  alignedDateLabel?: string
   scope?: string
   sourceLabel?: string
   details?: string
@@ -434,6 +437,8 @@ type SignalOverlayData = {
   selected?: boolean
   isCustom?: boolean
   freq?: string
+  dateLabel?: string
+  signalDateLabel?: string
   scope?: string
   lane?: number
   sourceLabel?: string
@@ -545,21 +550,32 @@ function terminalStackedTopBar(mode: TerminalLayoutMode): boolean {
 }
 
 function chartBarSpaceForMode(mode: TerminalLayoutMode): number {
-  if (mode === 'cinema') return 8
-  if (mode === 'desk') return 7
-  if (mode === 'balanced') return 6
-  return 5
+  if (mode === 'cinema') return 9
+  if (mode === 'desk') return 8
+  if (mode === 'balanced') return 7
+  return 6
 }
 
 function chartRightOffsetForMode(mode: TerminalLayoutMode): number {
-  if (mode === 'cinema') return 42
-  if (mode === 'desk') return 36
-  if (mode === 'balanced') return 28
-  return 20
+  if (mode === 'cinema') return 58
+  if (mode === 'desk') return 50
+  if (mode === 'balanced') return 40
+  return 30
 }
 
 function solidLineStyle(color: string, size = 1) {
   return { color, size, style: 'solid' as const, dashedValue: [0, 0] }
+}
+
+function alphaColor(color: string, opacity: number): string {
+  const normalized = color.trim()
+  const match = normalized.match(/^#([0-9a-f]{6})$/i)
+  if (!match) return normalized
+  const hex = match[1]
+  const red = Number.parseInt(hex.slice(0, 2), 16)
+  const green = Number.parseInt(hex.slice(2, 4), 16)
+  const blue = Number.parseInt(hex.slice(4, 6), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`
 }
 
 const terminalRootStyle: React.CSSProperties = {
@@ -2458,6 +2474,20 @@ const chartCalloutButtonSubStyle: React.CSSProperties = {
   fontSize: 9,
 }
 
+const chartCalloutDateBadgeStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 4,
+  background: terminalTheme.panelSoft,
+  color: terminalTheme.textStrong,
+  padding: '1px 4px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 800,
+  lineHeight: 1.15,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+}
+
 function chartCalloutIdBadgeStyle(color: string): React.CSSProperties {
   return {
     border: `1px solid ${color}`,
@@ -3821,8 +3851,12 @@ function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
             show: true,
             color: terminalTheme.white,
             backgroundColor: lineColor,
-            size: 11,
-            borderRadius: 4,
+            size: 10,
+            paddingLeft: 5,
+            paddingRight: 5,
+            paddingTop: 2,
+            paddingBottom: 2,
+            borderRadius: 3,
           },
         },
       },
@@ -3852,10 +3886,16 @@ function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
       },
     },
     indicator: {
-      lines: maColors.map(color => solidLineStyle(color, 1)),
+      lines: maColors.map(color => solidLineStyle(alphaColor(color, 0.8), 1)),
+      lastValueMark: {
+        show: false,
+      },
       tooltip: {
+        showRule: TooltipShowRule.FollowCross,
         text: {
           color: text,
+          size: 9,
+          family: 'IBM Plex Mono, Menlo, monospace',
         },
       },
       bars: [
@@ -3879,8 +3919,16 @@ function maIndicatorStyles(periods: number[], backgroundMode: ShellBackgroundMod
   const colors = chartColorTokens(backgroundMode).ma
   return {
     lines: periods.map((period, index) => ({
-      ...solidLineStyle(colors[index % colors.length], period >= 100 ? 1 : 1.2),
+      ...solidLineStyle(alphaColor(colors[index % colors.length], index <= 1 ? 0.92 : 0.68), period <= 8 ? 1.15 : 0.95),
     })),
+    lastValueMark: {
+      show: false,
+    },
+    tooltip: {
+      showRule: TooltipShowRule.None,
+      showName: false,
+      showParams: false,
+    },
   }
 }
 
@@ -3892,6 +3940,9 @@ function macdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<I
   const flatColor = tokens.marketFlat
   return {
     lines: lineColors.map(color => solidLineStyle(color, 1.2)),
+    lastValueMark: {
+      show: false,
+    },
     bars: [
       {
         upColor,
@@ -3908,6 +3959,9 @@ function volumeIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial
   const downColor = tokens.volumeDown
   const flatColor = tokens.volumeNeutral
   return {
+    lastValueMark: {
+      show: false,
+    },
     bars: [
       {
         upColor,
@@ -4062,6 +4116,8 @@ function ensureSignalOverlay() {
             side: itemSide,
             color: compactText(record.color, signalOverlayColor(itemSide, backgroundMode)),
             freq: compactText(record.freq),
+            dateLabel: compactText(record.dateLabel),
+            alignedDateLabel: compactText(record.alignedDateLabel),
             scope: compactText(record.scope),
             sourceLabel: compactText(record.sourceLabel),
             details: compactText(record.details),
@@ -4079,9 +4135,9 @@ function ensureSignalOverlay() {
       const badge = signalCalloutBadgeSummary(items, data.itemCount, label, data.freq, calloutId)
       const totalItems = badge.totalItems
       const displayText = badge.title
-      const subText = badge.subtitle
-      const width = Math.max(totalItems > 1 ? 104 : 72, Math.min(174, Math.max(displayText.length * 7.2, subText.length * 6.4) + 28))
-      const height = subText ? 34 : 22
+      const subText = uniqueCompact([data.dateLabel, badge.subtitle]).join(' · ')
+      const width = Math.max(totalItems > 1 ? 120 : 92, Math.min(210, Math.max(displayText.length * 7.2, subText.length * 5.8) + 30))
+      const height = subText ? 36 : 22
       const gap = 10
       const lane = Math.max(0, Math.min(5, Math.floor(numberValue(data.lane) ?? 0)))
       const chartWidth = bounding?.width ?? point.x + width + 96
@@ -4168,7 +4224,7 @@ function ensureSignalOverlay() {
           attrs: {
             x: rectX + 12,
             y: rectY + (subText ? 10 : height / 2),
-            text: displayText.slice(0, 15),
+            text: displayText.slice(0, 18),
             align: 'left',
             baseline: 'middle',
           },
@@ -4188,8 +4244,8 @@ function ensureSignalOverlay() {
             type: 'text',
             attrs: {
               x: rectX + 12,
-              y: rectY + 25,
-              text: subText.slice(0, 18),
+              y: rectY + 26,
+              text: subText.slice(0, 25),
               align: 'left',
               baseline: 'middle',
             },
@@ -4594,6 +4650,16 @@ function mergeKeyLevels(base: StrategyKeyLevel[], derived: StrategyKeyLevel[]): 
     output.push(level)
   })
   return output
+}
+
+export function isMovingAverageLevelName(value: unknown): boolean {
+  const normalized = compactText(value).trim().replace(/\s+/g, '').toUpperCase()
+  if (!normalized) return false
+  return (
+    /^MA\d+$/.test(normalized) ||
+    /^(日|周|日线|周线|DAILY|WEEKLY)?MA\d+$/.test(normalized) ||
+    /^\d+(日|天|周|D|W)?线$/.test(normalized)
+  )
 }
 
 function divergenceWindowForFreq(freq?: string): number {
@@ -5289,7 +5355,7 @@ function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): Sig
     const dedupedItems: SignalCalloutItem[] = []
     const seenItems = new Set<string>()
     ranked.forEach(candidate => {
-      const key = `${candidate.item.freq}:${candidate.item.label}:${candidate.item.sourceLabel}`
+      const key = `${candidate.item.freq}:${candidate.item.label}:${candidate.item.dateLabel}:${candidate.item.alignedDateLabel}:${candidate.item.sourceLabel}`
       if (seenItems.has(key)) return
       seenItems.add(key)
       dedupedItems.push(candidate.item)
@@ -5306,6 +5372,8 @@ function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): Sig
       color: anchor.item.color,
       isCustom: ranked.some(candidate => candidate.custom),
       freq: anchor.item.freq,
+      dateLabel: anchor.item.alignedDateLabel || anchor.item.dateLabel || readableDate(new Date(anchor.alignedTimestamp)),
+      signalDateLabel: anchor.item.dateLabel,
       scope: anchor.item.scope,
       lane,
       sourceLabel: anchor.item.sourceLabel,
@@ -5316,7 +5384,7 @@ function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): Sig
   })
 }
 
-export function signalEvidenceCalloutsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark'): SignalChartCallout[] {
+export function signalEvidenceCalloutsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark', chartTimezone?: string): SignalChartCallout[] {
   if (data.length === 0 || signals.length === 0) return []
   const candidates = displaySignalsForChart(data, signals, currentFreq)
     .map(signal => {
@@ -5336,7 +5404,11 @@ export function signalEvidenceCalloutsForChart(data: KLineData[], signals: Strat
         barIndex,
         priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
         custom: isCustomUserSignal(signal),
-        item: signalCalloutItem(signal, currentFreq, backgroundMode),
+        item: {
+          ...signalCalloutItem(signal, currentFreq, backgroundMode),
+          dateLabel: readableDate(new Date(timestamp), chartTimezone),
+          alignedDateLabel: alignedTimestamp !== timestamp ? readableDate(new Date(alignedTimestamp), chartTimezone) : undefined,
+        },
       } satisfies SignalCalloutCandidate
     })
     .filter((item): item is SignalCalloutCandidate => item !== null)
@@ -5468,7 +5540,7 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
     .filter((item): item is { level: StrategyKeyLevel; value: number } => item.value !== undefined)
     .filter(item => {
       const name = compactText(item.level.name)
-      return !/^(5|10)(日|天|d|D)?线?$/.test(name)
+      return !isMovingAverageLevelName(name)
     })
     .sort((left, right) => {
       if (close === undefined) return 0
@@ -6410,6 +6482,31 @@ function activeDecisionRowFromGroups(
   return null
 }
 
+function dateTimeParts(value: Date, timeZone?: string): Record<string, string> {
+  const options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }
+  if (timeZone) options.timeZone = timeZone
+  return Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', options)
+      .formatToParts(value)
+      .map(part => [part.type, part.value]),
+  )
+}
+
+function readableDate(value?: Date | null, timeZone?: string): string {
+  if (!value) return ''
+  const parts = dateTimeParts(value, timeZone)
+  if (!parts.year || !parts.month || !parts.day) return ''
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
 function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN', timeZone?: string): string {
   if (!value) return ''
   const options: Intl.DateTimeFormatOptions = {
@@ -6419,6 +6516,11 @@ function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN', tim
   }
   if (timeZone) options.timeZone = timeZone
   return value.toLocaleTimeString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', options)
+}
+
+function readableDateTime(value?: Date | null, locale: LongclawLocale = 'zh-CN', timeZone?: string): string {
+  if (!value) return ''
+  return [readableDate(value, timeZone), readableTime(value, locale, timeZone)].filter(Boolean).join(' ')
 }
 
 function isEditableKeyboardTarget(target: EventTarget | null): boolean {
@@ -7262,6 +7364,7 @@ export function StrategyChartTerminal({
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
   const referenceChartSignals = useMemo(() => referenceSignalsForIndexChart(symbolData), [symbolData])
   const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const chartTimezone = useMemo(() => chartMarketTimezone(symbolData, shell), [shell, symbolData])
   const activeTargetKind = compactText(symbolData?.target?.kind, target.kind)
   const timeframeSnapshotSymbol = activeTargetKind === 'stock'
     ? compactText(symbolData?.target?.symbol) || target.label
@@ -7286,8 +7389,8 @@ export function StrategyChartTerminal({
     [baseChartSignals, currentFreq, klineData, maAcceptance],
   )
   const chartCallouts = useMemo(
-    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq, backgroundMode)),
-    [backgroundMode, chartSignals, currentFreq, klineData],
+    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq, backgroundMode, chartTimezone)),
+    [backgroundMode, chartSignals, chartTimezone, currentFreq, klineData],
   )
   const selectedChartCallout = useMemo(
     () => chartCallouts.find(callout => callout.calloutId === selectedChartCalloutId) ?? chartCallouts[0] ?? null,
@@ -7592,7 +7695,6 @@ export function StrategyChartTerminal({
   const layoutMode = terminalLayoutMode(viewportWidth)
   const compactTopDiagnostics = layoutMode !== 'cinema' || viewportHeight <= 900
   const showTopDiagnosticsDetail = !compactTopDiagnostics || topDiagnosticsExpanded
-  const chartTimezone = useMemo(() => chartMarketTimezone(symbolData, shell), [shell, symbolData])
   const chartLineage = useMemo(() => chartLineageLabel(symbolData, locale), [locale, symbolData])
   const chartFormula = useMemo(() => chartFormulaLabel(symbolData, locale), [locale, symbolData])
   const chartMeta = recordValue(symbolData?.chart?.meta)
@@ -9553,13 +9655,14 @@ function ChartCalloutDetailsPanel({
             const active = callout.calloutId === activeCallout?.calloutId
             const badge = signalCalloutBadgeSummary(callout.items, callout.itemCount, callout.label, callout.freq, callout.calloutId)
             const shortTitle = badge.title.replace(`${callout.calloutId ?? ''} `, '')
-            const subline = badge.subtitle || uniqueCompact(callout.items.map(item => item.freq)).slice(0, 3).join('/')
+            const freqLine = badge.subtitle || uniqueCompact(callout.items.map(item => item.freq)).slice(0, 3).join('/')
+            const subline = uniqueCompact([callout.dateLabel, freqLine]).join(' · ')
             return (
               <button
                 key={`${callout.calloutId}-${callout.timestamp}-${callout.price}`}
                 type="button"
                 style={chartCalloutButtonStyle(active, callout.color)}
-                title={[badge.title, subline, formatNumber(callout.price)].filter(Boolean).join(' · ')}
+                title={[badge.title, callout.dateLabel, subline, formatNumber(callout.price)].filter(Boolean).join(' · ')}
                 onClick={() => onSelect(callout.calloutId ?? '')}
               >
                 <div style={chartCalloutButtonTitleStyle}>
@@ -9577,29 +9680,41 @@ function ChartCalloutDetailsPanel({
               <div style={rowTitleStyle}>
                 {signalCalloutBadgeSummary(activeCallout.items, activeCallout.itemCount, activeCallout.label, activeCallout.freq, activeCallout.calloutId).title}
               </div>
-              <div style={monoTextStyle}>{formatNumber(activeCallout.price)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {activeCallout.dateLabel ? <span style={chartCalloutDateBadgeStyle}>{activeCallout.dateLabel}</span> : null}
+                <div style={monoTextStyle}>{formatNumber(activeCallout.price)}</div>
+              </div>
             </div>
             <div style={mutedLineStyle}>
               {[
-                readableTime(new Date(activeCallout.timestamp), locale, chartTimezone),
+                readableDateTime(new Date(activeCallout.timestamp), locale, chartTimezone),
+                activeCallout.signalDateLabel && activeCallout.signalDateLabel !== activeCallout.dateLabel
+                  ? `${locale === 'zh-CN' ? '信号日' : 'signal'} ${activeCallout.signalDateLabel}`
+                  : '',
                 activeCallout.scope,
                 activeCallout.sourceLabel,
               ].filter(Boolean).join(' · ')}
             </div>
-            {activeCallout.items.map((item, index) => (
-              <div key={`${activeCallout.calloutId}-${item.freq}-${item.label}-${index}`} style={chartCalloutItemStyle(item.color || activeCallout.color)}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
-                  <span style={item.side === 'sell' ? miniSellSignalBadgeStyle : item.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}>
-                    {item.freq || '--'}
-                  </span>
-                  <span style={rowTitleStyle}>{item.label}</span>
+            {activeCallout.items.map((item, index) => {
+              const itemAnchorLine = item.alignedDateLabel && item.alignedDateLabel !== item.dateLabel
+                ? `${locale === 'zh-CN' ? '锚定K线' : 'anchored'} ${item.alignedDateLabel}`
+                : ''
+              return (
+                <div key={`${activeCallout.calloutId}-${item.freq}-${item.label}-${item.dateLabel ?? index}`} style={chartCalloutItemStyle(item.color || activeCallout.color)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                    <span style={item.side === 'sell' ? miniSellSignalBadgeStyle : item.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}>
+                      {item.freq || '--'}
+                    </span>
+                    <span style={rowTitleStyle}>{item.label}</span>
+                    {item.dateLabel ? <span style={chartCalloutDateBadgeStyle}>{item.dateLabel}</span> : null}
+                  </div>
+                  <div style={mutedLineStyle}>
+                    {[itemAnchorLine, item.scope, item.sourceLabel].filter(Boolean).join(' · ')}
+                  </div>
+                  {item.details ? <div style={mutedTwoLineStyle}>{item.details}</div> : null}
                 </div>
-                <div style={mutedLineStyle}>
-                  {[item.scope, item.sourceLabel].filter(Boolean).join(' · ')}
-                </div>
-                {item.details ? <div style={mutedTwoLineStyle}>{item.details}</div> : null}
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : null}
       </div>
