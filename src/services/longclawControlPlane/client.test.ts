@@ -629,6 +629,89 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
     expect(dashboard.connector_health.find(item => item.connector_id === 'signals-web1')?.status).toBe('available')
   })
 
+  it('returns a lightweight Signals dashboard when canonical dashboard misses the eager budget', async () => {
+    const previousTimeout = process.env.LONGCLAW_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS
+    process.env.LONGCLAW_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS = '10'
+    const requests: string[] = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      requests.push(url)
+
+      if (url === 'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5') {
+        return await new Promise<Response>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            resolve(
+              new Response(JSON.stringify({ error: 'late dashboard' }), {
+                status: 504,
+                headers: { 'Content-Type': 'application/json' },
+              }),
+            )
+          }, 1_000)
+          init?.signal?.addEventListener('abort', () => {
+            clearTimeout(timeout)
+            reject(new Error('aborted'))
+          })
+        })
+      }
+      if (url === 'http://signals-web.local/api/pack/cache-status') {
+        return new Response(
+          JSON.stringify({
+            available: true,
+            mode: 'mongo',
+            updated_at: '2026-06-23T12:00:00Z',
+            trade_date: '2026-06-23',
+            recovery_state: 'terminal_ready',
+            live_low_latency: {
+              modules: [],
+              summary: { strict_status: 'ok' },
+            },
+            postmarket_backfill: {
+              run: null,
+              tasks: [],
+              summary: { critical_status: 'ok' },
+            },
+            mongo_stock_cache: {
+              freqs: [{ freq: '日线', symbols: 5513, today_symbols: 5311 }],
+              summary: { daily_symbols: 5513, daily_today_symbols: 5311 },
+            },
+            terminal_outputs: [],
+            provider_health: [],
+            blockers: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    }
+
+    try {
+      const client = new LongclawControlPlaneClient({
+        signalsWebBaseUrl: 'http://signals-web.local',
+        fetchImpl,
+      })
+
+      const dashboard = await client.getPackDashboard('signals')
+
+      expect(dashboard.pack_id).toBe('signals')
+      expect(dashboard.status).toBe('healthy')
+      expect(dashboard.cache_status.recovery_state).toBe('terminal_ready')
+      expect(dashboard.daily_brief.metadata.source).toBe('signals-cache-status')
+      expect(dashboard.strategy_kpis[0]?.kpi_id).toBe('cache_status')
+      expect(dashboard.connector_health.find(item => item.connector_id === 'signals-web1')?.status).toBe('available')
+      expect(requests).toEqual([
+        'http://signals-web.local/api/pack/cache-status',
+        'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5',
+      ])
+    } finally {
+      if (previousTimeout === undefined) {
+        delete process.env.LONGCLAW_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS
+      } else {
+        process.env.LONGCLAW_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS = previousTimeout
+      }
+    }
+  })
+
   it('synthesizes a mixed web1+web2 Signals dashboard with native panels populated', async () => {
     const signalsStateRoot = makeTempDir('signals-state-')
     fs.mkdirSync(path.join(signalsStateRoot, 'runs'), { recursive: true })
@@ -1025,5 +1108,101 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
         body: { reason: 'manual', force_live: true },
       },
     ])
+  })
+
+  it('prewarms Signals startup data without waiting for full workbench hydration', async () => {
+    const requests: Array<{ url: string; method: string; body: unknown }> = []
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      requests.push({
+        url,
+        method,
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      })
+
+      if (url === 'http://signals-web.local/api/pack/refresh') {
+        return new Response(
+          JSON.stringify({ triggered: true, message: 'refresh_started' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/pack/cache-status') {
+        return new Response(
+          JSON.stringify({
+            available: true,
+            mode: 'mongo',
+            recovery_state: 'terminal_ready',
+            live_low_latency: { modules: [], summary: { strict_status: 'ok' } },
+            postmarket_backfill: { run: null, tasks: [], summary: { critical_status: 'ok' } },
+            mongo_stock_cache: { freqs: [], summary: {} },
+            terminal_outputs: [],
+            blockers: [],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5') {
+        return new Response(
+          JSON.stringify({
+            pack_id: 'signals',
+            title: 'Signals',
+            status: 'healthy',
+            diagnostics: [],
+            overview: {},
+            daily_brief: { headline: 'ready' },
+            cache_status: {
+              available: true,
+              mode: 'mongo',
+              recovery_state: 'terminal_ready',
+              live_low_latency: { modules: [], summary: {} },
+              postmarket_backfill: { run: null, tasks: [], summary: {} },
+              mongo_stock_cache: { freqs: [], summary: {} },
+              terminal_outputs: [],
+              blockers: [],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      if (url === 'http://signals-web.local/api/workbench/shell') {
+        return new Response(
+          JSON.stringify({ session: { ready: true }, cache: { status: 'hit' } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+
+      throw new Error(`Unexpected request: ${url}`)
+    }
+
+    const client = new LongclawControlPlaneClient({
+      signalsWebBaseUrl: 'http://signals-web.local',
+      fetchImpl,
+    })
+
+    const result = await client.executeAction('pack:signals:prewarm', {
+      reason: 'startup',
+      requested_by: 'test',
+    })
+
+    expect(result.ok).toBe(true)
+    expect((result.refresh as Record<string, unknown>).message).toBe('refresh_started')
+    expect((result.cache_status as Record<string, unknown>).recovery_state).toBe('terminal_ready')
+    expect((result.dashboard as Record<string, unknown>).status).toBe('healthy')
+    expect((result.shell as Record<string, unknown>).cache_status).toBe('hit')
+    expect(requests.map(item => item.url).sort()).toEqual([
+      'http://signals-web.local/api/pack/cache-status',
+      'http://signals-web.local/api/pack/dashboard?recent_limit=5&backlog_limit=5',
+      'http://signals-web.local/api/pack/refresh',
+      'http://signals-web.local/api/workbench/shell',
+    ].sort())
+    expect(requests.find(item => item.url.endsWith('/api/pack/refresh'))?.body).toMatchObject({
+      reason: 'startup',
+      requested_by: 'test',
+      force_live: true,
+      force_postmarket: true,
+      run_optional_tasks: true,
+      wait: false,
+    })
   })
 })

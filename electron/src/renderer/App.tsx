@@ -1850,6 +1850,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const signalsWatchdogRequestedAtRef = useRef(0)
+  const startupSignalsPrewarmRequestedRef = useRef(false)
   const [aiFactorStrategySignals, setAiFactorStrategySignals] = useState<AiFactorStrategySignal[]>([])
   const [taskFlowFilter, setTaskFlowFilter] = useState<TaskFlowFilter>('all')
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth)
@@ -2326,6 +2327,29 @@ export default function App() {
     [locale],
   )
 
+  const prewarmSignalsOnStartup = useCallback(async () => {
+    try {
+      const result = await window.longclawControlPlane.executeAction('pack:signals:prewarm', {
+        reason: 'startup',
+        requested_by: 'longclaw-agent-os',
+        force_live: true,
+        force_postmarket: true,
+        run_optional_tasks: true,
+      })
+      recordObservationEvent('signals.prewarm.startup', {
+        triggered: Boolean((result.refresh as Record<string, unknown> | null)?.triggered),
+        refresh_message: String((result.refresh as Record<string, unknown> | null)?.message ?? ''),
+        dashboard_status: String((result.dashboard as Record<string, unknown> | null)?.status ?? ''),
+        shell_cache_status: String((result.shell as Record<string, unknown> | null)?.cache_status ?? ''),
+      })
+    } catch (err) {
+      recordObservationEvent('signals.prewarm.startup_failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    void loadDashboard('signals').catch(() => undefined)
+  }, [loadDashboard])
+
   const refresh = useCallback(
     async (
       targetPage: Page = page,
@@ -2338,13 +2362,19 @@ export default function App() {
         if (options.triggerSignalsRefresh) {
           await triggerSignalsDataRefresh('manual')
         }
-        await Promise.allSettled([
-          loadDashboard('signals'),
+        const backgroundTasks = [
           loadRuns(),
           loadWorkItems(),
           loadLaunchTasks(),
           loadCapabilitySubstrate(),
-        ])
+        ]
+        await Promise.allSettled([loadDashboard('signals')])
+        setLoading(false)
+        recordObservationEvent('app.refresh.finish', { page: targetPage, mode: 'critical' })
+        void Promise.allSettled(backgroundTasks).then(() => {
+          recordObservationEvent('app.refresh.background_finish', { page: targetPage })
+        })
+        return
       }
       if (targetPage === 'sessions') {
         await Promise.allSettled([
@@ -2415,6 +2445,14 @@ export default function App() {
     recordObservationEvent('app.page.visible', { page })
     void refresh(page)
   }, [page, refresh])
+
+  useEffect(() => {
+    if (startupSignalsPrewarmRequestedRef.current) return
+    startupSignalsPrewarmRequestedRef.current = true
+    window.setTimeout(() => {
+      void prewarmSignalsOnStartup()
+    }, 0)
+  }, [prewarmSignalsOnStartup])
 
   useEffect(() => {
     const intervalMs = signalsDashboardPollingMs(page, dashboard)

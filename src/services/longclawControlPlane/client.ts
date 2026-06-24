@@ -43,6 +43,7 @@ export type LongclawControlPlaneClientOptions = {
 }
 
 const CONTROL_PLANE_FETCH_TIMEOUT_MS = 5_000
+const DEFAULT_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS = 750
 
 function envValue(name: string): string | undefined {
   const value = process.env[name]?.trim()
@@ -367,6 +368,46 @@ async function fetchJsonOrNull<T>(
   }
 }
 
+function signalsDashboardEagerTimeoutMs(): number {
+  const raw = Number(process.env.LONGCLAW_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS ?? DEFAULT_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS)
+  if (!Number.isFinite(raw)) return DEFAULT_SIGNALS_DASHBOARD_EAGER_TIMEOUT_MS
+  return Math.max(50, Math.min(5_000, Math.trunc(raw)))
+}
+
+async function fetchJsonOrNullWithin<T>(
+  url: string | undefined,
+  parse: (value: unknown) => T,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  init?: RequestInit,
+): Promise<{ value: T | null; timedOut: boolean }> {
+  if (!url) return { value: null, timedOut: false }
+  const controller = new AbortController()
+  let timedOut = false
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    const fetchPromise = fetchJson(
+      url,
+      parse,
+      fetchImpl,
+      { ...init, signal: controller.signal },
+    ).then(
+      value => ({ value, timedOut: false }),
+      () => ({ value: null, timedOut }),
+    )
+    const timeoutPromise = new Promise<{ value: null; timedOut: true }>(resolve => {
+      timeout = setTimeout(() => {
+        timedOut = true
+        controller.abort()
+        resolve({ value: null, timedOut: true })
+      }, timeoutMs)
+    })
+    return await Promise.race([fetchPromise, timeoutPromise])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
 async function fetchSignalsJsonWithFallback<T>(
   primary: { url: string | undefined; source: 'web1' },
   secondary: { url: string | undefined; source: 'web2' },
@@ -424,6 +465,175 @@ function candidateRecord(
     status: defaults.status ?? 'open',
     metadata: source,
   }
+}
+
+function signalsCacheStatusStrict(cacheStatus: Record<string, unknown>): string {
+  const live = recordValue(cacheStatus.live_low_latency)
+  return stringValue(recordValue(live.summary).strict_status)?.toLowerCase() ?? ''
+}
+
+function signalsCacheStatusCritical(cacheStatus: Record<string, unknown>): string {
+  const postmarket = recordValue(cacheStatus.postmarket_backfill)
+  return stringValue(recordValue(postmarket.summary).critical_status)?.toLowerCase() ?? ''
+}
+
+function lightweightSignalsDashboardFromCacheStatus(
+  cacheStatus: unknown,
+  context: {
+    runtimeDir: string
+    stateRoot?: string
+    stateRootConfigured: boolean
+    stateRootExists: boolean
+    web1?: string
+    web2?: string
+  },
+): SignalsDashboard {
+  const parsedCacheStatus = SignalsCacheStatusSchema.parse(cacheStatus)
+  const cacheRecord = recordValue(parsedCacheStatus)
+  const hasBlockers = Array.isArray(parsedCacheStatus.blockers) && parsedCacheStatus.blockers.length > 0
+  const strictStatus = signalsCacheStatusStrict(cacheRecord)
+  const criticalStatus = signalsCacheStatusCritical(cacheRecord)
+  const cacheError = stringValue(parsedCacheStatus.error) ?? ''
+  const recoveryState = stringValue(parsedCacheStatus.recovery_state) ?? ''
+  const cacheMode = stringValue(parsedCacheStatus.mode) ?? ''
+  const degraded =
+    !parsedCacheStatus.available ||
+    hasBlockers ||
+    strictStatus === 'degraded' ||
+    (criticalStatus !== '' && criticalStatus !== 'ok')
+  const status = degraded ? 'degraded' : 'healthy'
+  const connectorHealth = [
+    connectorHealthEntry(
+      'signals-state-root',
+      context.stateRootConfigured ? (context.stateRootExists ? 'available' : 'degraded') : 'not_connected',
+      context.stateRootExists ? 'Signals state root is mounted.' : 'Signals state root is empty or missing.',
+      { state_root: context.stateRoot ?? '' },
+    ),
+    connectorHealthEntry(
+      'signals-web1',
+      context.web1 ? (parsedCacheStatus.available ? 'available' : 'degraded') : 'not_connected',
+      context.web1 ? 'Signals web1 cache status is available.' : 'Signals web1 is not configured.',
+      { base_url: context.web1 ?? '', load_mode: 'lazy_cache_status' },
+    ),
+    connectorHealthEntry(
+      'signals-web2',
+      context.web2 ? 'standby' : 'not_connected',
+      context.web2 ? 'Signals web2 is configured as standby.' : 'Signals web2 is not configured.',
+      { base_url: context.web2 ?? '' },
+    ),
+  ]
+  const diagnostics = [
+    packDiagnostic(
+      'signals-cache-status',
+      parsedCacheStatus.available ? 'available' : 'degraded',
+      'signals cache status',
+      cacheError || recoveryState || cacheMode,
+      {
+        load_mode: 'lazy_cache_status',
+        strict_status: strictStatus,
+        critical_status: criticalStatus,
+      },
+    ),
+  ]
+  const operatorActions = [
+    context.web1
+      ? signalsApiAction(
+          'pack:signals:refresh',
+          '刷新 Signals 数据',
+          { reason: 'manual', force_live: true, force_postmarket: true, run_optional_tasks: true },
+        )
+      : null,
+    localAction(
+      'pack:signals:config:path',
+      'pack:signals',
+      'open_path',
+      'Open config',
+      { path: join(context.runtimeDir, 'stack.env') },
+    ),
+  ].filter(Boolean)
+  const deepLinks = [
+    context.web1
+      ? {
+          link_id: 'signals-terminal',
+          label: 'Signals Terminal',
+          url: context.web1,
+          kind: 'web',
+        }
+      : null,
+    context.web1
+      ? {
+          link_id: 'signals-legacy',
+          label: 'Signals Legacy',
+          url: `${context.web1}/legacy`,
+          kind: 'web',
+        }
+      : null,
+    context.web2
+      ? {
+          link_id: 'signals-web2',
+          label: 'Signals Web2',
+          url: context.web2,
+          kind: 'web',
+        }
+      : null,
+  ].filter(Boolean)
+
+  return SignalsDashboardSchema.parse({
+    pack_id: 'signals',
+    title: 'Signals',
+    status,
+    notice: '',
+    diagnostics,
+    overview: {
+      market_regime: {},
+      cluster_summary: {},
+      review_summary: {},
+      data_warning: '',
+    },
+    daily_brief: {
+      as_of: parsedCacheStatus.updated_at,
+      headline: parsedCacheStatus.available ? 'Signals 数据可用' : 'Signals 数据待恢复',
+      summary: recoveryState || cacheMode,
+      bullets: [],
+      market_bias: '',
+      risk_note: cacheError,
+      metadata: { source: 'signals-cache-status', load_mode: 'lazy' },
+    },
+    decision_queue: [],
+    strategy_kpis: [
+      {
+        kpi_id: 'cache_status',
+        label: 'Cache status',
+        value: recoveryState || cacheMode,
+        unit: '',
+        status: parsedCacheStatus.available ? 'ready' : 'degraded',
+        trend: '',
+        metadata: { source: 'signals-cache-status' },
+      },
+    ],
+    source_confidence: [
+      {
+        source_id: 'signals-cache-status',
+        label: 'Signals cache status',
+        confidence: parsedCacheStatus.available ? 0.85 : 0.2,
+        status: parsedCacheStatus.available ? 'available' : 'degraded',
+        summary: recoveryState || cacheMode,
+        metadata: { load_mode: 'lazy_cache_status' },
+      },
+    ],
+    recent_runs: [],
+    review_runs: [],
+    buy_candidates: [],
+    sell_warnings: [],
+    chart_context: null,
+    backtest_summary: { total: 0, evaluated: 0, pending: 0 },
+    backtest_jobs: [],
+    pending_backlog_preview: [],
+    connector_health: connectorHealth,
+    deep_links: deepLinks,
+    operator_actions: operatorActions,
+    cache_status: parsedCacheStatus,
+  })
 }
 
 async function fetchJson<T>(
@@ -1030,18 +1240,31 @@ export class LongclawControlPlaneClient {
       }
 
       const canonicalDashboardUrl = web1 ? `${web1}/api/pack/dashboard?recent_limit=5&backlog_limit=5` : undefined
-      const cacheStatusPromise = fetchJsonOrNull(
+      const cacheStatusPromise = fetchJsonOrNullWithin(
         web1 ? `${web1}/api/pack/cache-status` : undefined,
         value => SignalsCacheStatusSchema.parse(value),
         this.fetchImpl,
+        signalsDashboardEagerTimeoutMs(),
       )
-      const canonicalDashboard = await fetchJsonOrNull(
+      const canonicalDashboardResult = await fetchJsonOrNullWithin(
         canonicalDashboardUrl,
         value => SignalsDashboardSchema.parse(value),
         this.fetchImpl,
+        signalsDashboardEagerTimeoutMs(),
       )
-      if (canonicalDashboard) return canonicalDashboard
-      const cacheStatus = await cacheStatusPromise
+      if (canonicalDashboardResult.value) return canonicalDashboardResult.value
+      const cacheStatusResult = await cacheStatusPromise
+      const cacheStatus = cacheStatusResult.value
+      if (canonicalDashboardResult.timedOut && cacheStatus) {
+        return lightweightSignalsDashboardFromCacheStatus(cacheStatus, {
+          runtimeDir,
+          stateRoot,
+          stateRootConfigured,
+          stateRootExists,
+          web1,
+          web2,
+        })
+      }
 
       try {
         const runs = await this.listRuns()
@@ -1757,6 +1980,82 @@ export class LongclawControlPlaneClient {
           body: JSON.stringify(payload),
         },
       )
+    }
+
+    if (actionId === 'pack:signals:prewarm') {
+      if (!this.signalsWebBaseUrl) {
+        throw new Error(`Signals web endpoint is required for action: ${actionId}`)
+      }
+      const refreshPayload = {
+        reason: stringValue(payload.reason) ?? 'startup',
+        requested_by: stringValue(payload.requested_by) ?? 'longclaw-agent-os',
+        force_live: payload.force_live === undefined ? true : Boolean(payload.force_live),
+        force_postmarket: payload.force_postmarket === undefined ? true : Boolean(payload.force_postmarket),
+        run_optional_tasks: payload.run_optional_tasks === undefined ? true : Boolean(payload.run_optional_tasks),
+        wait: false,
+      }
+      const timeoutMs = signalsDashboardEagerTimeoutMs()
+      const [refresh, cacheStatus, dashboard, shell] = await Promise.allSettled([
+        fetchJson(
+          `${this.signalsWebBaseUrl}/api/pack/refresh`,
+          value => value as Record<string, unknown>,
+          this.fetchImpl,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(refreshPayload),
+          },
+        ),
+        fetchJsonOrNullWithin(
+          `${this.signalsWebBaseUrl}/api/pack/cache-status`,
+          value => SignalsCacheStatusSchema.parse(value),
+          this.fetchImpl,
+          timeoutMs,
+        ),
+        fetchJsonOrNullWithin(
+          `${this.signalsWebBaseUrl}/api/pack/dashboard?recent_limit=5&backlog_limit=5`,
+          value => SignalsDashboardSchema.parse(value),
+          this.fetchImpl,
+          timeoutMs,
+        ),
+        fetchJsonOrNullWithin(
+          `${this.signalsWebBaseUrl}/api/workbench/shell`,
+          value => recordValue(value),
+          this.fetchImpl,
+          timeoutMs,
+        ),
+      ])
+      const cacheValue = cacheStatus.status === 'fulfilled' ? cacheStatus.value.value : null
+      const dashboardValue = dashboard.status === 'fulfilled' ? dashboard.value.value : null
+      const shellValue = shell.status === 'fulfilled' ? shell.value.value : null
+      const shellCache = recordValue(shellValue?.cache)
+      const shellSession = recordValue(shellValue?.session)
+      return {
+        ok: true,
+        action_id: actionId,
+        refresh: refresh.status === 'fulfilled' ? refresh.value : null,
+        cache_status: cacheValue
+          ? {
+              available: cacheValue.available,
+              recovery_state: cacheValue.recovery_state,
+              timed_out: cacheStatus.status === 'fulfilled' ? cacheStatus.value.timedOut : false,
+            }
+          : null,
+        dashboard: dashboardValue
+          ? {
+              status: dashboardValue.status,
+              cache_available: dashboardValue.cache_status.available,
+              timed_out: dashboard.status === 'fulfilled' ? dashboard.value.timedOut : false,
+            }
+          : null,
+        shell: shellValue
+          ? {
+              ready: shellSession.ready === true,
+              cache_status: stringValue(shellCache.status) ?? '',
+              timed_out: shell.status === 'fulfilled' ? shell.value.timedOut : false,
+            }
+          : null,
+      }
     }
 
     if (actionId.startsWith('pack:signals:ai_factor:')) {
