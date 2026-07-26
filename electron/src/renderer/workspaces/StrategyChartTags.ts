@@ -30,6 +30,7 @@ function normalizeSignalScopeFreq(value: unknown): string {
   if (['30m', '30min', '30分钟'].includes(raw)) return '30min'
   if (['daily', 'day', '1d', '日线'].includes(raw)) return 'daily'
   if (['weekly', 'week', '1w', '周线'].includes(raw)) return 'weekly'
+  if (['monthly', 'month', '1mo', '1m', '月线'].includes(raw)) return 'monthly'
   return raw
 }
 

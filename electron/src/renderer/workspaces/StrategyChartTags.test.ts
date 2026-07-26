@@ -67,5 +67,6 @@ describe('StrategyChart watchlist tags', () => {
     expect(signalScopeLabel({ display_scope: 'other_timeframe' })).toBe('其它周期')
     expect(signalScopeLabel({ display_scope: 'current_timeframe' })).toBe('本周期')
     expect(signalScopeLabel({ freq: '30分钟' }, '30min')).toBe('本周期')
+    expect(signalScopeLabel({ freq: '月线' }, 'monthly')).toBe('本周期')
   })
 })

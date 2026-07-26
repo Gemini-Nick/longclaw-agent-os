@@ -22,9 +22,12 @@ import {
   signalsFromSymbolData,
   shouldAddManualClueForSearch,
   sourceMonitorSummary,
+  stockHardSignalBadgeLabels,
   stockIdentityDisplay,
   strategyTradeActionPlanFromState,
   symbolDataCacheKey,
+  TEST_CHART_FREQ_VALUES,
+  TEST_TIMEFRAME_SNAPSHOT_FREQ_VALUES,
   terminalListTargetFreq,
   timeframeBadgeDisplayLabel,
   watchlistGridTemplate,
@@ -125,6 +128,55 @@ describe('StrategyChartTerminal stock identity display', () => {
   it('keeps stock code and name together for trader-facing labels', () => {
     expect(stockIdentityDisplay({ symbol: 'SZ.300394', name: '天孚通信' })).toBe('SZ.300394 天孚通信')
     expect(stockIdentityDisplay({ code: '002409', stock_name: '雅克科技' })).toBe('002409 雅克科技')
+  })
+})
+
+describe('StrategyChartTerminal stock hard-signal badges', () => {
+  it('uses structured display badges, sorted and capped, without falling back to role badges', () => {
+    const labels = stockHardSignalBadgeLabels({
+      display_badges: [
+        { kind: 'trade_role', label: '右侧进攻', priority: 120 },
+        { kind: 'risk', label: '风险', tone: 'risk', priority: 110 },
+        { kind: 'new_high_200', label: '200日新高', tone: 'hot', priority: 90 },
+        { kind: 'buy_point', label: '30m二买', tone: 'buy', priority: 100 },
+        { kind: 'ma_climb', label: '日MA5攀爬', tone: 'buy', priority: 80 },
+        { kind: 'volume_price', label: '强缺口量价', tone: 'hot', priority: 70 },
+      ],
+    })
+
+    expect(labels).toEqual(['30m二买', '200日新高', '日MA5攀爬'])
+  })
+
+  it('uses narrow legacy fallback and ignores summary/source text and ordinary shrink', () => {
+    const labels = stockHardSignalBadgeLabels({
+      display_summary: '右侧进攻 主线加强 风险解除 200日新高',
+      evidence_summary: '普通缩量后观察',
+      source_tags: ['breakout_200d'],
+      buy_timeframes: [{ badge: '30m' }],
+      sell_timeframes: [{ badge: '日线' }],
+      technical_signal_groups: {
+        right: [{ freq: '15m', label: '三买' }],
+      },
+      technical_evidence: {
+        ma_climb: { label: '周MA10攀爬' },
+      },
+      display_breakout: '200日新高',
+    })
+
+    expect(labels).toEqual(['30m买点', '日线卖点', '15m 三买'])
+    expect(labels.join(' ')).not.toContain('风险')
+    expect(labels.join(' ')).not.toContain('普通缩量')
+  })
+
+  it('allows an empty hard-signal row instead of falling back to role or risk labels', () => {
+    expect(stockHardSignalBadgeLabels({
+      display_badges: [
+        { kind: 'trade_role', label: '右侧进攻', priority: 100 },
+        { kind: 'risk', label: '风险', tone: 'risk', priority: 90 },
+        { kind: 'volume_price', label: '普通缩量', tone: 'neutral', priority: 80 },
+      ],
+      display_summary: '只保留这一行结论',
+    })).toEqual([])
   })
 })
 
@@ -353,6 +405,11 @@ describe('StrategyChartTerminal sector target context', () => {
 })
 
 describe('StrategyChartTerminal timeframe market snapshots', () => {
+  it('keeps monthly out of chart switches while adding it to snapshot rows', () => {
+    expect(TEST_CHART_FREQ_VALUES).toEqual(['5min', '15min', '30min', 'daily', 'weekly'])
+    expect(TEST_TIMEFRAME_SNAPSHOT_FREQ_VALUES).toEqual(['5min', '15min', '30min', 'daily', 'weekly', 'monthly'])
+  })
+
   it('formats latest price, period change, volume, and amount from chart bars', () => {
     const snapshot = marketSnapshotFromSymbolData({
       target: {
@@ -415,6 +472,55 @@ describe('StrategyChartTerminal timeframe market snapshots', () => {
     expect(snapshot.status).toBe('loading')
     expect(snapshot.latestPrice).toBe('N/A')
     expect(snapshot.statusText).toContain('股票分钟行情未就绪')
+  })
+
+  it('supports monthly snapshot labels without requiring a top-level chart switch', () => {
+    const snapshot = marketSnapshotFromSymbolData({
+      target: {
+        kind: 'stock',
+        symbol: 'SH.600000',
+        requested_freq: 'monthly',
+        effective_freq: 'monthly',
+      },
+      chart: {
+        meta: {
+          freq: 'monthly',
+          cache_status: 'ready',
+          data_quality: 'official',
+          bars: 1,
+        },
+        ohlcv: [
+          { time: 1_780_000_000, open: 10, high: 12, low: 9, close: 11, volume: 1_000_000, amount: 10_000_000 },
+        ],
+      },
+    } as any, 'monthly', 'zh-CN')
+
+    expect(snapshot.freq).toBe('monthly')
+    expect(snapshot.label).toBe('月')
+    expect(snapshot.qualityLabel).toBe('正式')
+  })
+
+  it('distinguishes waiting source, provisional close, and partial-period quality', () => {
+    expect(marketSnapshotFromSymbolData({
+      target: { kind: 'stock', symbol: 'SH.600000', requested_freq: 'monthly', effective_freq: 'monthly' },
+      chart: { meta: { freq: 'monthly', cache_status: 'not_ready', load_status: 'pending' }, ohlcv: [] },
+    } as any, 'monthly', 'zh-CN').qualityLabel).toBe('等待源更新')
+
+    expect(marketSnapshotFromSymbolData({
+      target: { kind: 'stock', symbol: 'SH.600000', requested_freq: 'daily', effective_freq: 'daily' },
+      chart: {
+        meta: { freq: 'daily', quality: 'provisional_close', bars: 1 },
+        ohlcv: [{ time: 1_780_000_000, open: 10, high: 11, low: 9, close: 10.5 }],
+      },
+    } as any, 'daily', 'zh-CN').qualityLabel).toBe('临时收盘')
+
+    expect(marketSnapshotFromSymbolData({
+      target: { kind: 'stock', symbol: 'SH.600000', requested_freq: 'weekly', effective_freq: 'weekly' },
+      chart: {
+        meta: { freq: 'weekly', is_partial_period: true, time_semantics: 'partial_period', bars: 1 },
+        ohlcv: [{ time: 1_780_000_000, open: 10, high: 11, low: 9, close: 10.5 }],
+      },
+    } as any, 'weekly', 'zh-CN').qualityLabel).toBe('部分周期')
   })
 })
 

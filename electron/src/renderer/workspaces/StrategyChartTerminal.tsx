@@ -289,6 +289,8 @@ type TimeframeMarketSnapshot = {
   freq: string
   label: string
   status: TimeframeMarketSnapshotStatus
+  quality: TimeframeMarketSnapshotQuality
+  qualityLabel: string
   latestPrice: string
   periodChange: string
   volume: string
@@ -297,6 +299,8 @@ type TimeframeMarketSnapshot = {
   signal: string
   statusText: string
 }
+
+type TimeframeMarketSnapshotQuality = 'waiting_source' | 'provisional_close' | 'partial_period' | 'official'
 
 type WatchlistRangeColumn = {
   key: string
@@ -497,6 +501,9 @@ const FREQ_OPTIONS: FrequencyOption[] = [
   { value: 'daily', label: '日' },
   { value: 'weekly', label: '周' },
 ]
+const TIMEFRAME_SNAPSHOT_OPTIONS: FrequencyOption[] = [...FREQ_OPTIONS, { value: 'monthly', label: '月' }]
+export const TEST_CHART_FREQ_VALUES = FREQ_OPTIONS.map(option => option.value)
+export const TEST_TIMEFRAME_SNAPSHOT_FREQ_VALUES = TIMEFRAME_SNAPSHOT_OPTIONS.map(option => option.value)
 const DEFAULT_TERMINAL_FREQ = 'daily'
 const DEFAULT_AVAILABLE_FREQS = FREQ_OPTIONS.map(option => option.value)
 const WATCHLIST_RANGE_COLUMNS: WatchlistRangeColumn[] = [
@@ -1388,17 +1395,11 @@ const stockWatchlistBadgeRowStyle: React.CSSProperties = {
 }
 
 const stockWatchlistSummaryStyle: React.CSSProperties = {
-  ...mutedTwoLineStyle,
+  ...mutedLineStyle,
   marginTop: 4,
   color: terminalTheme.text,
   fontSize: 10,
   lineHeight: 1.35,
-}
-
-const stockWatchlistContextStyle: React.CSSProperties = {
-  ...watchlistSubStyle,
-  marginTop: 3,
-  whiteSpace: 'nowrap',
 }
 
 const stockWatchlistButtonRowStyle: React.CSSProperties = {
@@ -2653,6 +2654,9 @@ export function timeframeBadgeDisplayLabel(value: unknown, locale: LongclawLocal
   if (['weekly', 'week', '1w', 'w', '周', '周线'].includes(normalized)) {
     return locale === 'zh-CN' ? '周线' : 'Weekly'
   }
+  if (['monthly', 'month', '1mo', '1m', 'm', '月', '月线'].includes(normalized)) {
+    return locale === 'zh-CN' ? '月线' : 'Monthly'
+  }
   if (['daily', 'day', '1d', 'd', '日', '日线'].includes(normalized)) {
     return locale === 'zh-CN' ? '日线' : 'Daily'
   }
@@ -3583,6 +3587,7 @@ function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
   if (reason === 'board_heat_not_ready') return zh ? '板块分钟热度未就绪' : 'sector minute heat is not ready'
   if (reason === 'daily_cache_missing') return zh ? '日线行情缺失' : 'daily cache is missing'
   if (reason === 'weekly_cache_missing') return zh ? '周线行情缺失' : 'weekly cache is missing'
+  if (reason === 'monthly_cache_missing') return zh ? '月线行情缺失' : 'monthly cache is missing'
   return reason || (zh ? '行情未就绪' : 'cache is not ready')
 }
 
@@ -4920,6 +4925,7 @@ function normalizeSignalFreq(value?: string): string {
   if (['30m', '30min', '30分钟'].includes(raw)) return '30min'
   if (['daily', 'day', '1d', '日线'].includes(raw)) return 'daily'
   if (['weekly', 'week', '1w', '周线'].includes(raw)) return 'weekly'
+  if (['monthly', 'month', '1mo', '1m', '月线'].includes(raw)) return 'monthly'
   return raw
 }
 
@@ -4930,6 +4936,7 @@ function displayFreqLabel(value?: string): string {
   if (normalized === '30min') return '30m'
   if (normalized === 'daily') return '日'
   if (normalized === 'weekly') return '周'
+  if (normalized === 'monthly') return '月'
   return compactText(value)
 }
 
@@ -5708,11 +5715,82 @@ function timeframeSnapshotBadgeTone(status: TimeframeMarketSnapshotStatus): 'suc
   return 'open'
 }
 
+function timeframeSnapshotQualityLabel(quality: TimeframeMarketSnapshotQuality, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  if (quality === 'waiting_source') return zh ? '等待源更新' : 'Waiting source'
+  if (quality === 'provisional_close') return zh ? '临时收盘' : 'Provisional close'
+  if (quality === 'partial_period') return zh ? '部分周期' : 'Partial period'
+  return zh ? '正式' : 'Official'
+}
+
+function timeframeSnapshotQualityTone(quality: TimeframeMarketSnapshotQuality): 'success' | 'warning' | 'running' | 'open' {
+  if (quality === 'official') return 'success'
+  if (quality === 'waiting_source') return 'running'
+  if (quality === 'provisional_close' || quality === 'partial_period') return 'warning'
+  return 'open'
+}
+
+function marketSnapshotQuality(
+  meta: Record<string, unknown>,
+  summary: Record<string, unknown>,
+  status: TimeframeMarketSnapshotStatus,
+): TimeframeMarketSnapshotQuality {
+  const statusText = [
+    meta.quality,
+    meta.quality_status,
+    meta.data_quality,
+    meta.time_semantics,
+    meta.close_status,
+    meta.bar_status,
+    meta.cache_status,
+    meta.load_status,
+    summary.quality,
+    summary.quality_status,
+    summary.data_quality,
+    summary.time_semantics,
+    summary.close_status,
+  ].map(value => compactText(value).toLowerCase()).join(' ')
+  if (
+    status === 'loading' ||
+    status === 'empty' ||
+    statusText.includes('waiting_for_source') ||
+    statusText.includes('source_blocked') ||
+    statusText.includes('not_ready')
+  ) {
+    return 'waiting_source'
+  }
+  if (
+    booleanValue(meta.is_provisional) ||
+    booleanValue(meta.provisional_close) ||
+    booleanValue(summary.is_provisional) ||
+    booleanValue(summary.provisional_close) ||
+    statusText.includes('provisional') ||
+    statusText.includes('temporary') ||
+    statusText.includes('临时')
+  ) {
+    return 'provisional_close'
+  }
+  if (
+    booleanValue(meta.is_partial_period) ||
+    booleanValue(meta.partial_period) ||
+    booleanValue(meta.latest_bar_partial) ||
+    meta.period_complete === false ||
+    statusText.includes('partial_period') ||
+    statusText.includes('partial')
+  ) {
+    return 'partial_period'
+  }
+  return 'official'
+}
+
 function loadingTimeframeSnapshot(freq: string, locale: LongclawLocale): TimeframeMarketSnapshot {
+  const quality: TimeframeMarketSnapshotQuality = 'waiting_source'
   return {
     freq: normalizeSignalFreq(freq) || freq,
     label: displayFreqLabel(freq),
     status: 'loading',
+    quality,
+    qualityLabel: timeframeSnapshotQualityLabel(quality, locale),
     latestPrice: 'N/A',
     periodChange: 'N/A',
     volume: 'N/A',
@@ -5750,6 +5828,7 @@ export function marketSnapshotFromSymbolData(
     : ['triggered', 'running', 'pending'].includes(loadStatus)
       ? 'loading'
       : 'empty'
+  const quality = marketSnapshotQuality(meta, summary, status)
   const latestPrice = firstNumberValue(latest?.close, summary.latest_price)
   const latestVolumeValue = firstNumberValue(latest?.volume, summary.day_volume, summary.daily_volume, summary.latest_daily_volume)
   const latestAmountValue = firstNumberValue(latest?.turnover, summary.day_amount, summary.daily_amount, summary.latest_daily_amount)
@@ -5773,6 +5852,8 @@ export function marketSnapshotFromSymbolData(
     freq: normalizedFreq,
     label: displayFreqLabel(normalizedFreq),
     status,
+    quality,
+    qualityLabel: timeframeSnapshotQualityLabel(quality, locale),
     latestPrice: formatNumber(latestPrice),
     periodChange: formatPercent(periodChange),
     volume: formatAStockVolume(latestVolumeValue),
@@ -6073,23 +6154,111 @@ type StockDisplayBadge = {
   tone: string
 }
 
-function stockDisplayBadges(row: WatchlistRow): StockDisplayBadge[] {
-  const rawBadges = Array.isArray(row.raw.display_badges) ? row.raw.display_badges : []
-  const badges = rawBadges
-    .map(item => {
-      const badge = recordValue(item)
-      const label = compactText(badge.label)
-      if (!label) return null
-      return { label, tone: compactText(badge.tone) || 'neutral' }
+type ClassifiedStockHardSignal = StockDisplayBadge & {
+  priority: number
+}
+
+const HARD_SIGNAL_BADGE_KINDS = new Set([
+  'buy_point',
+  'sell_point',
+  'buy_signal',
+  'sell_signal',
+  'entry_signal',
+  'breakout',
+  'new_high_200',
+  'ma_climb',
+  'gap_volume',
+  'volume_price',
+  'strong_gap',
+])
+
+function normalizeHardSignalTone(tone: string, kind: string, label: string): string {
+  if (tone === 'risk' && !/(卖点|[一二三]卖|顶背)/u.test(label)) return 'neutral'
+  if (tone) return tone
+  if (kind.includes('sell') || /(卖点|[一二三]卖|顶背)/u.test(label)) return 'risk'
+  if (kind.includes('breakout') || kind.includes('high') || kind.includes('gap') || kind.includes('volume')) return 'hot'
+  return 'buy'
+}
+
+function hardSignalFromDisplayBadge(item: unknown): ClassifiedStockHardSignal | null {
+  const badge = recordValue(item)
+  const label = compactText(badge.label)
+  const kind = compactText(badge.kind).toLowerCase()
+  if (!label || !HARD_SIGNAL_BADGE_KINDS.has(kind)) return null
+  if (/风险/u.test(label) || (/缩量/u.test(label) && !/(强|缺口|量价)/u.test(label))) return null
+  return {
+    label,
+    tone: normalizeHardSignalTone(compactText(badge.tone), kind, label),
+    priority: numberValue(badge.priority) ?? 50,
+  }
+}
+
+function hardSignalFromLegacyText(label: string, tone: string, priority: number): ClassifiedStockHardSignal | null {
+  const clean = compactText(label).replace(/回踩承接/g, '承接')
+  if (!clean || /风险|主线|交易角色|普通缩量/u.test(clean)) return null
+  if (/缩量/u.test(clean) && !/(强|缺口|量价)/u.test(clean)) return null
+  return { label: clean, tone, priority }
+}
+
+function legacyHardSignalBadges(raw: Record<string, unknown>): ClassifiedStockHardSignal[] {
+  const buySellFrameBadges = [
+    ...(Array.isArray(raw.buy_timeframes)
+      ? raw.buy_timeframes.map(item => hardSignalFromLegacyText(`${compactText(recordValue(item).badge) || compactText(recordValue(item).freq)}买点`, 'buy', 95))
+      : []),
+    ...(Array.isArray(raw.sell_timeframes)
+      ? raw.sell_timeframes.map(item => hardSignalFromLegacyText(`${compactText(recordValue(item).badge) || compactText(recordValue(item).freq)}卖点`, 'risk', 94))
+      : []),
+  ]
+  const groups = recordValue(raw.technical_signal_groups)
+  const groupBadges = ['left', 'right', 'sell'].flatMap(key => {
+    const rows = groups[key]
+    if (!Array.isArray(rows)) return []
+    return rows.map(item => {
+      const record = recordValue(item)
+      const label = [record.freq, record.label].map(value => compactText(value)).filter(Boolean).join(' ')
+      const tone = key === 'sell' || /(卖点|[一二三]卖|顶背)/u.test(label) ? 'risk' : 'buy'
+      return hardSignalFromLegacyText(label, tone, key === 'sell' ? 88 : 90)
     })
-    .filter((item): item is StockDisplayBadge => Boolean(item))
-  if (badges.length > 0) return badges.slice(0, 5)
+  })
+  const technical = recordValue(raw.technical_evidence)
+  const maClimb = recordValue(technical.ma_climb)
+  const maClimbLabel = compactText(maClimb.label) || compactText(maClimb.summary)
+  const breakout = compactText(raw.display_breakout) || compactText(raw.breakout_label) || compactText(raw.breakout_summary)
   return [
-    compactText(row.raw.stage_label) ? { label: compactText(row.raw.stage_label), tone: row.decision.stage === 'entry_ready' ? 'buy' : 'watch' } : null,
-    compactText(row.raw.setup_mode_label) ? { label: compactText(row.raw.setup_mode_label), tone: 'info' } : null,
-    sectorPolicyLabelForRow(row) ? { label: sectorPolicyLabelForRow(row), tone: 'info' } : null,
-    compactText(row.raw.risk_marker) ? { label: compactText(row.raw.risk_marker), tone: 'risk' } : null,
-  ].filter((item): item is StockDisplayBadge => Boolean(item)).slice(0, 5)
+    ...buySellFrameBadges,
+    ...groupBadges,
+    hardSignalFromLegacyText(maClimbLabel, 'buy', 80),
+    breakout ? hardSignalFromLegacyText(/200/.test(breakout) ? '200日新高' : breakout, 'hot', 85) : null,
+  ].filter((item): item is ClassifiedStockHardSignal => Boolean(item))
+}
+
+function stockHardSignals(raw: Record<string, unknown>): ClassifiedStockHardSignal[] {
+  const seen = new Set<string>()
+  const displayBadges = Array.isArray(raw.display_badges)
+    ? raw.display_badges.map(hardSignalFromDisplayBadge)
+    : []
+  const source = displayBadges.some(Boolean) ? displayBadges : legacyHardSignalBadges(raw)
+  return source
+    .filter((item): item is ClassifiedStockHardSignal => Boolean(item))
+    .sort((left, right) => right.priority - left.priority)
+    .filter(item => {
+      if (seen.has(item.label)) return false
+      seen.add(item.label)
+      return true
+    })
+    .slice(0, 3)
+}
+
+export function stockHardSignalBadgeLabels(raw: Record<string, unknown>): string[] {
+  return stockHardSignals(raw).map(item => item.label)
+}
+
+function stockHardSignalBadges(row: WatchlistRow): StockDisplayBadge[] {
+  return stockHardSignals(row.raw).map(item => ({ label: item.label, tone: item.tone }))
+}
+
+function stockDisplaySummaryLine(row: WatchlistRow, locale: LongclawLocale): string {
+  return traderDisplayText(compactText(row.raw.display_summary), locale)
 }
 
 function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
@@ -7759,7 +7928,7 @@ export function StrategyChartTerminal({
   const chartLoadStatus = compactText(chartMeta.load_status)
   const chartLoadRetrySeconds = numberValue(chartMeta.load_retry_after_seconds) ?? numberValue(chartMeta.load_eta_seconds)
   const timeframeSnapshotRows = useMemo(
-    () => FREQ_OPTIONS.map(option => {
+    () => TIMEFRAME_SNAPSHOT_OPTIONS.map(option => {
       const key = normalizeSignalFreq(option.value) || option.value
       return timeframeSnapshots[key] ?? loadingTimeframeSnapshot(option.value, locale)
     }),
@@ -8012,7 +8181,7 @@ export function StrategyChartTerminal({
     const controller = new AbortController()
     const currentSnapshotFreq = normalizeSignalFreq(currentFreq) || DEFAULT_TERMINAL_FREQ
     setTimeframeSnapshots(Object.fromEntries(
-      FREQ_OPTIONS.map(option => {
+      TIMEFRAME_SNAPSHOT_OPTIONS.map(option => {
         const key = normalizeSignalFreq(option.value) || option.value
         return [
           key,
@@ -8023,7 +8192,7 @@ export function StrategyChartTerminal({
       }),
     ))
 
-    const pendingFreqs = FREQ_OPTIONS
+    const pendingFreqs = TIMEFRAME_SNAPSHOT_OPTIONS
       .map(option => normalizeSignalFreq(option.value) || option.value)
       .filter(freq => freq !== currentSnapshotFreq)
     const timer = window.setTimeout(() => {
@@ -8457,7 +8626,6 @@ export function StrategyChartTerminal({
           'delete',
           { method: 'DELETE' },
         )
-        void loadShell().catch(() => undefined)
       } catch (rawError) {
         if (deleteKeys.length > 0) {
           setOptimisticDeletedManualClueKeys(previous => {
@@ -8470,7 +8638,7 @@ export function StrategyChartTerminal({
         setError(apiError.message || (locale === 'zh-CN' ? '临时线索删除失败。' : 'Failed to remove temporary clue.'))
       }
     },
-    [baseUrl, loadShell, locale],
+    [baseUrl, locale],
   )
 
   const submitSearch = useCallback(
@@ -9607,8 +9775,13 @@ function TimeframeMarketPanel({
                   <span style={rowTitleStyle}>{row.latestPrice}</span>
                   <span style={inlinePercentValueStyle(row.periodChange)}>{row.periodChange}</span>
                 </div>
-                <span style={statusBadgeStyle(timeframeSnapshotBadgeTone(row.status))}>
-                  {timeframeSnapshotStatusLabel(row.status, locale)}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                  <span style={statusBadgeStyle(timeframeSnapshotBadgeTone(row.status))}>
+                    {timeframeSnapshotStatusLabel(row.status, locale)}
+                  </span>
+                  <span style={statusBadgeStyle(timeframeSnapshotQualityTone(row.quality))}>
+                    {row.qualityLabel}
+                  </span>
                 </span>
               </div>
               <div style={timeframeMarketMetricStyle}>
@@ -11377,14 +11550,11 @@ function WatchlistTable({
 	        const sectorSubline = activeTab === 'sector_boards' ? sectorSublineForWatchlist(row, locale) : ''
 	        const tableActionLine = activeTab === 'sector_boards' ? sectorActionLineForWatchlist(row, locale) : row.traderAction
 	        const stockDecision = STOCK_WATCHLIST_TABS.includes(activeTab)
-        const actionLabel = stockDecision ? stockDisplayAction(row, locale) : decisionActionLabel(row.decision, locale)
-        const identityLabel = stockDecision ? tradeIdentityLabelForRow(row, locale) : ''
-        const sectorPolicyLabel = stockDecision ? sectorPolicyLabelForRow(row) : ''
-        const stageLabel = stockDecision ? compactText(row.raw.stage_label) || decisionStageLabel(row.decision.stage, locale) : ''
+        const actionLabel = stockDecision ? '' : decisionActionLabel(row.decision, locale)
         const traderRead = stockDecision ? traderReadLine(row, locale) : ''
         const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : ''
-        const contextLine = stockDecision ? stockContextLine(row, locale) : ''
-        const displayBadges = stockDecision ? stockDisplayBadges(row) : []
+        const displayBadges = stockDecision ? stockHardSignalBadges(row) : []
+        const summaryLine = stockDecision ? stockDisplaySummaryLine(row, locale) : ''
         const signalDetailLine = stockDecision ? '' : watchlistSignalDetailLine(row)
         const manualClue = rowIsManualClue(row)
         return (
@@ -11463,24 +11633,19 @@ function WatchlistTable({
 	                  <div style={watchlistNameStyle}>{sectorTitle}</div>
 	                </div>
                 )}
-                {stockDecision ? (
-                  <>
-                    <div style={stockWatchlistBadgeRowStyle}>
-                      {displayBadges.length > 0
-                        ? displayBadges.map(badge => (
-                          <span key={`${row.id}-display-${badge.tone}-${badge.label}`} style={stockDisplayBadgeStyle(badge.tone)}>
-                            {badge.label}
-                          </span>
-                        ))
-                        : [identityLabel, sectorPolicyLabel, stageLabel].filter(Boolean).map(label => (
-                          <span key={`${row.id}-fallback-${label}`} style={miniNeutralSignalBadgeStyle}>{label}</span>
-                        ))}
-                    </div>
-                    <div style={stockWatchlistSummaryStyle}>{traderRead || actionLabel}</div>
-                    {contextLine ? (
-                      <div style={stockWatchlistContextStyle}>{contextLine}</div>
-                    ) : null}
-                  </>
+	                {stockDecision ? (
+	                  <>
+	                    <div style={stockWatchlistBadgeRowStyle}>
+	                      {displayBadges.map(badge => (
+	                          <span key={`${row.id}-display-${badge.tone}-${badge.label}`} style={stockDisplayBadgeStyle(badge.tone)}>
+	                            {badge.label}
+	                          </span>
+	                        ))}
+	                    </div>
+	                    {summaryLine ? (
+	                      <div style={stockWatchlistSummaryStyle}>{summaryLine}</div>
+	                    ) : null}
+	                  </>
                 ) : (
                   <>
                     <div style={watchlistSubStyle}>
