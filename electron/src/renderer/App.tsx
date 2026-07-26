@@ -2306,7 +2306,7 @@ export default function App() {
         if (reason === 'manual') {
           setActionMessage(
             locale === 'zh-CN'
-              ? '已触发 Signals 全链路刷新。'
+              ? '已刷新行情与机会池。'
               : 'Signals data refresh triggered.',
           )
         }

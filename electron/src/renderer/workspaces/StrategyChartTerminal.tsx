@@ -1391,15 +1391,21 @@ const stockWatchlistBadgeRowStyle: React.CSSProperties = {
   gap: 3,
   marginTop: 4,
   minWidth: 0,
-  overflow: 'hidden',
+  overflow: 'visible',
 }
 
 const stockWatchlistSummaryStyle: React.CSSProperties = {
-  ...mutedLineStyle,
+  ...mutedTextStyle,
+  minWidth: 0,
   marginTop: 4,
   color: terminalTheme.text,
   fontSize: 10,
   lineHeight: 1.35,
+  whiteSpace: 'normal',
+  overflow: 'visible',
+  textOverflow: 'clip',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
 }
 
 const stockWatchlistButtonRowStyle: React.CSSProperties = {
@@ -3439,8 +3445,10 @@ export function sourceMonitorSummary(
         : countText(sourceProblemCount),
       progress: sourceTotalCount > 0 ? ((sourceTotalCount - sourceProblemCount) / sourceTotalCount) * 100 : 0,
       status: 'error',
-      statusLabel: 'BLOCKED',
-      detail: `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`,
+      statusLabel: locale === 'zh-CN' ? '待恢复' : 'BLOCKED',
+      detail: locale === 'zh-CN'
+        ? '部分行情暂未更新'
+        : `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`,
       subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看行情通道定位问题' : 'check provider_health for source detail')),
     }
   }
@@ -3466,7 +3474,7 @@ export function sourceMonitorSummary(
     value: countText(sourceTotalCount),
     progress: 100,
     status: 'ok',
-    statusLabel: 'OK',
+    statusLabel: locale === 'zh-CN' ? '正常' : 'OK',
     detail: locale === 'zh-CN' ? '行情通道畅通' : 'no blocking source',
     subdetail: locale === 'zh-CN'
       ? `${countText(sourceTotalCount)} 个行情通道 · ${countText(taskBlockerCount)} 个补数任务等待`
@@ -3483,8 +3491,14 @@ function cacheRefreshSeconds(cacheStatus: StrategyDashboard['cache_status']): nu
   return freshness !== undefined && freshness <= 60 * 60 ? 10 : 60
 }
 
-function cacheStatusLabel(value: unknown, fallback: string): string {
+function cacheStatusLabel(value: unknown, fallback: string, locale: LongclawLocale): string {
   const text = compactText(value, fallback)
+  if (locale === 'zh-CN') {
+    if (text === 'ok') return '已完成'
+    if (text === 'running') return '更新中'
+    if (text === 'partial') return '部分完成'
+    if (text === 'pending') return '等待更新'
+  }
   if (text === 'ok') return 'OK'
   if (text === 'running') return 'RUNNING'
   if (text === 'partial') return 'PARTIAL'
@@ -3511,6 +3525,8 @@ export function mongoCoverageState(
   const freqs = cacheStatus.mongo_stock_cache.freqs.map(item => recordValue(item))
   const mongoSummary = recordValue(cacheStatus.mongo_stock_cache.summary)
   const dailyCache = firstRecord(freqs, 'freq', '日线')
+  const weeklyCache = firstRecord(freqs, 'freq', '周线')
+  const monthlyCache = firstRecord(freqs, 'freq', '月线')
   const dailySymbols = numberValue(dailyCache.symbols) ?? 0
   const dailyToday = numberValue(dailyCache.today_symbols) ?? 0
   const coverageDate =
@@ -3564,6 +3580,30 @@ export function mongoCoverageState(
         ? (backfillActive ? 'running' : 'partial')
         : 'ok'
   const datePrefix = coverageDate ? `${coverageDate} ` : ''
+  const periodState = (row: Record<string, unknown>, label: string) => {
+    const available = (numberValue(row.symbols) ?? 0) > 0 || Boolean(compactText(row.latest_dt))
+    if (!available) return `${label} ${locale === 'zh-CN' ? '等待更新' : 'waiting'}`
+    if (booleanValue(row.is_partial_period)) {
+      return `${label} ${locale === 'zh-CN' ? '周期未结束' : 'partial'}`
+    }
+    return `${label} ${locale === 'zh-CN' ? '已派生' : 'derived'}`
+  }
+  const quality = compactText(
+    dailyCache.quality
+    || dailyCache.source_quality
+    || mongoSummary.daily_quality,
+  ).toLowerCase()
+  const qualityLabel = quality === 'provisional_close' || booleanValue(dailyCache.provisional_close)
+    ? (locale === 'zh-CN' ? '临时收盘' : 'provisional')
+    : quality
+      ? (locale === 'zh-CN' ? '正式收盘' : 'official')
+      : ''
+  const compactPeriods = [
+    `${locale === 'zh-CN' ? '日' : 'D'} ${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    periodState(weeklyCache, locale === 'zh-CN' ? '周' : 'W'),
+    periodState(monthlyCache, locale === 'zh-CN' ? '月' : 'M'),
+    qualityLabel,
+  ].filter(Boolean).join(' · ')
   return {
     coverageDate,
     tradeDate,
@@ -3573,7 +3613,7 @@ export function mongoCoverageState(
     progress,
     status,
     statusLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
-    compactLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    compactLabel: compactPeriods,
     detail,
     subdetail,
   }
@@ -5700,11 +5740,11 @@ function compactMarketTimeLabel(value: unknown): string {
 
 function timeframeSnapshotStatusLabel(status: TimeframeMarketSnapshotStatus, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
-  if (status === 'ready') return zh ? '可用' : 'Ready'
-  if (status === 'stale') return zh ? '陈旧' : 'Stale'
-  if (status === 'loading') return zh ? '加载' : 'Loading'
+  if (status === 'ready') return zh ? '已更新' : 'Updated'
+  if (status === 'stale') return zh ? '数据待更新' : 'Needs update'
+  if (status === 'loading') return zh ? '等待更新' : 'Waiting'
   if (status === 'error') return zh ? '失败' : 'Error'
-  return zh ? '无K线' : 'No bars'
+  return zh ? '等待更新' : 'Waiting'
 }
 
 function timeframeSnapshotBadgeTone(status: TimeframeMarketSnapshotStatus): 'success' | 'warning' | 'running' | 'error' | 'open' {
@@ -5717,10 +5757,10 @@ function timeframeSnapshotBadgeTone(status: TimeframeMarketSnapshotStatus): 'suc
 
 function timeframeSnapshotQualityLabel(quality: TimeframeMarketSnapshotQuality, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
-  if (quality === 'waiting_source') return zh ? '等待源更新' : 'Waiting source'
+  if (quality === 'waiting_source') return zh ? '等待更新' : 'Waiting'
   if (quality === 'provisional_close') return zh ? '临时收盘' : 'Provisional close'
-  if (quality === 'partial_period') return zh ? '部分周期' : 'Partial period'
-  return zh ? '正式' : 'Official'
+  if (quality === 'partial_period') return zh ? '周期未结束' : 'Open period'
+  return zh ? '已收盘' : 'Closed'
 }
 
 function timeframeSnapshotQualityTone(quality: TimeframeMarketSnapshotQuality): 'success' | 'warning' | 'running' | 'open' {
@@ -5797,7 +5837,7 @@ function loadingTimeframeSnapshot(freq: string, locale: LongclawLocale): Timefra
     amount: 'N/A',
     bars: '0',
     signal: '',
-    statusText: locale === 'zh-CN' ? '读取中' : 'Loading',
+    statusText: locale === 'zh-CN' ? '等待更新' : 'Waiting',
   }
 }
 
@@ -5805,7 +5845,7 @@ function errorTimeframeSnapshot(freq: string, message: string, locale: LongclawL
   return {
     ...loadingTimeframeSnapshot(freq, locale),
     status: 'error',
-    statusText: message || (locale === 'zh-CN' ? '读取失败' : 'Failed to load'),
+    statusText: message || (locale === 'zh-CN' ? '更新失败' : 'Update failed'),
   }
 }
 
@@ -5843,9 +5883,8 @@ export function marketSnapshotFromSymbolData(
     : ''
   const statusText = [
     cacheNotice,
-    compactText(meta.collection) || compactText(meta.source),
     compactMarketTimeLabel(meta.latest_bar_time) || compactMarketTimeLabel(meta.data_as_of),
-    status === 'stale' ? (compactText(meta.stale_reason) || (locale === 'zh-CN' ? '行情滞后' : 'stale cache')) : '',
+    status === 'stale' ? (compactText(meta.stale_reason) || (locale === 'zh-CN' ? '数据待更新' : 'needs update')) : '',
   ].filter(Boolean).join(' · ')
 
   return {
@@ -6165,8 +6204,10 @@ const HARD_SIGNAL_BADGE_KINDS = new Set([
   'sell_signal',
   'entry_signal',
   'breakout',
+  'new_high',
   'new_high_200',
   'ma_climb',
+  'gap_volume_price',
   'gap_volume',
   'volume_price',
   'strong_gap',
@@ -6238,7 +6279,7 @@ function stockHardSignals(raw: Record<string, unknown>): ClassifiedStockHardSign
     ? raw.display_badges.map(hardSignalFromDisplayBadge)
     : []
   const source = displayBadges.some(Boolean) ? displayBadges : legacyHardSignalBadges(raw)
-  return source
+  const ordered = source
     .filter((item): item is ClassifiedStockHardSignal => Boolean(item))
     .sort((left, right) => right.priority - left.priority)
     .filter(item => {
@@ -6246,7 +6287,18 @@ function stockHardSignals(raw: Record<string, unknown>): ClassifiedStockHardSign
       seen.add(item.label)
       return true
     })
-    .slice(0, 3)
+  const selected: ClassifiedStockHardSignal[] = []
+  const add = (item: ClassifiedStockHardSignal | undefined) => {
+    if (item && selected.length < 3 && !selected.includes(item)) selected.push(item)
+  }
+  add(ordered.find(item => item.tone === 'risk' && /(卖|顶背|跌破|死叉)/u.test(item.label)))
+  add(ordered.find(item => item.tone === 'buy' && /(买|底背|趋势)/u.test(item.label) && !/攀爬/u.test(item.label)))
+  add(ordered.find(item => /攀爬/u.test(item.label)))
+  for (const item of ordered) {
+    add(item)
+    if (selected.length >= 3) break
+  }
+  return selected
 }
 
 export function stockHardSignalBadgeLabels(raw: Record<string, unknown>): string[] {
@@ -6265,14 +6317,56 @@ function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
   return compactText(row.raw.display_action) || decisionActionLabel(row.decision, locale)
 }
 
-function traderDisplayText(value: string, locale: LongclawLocale): string {
+export function traderDisplayText(value: string, locale: LongclawLocale): string {
   if (locale !== 'zh-CN') return value
   return value
     .replace(/terminal_manual_clues/g, '临时线索')
     .replace(/terminal_stock_pool/g, '股票池')
+    .replace(/terminal_pool/g, '股票池')
     .replace(/terminal_technical_signals/g, '技术信号')
     .replace(/quote_snapshots/g, '行情快照')
+    .replace(/quote_lane/g, '行情快照')
+    .replace(/workbench_lane/g, '机会池')
     .replace(/provider_health/g, '行情通道')
+    .replace(/security_chain_memberships/g, '产业链归属')
+    .replace(/chain_heat_snapshots/g, '产业链热度')
+    .replace(/chain_heat/g, '产业链热度')
+    .replace(/chain_membership/g, '产业链归属')
+    .replace(/hot_rank_clues/g, '热度线索')
+    .replace(/technical_trigger/g, '技术信号')
+    .replace(/current_timeframe_ma/g, '当前周期均线')
+    .replace(/index_timeframe_signal/g, '指数周期信号')
+    .replace(/\bHISTOGRAM\b/gi, 'MACD柱')
+    .replace(/entry_ready/g, '买点条件已具备')
+    .replace(/entry_waiting_30m_confirm/g, '等待30m确认')
+    .replace(/buy_review/g, '买点复核')
+    .replace(/risk_off/g, '产业链转弱')
+    .replace(/context_only/g, '仅作背景参考')
+    .replace(/weak_related/g, '弱关联')
+    .replace(/\btheme\b/gi, '相关主题')
+    .replace(/\bcore\b/gi, '核心')
+    .replace(/\baccelerating\b/gi, '加速')
+    .replace(/\bforming\b/gi, '形成中')
+    .replace(/\bmature\b/gi, '成熟')
+    .replace(/\bWATCH\b/gi, '等待确认')
+    .replace(/\bconfirmed\b/gi, '已确认')
+    .replace(/\bconflict\b/gi, '信号分歧')
+    .replace(/\bdegraded\b/gi, '部分数据不可用')
+    .replace(/\bstale\b/gi, '数据待更新')
+    .replace(/\bfresh\b/gi, '数据已更新')
+    .replace(/Signals web2 is configured as standby; web1 served native strategy endpoints\./gi, '主行情正常，备用通道待命。')
+    .replace(/signals-web2/gi, '备用行情服务')
+    .replace(/\bstandby\b/gi, '备用通道')
+    .replace(/Signals\s*策略简报/gi, '盘后策略简报')
+    .replace(/Signals shell/gi, '机会池')
+    .replace(/Signals strategy snapshot/gi, '行情快照')
+    .replace(/\b(\d+)\s+buy candidates?\b/gi, '$1 个买点候选')
+    .replace(/\b(\d+)\s+sell warnings?\b/gi, '$1 个卖出预警')
+    .replace(/\bindex_report\b/gi, '指数信号')
+    .replace(/\bBLOCKED\b/gi, '待恢复')
+    .replace(/偏增量/g, '盘后更新中')
+    .replace(/\bconf\s+([01](?:\.\d+)?)\b/gi, (_, raw: string) => `可信度 ${Math.round(Number(raw) * 100)}%`)
+    .replace(/\b(?:source_collection|producer|collection)\b/gi, '')
     .replace(/setup_mode/g, '交易角色')
     .replace(/\bMongo\b/g, '日线库')
     .replace(/\bcache\b/gi, '行情')
@@ -6283,6 +6377,9 @@ function traderDisplayText(value: string, locale: LongclawLocale): string {
     .replace(/证据来源/g, '盘面依据')
     .replace(/证据/g, '盘面依据')
     .replace(/来源/g, '线索')
+    .replace(/\s*->\s*/g, ' · ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
@@ -7834,7 +7931,7 @@ export function StrategyChartTerminal({
     : activeWatchlistTab === 'risk_stocks'
       ? (locale === 'zh-CN' ? '暂无暂不参与标的。' : 'No skip-now names.')
     : activeWatchlistTab === 'all_etfs'
-      ? (locale === 'zh-CN' ? '全量ETF分析还未返回，等待 Signals strategy snapshot 刷新。' : 'All-ETF analysis is not available yet; waiting for the Signals strategy snapshot.')
+      ? (locale === 'zh-CN' ? '全量ETF分析还未返回，等待行情刷新。' : 'All-ETF analysis is not available yet; waiting for the Signals strategy snapshot.')
     : activeWatchlistTab === 'watch_stocks'
         ? (locale === 'zh-CN' ? '暂无盯盘标的。' : 'No watch-pool names.')
     : activeWatchlistTab === 'buy_candidates'
@@ -8159,7 +8256,7 @@ export function StrategyChartTerminal({
           return
         }
         setBooting(false)
-        setError(apiError.message || (locale === 'zh-CN' ? 'Signals 图表数据加载失败。' : 'Failed to load Signals chart data.'))
+        setError(apiError.message || (locale === 'zh-CN' ? '图表数据加载失败。' : 'Failed to load Signals chart data.'))
       } finally {
         if (options.silent) silentSymbolRefreshInFlightRef.current = false
         if (!options.silent && requestId === activeRequestRef.current) manualSymbolLoadingRef.current = false
@@ -8316,7 +8413,7 @@ export function StrategyChartTerminal({
       const symbolResult = symbolOutcome[0]
       if (symbolResult?.status === 'rejected') {
         const apiError = symbolResult.reason as ApiError
-        setError(apiError.message || (locale === 'zh-CN' ? 'Signals 终端初始化失败。' : 'Failed to initialize Signals terminal.'))
+        setError(apiError.message || (locale === 'zh-CN' ? '交易台初始化失败。' : 'Failed to initialize Signals terminal.'))
       }
       setLoading(false)
     })()
@@ -8947,22 +9044,22 @@ export function StrategyChartTerminal({
         <div style={fallbackGridStyle}>
           <Panel
             title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
-            meta={compactText(dailyBrief.market_bias)}
+            meta={traderDisplayText(compactText(dailyBrief.market_bias), locale)}
           >
             <div style={compactListStyle}>
               <div style={dataRowStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                   <div style={rowTitleStyle}>
-                    {compactText(dailyBrief.headline, locale === 'zh-CN' ? '暂无摘要标题' : 'No brief headline')}
+                    {traderDisplayText(compactText(dailyBrief.headline, locale === 'zh-CN' ? '暂无摘要标题' : 'No brief headline'), locale)}
                   </div>
                   <div style={mutedTextStyle}>
-                    {compactText(dailyBrief.summary, locale === 'zh-CN' ? '暂无策略摘要。' : 'No strategy summary yet.')}
+                    {traderDisplayText(compactText(dailyBrief.summary, locale === 'zh-CN' ? '暂无策略摘要。' : 'No strategy summary yet.'), locale)}
                   </div>
                 </div>
               </div>
               {dailyBriefBullets.slice(0, 3).map((item, index) => (
                 <div key={`${item}-${index}`} style={dataRowStyle}>
-                  <div style={mutedTextStyle}>{item}</div>
+                  <div style={mutedTextStyle}>{traderDisplayText(item, locale)}</div>
                 </div>
               ))}
             </div>
@@ -9125,7 +9222,7 @@ export function StrategyChartTerminal({
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
       {shell?.notices?.length ? (
-        <div style={noticeDarkStyle}>{shell.notices.join(' ')}</div>
+        <div style={noticeDarkStyle}>{traderDisplayText(shell.notices.join(' '), locale)}</div>
       ) : null}
       {freqFallbackNotice ? (
         <div style={warningDarkStyle}>{freqFallbackNotice}</div>
@@ -9139,9 +9236,9 @@ export function StrategyChartTerminal({
       {compactText(dailyBrief.headline) || compactText(dailyBrief.summary) ? (
         <div style={noticeDarkStyle}>
           {[
-            compactText(dailyBrief.headline),
-            compactText(dailyBrief.summary),
-            compactText(dailyBrief.market_bias),
+            traderDisplayText(compactText(dailyBrief.headline), locale),
+            traderDisplayText(compactText(dailyBrief.summary), locale),
+            traderDisplayText(compactText(dailyBrief.market_bias), locale),
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -9301,8 +9398,8 @@ export function StrategyChartTerminal({
               <div style={chartOverlayMessageStyleForMode(backgroundMode)}>
                 {loading || booting
                   ? (chartMeta.is_price_kline === false
-                    ? (locale === 'zh-CN' ? '正在等待 Signals 输出热度K线。' : 'Waiting for Signals heat candles.')
-                    : (locale === 'zh-CN' ? '正在等待 Signals 输出 K 线和买卖点。' : 'Waiting for Signals to provide candles and signals.'))
+                    ? (locale === 'zh-CN' ? '正在等待板块热度K线。' : 'Waiting for Signals heat candles.')
+                    : (locale === 'zh-CN' ? '正在等待K线和买卖点。' : 'Waiting for Signals to provide candles and signals.'))
                   : chartCacheNotice || (chartMeta.is_price_kline === false
                     ? (locale === 'zh-CN' ? '热度行情未就绪，不能静默替换成代表股K线。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
                     : (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.'))}
@@ -9683,8 +9780,12 @@ export function StrategyChartTerminal({
                   <div style={mutedLineStyle}>
                     {[
                       chartTimezone,
-                      compactText(shell?.session?.data_as_of) ? `as of ${compactText(shell?.session?.data_as_of)}` : '',
-                      compactText(shell?.session?.next_refresh_at) ? `next ${compactText(shell?.session?.next_refresh_at)}` : '',
+                      compactText(shell?.session?.data_as_of)
+                        ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${compactText(shell?.session?.data_as_of)}`
+                        : '',
+                      compactText(shell?.session?.next_refresh_at)
+                        ? `${locale === 'zh-CN' ? '下次刷新' : 'next'} ${compactText(shell?.session?.next_refresh_at)}`
+                        : '',
                     ].filter(Boolean).join(' · ')}
                   </div>
                 </div>
@@ -9697,14 +9798,15 @@ export function StrategyChartTerminal({
                 dataIssueRows.slice(0, 5).map((row, index) => (
                   <div key={`${compactText(row.lane) || compactText(row.source_id, 'source')}-${index}`} style={dataRowStyle}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                      <div style={rowTitleStyle}>{compactText(row.lane) || sourceConfidenceLabel(row)}</div>
+                      <div style={rowTitleStyle}>{traderDisplayText(compactText(row.lane) || sourceConfidenceLabel(row), locale)}</div>
                       <div style={mutedTwoLineStyle}>
                         {[compactText(row.status), compactText(row.freshness), compactText(row.reason), compactText(row.summary)]
                           .filter(Boolean)
+                          .map(item => traderDisplayText(item, locale))
                           .join(' · ')}
                       </div>
                     </div>
-                    <div style={monoTextStyle}>{compactText(row.market) || compactText(row.active_markets) || compactText(row.source)}</div>
+                    <div style={monoTextStyle}>{traderDisplayText(compactText(row.market) || compactText(row.active_markets) || compactText(row.source), locale)}</div>
                   </div>
                 ))
               )}
@@ -9756,7 +9858,7 @@ function TimeframeMarketPanel({
   const readyRows = rows.filter(row => row.status === 'ready' || row.status === 'stale').length
   return (
     <Panel
-      title={locale === 'zh-CN' ? '各周期行情' : 'Timeframes'}
+      title={locale === 'zh-CN' ? '多周期收盘' : 'Multi-timeframe closes'}
       meta={`${readyRows}/${rows.length}`}
     >
       <div style={compactListStyle}>
@@ -9775,23 +9877,17 @@ function TimeframeMarketPanel({
                   <span style={rowTitleStyle}>{row.latestPrice}</span>
                   <span style={inlinePercentValueStyle(row.periodChange)}>{row.periodChange}</span>
                 </div>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  <span style={statusBadgeStyle(timeframeSnapshotBadgeTone(row.status))}>
-                    {timeframeSnapshotStatusLabel(row.status, locale)}
-                  </span>
-                  <span style={statusBadgeStyle(timeframeSnapshotQualityTone(row.quality))}>
-                    {row.qualityLabel}
-                  </span>
+                <span style={statusBadgeStyle(row.status === 'error' ? timeframeSnapshotBadgeTone(row.status) : timeframeSnapshotQualityTone(row.quality))}>
+                  {row.status === 'error' ? timeframeSnapshotStatusLabel(row.status, locale) : row.qualityLabel}
                 </span>
               </div>
               <div style={timeframeMarketMetricStyle}>
                 <span style={monoTextStyle}>VOL {row.volume}</span>
                 <span style={monoTextStyle}>AMT {row.amount}</span>
-                <span style={mutedLineStyle}>{locale === 'zh-CN' ? `K线 ${row.bars}` : `${row.bars} bars`}</span>
               </div>
               {[row.signal, row.statusText].filter(Boolean).length > 0 ? (
                 <div style={timeframeMarketSublineStyle}>
-                  {[row.signal, row.statusText].filter(Boolean).join(' · ')}
+                  {[traderDisplayText(row.signal, locale), traderDisplayText(row.statusText, locale)].filter(Boolean).join(' · ')}
                 </div>
               ) : null}
             </button>
@@ -9819,7 +9915,7 @@ function ChartCalloutDetailsPanel({
   const activeCallout = selectedCallout ?? callouts[0] ?? null
   return (
     <Panel
-      title={locale === 'zh-CN' ? '图上标注详情' : 'Chart callouts'}
+      title={locale === 'zh-CN' ? '图中信号' : 'Chart signals'}
       meta={activeCallout?.calloutId ?? String(callouts.length)}
     >
       <div style={compactListStyle}>
@@ -9858,14 +9954,15 @@ function ChartCalloutDetailsPanel({
                 <div style={monoTextStyle}>{formatNumber(activeCallout.price)}</div>
               </div>
             </div>
-            <div style={mutedLineStyle}>
+            <div
+              style={mutedLineStyle}
+              title={[activeCallout.scope, activeCallout.sourceLabel].filter(Boolean).join(' · ')}
+            >
               {[
                 readableDateTime(new Date(activeCallout.timestamp), locale, chartTimezone),
                 activeCallout.signalDateLabel && activeCallout.signalDateLabel !== activeCallout.dateLabel
                   ? `${locale === 'zh-CN' ? '信号日' : 'signal'} ${activeCallout.signalDateLabel}`
                   : '',
-                activeCallout.scope,
-                activeCallout.sourceLabel,
               ].filter(Boolean).join(' · ')}
             </div>
             {activeCallout.items.map((item, index) => {
@@ -9881,10 +9978,12 @@ function ChartCalloutDetailsPanel({
                     <span style={rowTitleStyle}>{item.label}</span>
                     {item.dateLabel ? <span style={chartCalloutDateBadgeStyle}>{item.dateLabel}</span> : null}
                   </div>
-                  <div style={mutedLineStyle}>
-                    {[itemAnchorLine, item.scope, item.sourceLabel].filter(Boolean).join(' · ')}
-                  </div>
-                  {item.details ? <div style={mutedTwoLineStyle}>{item.details}</div> : null}
+                  {itemAnchorLine ? (
+                    <div style={mutedLineStyle} title={[item.scope, item.sourceLabel].filter(Boolean).join(' · ')}>
+                      {itemAnchorLine}
+                    </div>
+                  ) : null}
+                  {item.details ? <div style={mutedTwoLineStyle}>{traderDisplayText(item.details, locale)}</div> : null}
                 </div>
               )
             })}
@@ -10174,8 +10273,8 @@ function AiStrategyStatusStrip({
   const disabled = status === 'running' || candidateCount === 0
   const headline = ranking?.summary || (
     candidateCount > 0
-      ? (locale === 'zh-CN' ? '用已批准因子对 Signals 候选池做降噪排序。' : 'Rank the Signals pool with approved factors.')
-      : (locale === 'zh-CN' ? '候选池为空，等待 Signals 输出。' : 'No candidates yet.')
+      ? (locale === 'zh-CN' ? '用已批准因子对候选池做降噪排序。' : 'Rank the Signals pool with approved factors.')
+      : (locale === 'zh-CN' ? '候选池为空，等待行情刷新。' : 'No candidates yet.')
   )
   const toggleLabel = compact
     ? (locale === 'zh-CN' ? '展开' : 'Expand')
@@ -10311,7 +10410,7 @@ function AiTradeReviewPanel({
         ) : (
           <div style={emptyStateDarkStyle}>
             {row
-              ? (locale === 'zh-CN' ? `${row.name} 只有 Signals 规则解释，尚未经过复核。` : `${row.name} has Signals context but no review yet.`)
+              ? (locale === 'zh-CN' ? `${row.name} 只有规则判断，尚未经过复核。` : `${row.name} has Signals context but no review yet.`)
               : (locale === 'zh-CN' ? '左侧选中候选标的后再复核。' : 'Pick a candidate first.')}
           </div>
         )}
@@ -10559,8 +10658,8 @@ function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? `盘中 ${liveStatusLabel} · 盘后 ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · 日线 ${mongoCoverage.compactLabel} · 行情通道 ${sourceSummary.statusLabel}`
-      : `live ${liveStatusLabel} · post ${recoveryLabel || cacheStatusLabel(postStatus, 'pending')} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
+      ? `盘中 ${liveStatusLabel} · 盘后 ${recoveryLabel || cacheStatusLabel(postStatus, 'pending', locale)} · ${mongoCoverage.compactLabel} · 行情通道 ${sourceSummary.statusLabel}`
+      : `live ${liveStatusLabel} · post ${recoveryLabel || cacheStatusLabel(postStatus, 'pending', locale)} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
         <div style={cacheMonitorToolbarStyle}>
@@ -10612,7 +10711,7 @@ function CacheMonitorStrip({
           value={`${Math.round(postPct)}%`}
           progress={postPct}
           status={postCellStatus}
-          statusLabel={recoveryLabel || cacheStatusLabel(postStatus, 'pending')}
+          statusLabel={recoveryLabel || cacheStatusLabel(postStatus, 'pending', locale)}
           detail={postDetail}
           subdetail={postSubdetail}
         />
@@ -10684,7 +10783,7 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
     industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '最新涨跌=实时快照', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
     all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '最新涨跌=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
     macro_indices: ['宏观方向', '指数关键位和环境判断', '最新涨跌=指数快照', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
-    sector_boards: ['产业链异动', '源板块 -> 链主确认 -> 弹性跟随', '涨幅=源行业/概念', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
+    sector_boards: ['板块异动', '先看板块强度，再看链主与弹性', '涨幅=当日板块', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
     focus_stocks: ['买点池', '低吸/右侧进攻，先复核位置和失效条件', '最新涨跌=实时快照', 'Entry pool', 'left/right attack; review level and invalidation first', 'Day=realtime quote'],
     risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '最新涨跌=实时快照', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
     watch_stocks: ['盯盘池', '买点或均线共振还差一环', '最新涨跌=实时快照', 'Watch pool', 'setup or MA confirmation still missing', 'Day=realtime quote'],
@@ -11731,10 +11830,6 @@ function TradeActionStrip({
         <div style={tradeActionLabelStyle}>{locale === 'zh-CN' ? '下一确认' : 'Next check'}</div>
         <div style={mutedTwoLineStyle} title={plan.next}>{plan.next}</div>
       </div>
-      <div style={tradeActionCellStyle}>
-        <div style={tradeActionLabelStyle}>{locale === 'zh-CN' ? '盘后' : 'Post-close'}</div>
-        <div style={mutedTwoLineStyle} title={plan.postmarket}>{plan.postmarket}</div>
-      </div>
     </div>
   )
 }
@@ -11799,7 +11894,7 @@ function StrategyDecisionPanel({
       : (locale === 'zh-CN' ? '回踩破位、右侧不修复或主线继续退潮。' : 'Breakdown, no right-side repair, or theme continues fading.')
     return (
       <Panel
-        title={locale === 'zh-CN' ? '单票交易解释' : 'Single-name trade read'}
+        title={locale === 'zh-CN' ? '交易判断' : 'Trade read'}
         meta={locale === 'zh-CN' ? '不在机会池' : 'outside pool'}
         actions={<span style={statusBadgeStyle(actionPlan.tone)}>{actionPlan.action}</span>}
       >
@@ -11816,12 +11911,10 @@ function StrategyDecisionPanel({
           </div>
           <TradeActionStrip locale={locale} plan={actionPlan} />
           {[
-            [locale === 'zh-CN' ? '交易身份' : 'Trade identity', identity],
-            [locale === 'zh-CN' ? '现在位置' : 'Position now', position],
-            [locale === 'zh-CN' ? '能不能动' : 'Actionable?', canActText],
-            [locale === 'zh-CN' ? '还差什么' : 'Missing', actionPlan.next],
+            [locale === 'zh-CN' ? '当前判断' : 'Current read', [identity, position].filter(Boolean).join(' · ')],
+            [locale === 'zh-CN' ? '执行结论' : 'Execution', canActText],
+            [locale === 'zh-CN' ? '等待确认' : 'Waiting for', actionPlan.next],
             [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidationText],
-            [locale === 'zh-CN' ? '盘面依据' : 'Evidence', evidence || (locale === 'zh-CN' ? '图表行情和个股分析' : 'Chart cache and stock analysis')],
           ].map(([label, value]) => (
             <div key={String(label)} style={decisionExplainRowStyle}>
               <div style={decisionExplainLabelStyle}>{label}</div>
@@ -11844,13 +11937,13 @@ function StrategyDecisionPanel({
   const cycleDetail = timeframeSignalSideSummary(row, locale)
   const themeDetail = mainlineSummary(row, locale)
   const confirmationDetail = decisionConfirmationSummary(decision, row, locale)
-  const setupExplanation = compactText(row.raw.setup_explanation)
-  const entryLogic = compactText(row.raw.entry_logic_summary)
+  const setupExplanation = traderDisplayText(compactText(row.raw.setup_explanation), locale)
+  const entryLogic = traderDisplayText(compactText(row.raw.entry_logic_summary), locale)
   const noSignalText = locale === 'zh-CN' ? '暂无' : 'None'
   const identityDetail = tradeIdentityLabelForRow(row, locale)
-  const positionDetail = traderPositionSummary(row, locale)
-  const canActDetail = traderCanActSummary(row, locale)
-  const evidenceDetail = traderEvidenceSummary(row, locale) || decisionSourceSummary(decision, locale)
+  const positionDetail = traderDisplayText(traderPositionSummary(row, locale), locale)
+  const canActDetail = traderDisplayText(traderCanActSummary(row, locale), locale)
+  const evidenceDetail = traderDisplayText(traderEvidenceSummary(row, locale) || decisionSourceSummary(decision, locale), locale)
   const traderRead = traderReadLine(row, locale)
   const primaryLevels = keyLevels.slice(0, 3)
   const primarySignals = signals.slice(-2).reverse()
@@ -11867,9 +11960,11 @@ function StrategyDecisionPanel({
     evidence: evidenceDetail,
     hasEvidence: true,
   }, locale)
+  const dataQuality = traderDisplayText(decisionConfidenceSummary(decision, sourceConfidence, locale), locale)
+  const showDataQuality = /(偏低|待确认|待更新|不可用|失败|滞后|分歧)/u.test(dataQuality)
   return (
     <Panel
-      title={locale === 'zh-CN' ? '单票交易解释' : 'Single-name trade read'}
+      title={locale === 'zh-CN' ? '交易判断' : 'Trade read'}
       meta={opportunity}
       actions={<span style={statusBadgeStyle(actionPlan.tone)}>{actionPlan.action}</span>}
     >
@@ -11901,12 +11996,10 @@ function StrategyDecisionPanel({
         </div>
         <TradeActionStrip locale={locale} plan={actionPlan} />
         {[
-          [locale === 'zh-CN' ? '交易身份' : 'Trade identity', [identityDetail, lineage].filter(Boolean).join(' · ')],
-          [locale === 'zh-CN' ? '现在位置' : 'Position now', positionDetail || setupExplanation || opportunity],
-          [locale === 'zh-CN' ? '能不能动' : 'Actionable?', canActDetail || entryLogic || row.signal],
-          [locale === 'zh-CN' ? '还差什么' : 'Missing', confirmationDetail],
+          [locale === 'zh-CN' ? '当前判断' : 'Current read', [identityDetail, lineage, positionDetail || setupExplanation || opportunity].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '执行结论' : 'Execution', canActDetail || entryLogic || row.signal],
+          [locale === 'zh-CN' ? '等待确认' : 'Waiting for', confirmationDetail],
           [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidates],
-          [locale === 'zh-CN' ? '盘面依据' : 'Evidence', evidenceDetail || [cycleDetail, themeDetail, leftSignals !== noSignalText ? leftSignals : '', rightSignals !== noSignalText ? rightSignals : ''].filter(Boolean).join(' · ')],
         ].map(([label, value]) => (
           <div key={String(label)} style={decisionExplainRowStyle}>
             <div style={decisionExplainLabelStyle}>{label}</div>
@@ -11916,7 +12009,7 @@ function StrategyDecisionPanel({
         {primaryLevels.length > 0 || primarySignals.length > 0 || latestDivergence ? (
           <div style={signalBlockStyle}>
             <div style={candidateGroupHeaderStyle}>
-              <span>{locale === 'zh-CN' ? '看盘依据：关键价位和技术信号' : 'Evidence: levels and signals'}</span>
+              <span>{locale === 'zh-CN' ? '关键价位与信号' : 'Key levels and signals'}</span>
               <span>{primaryLevels.length + primarySignals.length + (latestDivergence ? 1 : 0)}</span>
             </div>
             {primaryLevels.map(level => (
@@ -11936,11 +12029,13 @@ function StrategyDecisionPanel({
               <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? signal.signal_type ?? 'signal'}`} style={dataRowStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                    <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>{signal.type || signal.signal_type || 'Signal'}</span>
+                    <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>
+                      {traderDisplayText(compactText(signal.type) || compactText(signal.signal_type) || (locale === 'zh-CN' ? '技术信号' : 'Signal'), locale)}
+                    </span>
                     <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                   </div>
                   <div style={mutedLineStyle}>
-                    {[signal.date_str, signal.pool_status, signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                    {[signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.confidence !== undefined ? `${locale === 'zh-CN' ? '可信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
                       .filter(Boolean)
                       .join(' · ')}
                   </div>
@@ -11952,17 +12047,19 @@ function StrategyDecisionPanel({
               <div style={dataRowStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                   <div style={rowTitleStyle}>{latestDivergence.type === 'bearish' ? '顶背离' : '底背离'}</div>
-                  <div style={mutedLineStyle}>{latestDivergence.metric.toUpperCase()} · {formatConfidence(latestDivergence.confidence)}</div>
+                  <div style={mutedLineStyle}>{traderDisplayText(latestDivergence.metric.toUpperCase(), locale)} · {formatConfidence(latestDivergence.confidence)}</div>
                 </div>
                 <div style={{ ...monoTextStyle, fontSize: 13, color: terminalTheme.textStrong }}>{formatNumber(latestDivergence.price)}</div>
               </div>
             ) : null}
           </div>
         ) : null}
-        <div style={decisionExplainRowStyle}>
-          <div style={decisionExplainLabelStyle}>{locale === 'zh-CN' ? '数据影响' : 'Data effect'}</div>
-          <div style={mutedTwoLineStyle}>{decisionConfidenceSummary(decision, sourceConfidence, locale)}</div>
-        </div>
+        {showDataQuality ? (
+          <div style={decisionExplainRowStyle}>
+            <div style={decisionExplainLabelStyle}>{locale === 'zh-CN' ? '数据质量' : 'Data quality'}</div>
+            <div style={mutedTwoLineStyle}>{dataQuality}</div>
+          </div>
+        ) : null}
       </div>
     </Panel>
   )
@@ -12088,6 +12185,15 @@ function ChainContextRail({
   const secondaryChains = Array.isArray(source.secondary_chain_positions)
     ? source.secondary_chain_positions.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
     : []
+  const viewpointItems = Array.isArray(viewpoint.items)
+    ? viewpoint.items.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const technicalSummary = traderDisplayText(compactText(technical.summary), locale)
+  const hasTechnicalLinkage = Boolean(
+    technicalSummary
+    && !/等待.*技术信号|等待.*确认/u.test(technicalSummary)
+  )
+  const hasViewpoint = viewpointItems.length > 0
   const risks = [
     ...(Array.isArray(source.risk_flags) ? source.risk_flags : []),
     ...(dataTruth.freq_fallback ? ['freq_fallback'] : []),
@@ -12098,7 +12204,7 @@ function ChainContextRail({
   const chainTitle = [compactText(source.chain_name), compactText(source.node_name), compactText(mapping.chain_name), compactText(mapping.node_name)]
     .filter(Boolean)
     .slice(0, 2)
-    .join(' -> ') || compactText(symbolData?.summary?.title) || 'Chain'
+    .join(' · ') || compactText(symbolData?.summary?.title) || (locale === 'zh-CN' ? '产业链' : 'Chain')
   const isSectorContext = compactText(source.source) === 'chain_heat_snapshots'
     || compactText(source.domain) === 'chain_heat'
     || compactText(source.domain) === 'theme_heat'
@@ -12108,7 +12214,7 @@ function ChainContextRail({
     : (locale === 'zh-CN' ? '产业链背景' : 'Chain context')
   const panelMeta = [
     candidates.length > 0 ? `${candidates.length}` : '',
-    compactText(source.phase) || compactText(mapping.mapping_status) || compactText(viewpoint.status) || 'context',
+    traderDisplayText(compactText(source.phase) || compactText(mapping.mapping_status), locale),
   ].filter(Boolean).join(' · ')
   return (
     <Panel
@@ -12120,17 +12226,17 @@ function ChainContextRail({
           <div style={rowTitleStyle}>{chainTitle}</div>
           <div style={mutedTwoLineStyle}>
             {[
-              compactText(source.trading_signal || source.latest_signal),
-              compactText(source.trader_action),
-              compactText(source.invalidates_when),
+              traderDisplayText(compactText(source.trading_signal || source.latest_signal), locale),
+              traderDisplayText(compactText(source.trader_action), locale),
+              traderDisplayText(compactText(source.invalidates_when), locale),
             ].filter(Boolean).join(' · ')}
           </div>
           <div style={chartMetaRowStyle}>
-            <span style={miniNeutralSignalBadgeStyle}>热度 {formatNumber(source.heat_score)}</span>
-            <span style={percentBadgeStyle(formatPercent(source.change_pct))}>{formatPercent(source.change_pct)}</span>
-            <span style={miniNeutralSignalBadgeStyle}>5m {formatNumber(source.momentum_5m)}</span>
-            <span style={miniNeutralSignalBadgeStyle}>15m {formatNumber(source.momentum_15m)}</span>
-            <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span>
+            {numberValue(source.heat_score) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>热度 {formatNumber(source.heat_score)}</span> : null}
+            {numberValue(source.change_pct) !== undefined ? <span style={percentBadgeStyle(formatPercent(source.change_pct))}>{formatPercent(source.change_pct)}</span> : null}
+            {numberValue(source.momentum_5m) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>5m {formatNumber(source.momentum_5m)}</span> : null}
+            {numberValue(source.momentum_15m) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>15m {formatNumber(source.momentum_15m)}</span> : null}
+            {numberValue(source.momentum_30m) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span> : null}
           </div>
         </div>
         <div style={sectorTargetFocusStyle}>
@@ -12177,10 +12283,9 @@ function ChainContextRail({
                     </div>
                     <div style={mutedTwoLineStyle}>
                       {[
-                        displayLabel,
                         compactText(candidate.chain_role) || compactText(candidate.relation),
                         `涨幅 ${formatPercent(candidate.day_change_pct)}`,
-                        compactText(candidate.latest_signal),
+                        traderDisplayText(compactText(candidate.latest_signal), locale),
                         score ? `关注 ${formatNumber(score, 0)}` : '',
                       ]
                         .filter(Boolean)
@@ -12207,7 +12312,7 @@ function ChainContextRail({
                   <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.leader_tier) || compactText(candidate.chain_role) || '观察'}</span>
                 </div>
                 <div style={mutedTwoLineStyle}>
-                  {[displayLabel, compactText(candidate.latest_signal), `涨幅 ${formatPercent(candidate.day_change_pct)}`, score ? `关注 ${formatNumber(score, 0)}` : '', compactText(candidate.why_watch)]
+                  {[traderDisplayText(compactText(candidate.latest_signal), locale), `涨幅 ${formatPercent(candidate.day_change_pct)}`, score ? `关注 ${formatNumber(score, 0)}` : '', traderDisplayText(compactText(candidate.why_watch), locale)]
                     .filter(Boolean)
                     .join(' · ')}
                 </div>
@@ -12251,7 +12356,7 @@ function ChainContextRail({
         {secondaryChains.length > 0 && (
           <div style={signalBlockStyle}>
             <div style={candidateGroupHeaderStyle}>
-              <span>{locale === 'zh-CN' ? '多概念暴露' : 'Multi-theme exposure'}</span>
+              <span>{locale === 'zh-CN' ? '相关主题' : 'Related themes'}</span>
               <span>{secondaryChains.length}</span>
             </div>
             {secondaryChains.slice(0, 5).map((item, index) => {
@@ -12259,7 +12364,9 @@ function ChainContextRail({
               const chainChangeText = chainChange === undefined ? '' : formatPercent(chainChange)
               return (
                 <div key={`${compactText(item.chain_id)}-${compactText(item.node_id)}-${index}`} style={dataRowStyle}>
-                  <span style={miniNeutralSignalBadgeStyle}>{compactText(item.membership_type) || 'theme'}</span>
+                  <span style={miniNeutralSignalBadgeStyle}>
+                    {traderDisplayText(compactText(item.membership_type) || 'theme', locale)}
+                  </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={mutedTwoLineStyle}>
                       {[compactText(item.chain_name), compactText(item.node_name), chainChangeText].filter(Boolean).join(' · ')}
@@ -12275,56 +12382,52 @@ function ChainContextRail({
             })}
           </div>
         )}
-        <div style={signalBlockStyle}>
-          <div style={candidateGroupHeaderStyle}>
-            <span>{locale === 'zh-CN' ? '技术联动' : 'Technical linkage'}</span>
-            <span>{compactText(technical.grade) || 'watch'}</span>
+        {hasTechnicalLinkage ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '技术联动' : 'Technical linkage'}</span>
+              <span>{traderDisplayText(compactText(technical.grade), locale)}</span>
+            </div>
+            <div style={mutedTwoLineStyle}>{technicalSummary}</div>
           </div>
-          <div style={mutedTwoLineStyle}>
-            {compactText(technical.summary) || (locale === 'zh-CN' ? '等待标的硬技术信号确认。' : 'Waiting for technical confirmation.')}
-          </div>
-        </div>
-        <div style={signalBlockStyle}>
-          <div style={candidateGroupHeaderStyle}>
-            <span>{locale === 'zh-CN' ? '胖哥/道长观点' : 'Knowledge views'}</span>
-            <span>{compactText(viewpoint.status) || 'context_only'}</span>
-          </div>
-          {Array.isArray(viewpoint.items) && viewpoint.items.length > 0 ? viewpoint.items.slice(0, 3).map((item: unknown, index: number) => {
-            const view = recordValue(item)
-            return (
+        ) : null}
+        {hasViewpoint ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '市场观点' : 'Market views'}</span>
+              <span>{traderDisplayText(compactText(viewpoint.status), locale)}</span>
+            </div>
+            {viewpointItems.slice(0, 3).map((view, index) => (
               <div key={`${compactText(view.author)}-${index}`} style={dataRowStyle}>
                 <span style={miniNeutralSignalBadgeStyle}>{compactText(view.author) || '观点'}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={mutedTwoLineStyle}>{compactText(view.summary) || compactText(view.candidate_policy) || 'context_only'}</div>
-                  <div style={mutedLineStyle}>{[compactText(view.as_of), compactText(view.source_title), compactText(view.source_path)].filter(Boolean).join(' · ')}</div>
+                  <div style={mutedTwoLineStyle}>
+                    {traderDisplayText(compactText(view.summary) || compactText(view.candidate_policy), locale)}
+                  </div>
+                  <div style={mutedLineStyle}>{[compactText(view.as_of), compactText(view.source_title)].filter(Boolean).join(' · ')}</div>
                 </div>
               </div>
-            )
-          }) : (
-            <div style={mutedTextStyle}>{locale === 'zh-CN' ? '暂无直接观点，只按规则层做背景确认。' : 'No direct view; rule layer only.'}</div>
-          )}
-        </div>
-        <div style={signalBlockStyle}>
-          <div style={candidateGroupHeaderStyle}>
-            <span>{locale === 'zh-CN' ? '失效/数据真实性' : 'Invalidation and data truth'}</span>
-            <span>{risks.length}</span>
-          </div>
-          <div style={chartMetaRowStyle}>
-            {[...new Set(risks)].slice(0, 6).map(flag => (
-              <span key={flag} style={miniSellSignalBadgeStyle}>{riskFlagLabel(flag, locale)}</span>
             ))}
-            {risks.length === 0 ? <span style={miniNeutralSignalBadgeStyle}>{locale === 'zh-CN' ? '无额外失效条件' : 'No extra invalidation'}</span> : null}
           </div>
-          <div style={mutedTwoLineStyle}>
-            {[
-              compactText(dataTruth.collection),
-              compactText(dataTruth.as_of),
-              compactText(dataTruth.latest_bar_time),
-              compactText(dataTruth.mapping_status),
-              compactText(dataTruth.stale_reason),
-            ].filter(Boolean).join(' · ')}
+        ) : null}
+        {risks.length > 0 ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '风险与数据质量' : 'Risk and data quality'}</span>
+              <span>{risks.length}</span>
+            </div>
+            <div style={chartMetaRowStyle}>
+              {[...new Set(risks)].slice(0, 6).map(flag => (
+                <span key={flag} style={miniSellSignalBadgeStyle}>{riskFlagLabel(flag, locale)}</span>
+              ))}
+            </div>
+            <div style={mutedTwoLineStyle}>
+              {[compactText(dataTruth.as_of), compactText(dataTruth.latest_bar_time), traderDisplayText(compactText(dataTruth.stale_reason), locale)]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </Panel>
   )
