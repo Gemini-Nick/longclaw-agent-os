@@ -57,12 +57,9 @@ describe('StrategyChartTerminal trader-facing text', () => {
 })
 
 describe('StrategyChartTerminal search clues', () => {
-  it('adds a manual clue for every non-index search', () => {
-    expect(shouldAddManualClueForSearch('SZ.002759', false)).toBe(true)
-    expect(shouldAddManualClueForSearch('天际股份', false)).toBe(true)
-  })
-
-  it('does not add manual clues for blank or index searches', () => {
+  it('never persists a manual clue from search navigation', () => {
+    expect(shouldAddManualClueForSearch('SZ.002759', false)).toBe(false)
+    expect(shouldAddManualClueForSearch('天际股份', false)).toBe(false)
     expect(shouldAddManualClueForSearch('', false)).toBe(false)
     expect(shouldAddManualClueForSearch('沪深300', true)).toBe(false)
   })

@@ -7284,8 +7284,8 @@ function manualClueMatchesDeleteKeys(row: WatchlistRow, keys: Set<string>): bool
   return manualClueDeleteKeys(row).some(key => keys.has(key))
 }
 
-export function shouldAddManualClueForSearch(value: string, isIndex: boolean): boolean {
-  return Boolean(value.trim()) && !isIndex
+export function shouldAddManualClueForSearch(_value: string, _isIndex: boolean): boolean {
+  return false
 }
 
 const candidateGroupOrder = ['upstream', 'leaders', 'weighted', 'elastic', 'downstream', 'source_leaders', 'constituents']
