@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
   compactPercentTextStyle,
@@ -13,6 +14,10 @@ import {
   mongoCoverageState,
   sectorTargetCountForContext,
   sectorTargetRowsForContext,
+  SectorTransitionRadarPanel,
+  sectorTransitionHasNewUnreadEvents,
+  sectorTransitionRadarFromShell,
+  sectorTransitionStockAnnotation,
   shellGroupCount,
   shellNeedsWarmRefresh,
   signalCalloutBadgeSummary,
@@ -266,6 +271,149 @@ describe('StrategyChartTerminal shell refresh', () => {
 
     expect(shellGroupCount(shell)).toBe(2)
     expect(shellNeedsWarmRefresh(shell)).toBe(false)
+  })
+})
+
+describe('StrategyChartTerminal sector transition radar', () => {
+  it('marks a three-pool row with its sector state and the next individual gate', () => {
+    const annotation = sectorTransitionStockAnnotation({
+      source: 'sector_transition',
+      turn_state: 'stable_turn',
+      sector_transition_pool: 'watch',
+      sector_transition_eligibility: 'buy_review_pending_individual_gates',
+      sector_transition_annotation: '板块稳定转折，已具备买点复核的上游资格；个股仍在盯盘池，不能当成买点。',
+      sector_transition_next_gate: '等待个股买点、关键均线共振、位置和执行周期确认。',
+      sector_transition_promoted: false,
+    }, 'zh-CN')
+
+    expect(annotation).toEqual({
+      badgeLabel: '板块·稳定转折',
+      tone: 'hot',
+      summary: '板块稳定转折，已具备买点复核的上游资格；个股仍在盯盘池，不能当成买点。',
+      nextGate: '等待个股买点、关键均线共振、位置和执行周期确认。',
+    })
+  })
+
+  it('keeps legacy shell payloads backward compatible', () => {
+    expect(sectorTransitionRadarFromShell({
+      cache: { status: 'hit' },
+      watchlist_groups: { sector_boards: [] },
+    } as any)).toBeNull()
+  })
+
+  it('normalizes the canonical radar counts, state cards, freshness, and evidence', () => {
+    const radar = sectorTransitionRadarFromShell({
+      sector_transition_radar: {
+        as_of: '2026-07-29T14:35:00+08:00',
+        counts: {
+          pressure: 2,
+          release: 3,
+          repair: 4,
+          confirmed_intraday: 1,
+          stable: 2,
+          failed: 1,
+        },
+        unread_event_ids: ['evt-2'],
+        events: [
+          {
+            event_id: 'evt-2',
+            sector_id: 'digital-chip',
+            sector_name: '数字芯片设计',
+            from_state: 'pressure',
+            to_state: 'release',
+          },
+        ],
+        states: [
+          {
+            sector_id: 'digital-chip',
+            sector_name: '数字芯片设计',
+            sector_kind: 'concept',
+            turn_state: 'confirmed_intraday',
+            flow_state: 'active_acceptance',
+            sentinels: {
+              capacity_core: [{ symbol: 'SH.603986', name: '兆易创新' }],
+              high_beta: ['SZ.001309 德明利'],
+            },
+            sentinel_symbols: ['SH.688012'],
+            evidence: { summary: '板块宽度率先修复' },
+            metrics: {
+              breadth_ratio: 0.58,
+              change_pct: 0.5,
+              amount_share: 0.071,
+              relative_strength: 1.36,
+            },
+            blockers: ['半导体ETF尚未收复30m MA20'],
+            next_checks: [{ condition: '连续两根30m收盘确认' }],
+            weaker_if: ['跌破事件低点', '重新封死跌停'],
+          },
+        ],
+        freshness: {
+          status: 'fresh',
+          as_of: '2026-07-29T14:35:00+08:00',
+          blockers: ['设备与材料仍弱'],
+        },
+      },
+    } as any)
+
+    expect(radar?.counts).toEqual({
+      pressure: 2,
+      release: 3,
+      repair: 4,
+      intraday: 1,
+      stable: 2,
+      failed: 1,
+    })
+    expect(radar?.unreadEventIds).toEqual(['evt-2'])
+    expect(radar?.states[0]).toMatchObject({
+      sectorName: '数字芯片设计',
+      sectorKind: 'concept',
+      turnState: 'confirmed_intraday',
+      sentinels: ['SH.603986 兆易创新', 'SZ.001309 德明利', 'SH.688012'],
+      evidence: ['板块宽度率先修复', '宽度 58.0% · 涨幅 +0.50% · 成交占比 7.1% · 相对强弱 +1.36'],
+      blockers: ['半导体ETF尚未收复30m MA20'],
+      nextChecks: ['连续两根30m收盘确认'],
+      weakerIf: '跌破事件低点 / 重新封死跌停',
+    })
+    expect(radar?.freshness).toMatchObject({
+      status: 'fresh',
+      blockers: ['设备与材料仍弱'],
+    })
+    const markup = renderToStaticMarkup(
+      <SectorTransitionRadarPanel locale="zh-CN" radar={radar!} pendingUpdate onSelectSentinel={() => undefined} />,
+    )
+    expect(markup).toContain('板块转折雷达 · 有新事件')
+    expect(markup).toContain('数字芯片设计')
+    expect(markup).toContain('宽度 58.0%')
+    expect(markup).toContain('下一确认')
+    expect(markup).toContain('打开 SH.603986 兆易创新 图表')
+  })
+
+  it('marks pending only when a new unread event id appears', () => {
+    const sameEventShell = {
+      sector_transition_radar: {
+        unread_event_ids: ['evt-1'],
+        events: [{ event_id: 'evt-1', sector_name: '半导体', to_state: 'release' }],
+      },
+    } as any
+    const newEventShell = {
+      sector_transition_radar: {
+        unread_event_ids: ['evt-1', 'evt-2'],
+        events: [
+          { event_id: 'evt-1', sector_name: '半导体', to_state: 'release' },
+          { event_id: 'evt-2', sector_name: '保险', to_state: 'repair' },
+        ],
+      },
+    } as any
+
+    expect(sectorTransitionHasNewUnreadEvents(['evt-1'], sameEventShell)).toBe(false)
+    expect(sectorTransitionHasNewUnreadEvents(['evt-1'], newEventShell)).toBe(true)
+    expect(sectorTransitionHasNewUnreadEvents(['evt-1', 'evt-2'], newEventShell)).toBe(false)
+    expect(sectorTransitionHasNewUnreadEvents([], {
+      sector_transition_radar: {
+        unread_event_ids: [],
+        events: [{ event_id: 'evt-historical', sector_name: '银行', to_state: 'stable' }],
+      },
+    } as any)).toBe(false)
   })
 })
 

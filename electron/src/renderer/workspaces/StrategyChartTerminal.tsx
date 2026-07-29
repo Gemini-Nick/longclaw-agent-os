@@ -157,6 +157,7 @@ type WorkbenchShell = {
   source_confidence?: Record<string, unknown>[] | Record<string, unknown>
   trade_map?: Record<string, unknown>
   ai_alerts?: Record<string, unknown>[]
+  sector_transition_radar?: unknown
   command_suggestions?: string[]
   default_target?: {
     kind?: string
@@ -164,6 +165,38 @@ type WorkbenchShell = {
     freq?: string
   }
   notices?: string[]
+}
+
+type SectorTransitionStage = 'pressure' | 'release' | 'repair' | 'intraday' | 'stable' | 'failed'
+
+type SectorTransitionRadarItem = {
+  id: string
+  sectorName: string
+  sectorKind: string
+  observedAt: string
+  fromState: string
+  toState: string
+  turnState: string
+  flowState: string
+  sentinels: string[]
+  evidence: string[]
+  blockers: string[]
+  nextChecks: string[]
+  weakerIf: string
+  raw: Record<string, unknown>
+}
+
+export type SectorTransitionRadarView = {
+  asOf: string
+  counts: Record<SectorTransitionStage, number>
+  events: SectorTransitionRadarItem[]
+  states: SectorTransitionRadarItem[]
+  unreadEventIds: string[]
+  freshness: {
+    status: string
+    asOf: string
+    blockers: string[]
+  }
 }
 
 type WorkbenchTarget = {
@@ -2047,6 +2080,193 @@ const funnelConnectorStyle: React.CSSProperties = {
   fontSize: 11,
 }
 
+const sectorTransitionShellStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+  padding: 6,
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: tradingDeskTheme.radius.compact,
+  background: `linear-gradient(145deg, ${terminalTheme.panelRaised}, ${terminalTheme.panelInset})`,
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const sectorTransitionHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  minWidth: 0,
+}
+
+const sectorTransitionTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: 0.2,
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionHeaderMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  textAlign: 'right',
+}
+
+const sectorTransitionRailStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+  gap: 3,
+  minWidth: 0,
+}
+
+function sectorTransitionRailCellStyle(stage: SectorTransitionStage): React.CSSProperties {
+  const color = sectorTransitionStageColor(stage)
+  const surface = stage === 'pressure' || stage === 'failed'
+    ? tradingDeskTheme.alpha.errorSurface
+    : stage === 'release'
+      ? tradingDeskTheme.alpha.auroraGold
+      : stage === 'stable'
+        ? 'rgba(89, 217, 142, 0.12)'
+        : tradingDeskTheme.alpha.auroraBlue
+  return {
+    minWidth: 0,
+    padding: '4px 3px',
+    border: `1px solid ${terminalTheme.borderMuted}`,
+    borderTop: `2px solid ${color}`,
+    borderRadius: 4,
+    background: surface,
+    textAlign: 'center',
+  }
+}
+
+const sectorTransitionCountStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 12,
+  fontWeight: 900,
+  lineHeight: 1,
+}
+
+const sectorTransitionStageLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 8,
+  fontWeight: 800,
+  lineHeight: 1.15,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionCardListStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+  gap: 4,
+  minWidth: 0,
+}
+
+function sectorTransitionCardStyle(stage: SectorTransitionStage | ''): React.CSSProperties {
+  const color = sectorTransitionStageColor(stage || 'repair')
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    minWidth: 0,
+    padding: '5px 6px',
+    border: `1px solid ${terminalTheme.border}`,
+    borderLeft: `3px solid ${color}`,
+    borderRadius: 4,
+    background: terminalTheme.panelSoft,
+  }
+}
+
+const sectorTransitionCardHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 5,
+  minWidth: 0,
+}
+
+const sectorTransitionCardTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 10,
+  fontWeight: 900,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionStateChipStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  maxWidth: 94,
+  padding: '1px 4px',
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: tradingDeskTheme.radius.pill,
+  color: terminalTheme.mono,
+  fontFamily: fontStacks.mono,
+  fontSize: 8,
+  fontWeight: 800,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionEvidenceStyle: React.CSSProperties = {
+  color: terminalTheme.text,
+  fontSize: 9,
+  lineHeight: 1.25,
+  minWidth: 0,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+}
+
+const sectorTransitionDetailStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 8,
+  lineHeight: 1.2,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionSentinelButtonStyle: React.CSSProperties = {
+  ...sectorTransitionDetailStyle,
+  width: '100%',
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  color: terminalTheme.infoText,
+  fontFamily: fontStacks.ui,
+  textAlign: 'left',
+  cursor: 'pointer',
+}
+
+const sectorTransitionBlockerStyle: React.CSSProperties = {
+  ...sectorTransitionDetailStyle,
+  color: terminalTheme.errorText,
+}
+
+const sectorTransitionFreshnessStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  minWidth: 0,
+  paddingTop: 3,
+  borderTop: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 8,
+}
+
 const funnelButtonTopStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -2646,6 +2866,241 @@ function firstNumberValue(...values: unknown[]): number | undefined {
 
 function compactText(value: unknown, fallback = ''): string {
   return stringValue(value) ?? (typeof value === 'number' ? String(value) : fallback)
+}
+
+const SECTOR_TRANSITION_STAGES: SectorTransitionStage[] = [
+  'pressure',
+  'release',
+  'repair',
+  'intraday',
+  'stable',
+  'failed',
+]
+
+function textList(value: unknown, keys: string[] = []): string[] {
+  const values = Array.isArray(value)
+    ? value
+    : Object.keys(recordValue(value)).length > 0
+      ? [value]
+      : []
+  return values
+    .map(item => {
+      const direct = compactText(item)
+      if (direct) return direct
+      const row = recordValue(item)
+      for (const key of keys) {
+        const text = compactText(row[key])
+        if (text) return text
+      }
+      for (const nested of Object.values(row)) {
+        const text = stringValue(nested)
+        if (text) return text
+        const nestedRow = recordValue(nested)
+        for (const key of keys) {
+          const nestedText = compactText(nestedRow[key])
+          if (nestedText) return nestedText
+        }
+      }
+      return ''
+    })
+    .filter(Boolean)
+}
+
+function sentinelList(value: unknown): string[] {
+  const raw = recordValue(value)
+  const values = Array.isArray(value)
+    ? value
+    : Object.values(raw).flatMap(item => Array.isArray(item) ? item : [item])
+  return values
+    .map(item => {
+      const direct = compactText(item)
+      if (direct) return direct
+      const row = recordValue(item)
+      const symbol = compactText(row.symbol) || compactText(row.code)
+      const name = compactText(row.name) || compactText(row.label) || compactText(row.sector_name)
+      return [symbol, name].filter(Boolean).join(' ')
+    })
+    .filter(Boolean)
+}
+
+function metricEvidenceSummary(value: unknown): string {
+  const metrics = recordValue(value)
+  const parts: string[] = []
+  const ratioText = (input: unknown) => {
+    const value = numberValue(input)
+    if (value === undefined) return ''
+    const normalized = Math.abs(value) <= 1 ? value * 100 : value
+    return `${normalized.toFixed(1)}%`
+  }
+  const signedText = (input: unknown, suffix = '') => {
+    const value = numberValue(input)
+    if (value === undefined) return ''
+    return `${value > 0 ? '+' : ''}${value.toFixed(2)}${suffix}`
+  }
+  const breadth = ratioText(metrics.breadth_ratio)
+  const change = signedText(metrics.change_pct, '%')
+  const amountShare = ratioText(metrics.amount_share)
+  const relativeStrength = signedText(metrics.relative_strength)
+  if (breadth) parts.push(`宽度 ${breadth}`)
+  if (change) parts.push(`涨幅 ${change}`)
+  if (amountShare) parts.push(`成交占比 ${amountShare}`)
+  if (relativeStrength) parts.push(`相对强弱 ${relativeStrength}`)
+  return parts.join(' · ')
+}
+
+function sectorTransitionStage(value: unknown): SectorTransitionStage | '' {
+  const normalized = compactText(value).trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (['pressure', 'stress', 'stressed', 't0', '压力', '压力态'].includes(normalized)) return 'pressure'
+  if (['release', 'panic_release', 't1', '释放', '恐慌释放'].includes(normalized)) return 'release'
+  if (['repair', 'short_repair', 't2', '修复', '短周期修复'].includes(normalized)) return 'repair'
+  if (['intraday', 'intraday_confirmed', 'intraday_confirmation', 'confirmed_intraday', '盘中', '盘中确认'].includes(normalized)) return 'intraday'
+  if (['stable', 'stable_turn', 'confirmed', 't3', '稳定', '稳定转折'].includes(normalized)) return 'stable'
+  if (['failed', 'failure', 'invalidated', 'invalid', 'tx', '失效', '失败'].includes(normalized)) return 'failed'
+  return ''
+}
+
+function sectorTransitionStageColor(stage: SectorTransitionStage): string {
+  if (stage === 'pressure' || stage === 'failed') return palette.error
+  if (stage === 'release') return tradingDeskTheme.colors.auroraGold
+  if (stage === 'repair' || stage === 'intraday') return tradingDeskTheme.colors.auroraBlue
+  return palette.success
+}
+
+function sectorTransitionStageLabel(stage: SectorTransitionStage, locale: LongclawLocale): string {
+  const labels: Record<SectorTransitionStage, [string, string]> = {
+    pressure: ['压力', 'Pressure'],
+    release: ['释放', 'Release'],
+    repair: ['修复', 'Repair'],
+    intraday: ['盘中确认', 'Intraday'],
+    stable: ['稳定转折', 'Stable'],
+    failed: ['失效', 'Failed'],
+  }
+  return labels[stage][locale === 'zh-CN' ? 0 : 1]
+}
+
+function sectorTransitionFreshnessLabel(status: string, locale: LongclawLocale): string {
+  const normalized = status.trim().toLowerCase()
+  if (['fresh', 'ready', 'ok', 'available'].includes(normalized)) return locale === 'zh-CN' ? '数据新鲜' : 'Fresh'
+  if (['stale', 'old'].includes(normalized)) return locale === 'zh-CN' ? '数据待更新' : 'Stale'
+  if (['blocked', 'failed', 'error'].includes(normalized)) return locale === 'zh-CN' ? '数据受阻' : 'Blocked'
+  if (['partial', 'degraded'].includes(normalized)) return locale === 'zh-CN' ? '部分可用' : 'Partial'
+  return status || (locale === 'zh-CN' ? '新鲜度未知' : 'Freshness unknown')
+}
+
+function sectorTransitionCount(
+  counts: Record<string, unknown>,
+  stage: SectorTransitionStage,
+): number {
+  const aliases: Record<SectorTransitionStage, string[]> = {
+    pressure: ['pressure', 'stress', 't0'],
+    release: ['release', 'panic_release', 't1'],
+    repair: ['repair', 'short_repair', 't2'],
+    intraday: ['intraday', 'intraday_confirmed', 'intraday_confirmation', 'confirmed_intraday'],
+    stable: ['stable', 'stable_turn', 'confirmed', 't3'],
+    failed: ['failed', 'failure', 'invalidated', 'tx'],
+  }
+  for (const key of aliases[stage]) {
+    const count = numberValue(counts[key])
+    if (count !== undefined) return Math.max(0, Math.round(count))
+  }
+  return 0
+}
+
+function normalizeSectorTransitionItem(value: unknown, index: number, kind: 'event' | 'state'): SectorTransitionRadarItem | null {
+  const row = recordValue(value)
+  if (Object.keys(row).length === 0) return null
+  const sectorName =
+    compactText(row.sector_name) ||
+    compactText(row.board_name) ||
+    compactText(row.name) ||
+    compactText(row.title)
+  const turnState = compactText(row.turn_state) || compactText(row.state) || compactText(row.status)
+  const toState = compactText(row.to_state) || turnState
+  const id =
+    compactText(row.event_id) ||
+    compactText(row.id) ||
+    `${kind}:${compactText(row.sector_id, sectorName || String(index))}:${toState || index}`
+  if (!sectorName && !turnState && !toState) return null
+  const sentinels = [
+    ...sentinelList(row.sentinels),
+    ...sentinelList(row.sentinel_symbols),
+  ]
+  const evidence = [
+    ...textList(row.evidence, ['summary', 'detail', 'label', 'reason']),
+    metricEvidenceSummary(row.evidence),
+    metricEvidenceSummary(row.metrics),
+  ].filter(Boolean)
+  const weakerIf = Array.isArray(row.weaker_if) || Object.keys(recordValue(row.weaker_if)).length > 0
+    ? textList(row.weaker_if, ['summary', 'detail', 'label', 'condition', 'reason']).join(' / ')
+    : compactText(row.weaker_if)
+  return {
+    id,
+    sectorName: sectorName || id,
+    sectorKind: compactText(row.sector_kind) || compactText(row.kind),
+    observedAt: compactText(row.observed_at) || compactText(row.as_of) || compactText(row.updated_at),
+    fromState: compactText(row.from_state),
+    toState,
+    turnState,
+    flowState: compactText(row.flow_state),
+    sentinels: [...new Set(sentinels)],
+    evidence: [...new Set(evidence)],
+    blockers: textList(row.blockers, ['summary', 'detail', 'label', 'reason']),
+    nextChecks: textList(row.next_checks, ['summary', 'detail', 'label', 'condition']),
+    weakerIf,
+    raw: row,
+  }
+}
+
+function normalizeSectorTransitionItems(value: unknown, kind: 'event' | 'state'): SectorTransitionRadarItem[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item, index) => normalizeSectorTransitionItem(item, index, kind))
+    .filter((item): item is SectorTransitionRadarItem => Boolean(item))
+}
+
+export function sectorTransitionRadarFromShell(shell: WorkbenchShell | null): SectorTransitionRadarView | null {
+  const rawValue = shell?.sector_transition_radar
+  if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) return null
+  const raw = recordValue(rawValue)
+  const rawCounts = recordValue(raw.counts ?? raw.status_counts)
+  const events = normalizeSectorTransitionItems(raw.events ?? raw.cards, 'event')
+  const states = normalizeSectorTransitionItems(raw.states, 'state')
+  const explicitUnreadIds = Array.isArray(raw.unread_event_ids)
+    ? textList(raw.unread_event_ids)
+    : null
+  const unreadEventIds = explicitUnreadIds ?? events.map(item => item.id)
+  const freshness = recordValue(raw.freshness ?? raw.freshness_status)
+  const counts = Object.fromEntries(
+    SECTOR_TRANSITION_STAGES.map(stage => [stage, sectorTransitionCount(rawCounts, stage)]),
+  ) as Record<SectorTransitionStage, number>
+  if (Object.values(counts).every(count => count === 0) && states.length > 0) {
+    for (const item of states) {
+      const stage = sectorTransitionStage(item.toState || item.turnState)
+      if (stage) counts[stage] += 1
+    }
+  }
+  return {
+    asOf: compactText(raw.as_of) || compactText(freshness.as_of),
+    counts,
+    events,
+    states,
+    unreadEventIds: [...new Set(unreadEventIds.filter(Boolean))],
+    freshness: {
+      status: compactText(freshness.status) || compactText(raw.status),
+      asOf: compactText(freshness.as_of) || compactText(raw.as_of),
+      blockers: textList(freshness.blockers ?? raw.blockers, ['summary', 'detail', 'label', 'reason']),
+    },
+  }
+}
+
+export function sectorTransitionHasNewUnreadEvents(
+  seenEventIds: Iterable<string>,
+  shell: WorkbenchShell | null,
+): boolean {
+  const radar = sectorTransitionRadarFromShell(shell)
+  if (!radar) return false
+  const seen = new Set(seenEventIds)
+  return radar.unreadEventIds.some(eventId => !seen.has(eventId))
 }
 
 function meaningfulSignalText(value: unknown): string {
@@ -6309,8 +6764,43 @@ function stockHardSignalBadges(row: WatchlistRow): StockDisplayBadge[] {
   return stockHardSignals(row.raw).map(item => ({ label: item.label, tone: item.tone }))
 }
 
+export function sectorTransitionStockAnnotation(
+  raw: Record<string, unknown>,
+  locale: LongclawLocale,
+): { badgeLabel: string; tone: string; summary: string; nextGate: string } | null {
+  const state = compactText(raw.turn_state)
+  if (!state || compactText(raw.source) !== 'sector_transition') return null
+  const labels: Record<string, [string, string]> = {
+    panic_release: ['刚释放', 'Early release'],
+    repairing: ['修复中', 'Repairing'],
+    confirmed_intraday: ['盘中确认', 'Intraday confirmed'],
+    stable_turn: ['稳定转折', 'Stable turn'],
+  }
+  const pair = labels[state]
+  if (!pair) return null
+  const tone = state === 'stable_turn' ? 'hot' : state === 'confirmed_intraday' ? 'buy' : 'watch'
+  return {
+    badgeLabel: `${locale === 'zh-CN' ? '板块' : 'Sector'}·${locale === 'zh-CN' ? pair[0] : pair[1]}`,
+    tone,
+    summary: compactText(raw.sector_transition_annotation),
+    nextGate: compactText(raw.sector_transition_next_gate),
+  }
+}
+
+function stockDisplayBadges(row: WatchlistRow, locale: LongclawLocale): StockDisplayBadge[] {
+  const transition = sectorTransitionStockAnnotation(row.raw, locale)
+  return [
+    ...(transition ? [{ label: transition.badgeLabel, tone: transition.tone }] : []),
+    ...stockHardSignalBadges(row),
+  ]
+}
+
 function stockDisplaySummaryLine(row: WatchlistRow, locale: LongclawLocale): string {
-  return traderDisplayText(compactText(row.raw.display_summary), locale)
+  const transition = sectorTransitionStockAnnotation(row.raw, locale)
+  return [
+    transition?.summary,
+    compactText(row.raw.display_summary),
+  ].filter(Boolean).map(value => traderDisplayText(value || '', locale)).join(locale === 'zh-CN' ? '；' : '; ')
 }
 
 function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
@@ -7577,7 +8067,7 @@ export function StrategyChartTerminal({
   const activeRequestRef = useRef(0)
   const shellRefreshInFlightRef = useRef(false)
   const shellLoadedRef = useRef(false)
-  const activeWatchlistTabRef = useRef<WatchlistTabKey>('sector_boards')
+  const seenSectorTransitionEventIdsRef = useRef<Set<string>>(new Set())
   const silentSymbolRefreshInFlightRef = useRef(false)
   const manualSymbolLoadingRef = useRef(false)
   const manualSymbolAbortRef = useRef<AbortController | null>(null)
@@ -7621,10 +8111,6 @@ export function StrategyChartTerminal({
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1000 : window.innerHeight))
   const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(false)
-
-  useEffect(() => {
-    activeWatchlistTabRef.current = activeWatchlistTab
-  }, [activeWatchlistTab])
 
   const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
   const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
@@ -7726,6 +8212,7 @@ export function StrategyChartTerminal({
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
   const liveRefresh = shouldUseLiveRefresh(shell?.session)
+  const sectorTransitionRadar = useMemo(() => sectorTransitionRadarFromShell(shell), [shell])
   const effectiveCacheStatus = useMemo(
     () => normalizeCacheStatus(cacheStatusOverride ?? dashboard.cache_status),
     [cacheStatusOverride, dashboard.cache_status],
@@ -8172,7 +8659,17 @@ export function StrategyChartTerminal({
           undefined,
           { timeoutMs: SHELL_REQUEST_TIMEOUT_MS },
         )
-        if (shellLoadedRef.current && activeWatchlistTabRef.current === 'sector_boards') setPendingListUpdate(true)
+        const seenSectorTransitionEventIds = seenSectorTransitionEventIdsRef.current
+        if (
+          shellLoadedRef.current
+          && sectorTransitionHasNewUnreadEvents(seenSectorTransitionEventIds, nextShell)
+        ) {
+          setPendingListUpdate(true)
+        }
+        const nextRadar = sectorTransitionRadarFromShell(nextShell)
+        for (const eventId of nextRadar?.unreadEventIds ?? []) {
+          seenSectorTransitionEventIds.add(eventId)
+        }
         shellLoadedRef.current = true
         setShell(nextShell)
         return nextShell
@@ -9297,6 +9794,7 @@ export function StrategyChartTerminal({
               selectedRangeKey={selectedRangeColumn?.key ?? ''}
               onRangeChange={setSelectedRangeKey}
               emptyText={visibleWatchlistEmptyText}
+              sectorTransitionRadar={sectorTransitionRadar}
               pendingListUpdate={pendingListUpdate}
               onAcknowledgeListUpdate={() => setPendingListUpdate(false)}
               cursorRowId={cursorRow?.id ?? ''}
@@ -10811,6 +11309,121 @@ function traderFacingEmptyReason(value: unknown, locale: LongclawLocale): string
   return text
 }
 
+function sectorTransitionStateText(item: SectorTransitionRadarItem, locale: LongclawLocale): string {
+  const fromStage = sectorTransitionStage(item.fromState)
+  const toStage = sectorTransitionStage(item.toState || item.turnState)
+  const from = fromStage ? sectorTransitionStageLabel(fromStage, locale) : item.fromState
+  const to = toStage
+    ? sectorTransitionStageLabel(toStage, locale)
+    : (item.toState || item.turnState || item.flowState)
+  if (from && to && from !== to) return `${from}→${to}`
+  return to || from || (locale === 'zh-CN' ? '观察' : 'Watch')
+}
+
+function sectorTransitionSentinelRow(value: string): Record<string, unknown> {
+  const match = value.trim().match(/^((?:SH|SZ|BJ)\.\d{6}|\d{6})(?:\s+(.+))?$/i)
+  if (!match) return { label: value, name: value, target_kind: 'stock' }
+  return {
+    symbol: match[1].toUpperCase(),
+    name: match[2] ?? '',
+    target_kind: 'stock',
+  }
+}
+
+export function SectorTransitionRadarPanel({
+  locale,
+  radar,
+  pendingUpdate,
+  onSelectSentinel,
+}: {
+  locale: LongclawLocale
+  radar: SectorTransitionRadarView
+  pendingUpdate: boolean
+  onSelectSentinel?: (sentinel: string) => void
+}) {
+  const cards = (radar.states.length > 0 ? radar.states : radar.events).slice(0, 4)
+  const globalBlocker = radar.freshness.blockers[0] ?? ''
+  const freshnessLabel = sectorTransitionFreshnessLabel(radar.freshness.status, locale)
+  const asOf = radar.freshness.asOf || radar.asOf
+  return (
+    <section
+      style={sectorTransitionShellStyle}
+      aria-label={locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}
+    >
+      <div style={sectorTransitionHeaderStyle}>
+        <div style={sectorTransitionTitleStyle}>
+          {locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}
+          {pendingUpdate ? ` · ${locale === 'zh-CN' ? '有新事件' : 'new event'}` : ''}
+        </div>
+        <div style={sectorTransitionHeaderMetaStyle}>
+          {[freshnessLabel, asOf].filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      <div style={sectorTransitionRailStyle}>
+        {SECTOR_TRANSITION_STAGES.map(stage => (
+          <div key={stage} style={sectorTransitionRailCellStyle(stage)}>
+            <div style={sectorTransitionCountStyle}>{countText(radar.counts[stage])}</div>
+            <div style={sectorTransitionStageLabelStyle}>{sectorTransitionStageLabel(stage, locale)}</div>
+          </div>
+        ))}
+      </div>
+      {cards.length > 0 ? (
+        <div style={sectorTransitionCardListStyle}>
+          {cards.map(item => {
+            const stage = sectorTransitionStage(item.toState || item.turnState)
+            const evidence = item.evidence.slice(0, 2).join(' · ') || item.weakerIf
+            const blocker = item.blockers[0] || globalBlocker
+            const nextCheck = item.nextChecks[0]
+            const firstSentinel = item.sentinels[0]
+            return (
+              <article key={item.id} style={sectorTransitionCardStyle(stage)}>
+                <div style={sectorTransitionCardHeaderStyle}>
+                  <div
+                    style={sectorTransitionCardTitleStyle}
+                    title={[item.sectorKind, item.sectorName, item.observedAt].filter(Boolean).join(' · ')}
+                  >
+                    {item.sectorName}
+                  </div>
+                  <div style={sectorTransitionStateChipStyle}>{sectorTransitionStateText(item, locale)}</div>
+                </div>
+                {evidence ? <div style={sectorTransitionEvidenceStyle}>{traderDisplayText(evidence, locale)}</div> : null}
+                {firstSentinel && onSelectSentinel ? (
+                  <button
+                    type="button"
+                    style={sectorTransitionSentinelButtonStyle}
+                    title={locale === 'zh-CN' ? `打开 ${firstSentinel} 图表` : `Open ${firstSentinel} chart`}
+                    onClick={() => onSelectSentinel(firstSentinel)}
+                  >
+                    {locale === 'zh-CN' ? '哨兵' : 'Sentinels'} · {item.sentinels.slice(0, 3).join(' / ')}
+                  </button>
+                ) : (
+                  <div style={sectorTransitionDetailStyle}>
+                    {locale === 'zh-CN' ? '哨兵' : 'Sentinels'} · {item.sentinels.slice(0, 3).join(' / ') || '—'}
+                  </div>
+                )}
+                <div style={blocker ? sectorTransitionBlockerStyle : sectorTransitionDetailStyle}>
+                  {locale === 'zh-CN' ? '阻碍' : 'Blocker'} · {blocker ? traderDisplayText(blocker, locale) : '—'}
+                </div>
+                <div style={sectorTransitionDetailStyle}>
+                  {locale === 'zh-CN' ? '下一确认' : 'Next check'} · {nextCheck ? traderDisplayText(nextCheck, locale) : '—'}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : null}
+      <div style={sectorTransitionFreshnessStyle}>
+        <span>{freshnessLabel}</span>
+        <span title={globalBlocker}>
+          {globalBlocker
+            ? `${locale === 'zh-CN' ? '全局阻碍' : 'Global blocker'} · ${traderDisplayText(globalBlocker, locale)}`
+            : (locale === 'zh-CN' ? '等待状态升级' : 'Waiting for state upgrade')}
+        </span>
+      </div>
+    </section>
+  )
+}
+
 function WatchlistTabbedTable({
   locale,
   activeTab,
@@ -10828,6 +11441,7 @@ function WatchlistTabbedTable({
   selectedRangeKey,
   onRangeChange,
   emptyText,
+  sectorTransitionRadar,
   pendingListUpdate,
   onAcknowledgeListUpdate,
   cursorRowId,
@@ -10864,6 +11478,7 @@ function WatchlistTabbedTable({
   selectedRangeKey: string
   onRangeChange: (key: string) => void
   emptyText: string
+  sectorTransitionRadar: SectorTransitionRadarView | null
   pendingListUpdate: boolean
   onAcknowledgeListUpdate: () => void
   cursorRowId: string
@@ -10997,13 +11612,21 @@ function WatchlistTabbedTable({
       <div style={watchlistMetaStripStyle} title={panelMeta}>
         {panelMeta}
       </div>
+      {activeTab === 'sector_boards' && sectorTransitionRadar ? (
+        <SectorTransitionRadarPanel
+          locale={locale}
+          radar={sectorTransitionRadar}
+          pendingUpdate={pendingListUpdate}
+          onSelectSentinel={sentinel => onCandidateSelect(sectorTransitionSentinelRow(sentinel))}
+        />
+      ) : null}
       {pendingListUpdate && activeTab === 'sector_boards' ? (
         <button
           type="button"
           style={panelActionButtonStyle}
           onClick={onAcknowledgeListUpdate}
         >
-          {locale === 'zh-CN' ? '异动板块有更新，停止扫盘后点击确认' : 'Hot boards updated; confirm when ready'}
+          {locale === 'zh-CN' ? '板块转折有新事件，停止扫盘后点击确认' : 'New sector transition event; confirm when ready'}
         </button>
       ) : null}
       {activeTab === 'sector_boards' ? (
@@ -11652,7 +12275,7 @@ function WatchlistTable({
         const actionLabel = stockDecision ? '' : decisionActionLabel(row.decision, locale)
         const traderRead = stockDecision ? traderReadLine(row, locale) : ''
         const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : ''
-        const displayBadges = stockDecision ? stockHardSignalBadges(row) : []
+        const displayBadges = stockDecision ? stockDisplayBadges(row, locale) : []
         const summaryLine = stockDecision ? stockDisplaySummaryLine(row, locale) : ''
         const signalDetailLine = stockDecision ? '' : watchlistSignalDetailLine(row)
         const manualClue = rowIsManualClue(row)
@@ -11686,6 +12309,12 @@ function WatchlistTable({
                 !stockDecision && row.signalBadges.length > 0 ? `${locale === 'zh-CN' ? '周期' : 'Timeframes'}: ${row.signalBadges.map(badge => signalBadgeDisplayLabel(badge, locale)).join(' / ')}` : '',
                 stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
                 stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '盘面依据' : 'Evidence'}: ${evidenceLine}` : '',
+                stockDecision && sectorTransitionStockAnnotation(row.raw, locale)?.nextGate
+                  ? `${locale === 'zh-CN' ? '板块下一关' : 'Sector next gate'}: ${sectorTransitionStockAnnotation(row.raw, locale)?.nextGate}`
+                  : '',
+                stockDecision && compactText(row.raw.sector_event_id)
+                  ? `${locale === 'zh-CN' ? '板块事件' : 'Sector event'}: ${compactText(row.raw.sector_event_id)}`
+                  : '',
                 row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${traderDisplayText(row.rankReason, locale)}` : '',
                 row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${traderDisplayText(row.traceSummary, locale)}` : '',
                 rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
