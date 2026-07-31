@@ -540,7 +540,7 @@ function lightweightSignalsDashboardFromCacheStatus(
       ? signalsApiAction(
           'pack:signals:refresh',
           '刷新 Signals 数据',
-          { reason: 'manual', force_live: true, force_postmarket: true, run_optional_tasks: true },
+          { reason: 'manual', force_live: true, run_optional_tasks: true },
         )
       : null,
     localAction(
@@ -1539,7 +1539,7 @@ export class LongclawControlPlaneClient {
             ? signalsApiAction(
                 'pack:signals:refresh',
                 '刷新 Signals 数据',
-                { reason: 'manual', force_live: true, force_postmarket: true, run_optional_tasks: true },
+                { reason: 'manual', force_live: true, run_optional_tasks: true },
               )
             : null,
           web1
@@ -1990,7 +1990,6 @@ export class LongclawControlPlaneClient {
         reason: stringValue(payload.reason) ?? 'startup',
         requested_by: stringValue(payload.requested_by) ?? 'longclaw-agent-os',
         force_live: payload.force_live === undefined ? true : Boolean(payload.force_live),
-        force_postmarket: payload.force_postmarket === undefined ? true : Boolean(payload.force_postmarket),
         run_optional_tasks: payload.run_optional_tasks === undefined ? true : Boolean(payload.run_optional_tasks),
         wait: false,
       }

@@ -127,6 +127,7 @@ type WorkbenchSession = {
 
 type WorkbenchShell = {
   session?: WorkbenchSession
+  pool_meta?: Record<string, unknown>
   cache?: {
     status?: string
     building?: boolean
@@ -9718,6 +9719,7 @@ export function StrategyChartTerminal({
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
+      <PoolAuthorityStrip locale={locale} meta={recordValue(shell?.pool_meta)} />
       {shell?.notices?.length ? (
         <div style={noticeDarkStyle}>{traderDisplayText(shell.notices.join(' '), locale)}</div>
       ) : null}
@@ -11001,6 +11003,56 @@ function CacheMonitorCell({
   )
 }
 
+function PoolAuthorityStrip({
+  locale,
+  meta,
+}: {
+  locale: LongclawLocale
+  meta: Record<string, unknown>
+}) {
+  if (Object.keys(meta).length === 0) return null
+  const status = compactText(meta.status, 'unavailable')
+  const healthy = status === 'healthy'
+  const refreshing = status === 'refreshing'
+  const baseTradeDate = compactText(meta.base_trade_date, '-')
+  const revision = numberValue(meta.revision) ?? 0
+  const lastSuccessfulAt = compactText(meta.last_successful_at, '-')
+  const priceDataTime = compactText(meta.price_data_time, '-')
+  const confirmation30mTime = compactText(meta.confirmation_30m_data_time, '-')
+  const staleReason = compactText(meta.stale_reason)
+  const text = locale === 'zh-CN'
+    ? [
+        '唯一融合名单',
+        `数据日 ${baseTradeDate}`,
+        `版本 r${revision}`,
+        healthy ? '今日已更新' : refreshing ? '名单构建中' : `今日未更新${staleReason ? `（${staleReason}）` : ''}`,
+        `最近成功 ${lastSuccessfulAt}`,
+        `价格 ${priceDataTime}`,
+        `30m ${confirmation30mTime} · 仅提示，不影响入池`,
+      ].join(' · ')
+    : [
+        'Single fused pool',
+        `base ${baseTradeDate}`,
+        `revision ${revision}`,
+        healthy ? 'updated today' : refreshing ? 'building pool' : `not updated today${staleReason ? ` (${staleReason})` : ''}`,
+        `last success ${lastSuccessfulAt}`,
+        `quotes ${priceDataTime}`,
+        `30m ${confirmation30mTime} · display only`,
+      ].join(' · ')
+  return (
+    <div
+      style={healthy ? noticeDarkStyle : warningDarkStyle}
+      title={[
+        compactText(meta.generation_id),
+        compactText(meta.policy_version),
+        compactText(meta.membership_hash),
+      ].filter(Boolean).join(' · ')}
+    >
+      {text}
+    </div>
+  )
+}
+
 function CacheMonitorStrip({
   locale,
   cacheStatus,
@@ -11266,6 +11318,11 @@ function watchlistPoolCountText(
   const poolCounts = recordValue(meta.pool_counts)
   const selected = numberValue(poolCounts[keys[0]]) ?? numberValue(meta.count) ?? visibleCount
   const total = numberValue(poolCounts[keys[1]])
+  if (tab === 'focus_stocks' && (numberValue(meta.manual_attack_count) ?? 0) > 0) {
+    return total !== undefined && total > selected
+      ? `${countText(selected)} / ${countText(total)}`
+      : countText(selected)
+  }
   if (total === undefined || total <= selected) return countText(visibleCount)
   if (Math.round(selected) === visibleCount) {
     return `${countText(selected)} / ${countText(total)}`
@@ -11282,9 +11339,9 @@ function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): strin
     all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '最新涨跌=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
     macro_indices: ['宏观方向', '指数关键位和环境判断', '最新涨跌=指数快照', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
     sector_boards: ['板块异动', '先看板块强度，再看链主与弹性', '涨幅=当日板块', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
-    focus_stocks: ['买点池', '低吸/右侧进攻，先复核位置和失效条件', '最新涨跌=实时快照', 'Entry pool', 'left/right attack; review level and invalidation first', 'Day=realtime quote'],
+    focus_stocks: ['买点池', '日/周买点待复核；30m仅提示', '最新涨跌=实时快照', 'Entry pool', 'daily/weekly entry review; 30m is display only', 'Day=realtime quote'],
     risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '最新涨跌=实时快照', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
-    watch_stocks: ['盯盘池', '买点或均线共振还差一环', '最新涨跌=实时快照', 'Watch pool', 'setup or MA confirmation still missing', 'Day=realtime quote'],
+    watch_stocks: ['盯盘池', '等待下一次收盘融合确认；盘中不换池', '最新涨跌=实时快照', 'Watch pool', 'wait for next-close fusion; intraday data does not move pools', 'Day=realtime quote'],
     buy_candidates: ['线索池', '有线索但还不是硬买点', '最新涨跌=实时快照', 'Clue pool', 'sourced clue, not a hard entry yet', 'Day=realtime quote'],
   }
   const item = meta[tab]
@@ -11512,9 +11569,9 @@ function WatchlistTabbedTable({
       ? (locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entries')
       : (locale === 'zh-CN' ? '先看线索池' : 'Start with clues')
   const modeMeta = focusCount > 0
-    ? (locale === 'zh-CN' ? '先分低吸/右侧，再复核位置和失效条件' : 'Split left/right first, then review level and invalidation')
+    ? (locale === 'zh-CN' ? '复核日/周位置、均线和失效条件；30m仅提示' : 'Review daily/weekly level, MAs, and invalidation; 30m is display only')
     : watchCount > 0
-      ? (locale === 'zh-CN' ? '看还差大周期、30m还是5m/15m' : 'Check missing big cycle, 30m, or 5m/15m')
+      ? (locale === 'zh-CN' ? '等待下一次收盘融合确认；盘中周期不换池' : 'Wait for the next close; intraday timeframes do not change pools')
       : (locale === 'zh-CN' ? '线索不是买点' : 'A clue is not an entry')
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
@@ -11601,8 +11658,8 @@ function WatchlistTabbedTable({
                   {tabKey === 'buy_candidates'
                     ? (locale === 'zh-CN' ? '有线索，还不是买点' : 'Sourced clue, not an entry')
                     : tabKey === 'watch_stocks'
-                      ? (locale === 'zh-CN' ? '缺买点/均线/执行确认' : 'Missing setup, MA, or execution confirmation')
-                      : (locale === 'zh-CN' ? '低吸/右侧进攻，复核位置和失效条件' : 'Left/right attack; review level and invalidation')}
+                      ? (locale === 'zh-CN' ? '日/周候选观察；盘中周期不换池' : 'Daily/weekly watch; intraday signals do not change pools')
+                      : (locale === 'zh-CN' ? '买点待复核；30m仅提示' : 'Entry review; 30m is display only')}
                 </div>
               </button>
             </React.Fragment>

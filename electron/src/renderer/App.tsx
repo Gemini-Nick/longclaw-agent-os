@@ -2294,7 +2294,6 @@ export default function App() {
           reason,
           requested_by: 'longclaw-agent-os',
           force_live: reason === 'manual',
-          force_postmarket: reason === 'manual',
           run_optional_tasks: true,
         })
         recordObservationEvent('signals.refresh.trigger', {
@@ -2333,7 +2332,6 @@ export default function App() {
         reason: 'startup',
         requested_by: 'longclaw-agent-os',
         force_live: true,
-        force_postmarket: true,
         run_optional_tasks: true,
       })
       recordObservationEvent('signals.prewarm.startup', {

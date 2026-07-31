@@ -1200,7 +1200,6 @@ describe('LongclawControlPlaneClient simulated WeClaw to client flow', () => {
       reason: 'startup',
       requested_by: 'test',
       force_live: true,
-      force_postmarket: true,
       run_optional_tasks: true,
       wait: false,
     })
