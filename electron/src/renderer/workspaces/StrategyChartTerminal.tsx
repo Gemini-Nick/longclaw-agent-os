@@ -493,6 +493,26 @@ export type SignalChartCallout = SignalOverlayData & {
   itemCount: number
 }
 
+type StrategyTrendline = {
+  id?: string
+  kind?: 'support' | 'resistance' | string
+  direction?: 'ascending' | 'descending' | 'horizontal' | string
+  start_time?: number
+  end_time?: number
+  projection_time?: number
+  start_price?: number
+  end_price?: number
+  projected_price?: number
+  status?: string
+  distance_pct?: number
+  anchor_count?: number
+  anchor_quality?: number
+  confluence_count?: number
+  confidence?: number
+  timeframe?: string
+  source?: string
+}
+
 type DivergenceOverlayData = {
   label: string
   side: 'top' | 'bottom'
@@ -552,6 +572,8 @@ const VOLUME_SIGNAL_OVERLAY_GROUP = 'longclaw-volume-signals'
 const DIVERGENCE_OVERLAY_NAME = 'longclawMacdDivergenceMarker'
 const DIVERGENCE_OVERLAY_GROUP = 'longclaw-macd-divergence'
 const LEVEL_OVERLAY_GROUP = 'longclaw-levels'
+const TRENDLINE_OVERLAY_NAME = 'longclawTrendline'
+const TRENDLINE_OVERLAY_GROUP = 'longclaw-trendlines'
 const A_SHARE_VOLUME_INDICATOR_NAME = 'LONGCLAW_A_SHARE_VOLUME'
 const CANDLE_PANE_ID = 'candle_pane'
 const VOLUME_PANE_ID = 'volume_pane'
@@ -571,6 +593,7 @@ const KEY_MA_PERIODS = [5, 8, 10, 13, 20, 21]
 let signalOverlayRegistered = false
 let volumeSignalOverlayRegistered = false
 let divergenceOverlayRegistered = false
+let trendlineOverlayRegistered = false
 let volumeIndicatorRegistered = false
 let macdZeroIndicatorRegistered = false
 const terminalTheme = tradingDeskTheme.colors
@@ -4958,6 +4981,61 @@ function ensureDivergenceOverlay() {
   divergenceOverlayRegistered = true
 }
 
+function ensureTrendlineOverlay() {
+  if (trendlineOverlayRegistered) return
+  registerOverlay({
+    name: TRENDLINE_OVERLAY_NAME,
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates, bounding }: OverlayCreateFiguresCallbackParams) => {
+      const start = coordinates[0]
+      const end = coordinates[1] ?? coordinates[0]
+      if (!start || !end) return []
+      const data = recordValue(overlay.extendData)
+      const backgroundMode: ShellBackgroundMode = data.backgroundMode === 'light' ? 'light' : 'dark'
+      const tokens = chartColorTokens(backgroundMode)
+      const kind = compactText(data.kind)
+      const direction = compactText(data.direction)
+      const color = kind === 'resistance'
+        ? tokens.semanticDanger
+        : direction === 'horizontal'
+          ? tokens.semanticInfo
+          : tokens.semanticSuccess
+      const label = compactText(data.label, direction === 'descending' ? '下降阻力' : kind === 'support' ? '支撑' : '阻力')
+      const timeframe = compactText(data.timeframe)
+      const width = Math.max(48, Math.min(168, label.length * 8 + 18))
+      const height = 18
+      const chartWidth = bounding?.width ?? end.x + width + 6
+      const rectX = Math.max(2, Math.min(end.x + 5, chartWidth - width - 2))
+      const rectY = Math.max(4, end.y - height - 5)
+      return [
+        {
+          type: 'line',
+          attrs: { coordinates: [start, end] },
+          styles: { color, size: timeframe === 'weekly' ? 2.1 : direction === 'horizontal' ? 1.2 : 1.6, style: timeframe === 'weekly' ? 'dashed' : 'solid', dashedValue: [5, 4] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: { color: alphaColor(color, 0.15), borderColor: color, borderSize: 1, borderRadius: 3 },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: { x: rectX + 7, y: rectY + height / 2, text: label.slice(0, 16), align: 'left', baseline: 'middle' },
+          styles: { color, size: 9, weight: 800, family: 'IBM Plex Mono, Menlo, monospace' },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+  trendlineOverlayRegistered = true
+}
+
 function toKLineData(rawChart: Record<string, unknown> | undefined): KLineData[] {
   const rows = Array.isArray(rawChart?.ohlcv) ? rawChart.ohlcv : []
   return rows
@@ -5093,6 +5171,63 @@ function keyLevelsFromSymbolData(symbolData: WorkbenchSymbolData | null): Strate
   const chartReport = recordValue(symbolData.chart?.report)
   const chartLevels = chartReport.key_levels
   return Array.isArray(chartLevels) ? (chartLevels as StrategyKeyLevel[]) : []
+}
+
+export function trendlinesFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategyTrendline[] {
+  const chart = recordValue(symbolData?.chart)
+  const directRows = Array.isArray(chart.trendlines) ? chart.trendlines : []
+  const byTimeframe = recordValue(chart.trendlines_by_timeframe)
+  const nestedRows = Object.entries(byTimeframe).flatMap(([timeframe, value]) => {
+    const bucket = recordValue(value)
+    return (Array.isArray(bucket.trendlines) ? bucket.trendlines : []).map(item => ({
+      ...recordValue(item),
+      timeframe: compactText(recordValue(item).timeframe, timeframe),
+    }))
+  })
+  const rows = nestedRows.length > 0 ? nestedRows : directRows
+  return rows
+    .map(item => {
+      const row = recordValue(item)
+      const startTime = numberValue(row.start_time)
+      const projectionTime = numberValue(row.projection_time ?? row.end_time)
+      const startPrice = numberValue(row.start_price)
+      const projectedPrice = numberValue(row.projected_price ?? row.end_price)
+      if (!startTime || !projectionTime || startPrice === undefined || projectedPrice === undefined) return null
+      return {
+        ...row,
+        start_time: startTime,
+        end_time: projectionTime,
+        projection_time: projectionTime,
+        start_price: startPrice,
+        projected_price: projectedPrice,
+      } as StrategyTrendline
+    })
+    .filter((item): item is StrategyTrendline => Boolean(item))
+    .filter((item, index, all) => all.findIndex(candidate => (
+      candidate.timeframe === item.timeframe
+      && candidate.kind === item.kind
+      && candidate.direction === item.direction
+      && candidate.start_time === item.start_time
+      && candidate.projected_price === item.projected_price
+    )) === index)
+}
+
+function trendlineDisplayLabel(line: StrategyTrendline, locale: LongclawLocale): string {
+  const kind = line.kind === 'resistance' ? 'resistance' : 'support'
+  const direction = line.direction
+  const timeframe = compactText(line.timeframe)
+  if (locale !== 'zh-CN') {
+    const prefix = timeframe ? `${timeframe} · ` : ''
+    if (direction === 'descending') return `${prefix}Descending resistance`
+    if (direction === 'ascending') return `${prefix}Ascending support`
+    return `${prefix}${kind === 'support' ? 'Horizontal support' : 'Horizontal resistance'}`
+  }
+  const timeframeLabel: Record<string, string> = { weekly: '周', daily: '日', '60min': '60m', '30min': '30m', '15min': '15m', '5min': '5m' }
+  const prefix = timeframe ? `${timeframeLabel[timeframe] || timeframe}·` : ''
+  if (direction === 'descending') return `${prefix}下降趋势线阻力`
+  if (direction === 'ascending') return `${prefix}上升趋势线支撑`
+  const level = line.projected_price === undefined ? '' : ` ${line.projected_price.toFixed(2)}`
+  return `${prefix}${kind === 'support' ? '水平支撑' : '水平阻力'}${level}`
 }
 
 function latestClose(data: KLineData[]): number | undefined {
@@ -6073,6 +6208,36 @@ function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: Strateg
           backgroundColor: tokens.semanticInfo,
           size: 9,
         },
+      },
+    })
+  })
+}
+
+function createTrendlineOverlays(
+  chart: Chart,
+  trendlines: StrategyTrendline[],
+  backgroundMode: ShellBackgroundMode = 'dark',
+  locale: LongclawLocale = 'zh-CN',
+) {
+  chart.removeOverlay({ groupId: TRENDLINE_OVERLAY_GROUP })
+  trendlines.slice(0, 8).forEach(line => {
+    const startTime = numberValue(line.start_time)
+    const endTime = numberValue(line.projection_time ?? line.end_time)
+    const startPrice = numberValue(line.start_price)
+    const endPrice = numberValue(line.projected_price ?? line.end_price)
+    if (!startTime || !endTime || startPrice === undefined || endPrice === undefined) return
+    chart.createOverlay({
+      name: TRENDLINE_OVERLAY_NAME,
+      groupId: TRENDLINE_OVERLAY_GROUP,
+      lock: true,
+      points: [
+        { timestamp: startTime, value: startPrice },
+        { timestamp: endTime, value: endPrice },
+      ],
+      extendData: {
+        ...line,
+        label: trendlineDisplayLabel(line, locale),
+        backgroundMode,
       },
     })
   })
@@ -8211,6 +8376,7 @@ export function StrategyChartTerminal({
     [currentFreq, evidenceSignals],
   )
   const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
+  const chartTrendlines = useMemo(() => trendlinesFromSymbolData(symbolData), [symbolData])
   const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
   const liveRefresh = shouldUseLiveRefresh(shell?.session)
   const sectorTransitionRadar = useMemo(() => sectorTransitionRadarFromShell(shell), [shell])
@@ -9012,6 +9178,7 @@ export function StrategyChartTerminal({
     ensureSignalOverlay()
     ensureVolumeSignalOverlay()
     ensureDivergenceOverlay()
+    ensureTrendlineOverlay()
     ensureVolumeIndicator()
     ensureMacdZeroIndicator()
     const chart = init(chartContainerRef.current, {
@@ -9082,6 +9249,7 @@ export function StrategyChartTerminal({
     chart.removeOverlay({ groupId: VOLUME_SIGNAL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
     chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: TRENDLINE_OVERLAY_GROUP })
     if (chartDisplayData.length === 0) {
       chart.clearData()
       return
@@ -9090,12 +9258,13 @@ export function StrategyChartTerminal({
     createSignalOverlays(chart, chartCallouts, selectedChartCallout?.calloutId, selectChartCallout, backgroundMode)
     createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq, backgroundMode)
     createLevelOverlays(chart, chartDisplayData, chartKeyLevels, backgroundMode)
+    createTrendlineOverlays(chart, chartTrendlines, backgroundMode, locale)
     createDivergenceOverlays(chart, divergences, backgroundMode)
     if (!lastChartUpdateSilentRef.current) {
       chart.scrollToRealTime()
     }
     chart.resize()
-  }, [backgroundMode, chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, currentFreq, divergences, selectChartCallout, selectedChartCallout?.calloutId])
+  }, [backgroundMode, chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, chartTrendlines, currentFreq, divergences, locale, selectChartCallout, selectedChartCallout?.calloutId])
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {

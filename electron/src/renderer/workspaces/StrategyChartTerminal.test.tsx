@@ -38,6 +38,7 @@ import {
   timeframeBadgeDisplayLabel,
   watchlistGridTemplate,
   withSignalCalloutIds,
+  trendlinesFromSymbolData,
 } from './StrategyChartTerminal.js'
 
 describe('StrategyChartTerminal trader-facing text', () => {
@@ -145,6 +146,71 @@ describe('StrategyChartTerminal watchlist range layout', () => {
 describe('StrategyChartTerminal symbol cache', () => {
   it('normalizes symbol cache keys across freq aliases and casing', () => {
     expect(symbolDataCacheKey({ label: ' sh.601398 ', kind: 'STOCK', freq: '日线' })).toBe('stock|SH.601398|daily')
+  })
+})
+
+describe('StrategyChartTerminal trendlines', () => {
+  it('normalizes backend trendline geometry for the chart overlay', () => {
+    const lines = trendlinesFromSymbolData({
+      chart: {
+        trendlines: [{
+          kind: 'resistance',
+          direction: 'descending',
+          start_time: 100,
+          projection_time: 200,
+          start_price: 140,
+          projected_price: 100,
+        }],
+      },
+    })
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({
+      kind: 'resistance',
+      direction: 'descending',
+      end_time: 200,
+      projected_price: 100,
+    })
+  })
+
+  it('flattens multi-timeframe trendlines and preserves their timeframe labels', () => {
+    const lines = trendlinesFromSymbolData({
+      chart: {
+        trendlines: [{
+          kind: 'resistance',
+          direction: 'descending',
+          start_time: 100,
+          projection_time: 200,
+          start_price: 140,
+          projected_price: 100,
+        }],
+        trendlines_by_timeframe: {
+          weekly: {
+            trendlines: [{
+              kind: 'resistance',
+              direction: 'descending',
+              start_time: 100,
+              projection_time: 200,
+              start_price: 140,
+              projected_price: 100,
+            }],
+          },
+          daily: {
+            trendlines: [{
+              kind: 'support',
+              direction: 'ascending',
+              start_time: 120,
+              projection_time: 220,
+              start_price: 80,
+              projected_price: 110,
+            }],
+          },
+        },
+      },
+    })
+
+    expect(lines).toHaveLength(2)
+    expect(lines.map(line => line.timeframe)).toEqual(['weekly', 'daily'])
   })
 })
 
