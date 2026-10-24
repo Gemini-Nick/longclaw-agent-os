@@ -5,7 +5,10 @@ import {
   CacheMonitorStrip,
   DataDetails,
   RuntimeStatusNotice,
+  MaintenanceDiagnostics,
+  runtimeDataExplanation,
   PoolAuthorityStrip,
+  hasPublishedDailyBrief,
   chartKindLabel,
   chartFrequencyLabel,
   ControlledSessionNotice,
@@ -1305,10 +1308,10 @@ describe('StrategyChartTerminal truthful cache display', () => {
     expect(markup).toContain('总数未确认')
     expect(markup).toContain('数据完整度未确认')
     expect(markup).toContain('待验收')
-    expect(markup).toContain('待验证')
+    expect(markup).toContain('等待复验')
     expect(markup).toContain('处理 100%')
-    expect(markup).toContain('已处理 452/452')
-    expect(markup).toContain('已覆盖 0/452')
+    expect(markup).toContain('本次已处理 452')
+    expect(markup).toContain('本次日线核验未完成')
     expect(markup).toContain('flex-wrap:wrap')
     expect(markup).toContain('white-space:normal;overflow-wrap:anywhere')
     expect(markup).not.toContain('max-width:112px')
@@ -1356,8 +1359,8 @@ describe('StrategyChartTerminal controlled persistent read model', () => {
     </>)
     expect(markup).toContain('本地数据可查看')
     expect(markup).toContain('完整分析尚未完成')
-    expect(markup).toContain('待恢复')
-    expect(markup).toContain('来源暂未恢复')
+    expect(markup).toContain('部分未更新')
+    expect(markup).toContain('部分来源暂时无法更新')
   })
 })
 
@@ -1398,9 +1401,9 @@ describe('quote source recovery display', () => {
       result: { count: 417, live: 400, network_quotes: 81, cache_reused: 319, missing_current: 17 },
     }]
     const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
-    expect(markup).toContain('报价 400/417')
-    expect(markup).toContain('网络 81')
-    expect(markup).toContain('本地复用 319')
+    expect(markup).toContain('400/417')
+    expect(markup).toContain('本次获取 81 只')
+    expect(markup).toContain('读取已存 319 只')
   })
 })
 
@@ -1410,6 +1413,15 @@ function visibleSummary(markup: string): string {
 }
 
 describe('concise Chinese summaries with retained diagnostics', () => {
+  it('does not present a synthetic fallback zero count as a published strategy brief', () => {
+    const brief = { headline: '偏增量', summary: '0 buy candidates · 0 sell warnings', metadata: { source: 'agent-os-fallback' } } as any
+    expect(hasPublishedDailyBrief(brief)).toBe(false)
+    expect(hasPublishedDailyBrief({ ...brief, metadata: { source: 'signals-cache-status' } })).toBe(false)
+    expect(hasPublishedDailyBrief({ ...brief, headline: '2026-10-23 盘后简报', metadata: { source: 'signals-native-strategy' } })).toBe(true)
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" compact cacheStatus={{ ...incompleteCacheStatus(), available: false } as any} />)
+    expect(markup).toContain('行情暂未就绪')
+    expect(markup).not.toMatch(/OFF|更新进度 0%/)
+  })
   it('keeps source names, module codes and exceptions inside closed details', () => {
     const status = incompleteCacheStatus() as any
     status.recovery_state = 'source_blocked'
@@ -1419,7 +1431,7 @@ describe('concise Chinese summaries with retained diagnostics', () => {
     const visible = visibleSummary(markup)
     for (const token of ['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources', '分母待核', '交集', '受控运行', '对象数据', '源阻塞']) {
       expect(visible).not.toContain(token)
-      if (['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources'].includes(token)) expect(markup).toContain(token)
+      if (['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources'].includes(token)) expect(markup).not.toContain(token)
     }
     expect(markup).not.toMatch(/<details[^>]*\bopen(?:=|>)/)
     expect(visible).toContain('已存股票 5,219 · 总数未确认')
@@ -1435,11 +1447,12 @@ describe('concise Chinese summaries with retained diagnostics', () => {
       notices={['自动分析未启用', 'sector_transition_disabled', '盘后更新中']}
       error="RuntimeError: eastmoney ConnectionError" />)
     const visible = visibleSummary(markup)
-    expect(visible.match(/本地数据可查看/g)).toHaveLength(1)
-    expect(visible).toContain('完整分析尚未完成')
+    expect(visible.match(/可查看已存行情/g)).toHaveLength(1)
+    expect(markup).toContain('完整分析尚未完成')
     expect(visible).toContain('部分数据暂时无法更新')
     expect(visible).not.toMatch(/受控运行|RuntimeError|ConnectionError|eastmoney|disabled|自动分析未启用/)
-    expect(markup).toContain('RuntimeError: eastmoney ConnectionError')
+    expect(markup).not.toContain('RuntimeError: eastmoney ConnectionError')
+    expect(markup).toContain('查看维护诊断（技术信息）')
     expect(markup.match(/<details/g)).toHaveLength(1)
   })
 
@@ -1449,7 +1462,7 @@ describe('concise Chinese summaries with retained diagnostics', () => {
     const visible = visibleSummary(markup)
     expect(visible).toContain('策略名单尚未更新 · 当前为2026-09-01名单')
     expect(visible).not.toMatch(/r24|raw-generation|ineligible_sources|策略名单已更新/)
-    expect(markup).toContain('raw-generation')
+    expect(markup).not.toContain('raw-generation')
     expect(visibleSummary(renderToStaticMarkup(<PoolAuthorityStrip locale="zh-CN" tradeDate="2026-10-23"
       meta={{ status: 'healthy', base_trade_date: '2026-10-23' }} />))).toContain('策略名单已更新')
   })
@@ -1461,7 +1474,7 @@ describe('concise Chinese summaries with retained diagnostics', () => {
     const markup = renderToStaticMarkup(<SectorTransitionRadarPanel locale="zh-CN" radar={radar} pendingUpdate={false} />)
     expect(visibleSummary(markup)).toContain('板块转折雷达尚未启用')
     expect(visibleSummary(markup)).not.toMatch(/disabled|压力|释放|稳定转折|>0</)
-    expect(markup).toContain('sector_transition_disabled')
+    expect(markup).not.toContain('sector_transition_disabled')
   })
 
   it('distinguishes expired validation from disconnection and keeps the historic success inspectable', () => {
@@ -1471,10 +1484,12 @@ describe('concise Chinese summaries with retained diagnostics', () => {
     const visible = visibleSummary(markup)
     expect(visible).toContain('等待复验')
     expect(visible).toContain('来源状态尚未确认')
-    expect(markup).toContain('近15分钟有效验证 0/1')
+    expect(markup).not.toContain('近15分钟有效验证 0/1')
     expect(visible).toContain('不代表连接已中断')
     expect(visible).not.toMatch(/断连|全部失败|sina|20:39/)
-    expect(markup).toContain('2026-10-24T20:39:00')
+    expect(markup).not.toContain('2026-10-24T20:39:00')
+    const diagnostics = renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open data={status} onClose={() => {}} />)
+    expect(diagnostics).toContain('2026-10-24T20:39:00')
   })
 
   it('keeps explicit zero categories and missing quote counts honest', () => {
@@ -1502,8 +1517,85 @@ describe('concise Chinese summaries with retained diagnostics', () => {
     expect(chartFrequencyLabel('daily', 'zh-CN')).toBe('日线')
     expect(traderDisplayText('confirmed · unconfirmed · conf 0.8 · MA21 MACD ETF', 'zh-CN')).toBe('已确认 · 待确认 · 置信度 80% · MA21 MACD ETF')
     expect(traderDisplayText('RuntimeError: ineligible_sources', 'zh-CN')).toBe('部分数据暂不可用')
-    const markup = renderToStaticMarkup(<DataDetails locale="zh-CN" data={{ market_timezone: 'Asia/Shanghai' }} />)
+    const markup = renderToStaticMarkup(<DataDetails locale="zh-CN" reason="已存行情可查看" impact="数据未完整" nextStep="无需手动操作" />)
     expect(visibleSummary(markup)).not.toContain('Asia/Shanghai')
-    expect(markup).toContain('Asia/Shanghai')
+    expect(markup).not.toContain('Asia/Shanghai')
+    expect(markup).not.toContain('<pre')
+  })
+})
+
+
+describe('actionable data explanation and separate maintenance diagnostics', () => {
+  const session = { startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false, running: false }
+  const poolMeta = { status: 'healthy', base_trade_date: '2026-09-01', revision: 24, stale_reason: 'ineligible_sources' }
+
+  it('explains the saved date, older list impact and no manual repair without claiming any job is running', () => {
+    const explanation = runtimeDataExplanation({ locale: 'zh-CN', session, cacheStatus: incompleteCacheStatus() as any, poolMeta })
+    expect(explanation.summary).toContain('可查看2026-10-23已存行情')
+    expect(explanation.summary).toContain('名单仍为2026-09-01，不能视作当日结果')
+    expect(explanation.summary).toContain('无需额外操作')
+    expect(explanation.reason).toContain('验证已过期或尚未完成')
+    expect(explanation.impact).toContain('不代表实时或完整覆盖')
+    expect(explanation.impact).toContain('旧名单仅供回看')
+    expect(explanation.nextStep).toContain('无需手动修库或执行命令')
+    expect(JSON.stringify(explanation)).not.toMatch(/正在|自动修复|处理中|已连接|策略已就绪/)
+    expect(session.running).toBe(false)
+  })
+
+  it('does not serialize raw records anywhere in the ordinary collapsed or expanded explanation', () => {
+    const raw = { error: 'RuntimeError: ConnectionError', module: 'stock_daily', sentinel: 'raw-secret-marker' }
+    const markup = renderToStaticMarkup(<RuntimeStatusNotice locale="zh-CN" session={session}
+      cacheStatus={incompleteCacheStatus() as any} poolMeta={poolMeta} notices={['sector_transition_disabled']} error={raw.error} diagnostics={raw} />)
+    expect(markup).toContain('原因：')
+    expect(markup).toContain('影响：')
+    expect(markup).toContain('下一步：')
+    expect(markup.match(/<details/g)).toHaveLength(1)
+    expect(markup).not.toMatch(/<pre|role="dialog"|raw-secret-marker|RuntimeError|ConnectionError|stock_daily|sector_transition_disabled|&quot;session&quot;/)
+    expect(markup).toContain('查看维护诊断（技术信息）')
+  })
+
+  it('renders no raw JSON when maintenance is closed and provides a separate explicitly labelled dialog when opened', () => {
+    const raw = { error: 'ConnectionError', provider: 'sina', last_valid_success_at: '2026-10-24T20:39:51' }
+    expect(renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open={false} data={raw} onClose={() => {}} />)).toBe('')
+    const opened = renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open data={raw} onClose={() => {}} />)
+    expect(opened).toContain('role="dialog"')
+    expect(opened).toContain('aria-modal="true"')
+    expect(opened).toContain('position:fixed')
+    expect(opened).toContain('维护诊断 · 仅供排查问题')
+    expect(opened).toContain('关闭，返回看盘')
+    expect(opened).toContain('ConnectionError')
+    expect(opened).toContain('2026-10-24T20:39:51')
+    expect(opened).toContain('无需据此修改数据库或执行命令')
+    expect(renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open={false} data={raw} onClose={() => {}} />)).not.toContain('<pre')
+  })
+
+  it('does not even serialize diagnostic data before the maintenance window is explicitly opened', () => {
+    const raw = { toJSON() { throw new Error('raw data must stay out of ordinary UI') } }
+    expect(() => renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open={false} data={raw} onClose={() => {}} />)).not.toThrow()
+    expect(() => renderToStaticMarkup(<RuntimeStatusNotice locale="zh-CN" session={session} cacheStatus={incompleteCacheStatus() as any} poolMeta={poolMeta} diagnostics={raw} />)).not.toThrow()
+  })
+
+  it('keeps unavailable data and unknown dates uncertain instead of inventing a recovery action or success', () => {
+    const status = incompleteCacheStatus() as any
+    status.available = false
+    status.daily_coverage_date = ''
+    status.mongo_stock_cache.freqs[0].today_symbols = null
+    status.mongo_stock_cache.summary.daily_today_symbols = null
+    const explanation = runtimeDataExplanation({ locale: 'zh-CN', cacheStatus: status, poolMeta: {}, session: { ...session, read_model_ready: false } })
+    expect(explanation.readable).toBe(false)
+    expect(explanation.summary).toContain('当前可用行情尚未确认')
+    expect(explanation.summary).toContain('暂不依赖当前结果')
+    expect(explanation.nextStep).not.toMatch(/刷新|修复中|等待自动|点击|启动|命令：/)
+    expect(explanation.summary).not.toContain('2026-10-23已存行情')
+  })
+
+  it('removes diagnostics and repeated details from the chart-side and four-card summaries', () => {
+    const status = incompleteCacheStatus() as any
+    status.provider_health[0].last_error_type = 'ConnectionError'
+    const markup = renderToStaticMarkup(<><CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />
+      <PoolAuthorityStrip locale="zh-CN" meta={poolMeta} tradeDate="2026-10-23" /></>)
+    expect(markup).not.toMatch(/<details|<pre|ConnectionError|ineligible_sources/)
+    expect(markup).toContain('已存股票 5,219 · 总数未确认')
+    expect(markup).toContain('当前为2026-09-01名单')
   })
 })

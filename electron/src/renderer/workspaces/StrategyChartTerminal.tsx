@@ -3905,10 +3905,10 @@ export function sourceMonitorSummary(
     return {
       providerCount: sourceTotalCount,
       problemCount: sourceProblemCount,
-      value: 'OFF',
+      value: locale === 'zh-CN' ? '待连接' : 'OFF',
       progress: 0,
       status: 'degraded',
-      statusLabel: 'OFF',
+      statusLabel: locale === 'zh-CN' ? '待连接' : 'OFF',
       detail: locale === 'zh-CN' ? '行情不可用' : 'cache unavailable',
       subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type)),
     }
@@ -4333,28 +4333,120 @@ export function marketLabel(session?: WorkbenchSession, locale: LongclawLocale =
     : (session.running ? (locale === 'zh-CN' ? '启动中' : 'Booting') : (locale === 'zh-CN' ? '等待' : 'Idle'))
 }
 
-export function DataDetails({ locale, data }: { locale: LongclawLocale; data: unknown }) {
+export function DataDetails({ locale, reason, impact, nextStep, children }: {
+  locale: LongclawLocale; reason: string; impact: string; nextStep: string; children?: React.ReactNode
+}) {
+  const zh = locale === 'zh-CN'
   return <details style={{ ...mutedTextStyle, marginTop: 4 }}>
-    <summary style={{ cursor: 'pointer' }}>{locale === 'zh-CN' ? '数据详情' : 'Data details'}</summary>
-    <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(data, null, 2)}</pre>
+    <summary style={{ cursor: 'pointer' }}>{zh ? '数据说明' : 'About this data'}</summary>
+    <div style={{ display: 'grid', gap: 4, paddingTop: 6 }}>
+      <div><strong>{zh ? '原因：' : 'Reason: '}</strong>{reason}</div>
+      <div><strong>{zh ? '影响：' : 'Impact: '}</strong>{impact}</div>
+      <div><strong>{zh ? '下一步：' : 'Next: '}</strong>{nextStep}</div>
+      {children}
+    </div>
   </details>
 }
 
-export function RuntimeStatusNotice({ session, locale, notices = [], error, frequencyNotice, chartNotice }: {
-  session?: WorkbenchSession; locale: LongclawLocale; notices?: string[]; error?: string | null; frequencyNotice?: string | null; chartNotice?: string | null
+export function MaintenanceDiagnostics({ locale, data, open, onClose }: {
+  locale: LongclawLocale; data: unknown; open: boolean; onClose: () => void
 }) {
-  const controlled = isControlledReadOnlySession(session)
-  if (!controlled && !notices.length && !error && !frequencyNotice && !chartNotice) return null
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const contentRef = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const previous = document.activeElement as HTMLElement | null
+    closeRef.current?.focus()
+    return () => previous?.focus()
+  }, [open])
+  if (!open) return null
   const zh = locale === 'zh-CN'
-  const message = [
-    controlled ? marketLabel(session, locale) : '',
-    controlled && session?.ready !== true ? (zh ? '完整分析尚未完成' : 'Full analysis pending') : '',
-    error ? (zh ? '部分数据暂时无法更新' : 'Some data could not be updated') : '',
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.65)', display: 'grid', placeItems: 'center', padding: 20 }}
+    onClick={event => { if (event.target === event.currentTarget) onClose() }}
+    onKeyDown={event => {
+      event.stopPropagation()
+      if (event.key === 'Escape') { event.preventDefault(); onClose() }
+      if (event.key === 'Tab') {
+        // Keep keyboard navigation in the maintenance window; chart shortcuts stay inactive.
+        event.preventDefault()
+        if (document.activeElement === closeRef.current) contentRef.current?.focus()
+        else closeRef.current?.focus()
+      }
+    }}>
+    <section role="dialog" aria-modal="true" aria-label={zh ? '维护诊断（技术信息）' : 'Maintenance diagnostics'}
+      style={{ ...terminalPanelStyle, width: 'min(900px, 100%)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 16, boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <strong>{zh ? '维护诊断 · 仅供排查问题' : 'Maintenance diagnostics · Technical use only'}</strong>
+        <button type="button" ref={closeRef} style={terminalButtonStyle(false, false)} onClick={onClose}>{zh ? '关闭，返回看盘' : 'Close and return to charts'}</button>
+      </div>
+      <p style={mutedTextStyle}>{zh ? '以下为原始技术记录，你无需据此修改数据库或执行命令。关闭此窗口即可继续看盘。' : 'Raw technical records. No database changes or commands are required. Close this window to return to charts.'}</p>
+      <pre ref={contentRef} tabIndex={0} aria-label={zh ? '原始技术记录' : 'Raw technical records'} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', overflow: 'auto', fontSize: 11 }}>{JSON.stringify(data, null, 2)}</pre>
+    </section>
+  </div>
+}
+
+export function runtimeDataExplanation({ locale, session, cacheStatus, poolMeta = {}, error, chartNotice, frequencyNotice }: {
+  locale: LongclawLocale; session?: WorkbenchSession; cacheStatus?: StrategyDashboard['cache_status']; poolMeta?: Record<string, unknown>;
+  error?: string | null; chartNotice?: string | null; frequencyNotice?: string | null
+}) {
+  const zh = locale === 'zh-CN'
+  const coverage = cacheStatus ? mongoCoverageState(cacheStatus, locale) : undefined
+  const readable = isControlledReadModelReady(session) || Boolean(cacheStatus?.available && coverage?.dailyToday !== undefined && coverage.dailyToday > 0)
+  const dataDate = coverage?.coverageDate || ''
+  const targetDate = compactText(cacheStatus?.trade_date)
+  const listDate = compactText(poolMeta.base_trade_date)
+  const listUpdated = compactText(poolMeta.status) === 'healthy' && Boolean(targetDate && listDate === targetDate)
+  const hasList = Object.keys(poolMeta).length > 0
+  const source = cacheStatus ? sourceMonitorSummary(cacheStatus.provider_health || [], cacheStatus.blockers || [], locale, cacheStatus.available) : undefined
+  const dataText = readable
+    ? (zh ? (dataDate ? `可查看${dataDate}已存行情` : '可查看已存行情，数据日期待确认') : `Saved market data is readable${dataDate ? ` as of ${dataDate}` : '; date unconfirmed'}`)
+    : (zh ? '当前可用行情尚未确认' : 'Available market data is not confirmed')
+  const listText = hasList
+    ? (zh ? listUpdated ? `策略名单已更新至${listDate}` : listDate ? `名单仍为${listDate}，不能视作当日结果` : '名单日期未确认，不能视作当日结果'
+      : listUpdated ? `Strategy list updated to ${listDate}` : `Strategy list ${listDate || 'date unknown'} is not a confirmed current-day result`)
+    : ''
+  const limits = [
+    error ? (zh ? '部分数据暂时无法更新' : 'Some data cannot be updated') : '',
     chartNotice ? (zh ? '所选图表数据尚不完整' : 'Selected chart data is incomplete') : '',
     frequencyNotice ? (zh ? '当前显示可用周期' : 'Showing an available timeframe') : '',
-    !controlled && notices.length ? (zh ? '部分功能暂不可用' : 'Some features are unavailable') : '',
-  ].filter(Boolean).join(' · ')
-  return <div style={noticeDarkStyle}>{message}<DataDetails locale={locale} data={{ session, notices, error, frequencyNotice, chartNotice }} /></div>
+    source && source.status !== 'ok' ? (zh ? source.status === 'partial' ? '来源更新尚待确认' : '部分来源暂时无法更新' : 'Source updates are not confirmed') : '',
+    session && session.ready !== true ? (zh ? '完整分析尚未完成' : 'Full analysis is not complete') : '',
+  ].filter(Boolean)
+  const reason = zh
+    ? [readable ? '当前显示的是已保存的行情。' : '目前没有足够信息确认行情是否可用。',
+      hasList && !listUpdated ? '当日策略名单尚未核验。' : '',
+      source && source.status === 'partial' ? '近期来源验证已过期或尚未完成，这不等于连接中断。' : source && source.status !== 'ok' ? '部分来源未能返回已验证的数据。' : '',
+      ...limits.map(text => `${text}。`)].filter(Boolean).join('')
+    : [dataText, listText, ...limits].filter(Boolean).join('. ')
+  const impact = zh
+    ? [readable ? '可以查看已有K线和报价，但不代表实时或完整覆盖。' : '请先不要根据尚未确认的数据作判断。',
+      hasList && !listUpdated ? '旧名单仅供回看，不能作为当日新策略结果。' : '',
+      chartNotice ? '所选图表可能缺少部分K线。' : ''].filter(Boolean).join('')
+    : 'Saved data is not a guarantee of live or complete coverage. An older list is for historical reference only.'
+  const nextStep = zh
+    ? readable ? '你可以继续查看已存行情，无需手动修库或执行命令。使用当日策略前，先确认名单日期已更新。' : '无需手动修库或执行命令；在数据可用范围确认前，请暂不依赖当前结果。'
+    : 'No database repair or commands are required. Check the list date before using current-day strategy results.'
+  return { summary: [dataText, listText, ...limits.slice(0, 1), zh ? (readable ? '无需额外操作' : '暂不依赖当前结果') : 'No manual repair required'].filter(Boolean).join(' · '), reason, impact, nextStep, readable, listUpdated }
+}
+
+export function RuntimeStatusNotice({ session, locale, notices = [], error, frequencyNotice, chartNotice, cacheStatus, poolMeta, diagnostics }: {
+  session?: WorkbenchSession; locale: LongclawLocale; notices?: string[]; error?: string | null; frequencyNotice?: string | null; chartNotice?: string | null;
+  cacheStatus?: StrategyDashboard['cache_status']; poolMeta?: Record<string, unknown>; diagnostics?: unknown
+}) {
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const controlled = isControlledReadOnlySession(session)
+  if (!cacheStatus && !poolMeta && !controlled && !notices.length && !error && !frequencyNotice && !chartNotice) return null
+  const explanation = runtimeDataExplanation({ locale, session, cacheStatus, poolMeta, error, frequencyNotice, chartNotice })
+  return <div style={noticeDarkStyle}>
+    {explanation.summary}
+    <DataDetails locale={locale} reason={explanation.reason} impact={explanation.impact} nextStep={explanation.nextStep}>
+      <button type="button" style={{ ...terminalButtonStyle(false, false), justifySelf: 'start' }} onClick={() => setMaintenanceOpen(true)}>
+        {locale === 'zh-CN' ? '查看维护诊断（技术信息）' : 'Open maintenance diagnostics (technical)'}
+      </button>
+    </DataDetails>
+    <MaintenanceDiagnostics locale={locale} open={maintenanceOpen} onClose={() => setMaintenanceOpen(false)}
+      data={{ cacheStatus, poolMeta, session, notices, error, frequencyNotice, chartNotice, diagnostics }} />
+  </div>
 }
 
 export function ControlledSessionNotice({ session, locale }: { session?: WorkbenchSession; locale: LongclawLocale }) {
@@ -9998,10 +10090,12 @@ export function StrategyChartTerminal({
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
-      <PoolAuthorityStrip locale={locale} meta={recordValue(shell?.pool_meta)} tradeDate={effectiveCacheStatus.trade_date} />
       <RuntimeStatusNotice session={shell?.session} locale={locale} notices={shell?.notices}
-        error={error} frequencyNotice={freqFallbackNotice} chartNotice={chartCacheNotice} />
-      {compactText(dailyBrief.headline) || compactText(dailyBrief.summary) ? (
+        error={error} frequencyNotice={freqFallbackNotice} chartNotice={chartCacheNotice}
+        cacheStatus={effectiveCacheStatus} poolMeta={recordValue(shell?.pool_meta)}
+        diagnostics={{ chart: { subtitle: summarySubtitle, timezone: chartTimezone, lineage: chartLineage, formula: chartFormula, meta: chartMeta },
+          connectorAlerts, dataIssueRows, radar: sectorTransitionRadar?.freshness }} />
+      {hasPublishedDailyBrief(dailyBrief) ? (
         <div style={noticeDarkStyle}>
           {[
             traderDisplayText(compactText(dailyBrief.headline), locale),
@@ -10087,7 +10181,6 @@ export function StrategyChartTerminal({
               <div style={chartTitleStyle(layoutMode)}>{summaryTitle}</div>
               <div style={chartSubtitleStyle}>
                 {[compactText(symbolData?.target?.symbol), chartFrequencyLabel(currentFreq, locale), latestSignal ? traderDisplayText(latestSignal, locale) : ''].filter(Boolean).join(' · ')}
-                <DataDetails locale={locale} data={{ subtitle: summarySubtitle, timezone: chartTimezone, lineage: chartLineage, formula: chartFormula, meta: chartMeta, connectorAlerts }} />
               </div>
               <div style={chartModeSummaryStyle}>
                 <span style={chartModeCurrentStyle}>{chartModeLabel(activeChartMode, locale)}</span>
@@ -10536,51 +10629,7 @@ export function StrategyChartTerminal({
             )}
           </Panel>
 
-          <Panel
-            title={locale === 'zh-CN' ? '数据状态' : 'Data status'}
-            meta={dataIssueRows.length > 0 ? String(dataIssueRows.length) : (locale === 'zh-CN' ? '正常' : 'OK')}
-          >
-            <details><summary style={mutedTextStyle}>{locale === 'zh-CN' ? '数据详情' : 'Data details'}</summary>
-            <div style={compactListStyle}>
-              <div style={dataRowStyle}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                  <div style={rowTitleStyle}>{locale === 'zh-CN' ? '图表刷新时钟' : 'Chart refresh clock'}</div>
-                  <div style={mutedLineStyle}>
-                    {[
-                      chartTimezone,
-                      compactText(shell?.session?.data_as_of)
-                        ? `${locale === 'zh-CN' ? '截至' : 'as of'} ${compactText(shell?.session?.data_as_of)}`
-                        : '',
-                      compactText(shell?.session?.next_refresh_at)
-                        ? `${locale === 'zh-CN' ? '下次刷新' : 'next'} ${compactText(shell?.session?.next_refresh_at)}`
-                        : '',
-                    ].filter(Boolean).join(' · ')}
-                  </div>
-                </div>
-              </div>
-              {dataIssueRows.length === 0 ? (
-                <div style={emptyStateDarkStyle}>
-                  {locale === 'zh-CN' ? '数据正常。' : 'Data OK.'}
-                </div>
-              ) : (
-                dataIssueRows.slice(0, 5).map((row, index) => (
-                  <div key={`${compactText(row.lane) || compactText(row.source_id, 'source')}-${index}`} style={dataRowStyle}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                      <div style={rowTitleStyle}>{traderDisplayText(compactText(row.lane) || sourceConfidenceLabel(row), locale)}</div>
-                      <div style={mutedTwoLineStyle}>
-                        {[compactText(row.status), compactText(row.freshness), compactText(row.reason), compactText(row.summary)]
-                          .filter(Boolean)
-                          .map(item => traderDisplayText(item, locale))
-                          .join(' · ')}
-                      </div>
-                    </div>
-                    <div style={monoTextStyle}>{traderDisplayText(compactText(row.market) || compactText(row.active_markets) || compactText(row.source), locale)}</div>
-                  </div>
-                ))
-              )}
-            </div>
-            </details>
-          </Panel>
+
         </div>
         )}
       </div>
@@ -11279,7 +11328,13 @@ export function PoolAuthorityStrip({ locale, meta, tradeDate }: { locale: Longcl
   const text = locale === 'zh-CN'
     ? `${healthy ? '策略名单已更新' : '策略名单尚未更新'}${date ? ` · 当前为${date}名单` : ' · 名单日期未确认'}`
     : `${healthy ? 'Strategy list updated' : 'Strategy list awaiting update'}${date ? ` · dated ${date}` : ' · date unknown'}`
-  return <div style={healthy ? noticeDarkStyle : warningDarkStyle}>{text}<DataDetails locale={locale} data={meta} /></div>
+  return <div style={healthy ? noticeDarkStyle : warningDarkStyle}>{text}</div>
+}
+
+export function hasPublishedDailyBrief(brief: StrategyDashboard['daily_brief']): boolean {
+  const source = compactText(recordValue(brief.metadata).source)
+  if (['agent-os-fallback', 'signals-cache-status'].includes(source)) return false
+  return Boolean(compactText(brief.headline) || compactText(brief.summary))
 }
 
 export function CacheMonitorStrip({
@@ -11438,7 +11493,7 @@ export function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? `关注列表行情 ${liveValue} · 更新进度 ${Math.round(postPct)}% · ${mongoCoverage.detail} · 来源${sourceSummary.statusLabel}`
+      ? (!cacheStatus.available ? '行情暂未就绪，等待读取已存数据' : `关注列表行情 ${liveValue} · 更新进度 ${Math.round(postPct)}% · ${mongoCoverage.detail} · 来源${sourceSummary.statusLabel}`)
       : `live ${liveStatusLabel} · post ${postStatusLabel} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
@@ -11511,10 +11566,9 @@ export function CacheMonitorStrip({
           status={sourceSummary.status}
           statusLabel={locale === 'zh-CN' ? (sourceSummary.status === 'ok' ? '已验证' : sourceSummary.status === 'partial' ? '待确认' : '部分未更新') : sourceSummary.statusLabel}
           detail={locale === 'zh-CN' ? (!cacheStatus.available ? '行情暂时无法读取' : sourceSummary.status === 'ok' ? '近期请求已返回有效数据' : sourceSummary.status === 'partial' ? '来源状态尚未确认' : '部分来源暂时无法更新') : sourceSummary.detail}
-          subdetail={locale === 'zh-CN' ? (sourceSummary.status === 'partial' ? '验证已过期或尚未完成，不代表连接已中断' : '已存行情仍可查看') : sourceSummary.subdetail}
+          subdetail={locale === 'zh-CN' ? (!cacheStatus.available ? '数据可用范围尚待确认' : sourceSummary.status === 'partial' ? '验证已过期或尚未完成，不代表连接已中断' : '已存行情仍可查看') : sourceSummary.subdetail}
         />
       </div>
-      <DataDetails locale={locale} data={{ cacheStatus, taskSummary: stockDaily, moduleSummary: { liveDetail, liveSubdetail }, postSummary: { postDetail, postSubdetail }, sourceSummary }} />
     </div>
   )
 }
@@ -11633,7 +11687,6 @@ export function SectorTransitionRadarPanel({
     || radar.freshness.blockers.includes('sector_transition_disabled')) {
     return <section style={{ ...sectorTransitionShellStyle, display: 'flex', alignItems: 'baseline', gap: 8 }} aria-label={locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}>
       <div style={mutedTextStyle}>{locale === 'zh-CN' ? '板块转折雷达尚未启用' : 'Sector transition radar is not enabled'}</div>
-      <DataDetails locale={locale} data={radar.freshness} />
     </section>
   }
   const cards = (radar.states.length > 0 ? radar.states : radar.events).slice(0, 4)
