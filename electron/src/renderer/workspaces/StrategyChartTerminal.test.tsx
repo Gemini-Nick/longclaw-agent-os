@@ -2,16 +2,26 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
+  CacheMonitorStrip,
+  DataDetails,
+  RuntimeStatusNotice,
+  PoolAuthorityStrip,
+  chartKindLabel,
+  chartFrequencyLabel,
+  ControlledSessionNotice,
   compactPercentTextStyle,
   dailyMaAcceptanceSignalForChart,
   displaySignalsForChart,
   isMovingAverageLevelName,
+  isControlledReadModelReady,
   looksLikeIndexValue,
   maAcceptanceFromSymbolData,
   maPeriodsForChart,
   marketSnapshotFromSymbolData,
+  marketLabel,
   missingRangeReturnLabel,
   mongoCoverageState,
+  postmarketDailyTaskSummary,
   sectorTargetCountForContext,
   sectorTargetRowsForContext,
   SectorTransitionRadarPanel,
@@ -46,7 +56,7 @@ describe('StrategyChartTerminal trader-facing text', () => {
     expect(traderDisplayText(
       'technical_trigger · security_chain_memberships · context_only · stale · conf 0.88 · index_report · BLOCKED',
       'zh-CN',
-    )).toBe('技术信号 · 产业链归属 · 仅作背景参考 · 数据待更新 · 可信度 88% · 指数信号 · 待恢复')
+    )).toBe('技术信号 · 产业链归属 · 仅作背景参考 · 数据待更新 · 置信度 88% · 指数信号 · 待恢复')
     expect(traderDisplayText(
       'Signals shell 正在构建 · signals-web2 · standby',
       'zh-CN',
@@ -486,13 +496,13 @@ describe('StrategyChartTerminal sector transition radar', () => {
 describe('StrategyChartTerminal source monitor', () => {
   it('shows loaded provider records instead of zero when sources are healthy', () => {
     const summary = sourceMonitorSummary([
-      { provider: 'eastmoney', endpoint: 'fullmarket_spot_snapshot', domain: 'market_data', status: 'ok', last_success_at: '2026-05-13T09:44:00' },
-      { provider: 'sina', endpoint: 'stock_minute', domain: 'minute', status: 'ok', last_success_at: '2026-05-13T09:43:00' },
+      { provider: 'eastmoney', endpoint: 'fullmarket_spot_snapshot', domain: 'market_data', status: 'ok', is_current_healthy: true, last_success_at: '2026-05-13T09:44:00' },
+      { provider: 'sina', endpoint: 'stock_minute', domain: 'minute', status: 'ok', is_current_healthy: true, last_success_at: '2026-05-13T09:43:00' },
     ], [], 'zh-CN')
 
     expect(summary.value).toBe('2')
     expect(summary.statusLabel).toBe('正常')
-    expect(summary.detail).toBe('行情通道畅通')
+    expect(summary.detail).toBe('近15分钟验证通过')
   })
 
   it('marks provider health as not loaded when no source records arrive', () => {
@@ -501,7 +511,7 @@ describe('StrategyChartTerminal source monitor', () => {
     expect(summary.value).toBe('0')
     expect(summary.status).toBe('partial')
     expect(summary.statusLabel).toBe('未加载')
-    expect(summary.detail).toBe('行情通道未加载')
+    expect(summary.detail).toBe('尚无来源验证记录')
   })
 
   it('shows the concrete provider endpoint when fullmarket is blocked', () => {
@@ -517,8 +527,9 @@ describe('StrategyChartTerminal source monitor', () => {
     ], [], 'zh-CN')
 
     expect(summary.statusLabel).toBe('待恢复')
-    expect(summary.detail).toBe('部分行情暂未更新')
-    expect(summary.subdetail).toBe('SSLError')
+    expect(summary.detail).toContain('来源暂未恢复')
+    expect(summary.subdetail).not.toContain('SSLError')
+    expect(summary.subdetail).not.toContain('eastmoney')
   })
 
   it('drops stale blocker state after the fullmarket provider recovers', () => {
@@ -528,6 +539,7 @@ describe('StrategyChartTerminal source monitor', () => {
         endpoint: 'fullmarket_spot_snapshot',
         domain: 'market_data',
         status: 'ok',
+        is_current_healthy: true,
         last_success_at: '2026-05-13T09:45:00',
         last_error_type: 'old SSLError',
         updated_at: '2026-05-13T09:45:00',
@@ -536,7 +548,7 @@ describe('StrategyChartTerminal source monitor', () => {
 
     expect(summary.status).toBe('ok')
     expect(summary.statusLabel).toBe('正常')
-    expect(summary.detail).toBe('行情通道畅通')
+    expect(summary.detail).toBe('近15分钟验证通过')
   })
 })
 
@@ -565,6 +577,7 @@ describe('StrategyChartTerminal mongo coverage', () => {
         ],
         summary: {
           daily_coverage_date: '2026-05-29',
+          daily_expected_universe_verified: true,
           minute_universe_total: 72,
           minute_universe_cached: 72,
           minute_universe_pending: 0,
@@ -601,6 +614,7 @@ describe('StrategyChartTerminal mongo coverage', () => {
         ],
         summary: {
           daily_coverage_date: '2026-05-12',
+          daily_expected_universe_verified: true,
           minute_universe_total: 0,
         },
       },
@@ -628,7 +642,7 @@ describe('StrategyChartTerminal mongo coverage', () => {
           { freq: '周线', symbols: 5506, latest_dt: '2026-05-15', is_partial_period: false },
           { freq: '月线', symbols: 5506, latest_dt: '2026-05-15', is_partial_period: true },
         ],
-        summary: { daily_coverage_date: '2026-05-15' },
+        summary: { daily_coverage_date: '2026-05-15', daily_expected_universe_verified: true },
       },
       terminal_outputs: [],
       provider_health: [],
@@ -1179,5 +1193,317 @@ describe('StrategyChartTerminal chart display filters', () => {
     expect(isMovingAverageLevelName('21日线')).toBe(true)
     expect(isMovingAverageLevelName('二买 日')).toBe(false)
     expect(isMovingAverageLevelName('前高压力')).toBe(false)
+  })
+})
+
+function incompleteCacheStatus() {
+  return {
+    available: true, trade_date: '2026-10-23', daily_coverage_date: '2026-10-23',
+    live_low_latency: { modules: [], summary: {} },
+    postmarket_backfill: {
+      run: { status: 'ok' }, summary: { critical_status: 'ok', critical_progress_pct: 100 },
+      tasks: [{ module: 'stock_daily', status: 'ok', close_complete: false, cache_usable: false,
+        result_summary: { result: { processed: 452, total: 452, covered_codes: 0, progress_pct: 100, quality: 'provisional_close' } } }],
+    },
+    mongo_stock_cache: {
+      freqs: [{ freq: '日线', symbols: null, today_symbols: 5219, quality: 'inventory_observed' }],
+      summary: { daily_symbols: null, daily_today_symbols: 5219, daily_coverage_pct: null,
+        daily_expected_universe_verified: false,
+        daily_observed_etf_coverage: { cached: 9, snapshot_symbols: 1657 } },
+    },
+    terminal_outputs: [], provider_health: [{ provider: 'eastmoney', status: 'cooldown_expired' }], blockers: [],
+  }
+}
+
+describe('StrategyChartTerminal truthful cache display', () => {
+  it('keeps nullable denominators unknown and ETF snapshot intersection separate', () => {
+    const summary = mongoCoverageState(incompleteCacheStatus() as any, 'zh-CN')
+
+    expect(summary.progress).toBeNull()
+    expect(summary.status).toBe('partial')
+    expect(summary.detail).toContain('已存股票 5,219 · 总数未确认')
+    expect(summary.statusLabel).toBe('总数未确认')
+    expect(summary.compactLabel).not.toContain('/0')
+    expect(summary.compactLabel).toContain('完整性未确认')
+    expect(summary.compactLabel).not.toContain('正式收盘')
+    expect(summary.subdetail).toContain('已存 9 只ETF日线')
+  })
+
+  it('does not infer a verified denominator from a historical all-time symbol count', () => {
+    const status = incompleteCacheStatus()
+    status.mongo_stock_cache.freqs[0].symbols = 5219 as any
+    delete (status.mongo_stock_cache.summary as any).daily_expected_universe_verified
+
+    expect(mongoCoverageState(status as any, 'zh-CN').progress).toBeNull()
+  })
+
+  it('only computes a percentage from a verified positive daily denominator', () => {
+    const status = incompleteCacheStatus()
+    status.mongo_stock_cache.freqs[0].symbols = 5219 as any
+    status.mongo_stock_cache.summary.daily_expected_universe_verified = true
+
+    expect(mongoCoverageState(status as any, 'zh-CN').progress).toBe(100)
+    expect(mongoCoverageState(status as any, 'zh-CN').compactLabel).not.toContain('正式收盘')
+    status.mongo_stock_cache.freqs[0].symbols = 0 as any
+    expect(mongoCoverageState(status as any, 'zh-CN').progress).toBeNull()
+  })
+
+  it('preserves unknown daily observations rather than rendering zero', () => {
+    const status = incompleteCacheStatus()
+    status.mongo_stock_cache.freqs[0].today_symbols = null as any
+    status.mongo_stock_cache.summary.daily_today_symbols = null as any
+    const summary = mongoCoverageState(status as any, 'zh-CN')
+    expect(summary.dailyToday).toBeUndefined()
+    expect(summary.detail).toContain('未知')
+    expect(summary.detail).not.toContain('股票 0')
+  })
+
+  it('keeps expired cooldown pending until a successful request validates the source', () => {
+    for (const row of [
+      { provider: 'eastmoney', status: 'cooldown_expired' },
+      { provider: 'eastmoney', status: 'cooldown', cooldown_until: '2026-10-24T18:00:00', updated_at: '2026-10-24T18:05:00' },
+    ]) {
+      const summary = sourceMonitorSummary([row], [], 'zh-CN')
+      expect(summary.status).toBe('partial')
+      expect(summary.statusLabel).toBe('待验证')
+      expect(summary.progress).toBe(0)
+      expect(summary.detail).toContain('近15分钟有效验证 0/1')
+      expect(summary.subdetail).toContain('不代表连接已中断')
+    }
+  })
+
+  it('does not hide an active provider failure behind another expired cooldown', () => {
+    const summary = sourceMonitorSummary([
+      { provider: 'eastmoney', status: 'cooldown_expired' },
+      { provider: 'sina', status: 'error', updated_at: '2026-10-24T18:05:00' },
+    ], [], 'zh-CN')
+    expect(summary.status).toBe('error')
+  })
+
+  it('distinguishes processed, covered, final close and usable cache from nested results', () => {
+    const tasks = incompleteCacheStatus().postmarket_backfill.tasks
+    const summary = postmarketDailyTaskSummary(tasks, 'zh-CN')
+    expect(summary).toMatchObject({ processed: 452, expected: 452, covered: 0, finalTasks: 0, usableTasks: 0, fullyUsable: false })
+    expect(summary.detail).toContain('已处理 452/452 · 已覆盖 0/452')
+    expect(summary.detail).toContain('正式收盘 0/1任务 · 缓存可用 0/1任务')
+    delete (tasks[0].result_summary.result as any).covered_codes
+    expect(postmarketDailyTaskSummary(tasks, 'zh-CN').covered).toBeUndefined()
+    expect(postmarketDailyTaskSummary(tasks, 'zh-CN').detail).toContain('已覆盖 ?/452')
+  })
+
+  it('requires finality, usability and full explicit coverage before accepting daily tasks', () => {
+    const task = { module: 'stock_daily', processed: 10, covered: 10, expected: 10, close_complete: true, cache_usable: false }
+    expect(postmarketDailyTaskSummary([task], 'zh-CN').fullyUsable).toBe(false)
+    task.cache_usable = true
+    expect(postmarketDailyTaskSummary([task], 'zh-CN').fullyUsable).toBe(true)
+    task.covered = 9
+    expect(postmarketDailyTaskSummary([task], 'zh-CN').fullyUsable).toBe(false)
+  })
+
+  it('renders pending daily coverage and wraps long badges for narrow card widths', () => {
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={incompleteCacheStatus() as any} />)
+    expect(markup).toContain('总数未确认')
+    expect(markup).toContain('数据完整度未确认')
+    expect(markup).toContain('待验收')
+    expect(markup).toContain('待验证')
+    expect(markup).toContain('处理 100%')
+    expect(markup).toContain('已处理 452/452')
+    expect(markup).toContain('已覆盖 0/452')
+    expect(markup).toContain('flex-wrap:wrap')
+    expect(markup).toContain('white-space:normal;overflow-wrap:anywhere')
+    expect(markup).not.toContain('max-width:112px')
+  })
+})
+
+describe('StrategyChartTerminal controlled persistent read model', () => {
+  it.each(['bounded_readonly', 'bounded_no_backfill'])('shows cache readiness independently from analysis for %s', startup_profile => {
+    const session = { startup_profile, read_only: true, read_model_ready: true, ready: false, running: false }
+    const original = { ...session }
+    expect(isControlledReadModelReady(session)).toBe(true)
+    expect(marketLabel(session, 'zh-CN')).toBe('本地数据可查看')
+    const markup = renderToStaticMarkup(<ControlledSessionNotice session={session} locale="zh-CN" />)
+    expect(markup).toContain('完整分析尚未完成')
+    expect(markup).toContain('当前显示已存数据')
+    expect(markup).not.toContain('完整分析已就绪')
+    expect(session).toEqual(original)
+    expect(session.ready).toBe(false)
+  })
+
+  it('does not infer nonempty persistent cache merely from a controlled profile', () => {
+    const session = { startup_profile: 'bounded_readonly', read_only: true, ready: false }
+    expect(isControlledReadModelReady(session)).toBe(false)
+    expect(marketLabel(session, 'zh-CN')).toBe('本地数据加载中')
+  })
+
+  it('ignores the cache shortcut outside an explicit read-only bounded profile', () => {
+    for (const session of [
+      { startup_profile: 'normal', read_only: true, read_model_ready: true, ready: false, running: true },
+      { startup_profile: 'bounded_readonly', read_only: false, read_model_ready: true, ready: false, running: true },
+    ]) {
+      expect(isControlledReadModelReady(session)).toBe(false)
+      expect(marketLabel(session, 'zh-CN')).toBe('启动中')
+      expect(renderToStaticMarkup(<ControlledSessionNotice session={session} locale="zh-CN" />)).toBe('')
+    }
+    expect(marketLabel({ ready: true }, 'zh-CN')).toBe('已就绪')
+  })
+
+  it('retains source failures while showing readable cache and incomplete analysis', () => {
+    const cacheStatus = incompleteCacheStatus()
+    cacheStatus.provider_health = [{ provider: 'eastmoney', status: 'degraded', updated_at: '2026-10-24T18:00:00' } as any]
+    const markup = renderToStaticMarkup(<>
+      <ControlledSessionNotice locale="zh-CN" session={{ startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false }} />
+      <CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={cacheStatus as any} />
+    </>)
+    expect(markup).toContain('本地数据可查看')
+    expect(markup).toContain('完整分析尚未完成')
+    expect(markup).toContain('待恢复')
+    expect(markup).toContain('来源暂未恢复')
+  })
+})
+
+
+describe('source health governance', () => {
+  it('does not treat legacy ok or running records as validated success', () => {
+    for (const status of ['ok', 'running', 'unverified', 'stale']) {
+      const summary = sourceMonitorSummary([{ provider: 'sina', status, last_success_at: '2026-10-24T19:00:00' }], [], 'zh-CN')
+      expect(summary.status).toBe('partial')
+      expect(summary.value).toBe('0/1')
+      expect(summary.progress).toBe(0)
+    }
+  })
+  it('keeps one provider failure visible while a validated alternate is available', () => {
+    const summary = sourceMonitorSummary([
+      { provider: 'sina', endpoint: 'stock_minute', domain: 'minute', status: 'degraded' },
+      { provider: 'tencent', endpoint: 'stock_minute', domain: 'minute', status: 'ok', is_current_healthy: true },
+    ], [], 'zh-CN')
+    expect(summary.value).toBe('1/2')
+    expect(summary.problemCount).toBe(1)
+    expect(summary.status).toBe('error')
+  })
+  it('respects quarantined null coverage instead of reviving legacy ratios', () => {
+    const summary = postmarketDailyTaskSummary([{ module: 'stock_daily', covered: null, expected: null,
+      result_summary: { covered_codes: 5255, total: 1657, coverage_pct: 317.14 }, coverage_integrity: 'invalid',
+    }], 'zh-CN')
+    expect(summary.covered).toBeUndefined()
+    expect(summary.expected).toBeUndefined()
+    expect(summary.fullyUsable).toBe(false)
+  })
+})
+
+
+describe('quote source recovery display', () => {
+  it('separates current usable quotes from network and locally reused quotes', () => {
+    const status = incompleteCacheStatus() as any
+    status.live_low_latency.modules = [{ module: 'quote_snapshots', status: 'partial',
+      result: { count: 417, live: 400, network_quotes: 81, cache_reused: 319, missing_current: 17 },
+    }]
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    expect(markup).toContain('报价 400/417')
+    expect(markup).toContain('网络 81')
+    expect(markup).toContain('本地复用 319')
+  })
+})
+
+
+function visibleSummary(markup: string): string {
+  return markup.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '')
+}
+
+describe('concise Chinese summaries with retained diagnostics', () => {
+  it('keeps source names, module codes and exceptions inside closed details', () => {
+    const status = incompleteCacheStatus() as any
+    status.recovery_state = 'source_blocked'
+    status.critical_blocker = { provider: 'eastmoney', module: 'stock_daily', last_error_type: 'ConnectionError' }
+    status.provider_health[0].last_error_type = 'RuntimeError: ineligible_sources'
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    const visible = visibleSummary(markup)
+    for (const token of ['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources', '分母待核', '交集', '受控运行', '对象数据', '源阻塞']) {
+      expect(visible).not.toContain(token)
+      if (['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources'].includes(token)) expect(markup).toContain(token)
+    }
+    expect(markup).not.toMatch(/<details[^>]*\bopen(?:=|>)/)
+    expect(visible).toContain('已存股票 5,219 · 总数未确认')
+    expect(visible).toContain('已存 9 只ETF日线')
+    expect(visible).not.toContain('1,657')
+    expect(visible).not.toContain('正式收盘 0/1任务')
+    expect(visible).toContain('本次日线核验未完成')
+  })
+
+  it('shows one runtime notice and preserves all raw notices without presenting them as strategy results', () => {
+    const markup = renderToStaticMarkup(<RuntimeStatusNotice locale="zh-CN"
+      session={{ startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false }}
+      notices={['自动分析未启用', 'sector_transition_disabled', '盘后更新中']}
+      error="RuntimeError: eastmoney ConnectionError" />)
+    const visible = visibleSummary(markup)
+    expect(visible.match(/本地数据可查看/g)).toHaveLength(1)
+    expect(visible).toContain('完整分析尚未完成')
+    expect(visible).toContain('部分数据暂时无法更新')
+    expect(visible).not.toMatch(/受控运行|RuntimeError|ConnectionError|eastmoney|disabled|自动分析未启用/)
+    expect(markup).toContain('RuntimeError: eastmoney ConnectionError')
+    expect(markup.match(/<details/g)).toHaveLength(1)
+  })
+
+  it('does not label a healthy but old list as updated for the target date', () => {
+    const markup = renderToStaticMarkup(<PoolAuthorityStrip locale="zh-CN" tradeDate="2026-10-23"
+      meta={{ status: 'healthy', base_trade_date: '2026-09-01', revision: 24, stale_reason: 'ineligible_sources', generation_id: 'raw-generation' }} />)
+    const visible = visibleSummary(markup)
+    expect(visible).toContain('策略名单尚未更新 · 当前为2026-09-01名单')
+    expect(visible).not.toMatch(/r24|raw-generation|ineligible_sources|策略名单已更新/)
+    expect(markup).toContain('raw-generation')
+    expect(visibleSummary(renderToStaticMarkup(<PoolAuthorityStrip locale="zh-CN" tradeDate="2026-10-23"
+      meta={{ status: 'healthy', base_trade_date: '2026-10-23' }} />))).toContain('策略名单已更新')
+  })
+
+  it('renders disabled radar as one short line without zero stages or blocker codes', () => {
+    const radar = sectorTransitionRadarFromShell({ sector_transition_radar: {
+      freshness: { status: 'disabled', blockers: ['sector_transition_disabled'] }, states: [], events: [],
+    } } as any)
+    const markup = renderToStaticMarkup(<SectorTransitionRadarPanel locale="zh-CN" radar={radar} pendingUpdate={false} />)
+    expect(visibleSummary(markup)).toContain('板块转折雷达尚未启用')
+    expect(visibleSummary(markup)).not.toMatch(/disabled|压力|释放|稳定转折|>0</)
+    expect(markup).toContain('sector_transition_disabled')
+  })
+
+  it('distinguishes expired validation from disconnection and keeps the historic success inspectable', () => {
+    const status = incompleteCacheStatus() as any
+    status.provider_health = [{ provider: 'sina', status: 'stale', last_valid_success_at: '2026-10-24T20:39:00' }]
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    const visible = visibleSummary(markup)
+    expect(visible).toContain('等待复验')
+    expect(visible).toContain('来源状态尚未确认')
+    expect(markup).toContain('近15分钟有效验证 0/1')
+    expect(visible).toContain('不代表连接已中断')
+    expect(visible).not.toMatch(/断连|全部失败|sina|20:39/)
+    expect(markup).toContain('2026-10-24T20:39:00')
+  })
+
+  it('keeps explicit zero categories and missing quote counts honest', () => {
+    const status = incompleteCacheStatus() as any
+    status.live_low_latency = { summary: { ok_modules: 0, total_modules: 1 }, modules: [{ module: 'quote_snapshots', status: 'ok', result: { count: 417 } }] }
+    const visible = visibleSummary(renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />))
+    expect(visible).toContain('0/1')
+    expect(visible).not.toContain('报价 0/417')
+    expect(visible).toContain('可用数据类别数')
+  })
+
+  it('does not convert an out-of-range stock count to complete coverage or infer a missing date', () => {
+    const status = incompleteCacheStatus() as any
+    status.mongo_stock_cache.freqs[0].symbols = 5000
+    status.mongo_stock_cache.summary.daily_expected_universe_verified = true
+    expect(mongoCoverageState(status, 'zh-CN').progress).toBeNull()
+    expect(mongoCoverageState(status, 'zh-CN').statusLabel).toBe('数量待确认')
+    status.daily_coverage_date = ''
+    expect(mongoCoverageState(status, 'zh-CN').isCurrent).toBe(false)
+    expect(mongoCoverageState(status, 'zh-CN').statusLabel).toBe('日期未确认')
+  })
+
+  it('localizes chart identity and confirmation labels while preserving standard indicators', () => {
+    expect(chartKindLabel('INDEX', 'zh-CN')).toBe('指数')
+    expect(chartFrequencyLabel('daily', 'zh-CN')).toBe('日线')
+    expect(traderDisplayText('confirmed · unconfirmed · conf 0.8 · MA21 MACD ETF', 'zh-CN')).toBe('已确认 · 待确认 · 置信度 80% · MA21 MACD ETF')
+    expect(traderDisplayText('RuntimeError: ineligible_sources', 'zh-CN')).toBe('部分数据暂不可用')
+    const markup = renderToStaticMarkup(<DataDetails locale="zh-CN" data={{ market_timezone: 'Asia/Shanghai' }} />)
+    expect(visibleSummary(markup)).not.toContain('Asia/Shanghai')
+    expect(markup).toContain('Asia/Shanghai')
   })
 })

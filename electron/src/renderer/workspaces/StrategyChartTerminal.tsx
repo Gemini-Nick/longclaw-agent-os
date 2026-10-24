@@ -112,6 +112,9 @@ declare global {
 
 type WorkbenchSession = {
   ready?: boolean
+  startup_profile?: string
+  read_only?: boolean
+  read_model_ready?: boolean
   running?: boolean
   label?: string
   mode?: string
@@ -927,6 +930,7 @@ const cacheMonitorStripStyle: React.CSSProperties = {
 
 const cacheMonitorToolbarStyle: React.CSSProperties = {
   display: 'flex',
+  flexWrap: 'wrap',
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 8,
@@ -946,15 +950,17 @@ const cacheMonitorToolbarTitleStyle: React.CSSProperties = {
 const cacheMonitorToolbarMetaStyle: React.CSSProperties = {
   ...mutedLineStyle,
   fontSize: 9,
-  whiteSpace: 'nowrap',
+  minWidth: 0,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
 }
 
 function cacheMonitorGridStyle(mode: TerminalLayoutMode): React.CSSProperties {
   return {
     display: 'grid',
     gridTemplateColumns: mode === 'focus'
-      ? 'repeat(2, minmax(0, 1fr))'
-      : 'repeat(4, minmax(0, 1fr))',
+      ? 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))'
+      : 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
     gap: 4,
   }
 }
@@ -973,6 +979,7 @@ const cacheMonitorCellStyle: React.CSSProperties = {
 
 const cacheMonitorHeaderStyle: React.CSSProperties = {
   display: 'flex',
+  flexWrap: 'wrap',
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: 6,
@@ -1040,6 +1047,8 @@ const cacheMonitorMetaStyle: React.CSSProperties = {
   fontSize: 9,
   lineHeight: 1.18,
   minHeight: 12,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
 }
 
 const cacheMonitorDetailStrongStyle: React.CSSProperties = {
@@ -1048,15 +1057,17 @@ const cacheMonitorDetailStrongStyle: React.CSSProperties = {
   fontSize: 9,
   fontWeight: 700,
   lineHeight: 1.15,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
 }
 
 const cacheStatusChipStyle = (color: string): React.CSSProperties => ({
   display: 'inline-flex',
   alignItems: 'center',
-  maxWidth: 112,
+  boxSizing: 'border-box',
+  minWidth: 0,
+  maxWidth: '100%',
+  flex: '0 1 auto',
   padding: '2px 6px',
   borderRadius: tradingDeskTheme.radius.pill,
   border: `1px solid ${color}`,
@@ -1066,9 +1077,8 @@ const cacheStatusChipStyle = (color: string): React.CSSProperties => ({
   fontSize: 10,
   fontWeight: 800,
   lineHeight: 1.15,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
 })
 
 const compactListStyle: React.CSSProperties = {
@@ -3861,32 +3871,15 @@ function cacheProblemModules(summary: Record<string, unknown>, modules: Record<s
     .join('/')
 }
 
-function isActiveProviderProblem(item: Record<string, unknown>): boolean {
-  const status = compactText(item.status).toLowerCase()
-  if (!['cooldown', 'degraded', 'error', 'stale'].includes(status)) return false
-  if (['degraded', 'error', 'stale'].includes(status) && !compactText(item.updated_at)) return false
-  if (status !== 'cooldown') return true
-  const cooldownUntil = compactText(item.cooldown_until)
-  const updatedAt = compactText(item.updated_at)
-  if (cooldownUntil && updatedAt && cooldownUntil <= updatedAt) return false
-  return true
+function providerCurrentStatus(item: Record<string, unknown>): string {
+  const status = compactText(item.current_health, compactText(item.status)).toLowerCase()
+  if (status === 'ok') return item.is_current_healthy === true ? 'ok' : 'unverified'
+  return status === 'running' || !status ? 'unverified' : status
 }
 
-function providerHasHealthyPeer(item: Record<string, unknown>, rows: Record<string, unknown>[]): boolean {
-  const provider = compactText(item.provider)
-  const domain = compactText(item.domain)
-  const endpoint = compactText(item.endpoint)
-  if (!domain || !endpoint) return false
-  return rows.some(peer => {
-    if (compactText(peer.provider) === provider) return false
-    if (compactText(peer.domain) !== domain || compactText(peer.endpoint) !== endpoint) return false
-    const status = compactText(peer.status).toLowerCase()
-    return ['ok', 'running'].includes(status) && Boolean(compactText(peer.last_success_at))
-  })
-}
-
-function activeProviderProblems(providerHealth: Record<string, unknown>[]): Record<string, unknown>[] {
-  return providerHealth.filter(item => isActiveProviderProblem(item) && !providerHasHealthyPeer(item, providerHealth))
+function activeProviderProblems(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  // A usable alternate source does not repair the failed provider itself.
+  return rows.filter(item => providerCurrentStatus(item) !== 'ok')
 }
 
 export function sourceMonitorSummary(
@@ -3901,6 +3894,12 @@ export function sourceMonitorSummary(
   const sourceTotalCount = providerHealth.length
   const taskBlockerCount = blockersInput.length
   const firstProviderProblem = providerProblems[0] ?? {}
+  const pendingValidation = providerProblems.length > 0 && providerProblems.every(item => {
+    const status = providerCurrentStatus(item)
+    return ['unverified', 'stale', 'unknown'].includes(status) || status === 'cooldown_expired' || (status === 'cooldown'
+      && Boolean(compactText(item.cooldown_until)) && Boolean(compactText(item.updated_at))
+      && compactText(item.cooldown_until) <= compactText(item.updated_at))
+  })
 
   if (!cacheAvailable) {
     return {
@@ -3920,15 +3919,15 @@ export function sourceMonitorSummary(
       providerCount: sourceTotalCount,
       problemCount: sourceProblemCount,
       value: sourceTotalCount > 0
-        ? `${countText(sourceProblemCount)}/${countText(sourceTotalCount)}`
+        ? `${countText(sourceTotalCount - sourceProblemCount)}/${countText(sourceTotalCount)}`
         : countText(sourceProblemCount),
       progress: sourceTotalCount > 0 ? ((sourceTotalCount - sourceProblemCount) / sourceTotalCount) * 100 : 0,
-      status: 'error',
-      statusLabel: locale === 'zh-CN' ? '待恢复' : 'BLOCKED',
-      detail: locale === 'zh-CN'
-        ? '部分行情暂未更新'
+      status: pendingValidation ? 'partial' : 'error',
+      statusLabel: pendingValidation ? (locale === 'zh-CN' ? '待验证' : 'UNVERIFIED') : (locale === 'zh-CN' ? '待恢复' : 'BLOCKED'),
+      detail: pendingValidation ? (locale === 'zh-CN' ? `近15分钟有效验证 ${sourceTotalCount - sourceProblemCount}/${sourceTotalCount}` : 'Awaiting validated data; historical success is insufficient') : locale === 'zh-CN'
+        ? `来源暂未恢复 · 近15分钟有效验证 ${sourceTotalCount - sourceProblemCount}/${sourceTotalCount}`
         : `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`,
-      subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type, locale === 'zh-CN' ? '查看行情通道定位问题' : 'check provider_health for source detail')),
+      subdetail: locale === 'zh-CN' ? (pendingValidation ? '验证已过期或尚未完成，不代表连接已中断' : '已存数据仍可查看，更新可能延迟') : 'See data details for source history',
     }
   }
 
@@ -3940,7 +3939,7 @@ export function sourceMonitorSummary(
       progress: 0,
       status: 'partial',
       statusLabel: locale === 'zh-CN' ? '未加载' : 'NO DATA',
-      detail: locale === 'zh-CN' ? '行情通道未加载' : 'provider_health not loaded',
+      detail: locale === 'zh-CN' ? '尚无来源验证记录' : 'provider_health not loaded',
       subdetail: locale === 'zh-CN'
         ? `${countText(taskBlockerCount)} 个补数任务等待`
         : `${countText(taskBlockerCount)} task blockers shown in data tasks`,
@@ -3954,7 +3953,7 @@ export function sourceMonitorSummary(
     progress: 100,
     status: 'ok',
     statusLabel: locale === 'zh-CN' ? '正常' : 'OK',
-    detail: locale === 'zh-CN' ? '行情通道畅通' : 'no blocking source',
+    detail: locale === 'zh-CN' ? '近15分钟验证通过' : 'no blocking source',
     subdetail: locale === 'zh-CN'
       ? `${countText(sourceTotalCount)} 个行情通道 · ${countText(taskBlockerCount)} 个补数任务等待`
       : `${countText(sourceTotalCount)} provider records · ${countText(taskBlockerCount)} task blockers shown in data tasks`,
@@ -3977,6 +3976,8 @@ function cacheStatusLabel(value: unknown, fallback: string, locale: LongclawLoca
     if (text === 'running') return '更新中'
     if (text === 'partial') return '部分完成'
     if (text === 'pending') return '等待更新'
+    if (['failed', 'error', 'degraded', 'source_blocked'].includes(text)) return '暂未恢复'
+    return '待更新'
   }
   if (text === 'ok') return 'OK'
   if (text === 'running') return 'RUNNING'
@@ -3988,7 +3989,7 @@ function cacheStatusLabel(value: unknown, fallback: string, locale: LongclawLoca
 function recoveryStateLabel(value: unknown, locale: LongclawLocale): string {
   const state = compactText(value).toLowerCase()
   if (state === 'waiting_for_source' || state === 'source_blocked' || state === 'partial/source_blocked') {
-    return locale === 'zh-CN' ? '源阻塞' : 'SOURCE'
+    return locale === 'zh-CN' ? '来源待恢复' : 'SOURCE'
   }
   if (state === 'old_cache_readable') return locale === 'zh-CN' ? '旧行情可读' : 'OLD CACHE'
   if (state === 'postmarket_running') return locale === 'zh-CN' ? '恢复中' : 'RUNNING'
@@ -4006,15 +4007,18 @@ export function mongoCoverageState(
   const dailyCache = firstRecord(freqs, 'freq', '日线')
   const weeklyCache = firstRecord(freqs, 'freq', '周线')
   const monthlyCache = firstRecord(freqs, 'freq', '月线')
-  const dailySymbols = numberValue(dailyCache.symbols) ?? 0
-  const dailyToday = numberValue(dailyCache.today_symbols) ?? 0
+  const dailySymbols = numberValue(dailyCache.symbols)
+  const dailyToday = numberValue(dailyCache.today_symbols) ?? numberValue(mongoSummary.daily_today_symbols)
+  const denominatorKnown = dailySymbols !== undefined && dailySymbols > 0 && mongoSummary.daily_expected_universe_verified === true
+  const dailyCount = dailyToday === undefined ? (locale === 'zh-CN' ? '未知' : 'unknown') : countText(dailyToday)
+  const dailyRatio = denominatorKnown ? `${dailyCount}/${countText(dailySymbols)}` : `${dailyCount} · ${locale === 'zh-CN' ? '总数未确认' : 'denominator pending'}`
   const coverageDate =
     compactText(recordValue(cacheStatus).daily_coverage_date)
     || compactText(mongoSummary.daily_coverage_date)
     || compactText(dailyCache.coverage_date)
   const tradeDate = compactText(cacheStatus.trade_date)
-  const isCurrent = Boolean(!tradeDate || !coverageDate || coverageDate === tradeDate)
-  const progress = dailySymbols ? (dailyToday / dailySymbols) * 100 : 0
+  const isCurrent = Boolean(tradeDate && coverageDate && coverageDate === tradeDate)
+  const progress = denominatorKnown && dailyToday !== undefined && dailyToday >= 0 && dailyToday <= dailySymbols! ? (dailyToday / dailySymbols!) * 100 : null
   const minuteFreqs = freqs
     .filter(row => ['5分钟', '15分钟', '30分钟', '60分钟'].includes(compactText(row.freq)))
     .map(row => `${compactText(row.freq)} ${countText(row.today_symbols)}`)
@@ -4034,26 +4038,31 @@ export function mongoCoverageState(
     || ['running', 'partial'].includes(postCriticalStatus)
     || recoveryState === 'postmarket_running'
   const currentCoveragePending = isCurrent
-    && (minuteUniversePending > 0 || (dailySymbols > 0 && dailyToday < dailySymbols))
+    && (minuteUniversePending > 0 || (denominatorKnown && dailyToday !== undefined && dailyToday < dailySymbols!))
   const detail = locale === 'zh-CN'
     ? (isCurrent
-      ? `当日日线 ${countText(dailyToday)}/${countText(dailySymbols)}`
-      : `旧行情可读 ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
+      ? `已存股票 ${dailyRatio}`
+      : `旧行情可读 ${coverageDate || '-'} ${dailyRatio}`)
     : (isCurrent
-      ? `current daily ${countText(dailyToday)}/${countText(dailySymbols)}`
-      : `old cache readable ${coverageDate || '-'} ${countText(dailyToday)}/${countText(dailySymbols)}`)
-  const subdetail = locale === 'zh-CN'
+      ? `observed stocks ${dailyRatio}`
+      : `old cache readable ${coverageDate || '-'} ${dailyRatio}`)
+  const minuteDetail = locale === 'zh-CN'
     ? (minuteUniverseTotal
       ? `分钟候选 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · 待 ${countText(minuteUniversePending)} · 失败 ${countText(minuteUniverseError)}`
       : `分钟覆盖：${minuteFreqs || '0'}`)
     : (minuteUniverseTotal
       ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · pending ${countText(minuteUniversePending)} · failed ${countText(minuteUniverseError)}`
       : `minute coverage: ${minuteFreqs || '0'}`)
+  const etfs = recordValue(mongoSummary.daily_observed_etf_coverage)
+  const etfDetail = numberValue(etfs.cached) !== undefined && numberValue(etfs.snapshot_symbols) !== undefined
+    ? (locale === 'zh-CN' ? `已存 ${countText(etfs.cached)} 只ETF日线` : `ETF snapshot intersection ${countText(etfs.cached)}/${countText(etfs.snapshot_symbols)} (separate scope)`)
+    : ''
+  const subdetail = [etfDetail, minuteDetail].filter(Boolean).join(' · ')
   const status = !cacheStatus.available
     ? 'degraded'
     : minuteUniverseError > 0
       ? 'degraded'
-      : !isCurrent
+      : !isCurrent || !coverageDate || progress === null
       ? 'partial'
       : currentCoveragePending
         ? (backfillActive ? 'running' : 'partial')
@@ -4074,11 +4083,13 @@ export function mongoCoverageState(
   ).toLowerCase()
   const qualityLabel = quality === 'provisional_close' || booleanValue(dailyCache.provisional_close)
     ? (locale === 'zh-CN' ? '临时收盘' : 'provisional')
-    : quality
+    : ['final_close', 'source_confirmed_close', 'official'].includes(quality)
       ? (locale === 'zh-CN' ? '正式收盘' : 'official')
+      : quality
+        ? (locale === 'zh-CN' ? '完整性未确认' : 'inventory observed')
       : ''
   const compactPeriods = [
-    `${locale === 'zh-CN' ? '日' : 'D'} ${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    `${locale === 'zh-CN' ? '日' : 'D'} ${datePrefix}${dailyRatio}`,
     periodState(weeklyCache, locale === 'zh-CN' ? '周' : 'W'),
     periodState(monthlyCache, locale === 'zh-CN' ? '月' : 'M'),
     qualityLabel,
@@ -4091,11 +4102,46 @@ export function mongoCoverageState(
     dailyToday,
     progress,
     status,
-    statusLabel: `${datePrefix}${countText(dailyToday)}/${countText(dailySymbols)}`,
+    statusLabel: !coverageDate || !tradeDate ? (locale === 'zh-CN' ? '日期未确认' : 'DATE UNKNOWN') : progress === null ? (locale === 'zh-CN' ? (denominatorKnown ? '数量待确认' : '总数未确认') : 'COVERAGE UNKNOWN') : (locale === 'zh-CN' ? '数量已核验' : 'COUNT VERIFIED'),
     compactLabel: compactPeriods,
     detail,
     subdetail,
   }
+}
+
+export function postmarketDailyTaskSummary(tasks: Record<string, unknown>[], locale: LongclawLocale) {
+  const dailyTasks = tasks.filter(task => compactText(task.module) === 'stock_daily')
+  const rows = dailyTasks.map(task => {
+    const summary = recordValue(task.result_summary)
+    const result = recordValue(summary.result)
+    const cursor = recordValue(task.cursor)
+    const metric = (key: string, ...fallbacks: string[]) => {
+      if (Object.prototype.hasOwnProperty.call(task, key)) return numberValue(task[key])
+      const source = Object.keys(result).length ? result : summary
+      return firstNumberValue(...fallbacks.map(field => source[field]), ...fallbacks.map(field => cursor[field]))
+    }
+    return {
+      processed: metric('processed', 'processed'),
+      covered: metric('covered', 'covered_codes', 'covered'),
+      expected: metric('expected', 'expected_codes', 'total'),
+      closeComplete: task.close_complete === true,
+      cacheUsable: task.cache_usable === true,
+    }
+  })
+  const sumKnown = (key: 'processed' | 'covered' | 'expected') => rows.length && rows.every(row => row[key] !== undefined)
+    ? rows.reduce((sum, row) => sum + row[key]!, 0) : undefined
+  const expected = sumKnown('expected')
+  const processed = sumKnown('processed')
+  const covered = sumKnown('covered')
+  const finalTasks = rows.filter(row => row.closeComplete).length
+  const usableTasks = rows.filter(row => row.cacheUsable).length
+  const knownCount = (count: number | undefined) => count === undefined ? '?' : countText(count)
+  const detail = locale === 'zh-CN'
+    ? `已处理 ${knownCount(processed)}/${knownCount(expected)} · 已覆盖 ${knownCount(covered)}/${knownCount(expected)} · 正式收盘 ${finalTasks}/${rows.length}任务 · 缓存可用 ${usableTasks}/${rows.length}任务`
+    : `processed ${knownCount(processed)}/${knownCount(expected)} · covered ${knownCount(covered)}/${knownCount(expected)} · final ${finalTasks}/${rows.length} tasks · usable ${usableTasks}/${rows.length} tasks`
+  return { taskCount: rows.length, processed, covered, expected, finalTasks, usableTasks,
+    fullyUsable: rows.length > 0 && rows.every(row => row.closeComplete && row.cacheUsable
+      && row.expected !== undefined && row.expected > 0 && row.covered === row.expected), detail }
 }
 
 function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
@@ -4107,7 +4153,7 @@ function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
   if (reason === 'daily_cache_missing') return zh ? '日线行情缺失' : 'daily cache is missing'
   if (reason === 'weekly_cache_missing') return zh ? '周线行情缺失' : 'weekly cache is missing'
   if (reason === 'monthly_cache_missing') return zh ? '月线行情缺失' : 'monthly cache is missing'
-  return reason || (zh ? '行情未就绪' : 'cache is not ready')
+  return zh ? '所需行情尚未就绪' : reason || 'cache is not ready'
 }
 
 function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
@@ -4128,7 +4174,7 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
     if (!loadStatus) return ''
     if (loadStatus === 'failed') {
       return locale === 'zh-CN'
-        ? `加载失败${loadError ? `: ${loadError}` : ''}，将自动重试`
+        ? '图表数据暂时无法加载'
         : `load failed${loadError ? `: ${loadError}` : ''}; will retry automatically`
     }
     if (['triggered', 'running', 'pending'].includes(loadStatus)) {
@@ -4151,15 +4197,8 @@ function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, local
         .join(' · ')
     : ''
   if (locale === 'zh-CN') {
-    return [
-      hasCandles
-        ? `${label || '当前标的'} ${requested || requestedLabel || ''} 行情滞后`
-        : `${label || '当前标的'} ${requested || requestedLabel || ''} 没有可用 K 线`,
-      reason ? cacheReasonLabel(reason, locale) : '',
-      loadLine,
-      probeStatus ? `确认=${probeStatus}` : '',
-      hitLine ? `已有行情 ${hitLine}` : '',
-    ].filter(Boolean).join(' · ')
+    return [hasCandles ? '当前图表数据尚未更新' : '所选图表暂无可用K线',
+      reason ? cacheReasonLabel(reason, locale) : '', loadStatus === 'failed' ? '图表数据暂时无法加载' : ''].filter(Boolean).join(' · ')
   }
   return [
     hasCandles
@@ -4266,8 +4305,21 @@ function isAiFactorStrategySignal(signal: StrategySignal): boolean {
   return String(signal.source ?? '').toLowerCase().includes('ai_factor_factory')
 }
 
-function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN'): string {
+function isControlledReadOnlySession(session?: WorkbenchSession): boolean {
+  return session?.read_only === true && ['bounded_readonly', 'bounded_no_backfill'].includes(compactText(session.startup_profile).toLowerCase())
+}
+
+export function isControlledReadModelReady(session?: WorkbenchSession): boolean {
+  return isControlledReadOnlySession(session) && session?.read_model_ready === true
+}
+
+export function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN'): string {
   if (!session) return locale === 'zh-CN' ? '未连接' : 'Disconnected'
+  if (isControlledReadOnlySession(session)) {
+    return isControlledReadModelReady(session)
+      ? (locale === 'zh-CN' ? '本地数据可查看' : 'Cache ready · Controlled mode')
+      : (locale === 'zh-CN' ? '本地数据加载中' : 'Controlled mode · Cache pending')
+  }
   if (session.a_live || session.hk_live || session.us_live) {
     const liveMarkets = [
       session.a_live ? 'A' : '',
@@ -4279,6 +4331,43 @@ function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN
   return session.ready
     ? (locale === 'zh-CN' ? '已就绪' : 'Ready')
     : (session.running ? (locale === 'zh-CN' ? '启动中' : 'Booting') : (locale === 'zh-CN' ? '等待' : 'Idle'))
+}
+
+export function DataDetails({ locale, data }: { locale: LongclawLocale; data: unknown }) {
+  return <details style={{ ...mutedTextStyle, marginTop: 4 }}>
+    <summary style={{ cursor: 'pointer' }}>{locale === 'zh-CN' ? '数据详情' : 'Data details'}</summary>
+    <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: 240, overflow: 'auto', fontSize: 11 }}>{JSON.stringify(data, null, 2)}</pre>
+  </details>
+}
+
+export function RuntimeStatusNotice({ session, locale, notices = [], error, frequencyNotice, chartNotice }: {
+  session?: WorkbenchSession; locale: LongclawLocale; notices?: string[]; error?: string | null; frequencyNotice?: string | null; chartNotice?: string | null
+}) {
+  const controlled = isControlledReadOnlySession(session)
+  if (!controlled && !notices.length && !error && !frequencyNotice && !chartNotice) return null
+  const zh = locale === 'zh-CN'
+  const message = [
+    controlled ? marketLabel(session, locale) : '',
+    controlled && session?.ready !== true ? (zh ? '完整分析尚未完成' : 'Full analysis pending') : '',
+    error ? (zh ? '部分数据暂时无法更新' : 'Some data could not be updated') : '',
+    chartNotice ? (zh ? '所选图表数据尚不完整' : 'Selected chart data is incomplete') : '',
+    frequencyNotice ? (zh ? '当前显示可用周期' : 'Showing an available timeframe') : '',
+    !controlled && notices.length ? (zh ? '部分功能暂不可用' : 'Some features are unavailable') : '',
+  ].filter(Boolean).join(' · ')
+  return <div style={noticeDarkStyle}>{message}<DataDetails locale={locale} data={{ session, notices, error, frequencyNotice, chartNotice }} /></div>
+}
+
+export function ControlledSessionNotice({ session, locale }: { session?: WorkbenchSession; locale: LongclawLocale }) {
+  if (!isControlledReadOnlySession(session)) return null
+  const analysis = session?.ready === true
+    ? (locale === 'zh-CN' ? '完整分析已就绪。' : 'Full analysis is ready.')
+    : (locale === 'zh-CN' ? '完整分析尚未完成。' : 'Full analysis is not ready.')
+  return <div style={noticeDarkStyle}>
+    {marketLabel(session, locale)} · {analysis}
+    {locale === 'zh-CN'
+      ? ' 当前显示已存数据，来源状态见行情更新。'
+      : ' Persistent cache only; no automatic backfill. Readable cache does not mean providers have recovered.'}
+  </div>
 }
 
 function shouldUseLiveRefresh(session?: WorkbenchSession): boolean {
@@ -6975,7 +7064,13 @@ function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
 
 export function traderDisplayText(value: string, locale: LongclawLocale): string {
   if (locale !== 'zh-CN') return value
+  if (/RuntimeError|ConnectionError|ineligible_sources|sector_transition_disabled|\bdisabled\b/i.test(value)) return '部分数据暂不可用'
   return value
+    .replace(/stock_daily/g, '日线更新')
+    .replace(/board_cons/g, '板块数据')
+    .replace(/fullmarket_spot_snapshot/g, '市场报价')
+    .replace(/stock_minute/g, '股票分钟数据')
+    .replace(/index_minute/g, '指数分钟数据')
     .replace(/terminal_manual_clues/g, '临时线索')
     .replace(/terminal_stock_pool/g, '股票池')
     .replace(/terminal_pool/g, '股票池')
@@ -7005,6 +7100,7 @@ export function traderDisplayText(value: string, locale: LongclawLocale): string
     .replace(/\bforming\b/gi, '形成中')
     .replace(/\bmature\b/gi, '成熟')
     .replace(/\bWATCH\b/gi, '等待确认')
+    .replace(/\bunconfirmed\b/gi, '待确认')
     .replace(/\bconfirmed\b/gi, '已确认')
     .replace(/\bconflict\b/gi, '信号分歧')
     .replace(/\bdegraded\b/gi, '部分数据不可用')
@@ -7021,7 +7117,7 @@ export function traderDisplayText(value: string, locale: LongclawLocale): string
     .replace(/\bindex_report\b/gi, '指数信号')
     .replace(/\bBLOCKED\b/gi, '待恢复')
     .replace(/偏增量/g, '盘后更新中')
-    .replace(/\bconf\s+([01](?:\.\d+)?)\b/gi, (_, raw: string) => `可信度 ${Math.round(Number(raw) * 100)}%`)
+    .replace(/\bconf\s+([01](?:\.\d+)?)\b/gi, (_, raw: string) => `置信度 ${Math.round(Number(raw) * 100)}%`)
     .replace(/\b(?:source_collection|producer|collection)\b/gi, '')
     .replace(/setup_mode/g, '交易角色')
     .replace(/\bMongo\b/g, '日线库')
@@ -7515,6 +7611,16 @@ function chartMarketTimezone(symbolData: WorkbenchSymbolData | null, shell: Work
     Intl.DateTimeFormat().resolvedOptions().timeZone ||
     'Asia/Shanghai'
   )
+}
+
+export function chartKindLabel(kind: string, locale: LongclawLocale): string {
+  const labels: Record<string, string> = { index: '指数', stock: '股票', etf: 'ETF', sector: '板块', board: '板块' }
+  return locale === 'zh-CN' ? (labels[kind.toLowerCase()] || '图表') : kind.toUpperCase()
+}
+
+export function chartFrequencyLabel(freq: string, locale: LongclawLocale): string {
+  const labels: Record<string, string> = { daily: '日线', weekly: '周线', monthly: '月线', '1d': '日线', '1w': '周线', '1mo': '月线' }
+  return locale === 'zh-CN' ? (labels[freq.toLowerCase()] || freq) : freq
 }
 
 function chartLineageLabel(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
@@ -8839,6 +8945,10 @@ export function StrategyChartTerminal({
         }
         shellLoadedRef.current = true
         setShell(nextShell)
+        if (isControlledReadModelReady(nextShell.session)) {
+          setBooting(false)
+          setBootAttempt(0)
+        }
         return nextShell
       } finally {
         shellRefreshInFlightRef.current = false
@@ -9888,19 +9998,9 @@ export function StrategyChartTerminal({
         compact={!showTopDiagnosticsDetail}
         onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
       />
-      <PoolAuthorityStrip locale={locale} meta={recordValue(shell?.pool_meta)} />
-      {shell?.notices?.length ? (
-        <div style={noticeDarkStyle}>{traderDisplayText(shell.notices.join(' '), locale)}</div>
-      ) : null}
-      {freqFallbackNotice ? (
-        <div style={warningDarkStyle}>{freqFallbackNotice}</div>
-      ) : null}
-      {chartCacheNotice ? (
-        <div style={warningDarkStyle}>{chartCacheNotice}</div>
-      ) : null}
-      {error ? (
-        <div style={booting ? warningDarkStyle : errorDarkStyle}>{error}</div>
-      ) : null}
+      <PoolAuthorityStrip locale={locale} meta={recordValue(shell?.pool_meta)} tradeDate={effectiveCacheStatus.trade_date} />
+      <RuntimeStatusNotice session={shell?.session} locale={locale} notices={shell?.notices}
+        error={error} frequencyNotice={freqFallbackNotice} chartNotice={chartCacheNotice} />
       {compactText(dailyBrief.headline) || compactText(dailyBrief.summary) ? (
         <div style={noticeDarkStyle}>
           {[
@@ -9982,11 +10082,12 @@ export function StrategyChartTerminal({
           <div style={chartHeaderStyle}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
               <div style={eyebrowDarkStyle}>
-                {compactText(symbolData?.target?.kind, target.kind).toUpperCase()}
+                {chartKindLabel(compactText(symbolData?.target?.kind, target.kind), locale)}
               </div>
               <div style={chartTitleStyle(layoutMode)}>{summaryTitle}</div>
               <div style={chartSubtitleStyle}>
-                {[summarySubtitle, currentFreq, chartTimezone, latestSignal || undefined].filter(Boolean).join(' · ')}
+                {[compactText(symbolData?.target?.symbol), chartFrequencyLabel(currentFreq, locale), latestSignal ? traderDisplayText(latestSignal, locale) : ''].filter(Boolean).join(' · ')}
+                <DataDetails locale={locale} data={{ subtitle: summarySubtitle, timezone: chartTimezone, lineage: chartLineage, formula: chartFormula, meta: chartMeta, connectorAlerts }} />
               </div>
               <div style={chartModeSummaryStyle}>
                 <span style={chartModeCurrentStyle}>{chartModeLabel(activeChartMode, locale)}</span>
@@ -10025,7 +10126,7 @@ export function StrategyChartTerminal({
               <div style={headerMetricsStyle(layoutMode)}>
                 {[
                   [primaryValueLabel, formatNumber(symbolData?.summary?.latest_price ?? latestClose(klineData))],
-                  [locale === 'zh-CN' ? '信号' : 'Signal', latestSignal || 'N/A'],
+                  [locale === 'zh-CN' ? '信号' : 'Signal', latestSignal ? traderDisplayText(latestSignal, locale) : (locale === 'zh-CN' ? '暂无' : 'N/A')],
                   [locale === 'zh-CN' ? '涨幅' : 'Change', formatPercent(symbolData?.summary?.gain_pct)],
                 ].map(([label, value]) => (
                   <div key={label} style={headerMetricStyle}>
@@ -10039,13 +10140,10 @@ export function StrategyChartTerminal({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                 <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-                  {connectorAlerts > 0 ? (
-                    <span style={statusBadgeStyle('warning')}>
-                      {locale === 'zh-CN' ? `连接 ${connectorAlerts}` : `${connectorAlerts} connectors`}
-                    </span>
-                  ) : null}
-                  <span style={statusBadgeStyle(booting ? 'warning' : loading ? 'running' : 'open')}>
-                    {booting
+                  <span style={statusBadgeStyle(isControlledReadModelReady(shell?.session) ? 'open' : booting ? 'warning' : loading ? 'running' : 'open')}>
+                    {isControlledReadModelReady(shell?.session)
+                      ? marketLabel(shell?.session, locale)
+                      : booting
                       ? (locale === 'zh-CN' ? '启动中' : 'Booting')
                       : loading
                         ? (locale === 'zh-CN' ? '刷新中' : 'Refreshing')
@@ -10070,8 +10168,8 @@ export function StrategyChartTerminal({
                     ? (locale === 'zh-CN' ? '正在等待板块热度K线。' : 'Waiting for Signals heat candles.')
                     : (locale === 'zh-CN' ? '正在等待K线和买卖点。' : 'Waiting for Signals to provide candles and signals.'))
                   : chartCacheNotice || (chartMeta.is_price_kline === false
-                    ? (locale === 'zh-CN' ? '热度行情未就绪，不能静默替换成代表股K线。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
-                    : (locale === 'zh-CN' ? '当前标的没有可用 OHLCV。' : 'No OHLCV is available for this target.'))}
+                    ? (locale === 'zh-CN' ? '板块热度数据尚未就绪。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
+                    : (locale === 'zh-CN' ? '当前标的暂无可用K线。' : 'No OHLCV is available for this target.'))}
               </div>
             ) : null}
           </div>
@@ -10245,17 +10343,17 @@ export function StrategyChartTerminal({
                         {signalSourceLabel(signal) ? (
                           <span style={isCustomUserSignal(signal) ? customSignalBadgeStyle : miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal)}</span>
                         ) : null}
-                        <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>{signal.type || signal.signal_type || 'Signal'}</span>
+                        <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>{traderDisplayText(signal.type || signal.signal_type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
                         <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                         <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
                       </div>
                       <div style={mutedLineStyle}>
-                        {[signal.date_str, signal.pool_status, signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                        {[signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
                           .filter(Boolean)
                           .join(' · ')}
                       </div>
                       {signal.details ? (
-                        <div style={mutedTwoLineStyle}>{signal.details}</div>
+                        <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
                       ) : null}
                     </div>
                   </div>
@@ -10280,17 +10378,17 @@ export function StrategyChartTerminal({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal) || '上级'}</span>
-                            <span style={statusBadgeStyle(signalTone(signal.type))}>{signal.type || 'Signal'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{traderDisplayText(signal.type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
                             <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                             <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
                           </div>
                           <div style={mutedLineStyle}>
-                            {[signal.date_str, signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                            {[signal.date_str, signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
                               .filter(Boolean)
                               .join(' · ')}
                           </div>
                           {signal.details ? (
-                            <div style={mutedTwoLineStyle}>{signal.details}</div>
+                            <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
                           ) : null}
                         </div>
                       </div>
@@ -10308,17 +10406,17 @@ export function StrategyChartTerminal({
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal) || '下级'}</span>
-                            <span style={statusBadgeStyle(signalTone(signal.type))}>{signal.type || 'Signal'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{traderDisplayText(signal.type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
                             <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                             <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
                           </div>
                           <div style={mutedLineStyle}>
-                            {[signal.date_str, signal.chart_aligned ? '锚定当前K线' : '', signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                            {[signal.date_str, signal.chart_aligned ? '锚定当前K线' : '', signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
                               .filter(Boolean)
                               .join(' · ')}
                           </div>
                           {signal.details ? (
-                            <div style={mutedTwoLineStyle}>{signal.details}</div>
+                            <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
                           ) : null}
                         </div>
                       </div>
@@ -10384,16 +10482,16 @@ export function StrategyChartTerminal({
                             {signalSourceLabel(signal) ? (
                               <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal)}</span>
                             ) : null}
-                            <span style={statusBadgeStyle(signalTone(signal.type))}>{signal.type || 'Signal'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{traderDisplayText(signal.type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
                             <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
                           </div>
                           <div style={mutedLineStyle}>
-                            {[displayFreqLabel(signal.freq), signal.date_str, signal.pool_status, signal.confidence !== undefined ? `conf ${formatNumber(signal.confidence, 2)}` : '']
+                            {[displayFreqLabel(signal.freq), signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
                               .filter(Boolean)
                               .join(' · ')}
                           </div>
                           {signal.details ? (
-                            <div style={mutedTwoLineStyle}>{signal.details}</div>
+                            <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
                           ) : null}
                         </div>
                       </div>
@@ -10442,6 +10540,7 @@ export function StrategyChartTerminal({
             title={locale === 'zh-CN' ? '数据状态' : 'Data status'}
             meta={dataIssueRows.length > 0 ? String(dataIssueRows.length) : (locale === 'zh-CN' ? '正常' : 'OK')}
           >
+            <details><summary style={mutedTextStyle}>{locale === 'zh-CN' ? '数据详情' : 'Data details'}</summary>
             <div style={compactListStyle}>
               <div style={dataRowStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
@@ -10480,6 +10579,7 @@ export function StrategyChartTerminal({
                 ))
               )}
             </div>
+            </details>
           </Panel>
         </div>
         )}
@@ -11145,14 +11245,14 @@ function CacheMonitorCell({
 }: {
   title: string
   value: string
-  progress: number
+  progress: number | null
   status?: unknown
   detail: string
   subdetail: string
   statusLabel: string
 }) {
-  const color = cacheProgressColor(progress, status)
-  const clampedProgress = Math.max(0, Math.min(100, progress))
+  const color = cacheProgressColor(progress ?? 0, status)
+  const clampedProgress = progress === null ? 0 : Math.max(0, Math.min(100, progress))
   return (
     <div style={cacheMonitorCellStyle}>
       <div style={cacheMonitorHeaderStyle}>
@@ -11163,66 +11263,26 @@ function CacheMonitorCell({
         <span style={cacheStatusChipStyle(color)} title={statusLabel}>{statusLabel}</span>
       </div>
       <div style={{ ...cacheMonitorValueStyle, color }}>{value}</div>
-      <div style={cacheProgressTrackStyle}>
+      {progress === null ? <div style={mutedTextStyle} aria-label="数据完整度未确认">—</div> : <div style={cacheProgressTrackStyle}>
         <div style={cacheProgressFillStyle(clampedProgress, color)} />
-      </div>
+      </div>}
       <div style={cacheMonitorDetailStrongStyle} title={detail}>{detail}</div>
       <div style={cacheMonitorMetaStyle} title={subdetail}>{subdetail}</div>
     </div>
   )
 }
 
-function PoolAuthorityStrip({
-  locale,
-  meta,
-}: {
-  locale: LongclawLocale
-  meta: Record<string, unknown>
-}) {
+export function PoolAuthorityStrip({ locale, meta, tradeDate }: { locale: LongclawLocale; meta: Record<string, unknown>; tradeDate?: string }) {
   if (Object.keys(meta).length === 0) return null
-  const status = compactText(meta.status, 'unavailable')
-  const healthy = status === 'healthy'
-  const refreshing = status === 'refreshing'
-  const baseTradeDate = compactText(meta.base_trade_date, '-')
-  const revision = numberValue(meta.revision) ?? 0
-  const lastSuccessfulAt = compactText(meta.last_successful_at, '-')
-  const priceDataTime = compactText(meta.price_data_time, '-')
-  const confirmation30mTime = compactText(meta.confirmation_30m_data_time, '-')
-  const staleReason = compactText(meta.stale_reason)
+  const date = compactText(meta.base_trade_date)
+  const healthy = compactText(meta.status) === 'healthy' && Boolean(tradeDate && date === tradeDate)
   const text = locale === 'zh-CN'
-    ? [
-        '唯一融合名单',
-        `数据日 ${baseTradeDate}`,
-        `版本 r${revision}`,
-        healthy ? '今日已更新' : refreshing ? '名单构建中' : `今日未更新${staleReason ? `（${staleReason}）` : ''}`,
-        `最近成功 ${lastSuccessfulAt}`,
-        `价格 ${priceDataTime}`,
-        `30m ${confirmation30mTime} · 仅提示，不影响入池`,
-      ].join(' · ')
-    : [
-        'Single fused pool',
-        `base ${baseTradeDate}`,
-        `revision ${revision}`,
-        healthy ? 'updated today' : refreshing ? 'building pool' : `not updated today${staleReason ? ` (${staleReason})` : ''}`,
-        `last success ${lastSuccessfulAt}`,
-        `quotes ${priceDataTime}`,
-        `30m ${confirmation30mTime} · display only`,
-      ].join(' · ')
-  return (
-    <div
-      style={healthy ? noticeDarkStyle : warningDarkStyle}
-      title={[
-        compactText(meta.generation_id),
-        compactText(meta.policy_version),
-        compactText(meta.membership_hash),
-      ].filter(Boolean).join(' · ')}
-    >
-      {text}
-    </div>
-  )
+    ? `${healthy ? '策略名单已更新' : '策略名单尚未更新'}${date ? ` · 当前为${date}名单` : ' · 名单日期未确认'}`
+    : `${healthy ? 'Strategy list updated' : 'Strategy list awaiting update'}${date ? ` · dated ${date}` : ' · date unknown'}`
+  return <div style={healthy ? noticeDarkStyle : warningDarkStyle}>{text}<DataDetails locale={locale} data={meta} /></div>
 }
 
-function CacheMonitorStrip({
+export function CacheMonitorStrip({
   locale,
   cacheStatus,
   mode,
@@ -11247,7 +11307,7 @@ function CacheMonitorStrip({
   const moduleOk = liveModules.filter(cacheModuleOk).length
   const liveOkFromSummary = numberValue(liveSummary.ok_modules)
   const liveTotalFromSummary = numberValue(liveSummary.total_modules)
-  const liveOk = liveOkFromSummary !== undefined && liveOkFromSummary > 0 ? liveOkFromSummary : moduleOk
+  const liveOk = liveOkFromSummary !== undefined && liveOkFromSummary >= 0 ? liveOkFromSummary : moduleOk
   const liveTotal = liveTotalFromSummary !== undefined && liveTotalFromSummary > 0 ? liveTotalFromSummary : liveModules.length
   const livePct = liveTotal ? (liveOk / liveTotal) * 100 : 0
   const liveStatus = liveCacheStrictStatus(cacheStatus)
@@ -11258,8 +11318,13 @@ function CacheMonitorStrip({
   const quoteLive = numberValue(quoteResult.live)
   const quoteCount = numberValue(quoteResult.count)
   const quoteMissing = numberValue(quoteResult.missing_current) ?? numberValue(quoteResult.errors) ?? 0
-  const quoteLine = quoteCount !== undefined
-    ? `${locale === 'zh-CN' ? '报价' : 'quotes'} ${countText(quoteLive)}/${countText(quoteCount)}`
+  const quoteNetwork = numberValue(quoteResult.network_quotes)
+  const quoteReused = numberValue(quoteResult.cache_reused)
+  const quoteOrigins = quoteNetwork !== undefined && quoteReused !== undefined
+    ? (locale === 'zh-CN' ? ` · 网络 ${countText(quoteNetwork)} · 本地复用 ${countText(quoteReused)}` : ` · network ${countText(quoteNetwork)} · cached ${countText(quoteReused)}`)
+    : ''
+  const quoteLine = quoteCount !== undefined && quoteLive !== undefined
+    ? `${locale === 'zh-CN' ? '报价' : 'quotes'} ${countText(quoteLive)}/${countText(quoteCount)}${quoteOrigins}`
     : ''
   const liveSamples = Array.isArray(liveSummary.minute_not_ready_samples)
     ? liveSummary.minute_not_ready_samples.map(item => recordValue(item)).slice(0, 2)
@@ -11268,7 +11333,7 @@ function CacheMonitorStrip({
     .map(item => `${compactText(item.symbol)} ${compactText(item.freq)}`)
     .filter(Boolean)
     .join(' · ')
-  const liveValue = liveTotal ? `${countText(liveOk)}/${countText(liveTotal)}` : (cacheStatus.available ? '0/0' : 'OFF')
+  const liveValue = quoteCount !== undefined && quoteLive !== undefined ? `${countText(quoteLive)}/${countText(quoteCount)}` : liveTotal ? `${countText(liveOk)}/${countText(liveTotal)}` : (locale === 'zh-CN' ? '待确认' : 'UNKNOWN')
   const liveStatusLabel = !cacheStatus.available
     ? 'OFF'
     : liveStatus === 'ok'
@@ -11300,16 +11365,11 @@ function CacheMonitorStrip({
         liveSampleText ? `missing ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} rotated out`,
       ].filter(Boolean).join(' · ')
 
-  const stockDailyTask = firstRecord(tasks, 'module', 'stock_daily')
-  const stockDailySummary = recordValue(stockDailyTask.result_summary)
+  const stockDaily = postmarketDailyTaskSummary(tasks, locale)
   const boardTask = firstRecord(tasks, 'module', 'board_cons')
   const boardSummary = recordValue(boardTask.result_summary)
   const boardCursor = recordValue(boardTask.cursor)
-  const stockShardTasks = tasks.filter(item => compactText(item.module) === 'stock_daily')
   const boardShardTasks = tasks.filter(item => compactText(item.module) === 'board_cons')
-  const stockShardTotal = stockShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).total) ?? 0), 0)
-  const stockShardDone = stockShardTasks.filter(item => compactText(item.status) === 'ok').length
-  const stockShardProcessed = stockShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).processed) ?? 0), 0)
   const boardShardTotal = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).total_groups) ?? 0), 0)
   const boardShardDone = boardShardTasks.filter(item => compactText(item.status) === 'ok').length
   const boardShardProcessed = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).processed) ?? 0), 0)
@@ -11327,7 +11387,10 @@ function CacheMonitorStrip({
       : recordValue(postRun.critical_blocker)
   const recoveryLabel = recoveryStateLabel(recoveryState, locale)
   const sourceBlocked = ['waiting_for_source', 'source_blocked', 'partial/source_blocked'].includes(recoveryState)
-  const postCellStatus = sourceBlocked ? 'degraded' : postStatus
+  const dailyAcceptancePending = stockDaily.taskCount > 0 && !stockDaily.fullyUsable
+  const postCellStatus = sourceBlocked ? 'degraded' : dailyAcceptancePending && postStatus === 'ok' ? 'partial' : postStatus
+  const postStatusLabel = recoveryLabel || (dailyAcceptancePending && postStatus === 'ok'
+    ? (locale === 'zh-CN' ? '待验收' : 'UNVERIFIED') : cacheStatusLabel(postStatus, 'pending', locale))
   const postEta = compactDuration(postSummary.eta_seconds, locale)
   const optionalStatusCounts = recordValue(postSummary.optional_status_counts)
   const optionalTotal = numberValue(postSummary.optional_task_count) ?? 0
@@ -11339,16 +11402,14 @@ function CacheMonitorStrip({
       ? `HK后台 ${countText(optionalDone)}/${countText(optionalTotal)} · 运行 ${countText(optionalRunning)} · 待 ${countText(optionalPending)}`
       : `HK tail ${countText(optionalDone)}/${countText(optionalTotal)} · running ${countText(optionalRunning)} · pending ${countText(optionalPending)}`)
     : ''
-  const stockDailyLine = stockShardTasks.length
-    ? `${countText(stockShardDone)}/${countText(stockShardTasks.length)} shard · ${countText(stockShardProcessed)}/${countText(stockShardTotal)}`
-    : `${countText(stockDailySummary.processed)}/${countText(stockDailySummary.total ?? stockDailySummary.expected_codes)} ${compactText(stockDailySummary.latest_symbol)}`
+  const stockDailyLine = stockDaily.taskCount > 0 ? stockDaily.detail : (locale === 'zh-CN' ? '日线任务待加载' : 'daily tasks not loaded')
   const boardCursorLine = boardShardTasks.length
     ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard · ${countText(boardShardProcessed)}/${countText(boardShardTotal)}`
     : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
   const blockerDetail = `${compactText(criticalBlocker.provider, 'eastmoney')} · ${compactText(criticalBlocker.endpoint, compactText(criticalBlocker.module, 'fullmarket_spot_snapshot'))}`
   const postDetail = sourceBlocked && Object.keys(criticalBlocker).length > 0
     ? blockerDetail
-    : postStatus === 'ok' && postRawStatus === 'running' && optionalTailLine
+    : postCellStatus === 'ok' && postRawStatus === 'running' && optionalTailLine
     ? (locale === 'zh-CN'
       ? `主链完成 · ${optionalTailLine}`
       : `critical path done · ${optionalTailLine}`)
@@ -11367,7 +11428,7 @@ function CacheMonitorStrip({
   const updatedAt = compactClock(cacheStatus.updated_at, locale)
   const monitorStatus = sourceSummary.status === 'error' || sourceSummary.status === 'degraded' || liveStatus === 'degraded' || mongoStatus === 'degraded' || postCellStatus === 'degraded'
     ? 'degraded'
-    : sourceSummary.status === 'partial' || liveStatus === 'partial' || mongoStatus === 'partial'
+    : sourceSummary.status === 'partial' || liveStatus === 'partial' || mongoStatus === 'partial' || postCellStatus === 'partial'
       ? 'partial'
       : 'ok'
   const monitorColor = monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error
@@ -11377,8 +11438,8 @@ function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? `盘中 ${liveStatusLabel} · 盘后 ${recoveryLabel || cacheStatusLabel(postStatus, 'pending', locale)} · ${mongoCoverage.compactLabel} · 行情通道 ${sourceSummary.statusLabel}`
-      : `live ${liveStatusLabel} · post ${recoveryLabel || cacheStatusLabel(postStatus, 'pending', locale)} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
+      ? `关注列表行情 ${liveValue} · 更新进度 ${Math.round(postPct)}% · ${mongoCoverage.detail} · 来源${sourceSummary.statusLabel}`
+      : `live ${liveStatusLabel} · post ${postStatusLabel} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
         <div style={cacheMonitorToolbarStyle}>
@@ -11417,42 +11478,43 @@ function CacheMonitorStrip({
       </div>
       <div style={cacheMonitorGridStyle(mode)}>
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '盘中低延时' : 'Intraday live'}
+          title={locale === 'zh-CN' ? '关注列表行情' : 'Intraday live'}
           value={liveValue}
-          progress={livePct}
+          progress={quoteCount !== undefined && quoteLive !== undefined ? (quoteCount > 0 ? (quoteLive / quoteCount) * 100 : null) : liveTotal ? livePct : null}
           status={liveStatus}
-          statusLabel={liveStatusLabel}
-          detail={liveDetail}
-          subdetail={liveSubdetail}
+          statusLabel={locale === 'zh-CN' ? (!cacheStatus.available ? '不可用' : liveStatus === 'ok' ? '可查看' : '部分可用') : liveStatusLabel}
+          detail={locale === 'zh-CN' ? (quoteCount !== undefined && quoteLive !== undefined ? '关注列表中可查看的报价' : liveTotal ? '可用数据类别数' : '数据可用情况待确认') : liveDetail}
+          subdetail={locale === 'zh-CN' ? [quoteNetwork !== undefined ? `本次获取 ${countText(quoteNetwork)} 只` : '', quoteReused !== undefined ? `读取已存 ${countText(quoteReused)} 只` : '', quoteMissing > 0 ? `${countText(quoteMissing)} 只未更新` : '', liveNotReady > 0 ? `${countText(liveNotReady)} 只缺少分钟数据` : ''].filter(Boolean).join(' · ') : liveSubdetail}
         />
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '盘后全量' : 'Postmarket'}
-          value={`${Math.round(postPct)}%`}
+          title={locale === 'zh-CN' ? '更新进度' : 'Postmarket tasks'}
+          value={`${locale === 'zh-CN' ? '处理' : 'tasks'} ${Math.round(postPct)}%`}
           progress={postPct}
           status={postCellStatus}
-          statusLabel={recoveryLabel || cacheStatusLabel(postStatus, 'pending', locale)}
-          detail={postDetail}
-          subdetail={postSubdetail}
+          statusLabel={locale === 'zh-CN' && sourceBlocked ? '部分未更新' : postStatusLabel}
+          detail={locale === 'zh-CN' ? (sourceBlocked ? '来源暂未恢复' : stockDaily.fullyUsable ? '日线收盘数据已核验' : '任务处理进度，不代表数据已完整') : postDetail}
+          subdetail={locale === 'zh-CN' ? `${stockDaily.processed === undefined ? '处理数量未知' : `本次已处理 ${countText(stockDaily.processed)}`} · ${stockDaily.fullyUsable ? '本次日线核验通过' : '本次日线核验未完成'}` : postSubdetail}
         />
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '日线覆盖' : 'Mongo coverage'}
-          value={`${Math.round(mongoCoverage.progress)}%`}
+          title={locale === 'zh-CN' ? '已存日线' : 'Mongo coverage'}
+          value={locale === 'zh-CN' ? (mongoCoverage.dailyToday === undefined ? '未知' : `${countText(mongoCoverage.dailyToday)}只`) : mongoCoverage.progress === null ? '—' : `${Math.round(mongoCoverage.progress)}%`}
           progress={mongoCoverage.progress}
           status={mongoStatus}
           statusLabel={mongoCoverage.statusLabel}
           detail={mongoCoverage.detail}
-          subdetail={mongoCoverage.subdetail}
+          subdetail={locale === 'zh-CN' ? mongoCoverage.subdetail.split(' · 分钟')[0] : mongoCoverage.subdetail}
         />
         <CacheMonitorCell
-          title={locale === 'zh-CN' ? '行情通道' : 'Sources'}
-          value={sourceSummary.value}
+          title={locale === 'zh-CN' ? '数据来源' : 'Sources'}
+          value={locale === 'zh-CN' ? (!cacheStatus.available ? '暂不可用' : sourceSummary.status === 'ok' ? '连接正常' : sourceSummary.status === 'partial' ? '等待复验' : '更新受阻') : sourceSummary.value}
           progress={sourceSummary.progress}
           status={sourceSummary.status}
-          statusLabel={sourceSummary.statusLabel}
-          detail={sourceSummary.detail}
-          subdetail={sourceSummary.subdetail}
+          statusLabel={locale === 'zh-CN' ? (sourceSummary.status === 'ok' ? '已验证' : sourceSummary.status === 'partial' ? '待确认' : '部分未更新') : sourceSummary.statusLabel}
+          detail={locale === 'zh-CN' ? (!cacheStatus.available ? '行情暂时无法读取' : sourceSummary.status === 'ok' ? '近期请求已返回有效数据' : sourceSummary.status === 'partial' ? '来源状态尚未确认' : '部分来源暂时无法更新') : sourceSummary.detail}
+          subdetail={locale === 'zh-CN' ? (sourceSummary.status === 'partial' ? '验证已过期或尚未完成，不代表连接已中断' : '已存行情仍可查看') : sourceSummary.subdetail}
         />
       </div>
+      <DataDetails locale={locale} data={{ cacheStatus, taskSummary: stockDaily, moduleSummary: { liveDetail, liveSubdetail }, postSummary: { postDetail, postSubdetail }, sourceSummary }} />
     </div>
   )
 }
@@ -11502,21 +11564,21 @@ function watchlistPoolCountText(
 function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): string {
   const zh = locale === 'zh-CN'
   const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
-    ai_focus: ['因子观察', '降噪排序后逐票复核', '最新涨跌=实时快照', 'Factor watch', 'ranked candidates for single-name review', 'Day=realtime quote'],
+    ai_focus: ['因子观察', '降噪排序后逐票复核', '最新涨跌=已存报价', 'Factor watch', 'ranked candidates for single-name review', 'Day=realtime quote'],
     major_indices: ['大盘指数', '市场方向和风险偏好锚点', '最新涨跌=指数快照', 'Major indices', 'broad-market direction and risk appetite', 'Day=latest index change'],
-    industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '最新涨跌=实时快照', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
+    industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '最新涨跌=已存报价', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
     all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '最新涨跌=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
     macro_indices: ['宏观方向', '指数关键位和环境判断', '最新涨跌=指数快照', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
     sector_boards: ['板块异动', '先看板块强度，再看链主与弹性', '涨幅=当日板块', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
-    focus_stocks: ['买点池', '日/周买点待复核；30m仅提示', '最新涨跌=实时快照', 'Entry pool', 'daily/weekly entry review; 30m is display only', 'Day=realtime quote'],
-    risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '最新涨跌=实时快照', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
-    watch_stocks: ['盯盘池', '等待下一次收盘融合确认；盘中不换池', '最新涨跌=实时快照', 'Watch pool', 'wait for next-close fusion; intraday data does not move pools', 'Day=realtime quote'],
-    buy_candidates: ['线索池', '有线索但还不是硬买点', '最新涨跌=实时快照', 'Clue pool', 'sourced clue, not a hard entry yet', 'Day=realtime quote'],
+    focus_stocks: ['买点池', '日/周买点待复核；30m仅提示', '最新涨跌=已存报价', 'Entry pool', 'daily/weekly entry review; 30m is display only', 'Day=realtime quote'],
+    risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '最新涨跌=已存报价', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
+    watch_stocks: ['盯盘池', '等待下一次收盘融合确认；盘中不换池', '最新涨跌=已存报价', 'Watch pool', 'wait for next-close fusion; intraday data does not move pools', 'Day=realtime quote'],
+    buy_candidates: ['线索池', '有线索但还不是硬买点', '最新涨跌=已存报价', 'Clue pool', 'sourced clue, not a hard entry yet', 'Day=realtime quote'],
   }
   const item = meta[tab]
   if (!item) {
     return zh
-      ? `盘面 ${watchlistStockTabLabel(tab, locale)} · 读法 先分池再逐票复核 · 最新涨跌=实时快照 · 自选区间=历史收益`
+      ? `盘面 ${watchlistStockTabLabel(tab, locale)} · 读法 先分池再逐票复核 · 最新涨跌=已存报价 · 自选区间=历史收益`
       : `Evidence ${watchlistStockTabLabel(tab, locale)} · Read pool first, then review names · Day=realtime quote · Range=historical return`
   }
   return zh
@@ -11567,6 +11629,13 @@ export function SectorTransitionRadarPanel({
   pendingUpdate: boolean
   onSelectSentinel?: (sentinel: string) => void
 }) {
+  if (['disabled', 'not_enabled'].includes(radar.freshness.status.toLowerCase())
+    || radar.freshness.blockers.includes('sector_transition_disabled')) {
+    return <section style={{ ...sectorTransitionShellStyle, display: 'flex', alignItems: 'baseline', gap: 8 }} aria-label={locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}>
+      <div style={mutedTextStyle}>{locale === 'zh-CN' ? '板块转折雷达尚未启用' : 'Sector transition radar is not enabled'}</div>
+      <DataDetails locale={locale} data={radar.freshness} />
+    </section>
+  }
   const cards = (radar.states.length > 0 ? radar.states : radar.events).slice(0, 4)
   const globalBlocker = radar.freshness.blockers[0] ?? ''
   const freshnessLabel = sectorTransitionFreshnessLabel(radar.freshness.status, locale)
@@ -12890,7 +12959,7 @@ function StrategyDecisionPanel({
                     <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
                   </div>
                   <div style={mutedLineStyle}>
-                    {[signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.confidence !== undefined ? `${locale === 'zh-CN' ? '可信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
+                    {[signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
                       .filter(Boolean)
                       .join(' · ')}
                   </div>
