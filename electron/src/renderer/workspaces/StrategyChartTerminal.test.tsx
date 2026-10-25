@@ -7,8 +7,13 @@ import {
   RuntimeStatusNotice,
   MaintenanceDiagnostics,
   runtimeDataExplanation,
+  activeDecisionRowFromGroups,
   PoolAuthorityStrip,
   hasPublishedDailyBrief,
+  dailyBriefForShell,
+  dailyLocalReconciliation,
+  publishedPoolRole,
+  rawDecisionStage,
   chartKindLabel,
   chartFrequencyLabel,
   ControlledSessionNotice,
@@ -31,6 +36,8 @@ import {
   sectorTransitionHasNewUnreadEvents,
   sectorTransitionRadarFromShell,
   sectorTransitionStockAnnotation,
+  initialCoreWatchlistTab,
+  watchlistGroupCountLabel,
   shellGroupCount,
   shellNeedsWarmRefresh,
   signalCalloutBadgeSummary,
@@ -1524,16 +1531,119 @@ describe('concise Chinese summaries with retained diagnostics', () => {
   })
 })
 
+function verifiedLocalStatus() {
+  const status = incompleteCacheStatus() as any
+  status.recovery_state = 'partial/source_blocked'
+  status.postmarket_backfill.summary.critical_progress_pct = 43
+  status.daily_reconciliation = {
+    schema: 'daily-local-reconciliation-v1', trade_date: '2026-10-23', scope_verified: true,
+    scope_id: 'baostock-shsz-ordinary-20261023', scope_label: '沪深本地采集范围',
+    scope_members: 5224, required_daily: 5219, native_confirmed: 5219, snapshot_confirmed: 0,
+    source_reported_no_trade: 5, missing_required: 0, coverage_pct: 100,
+    coverage_evidence_kind: 'historical_native_only', global_expected: null, global_coverage_pct: null,
+    stock_inventory: { total: 5258, native: 5236, close_snapshot: 22, unverified: 0 },
+    outside_local_scope: { total: 39, native: 17, close_snapshot: 22, unverified: 0 },
+    etf_inventory: 9, source_proof: { reviewed_scope_sha256: 'a'.repeat(64) },
+  }
+  return status
+}
+
+describe('actual client acceptance regressions', () => {
+  it('shows dated native scope completion separately from the unchanged 43% legacy ledger', () => {
+    const status = verifiedLocalStatus()
+    const original = JSON.stringify(status)
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    const main = visibleSummary(markup)
+    expect(main).toContain('本地日线核验')
+    expect(main).toContain('5,219/5,219')
+    expect(main).toContain('沪深本地采集范围 5,224只')
+    expect(main).toContain('数据源标记未交易 5')
+    expect(main).toContain('原生日线 5,236 · 收盘快照 22')
+    expect(main).toContain('全A股覆盖率未核定')
+    expect(main).not.toContain('43%')
+    expect(markup).toContain('历史后台任务记录 · 43%')
+    expect(main).not.toContain('连接正常')
+    expect(JSON.stringify(status)).toBe(original)
+  })
+  it('does not count one close snapshot as a repaired native history gap', () => {
+    const status = verifiedLocalStatus()
+    Object.assign(status.daily_reconciliation, { native_confirmed: 5218, snapshot_confirmed: 1, missing_required: 1 })
+    expect(dailyLocalReconciliation(status)).not.toBeNull()
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    expect(markup).toContain('5,218/5,219')
+    expect(markup).toContain('有缺口')
+    expect(markup).toContain('未计入原生覆盖')
+  })
+  it.each([{ trade_date: '2026-10-22' }, { scope_verified: false }, { native_confirmed: 5220 }, { source_proof: {} }])('rejects unproved or inconsistent local coverage %o', change => {
+    const status = verifiedLocalStatus()
+    Object.assign(status.daily_reconciliation, change)
+    expect(dailyLocalReconciliation(status)).toBeNull()
+  })
+  it('shows a currently validated alternate without hiding the Eastmoney failure', () => {
+    const status = verifiedLocalStatus()
+    status.provider_health = [
+      { provider: 'sina', endpoint: 'quote_batch', current_health: 'ok', is_current_healthy: true },
+      { provider: 'eastmoney', endpoint: 'fullmarket_spot_snapshot', current_health: 'degraded', is_current_healthy: false },
+    ]
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    expect(markup).toContain('备用报价可用')
+    expect(markup).toContain('新浪报价已验证 · 东方财富仍受阻')
+    expect(markup).not.toContain('连接正常')
+    status.provider_health[0].is_current_healthy = false
+    expect(renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)).not.toContain('备用报价可用')
+  })
+  it('uses the matching published brief instead of the lazy cache-dashboard fallback', () => {
+    const fallback = { summary: '', headline: '', metadata: { source: 'signals-cache-status' } } as any
+    const brief = { source: 'terminal_stock_pool', current_authority: true, generation_id: 'r3', as_of: '2026-10-23', title: '收盘名单复核', summary: '10只买点待复核，14只线索', next_actions: ['复核日线、周线位置与失效条件'] }
+    const pool = { status: 'healthy', today_updated: true, generation_id: 'r3', base_trade_date: '2026-10-23' }
+    const selected = dailyBriefForShell(fallback, brief, pool)
+    expect(hasPublishedDailyBrief(selected)).toBe(true)
+    expect(selected.summary).toBe(brief.summary)
+    expect(dailyBriefForShell(fallback, brief, { ...pool, generation_id: 'different' })).toBe(fallback)
+  })
+  it('keeps the actual published focus identity ahead of historical wait-30m/setup-watch fields', () => {
+    const row = { display_policy: 'published_daily_weekly_review', published_pool_group: 'focus_stocks', trade_stage: 'watch_pool', setup_mode: 'watch', trade_intent: 'wait_30m', can_trade_now: false }
+    expect(publishedPoolRole(row)).toBe('entry_review')
+    expect(rawDecisionStage(row, 'focus_stocks')).toBe('entry_ready')
+    expect(rawDecisionStage({ ...row, display_policy: '' }, 'focus_stocks')).toBe('watch_preheat')
+    expect(row.can_trade_now).toBe(false)
+  })
+  it('does not borrow a daily quote to invent a missing weekly close or volume', () => {
+    const row = marketSnapshotFromSymbolData({ target: { effective_freq: 'weekly' }, chart: { ohlcv: [], meta: { cache_status: 'not_ready', load_status: 'local_only' } }, summary: { latest_price: 37.48, day_volume: 5800000, day_amount: 215000000 } } as any, 'weekly')
+    expect(row.status).toBe('empty')
+    expect(row.latestPrice).toBe('N/A')
+    expect(row.volume).toBe('N/A')
+    expect(row.amount).toBe('N/A')
+    expect(row.statusText).toContain('未启动补数')
+  })
+})
+
 
 describe('actionable data explanation and separate maintenance diagnostics', () => {
   const session = { startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false, running: false }
   const poolMeta = { status: 'healthy', base_trade_date: '2026-09-01', revision: 24, stale_reason: 'ineligible_sources' }
 
+  it('accepts an authoritative current pool before the separate cache date arrives, without guessing stale status', () => {
+    const current = { status: 'healthy', base_trade_date: '2026-10-23', today_updated: true }
+    expect(runtimeDataExplanation({ locale: 'zh-CN', session, poolMeta: current }).summary).toContain('策略名单已更新至2026-10-23')
+    expect(runtimeDataExplanation({ locale: 'zh-CN', session, poolMeta }).summary).toContain('当日状态待确认')
+    expect(runtimeDataExplanation({ locale: 'zh-CN', session, poolMeta }).summary).not.toContain('名单仍为')
+  })
+
+  it('never borrows a keyboard cursor stock decision for a different chart target', () => {
+    const row = { kind: 'stock', code: 'SZ.301291', label: '明阳电气', raw: {} } as any
+    const groups = { focus_stocks: [row], watch_stocks: [], buy_candidates: [], risk_stocks: [] }
+    expect(activeDecisionRowFromGroups(groups, { kind: 'index', label: '上证指数', freq: 'daily' } as any, row)).toBeNull()
+    expect(activeDecisionRowFromGroups(groups, { kind: 'stock', label: 'SH.600036', freq: 'daily' } as any, row)).toBeNull()
+    expect(activeDecisionRowFromGroups(groups, { kind: 'stock', label: 'SZ.301291', freq: 'weekly' } as any, row)).toBe(row)
+  })
+
   it('explains the saved date, older list impact and no manual repair without claiming any job is running', () => {
     const explanation = runtimeDataExplanation({ locale: 'zh-CN', session, cacheStatus: incompleteCacheStatus() as any, poolMeta })
     expect(explanation.summary).toContain('可查看2026-10-23已存行情')
     expect(explanation.summary).toContain('名单仍为2026-09-01，不能视作当日结果')
-    expect(explanation.summary).toContain('无需额外操作')
+    expect(explanation.summary).toContain('可继续浏览已存行情')
+    expect(explanation.summary).not.toContain('无需额外操作')
     expect(explanation.reason).toContain('验证已过期或尚未完成')
     expect(explanation.impact).toContain('不代表实时或完整覆盖')
     expect(explanation.impact).toContain('旧名单仅供回看')
@@ -1597,5 +1707,60 @@ describe('actionable data explanation and separate maintenance diagnostics', () 
     expect(markup).not.toMatch(/<details|<pre|ConnectionError|ineligible_sources/)
     expect(markup).toContain('已存股票 5,219 · 总数未确认')
     expect(markup).toContain('当前为2026-09-01名单')
+  })
+})
+
+
+describe('timeframe cache read errors', () => {
+  it('gives a recovery action without exposing transport diagnostics', async () => {
+    const { errorTimeframeSnapshot } = await import('./StrategyChartTerminal')
+    const result = errorTimeframeSnapshot('5min', 'timeout after 15000ms', 'zh-CN')
+    expect(result.status).toBe('error')
+    expect(result.statusText).toBe('本地读取超时，可点击该周期重试')
+    expect(result.latestPrice).toBe('N/A')
+    expect(errorTimeframeSnapshot('5min', 'ConnectionError internal-url', 'zh-CN').statusText).not.toContain('ConnectionError')
+  })
+})
+
+
+describe('timeframe evidence separation', () => {
+  it('labels stale partial monthly bars as history and hides internal reason codes', () => {
+    const result = marketSnapshotFromSymbolData({ target: { effective_freq: 'monthly' },
+      chart: { meta: { cache_status: 'stale', is_stale: true, is_partial_period: true, stale_reason: 'older_than_request', latest_bar_time: '2026-09-21T00:00:00' },
+        ohlcv: [{ time: 1790006400, open: 34, high: 35, low: 33, close: 34.78 }] } } as any, 'monthly')
+    expect(result.status).toBe('stale')
+    expect(result.qualityLabel).toBe('历史缓存')
+    expect(result.statusText).toContain('本周期尚无更新数据')
+    expect(result.statusText).not.toContain('older_than_request')
+  })
+  it('uses weekly evidence ahead of a copied daily summary', () => {
+    const result = marketSnapshotFromSymbolData({ target: { effective_freq: 'weekly' },
+      chart: { meta: { cache_status: 'ready' }, ohlcv: [{ time: 1790006400, open: 34, high: 38, low: 33, close: 37.48 }],
+        signals: [{ type: '突破下降趋势线', freq: 'weekly', dt: '2026-10-23' }, { type: '日线攀爬', freq: 'daily', dt: '2026-10-23' }] },
+      summary: { latest_signal: '日线攀爬' } } as any, 'weekly')
+    expect(result.signal).toBe('突破下降趋势线')
+  })
+})
+
+
+describe('local core shell first view', () => {
+  const core = { cache: { status: 'local_core_ready', building: true }, sections: { published_pool: { status: 'ready' } },
+    watchlist_groups: { focus_stocks: [{ symbol: 'SZ.301291' }], buy_candidates: [{ symbol: 'SH.600000' }] } } as any
+  it('shows the existing published list while enrichment is pending', () => {
+    expect(initialCoreWatchlistTab(core, 'sector_boards', false)).toBe('focus_stocks')
+    expect(initialCoreWatchlistTab({ ...core, watchlist_groups: { buy_candidates: [{ symbol: 'SH.600000' }] } }, 'sector_boards', false)).toBe('buy_candidates')
+    expect(shellNeedsWarmRefresh(core)).toBe(true)
+  })
+  it('never overrides a user tab or claims an unavailable pool is ready', () => {
+    expect(initialCoreWatchlistTab(core, 'sector_boards', true)).toBe('sector_boards')
+    expect(initialCoreWatchlistTab(core, 'all_etfs', false)).toBe('all_etfs')
+    expect(initialCoreWatchlistTab({ ...core, sections: { published_pool: { status: 'unavailable' } } }, 'sector_boards', false)).toBe('sector_boards')
+    expect(initialCoreWatchlistTab({ ...core, cache: { status: 'hit' } }, 'sector_boards', false)).toBe('sector_boards')
+  })
+  it('keeps pending counts separate from actual empty groups', () => {
+    expect(watchlistGroupCountLabel('all_etfs', 0, { all_etfs: { status: 'loading', count: null } })).toBe('读取中')
+    expect(watchlistGroupCountLabel('sector_boards', 0, { sector_boards: { status: 'loading', count: null } })).toBe('读取中')
+    expect(watchlistGroupCountLabel('sector_boards', 0, { sector_boards: { status: 'ready', count: 0 } })).toBe('0')
+    expect(watchlistGroupCountLabel('all_etfs', 80, { all_etfs: { status: 'ready', review_count: 80, count: 1662 } })).toBe('80 / 1,662')
   })
 })
