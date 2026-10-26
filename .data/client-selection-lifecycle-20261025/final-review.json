@@ -1,0 +1,77 @@
+{
+  "at_utc": "2026-10-25T07:52:17.421721+00:00",
+  "status": "source_frozen_offline_passed_pending_root_build_install_actual_UI",
+  "source_sha256": {
+    "electron/src/renderer/workspaces/StrategyChartTerminal.tsx": "bfd89bed4eb75310800fc95e04a769f65cc58a791da9130c68c6f4d1dea55b25",
+    "electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx": "27f1fb8799b11115d8f85f9b321cf63556b4171fc3f2719670a1ad4106137673"
+  },
+  "scope": "selected-target request lifecycle and decision pending guard; exact current EM quote capability display only",
+  "before_reproduction": {
+    "pending_panel_SSR": {
+      "failed": 2,
+      "description": "Old null-row branch certified off-pool/skip while auto kind or prior-index data was pending."
+    },
+    "mounted_lifecycle": {
+      "failed": 4,
+      "passed": 1,
+      "cases": [
+        {
+          "title": "keeps B selected when initialization A settles late with success",
+          "status": "passed"
+        },
+        {
+          "title": "keeps B selected when initialization A settles late with failure",
+          "status": "failed"
+        },
+        {
+          "title": "does not let late initialization finally clear the still-pending B loading state",
+          "status": "failed"
+        },
+        {
+          "title": "preserves selected B across locale and reconnect hydration instead of defaulting to A",
+          "status": "failed"
+        },
+        {
+          "title": "does not issue the old A refresh after refresh waits while the user chooses B",
+          "status": "failed"
+        }
+      ],
+      "baseline_commit": "5e95a60",
+      "production_files_ever_reverted": false,
+      "adaptation": "Artifact-only baseline copy exports existing panel and rewrites imports; initial pending-copy assertion is separately exercised so these cases settle actual lifecycle promises."
+    }
+  },
+  "after_tests": {
+    "command": "npm test -- electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx --reporter=dot",
+    "passed": 127,
+    "failed": 0,
+    "baseline_tests_retained": 109,
+    "new_tests": 18,
+    "actual_React_mount_deferred_API_cases": 5,
+    "network": "observedFetchJson mocked; kline canvas disabled in Node; stale mocked promises intentionally ignore AbortSignal"
+  },
+  "typechecks": {
+    "root_npm_run_lint": "passed",
+    "renderer_tsc": "not globally clean; baseline79/current79 diagnostics,0 newly introduced",
+    "comparison": "/Users/zhangqilong/github代码仓库/longclaw-agent-os/.data/client-selection-lifecycle-20261025/renderer-typecheck-comparison.json"
+  },
+  "fixes": [
+    "Explicit selected target and selection epoch survive locale/baseURL initialization; static index default applies only before user selection.",
+    "Request success/catch/manual finally honor request id, selection epoch and abort; background cleanup uses its own request owner. Old callbacks cannot replace B with A.",
+    "Initialization completion cannot clear a newer selected request loading state. refreshNow rechecks user selection after awaiting dashboard refresh.",
+    "Selected unresolved/loading/mismatched identity or timeframe shows decision pending, does not borrow cursor/old summary or certify off-pool.",
+    "Explicit SH5/6, SZ00/30/15/16/18 and BJ920 prefixed codes use stock routing; SH000300 and named index recognition preserved, names remain auto.",
+    "EM quote badge requires exact provider/endpoint, existing providerCurrentStatus/is_current_healthy, last_valid_success_at and validated_payload, no current_error_type. Recognizes current proof despite stored unverified, keeps provider display partial and other interfaces independent."
+  ],
+  "not_changed": [
+    "Actual pool membership4/28/14, scoring and trade-action rules",
+    "Backend/source profiles/TTL/timezone and production switches",
+    "No installation or runtime/source requests by this agent"
+  ],
+  "UI_operations": 0,
+  "provider_requests": 0,
+  "business_writes": 0,
+  "service_actions": 0,
+  "dependencies_changed": false,
+  "known_limit": "Static and mounted React tests establish the repaired race windows, not which exact live callback produced the earlier AX observation; root will verify after build/install."
+}

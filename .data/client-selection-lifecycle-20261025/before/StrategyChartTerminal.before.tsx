@@ -1,0 +1,13688 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  dispose,
+  init,
+  IndicatorSeries,
+  registerIndicator,
+  registerOverlay,
+  TooltipShowRule,
+  type Chart,
+  type DeepPartial,
+  type IndicatorStyle,
+  type KLineData,
+  type OverlayCreateFiguresCallbackParams,
+  type OverlayEvent,
+  type Styles,
+} from 'klinecharts'
+
+import type { SignalsDashboard } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.js'
+import {
+  chartColorTokens,
+  designThemeColor,
+  fontStacks,
+  interaction,
+  motion,
+  palette,
+  statusBadgeStyle,
+  tradingDeskTheme,
+} from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.js'
+import { type LongclawLocale, humanizeTokenLocale, localizeSystemText } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.js'
+import type { ShellBackgroundMode } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/layout.js'
+import { observedFetchJson, recordObservationEvent } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/observation.js'
+import type { AiFactorStrategySignal } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/AIFactorFactoryWorkspace.js'
+import { rankLabelForWatchlist, rankReasonForWatchlist, signalScopeLabel, tagsForWatchlist } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTags.js'
+
+type StrategyDashboard = Pick<
+  SignalsDashboard,
+  | 'buy_candidates'
+  | 'sell_warnings'
+  | 'chart_context'
+  | 'review_runs'
+  | 'connector_health'
+  | 'deep_links'
+  | 'daily_brief'
+  | 'decision_queue'
+  | 'strategy_kpis'
+  | 'source_confidence'
+  | 'cache_status'
+>
+
+type StrategyChartTerminalProps = {
+  locale: LongclawLocale
+  dashboard: StrategyDashboard
+  signalsWebBaseUrl?: string
+  aiFactorStrategySignals?: AiFactorStrategySignal[]
+  backgroundMode?: ShellBackgroundMode
+  onRefreshSignals?: () => Promise<void> | void
+  onOpenRecord: (title: string, record: Record<string, unknown>) => void
+}
+
+type StrategyAiTaskStatus = 'idle' | 'running' | 'success' | 'failed'
+type StrategyAiVerdict = 'focus' | 'wait' | 'avoid' | 'remove'
+
+type StrategyAiRun = {
+  run_id?: string
+  task?: string
+  provider?: string
+  model?: string
+  prompt_version?: string
+  input_hash?: string
+  output_schema?: string
+  status?: string
+  latency_ms?: number
+  created_at?: string
+}
+
+type AiCandidateReview = {
+  symbol: string
+  name: string
+  verdict: StrategyAiVerdict
+  rank?: number
+  why_watch: string
+  wait_for: string[]
+  risk_flags: string[]
+  dont_do: string
+  invalidation: string
+  next_action?: string
+  run?: StrategyAiRun
+}
+
+type AiRankingResult = {
+  summary: string
+  selected: AiCandidateReview[]
+  run?: StrategyAiRun
+  error?: string
+}
+
+type StrategyAiResponse = {
+  ok: boolean
+  output?: Record<string, unknown> | null
+  run?: StrategyAiRun
+  error?: string
+}
+
+declare global {
+  interface Window {
+    strategyAI?: {
+      rankCandidates: (payload: Record<string, unknown>) => Promise<StrategyAiResponse>
+      reviewCandidate: (payload: Record<string, unknown>) => Promise<StrategyAiResponse>
+    }
+  }
+}
+
+type WorkbenchSession = {
+  ready?: boolean
+  startup_profile?: string
+  read_only?: boolean
+  read_model_ready?: boolean
+  running?: boolean
+  label?: string
+  mode?: string
+  a_live?: boolean
+  hk_live?: boolean
+  us_live?: boolean
+  active_markets?: string[]
+  market_timezone?: string
+  data_as_of?: string
+  next_refresh_at?: string
+  error?: string
+}
+
+type WorkbenchShell = {
+  daily_brief?: Record<string, unknown>
+  supplementary_clues?: Record<string, unknown>[]
+  session?: WorkbenchSession
+  pool_meta?: Record<string, unknown>
+  cache?: {
+    status?: string
+    building?: boolean
+    age_seconds?: number
+    ttl_seconds?: number
+    enrichment_status?: string
+  }
+  sections?: Record<string, unknown>
+  indices?: Record<string, unknown>[]
+  buy_candidates?: Record<string, unknown>[]
+  watchlist?: Record<string, unknown>[]
+  watchlist_groups?: {
+    major_indices?: Record<string, unknown>[]
+    industry_etfs?: Record<string, unknown>[]
+    all_etfs?: Record<string, unknown>[]
+    macro_indices?: Record<string, unknown>[]
+    sector_boards?: Record<string, unknown>[]
+    buy_candidates?: Record<string, unknown>[]
+    focus_stocks?: Record<string, unknown>[]
+    risk_stocks?: Record<string, unknown>[]
+    watch_stocks?: Record<string, unknown>[]
+  }
+  watchlist_groups_meta?: Record<string, unknown>
+  kline_cache_coverage?: Record<string, unknown>
+  watchlist_range_columns?: Record<string, unknown>[]
+  cluster_summary?: Record<string, unknown>
+  sync_lanes?: Record<string, unknown>
+  decision_queue?: Record<string, unknown>[]
+  strategy_kpis?: Record<string, unknown>[] | Record<string, unknown>
+  source_confidence?: Record<string, unknown>[] | Record<string, unknown>
+  trade_map?: Record<string, unknown>
+  ai_alerts?: Record<string, unknown>[]
+  sector_transition_radar?: unknown
+  command_suggestions?: string[]
+  default_target?: {
+    kind?: string
+    label?: string
+    freq?: string
+  }
+  notices?: string[]
+}
+
+type SectorTransitionStage = 'pressure' | 'release' | 'repair' | 'intraday' | 'stable' | 'failed'
+
+type SectorTransitionRadarItem = {
+  id: string
+  sectorName: string
+  sectorKind: string
+  observedAt: string
+  fromState: string
+  toState: string
+  turnState: string
+  flowState: string
+  sentinels: string[]
+  evidence: string[]
+  blockers: string[]
+  nextChecks: string[]
+  weakerIf: string
+  raw: Record<string, unknown>
+}
+
+export type SectorTransitionRadarView = {
+  asOf: string
+  counts: Record<SectorTransitionStage, number>
+  events: SectorTransitionRadarItem[]
+  states: SectorTransitionRadarItem[]
+  unreadEventIds: string[]
+  freshness: {
+    status: string
+    asOf: string
+    blockers: string[]
+  }
+}
+
+type WorkbenchTarget = {
+  kind?: string
+  label?: string
+  symbol?: string
+  requested_freq?: string
+  effective_freq?: string
+  available_freqs?: string[]
+  carrier_kind?: string
+  carrier_symbol?: string
+  market?: string
+  market_timezone?: string
+}
+
+type StrategySignal = {
+  dt?: number
+  time?: number
+  timestamp?: number
+  date_str?: string
+  signal_date?: string
+  type?: string
+  signal_type?: string
+  price?: number
+  confidence?: number
+  freq?: string
+  details?: string
+  source?: string
+  pool_status?: string
+  chart_aligned?: boolean
+  display_scope?: string
+  signal_side?: string
+  signal_family?: string
+  render_pane?: string
+  volume_state?: string
+  volume_context?: string
+  volume_price_relation?: string
+  volume_ratio?: number
+  amount_ratio?: number
+  volume_z?: number
+  return_pct?: number
+  return_z?: number
+  range_ratio?: number
+  severity?: string
+  symbol?: string
+  name?: string
+  relation?: string
+  target_kind?: string
+  ma_alignment?: Record<string, unknown>
+  ma_acceptance?: Record<string, unknown>
+}
+
+type MaAcceptanceSummary = {
+  summary: string
+  periods: number[]
+  primary: Record<string, unknown>
+  items: Record<string, unknown>[]
+  detail?: string
+  state?: string
+  score?: number
+  source_collection?: string
+  signal_type?: string
+  freq?: string
+  as_of?: string
+  event_dt?: string
+}
+
+type StrategyKeyLevel = {
+  name?: string
+  value?: number
+  position?: string
+  distance_pct?: number | null
+  direction?: string
+  role?: string
+  timeframe?: string
+}
+
+type WorkbenchSymbolData = {
+  target?: WorkbenchTarget
+  chart?: Record<string, unknown>
+  summary?: Record<string, unknown>
+  signals?: StrategySignal[]
+  plan?: Record<string, unknown> | null
+  review?: Record<string, unknown>
+  trade?: Record<string, unknown>
+  analysis_target?: string
+  candidate_groups?: Record<string, unknown>
+  candidate_stocks?: Record<string, unknown>[]
+  data_truth?: Record<string, unknown>
+  viewpoint_context?: Record<string, unknown>
+  stock_analysis?: Record<string, unknown>
+  custom_signal_count?: number
+  direct_custom_signal_count?: number
+  visible_custom_signal_count?: number
+  hidden_custom_signal_count?: number
+  available_custom_signal_freqs?: string[]
+  custom_signal_counts_by_freq?: Record<string, number>
+  visible_custom_signal_counts_by_freq?: Record<string, number>
+  signal_counts_by_scope?: Record<string, number>
+  hidden_reasons?: string[]
+  related_custom_signals?: StrategySignal[]
+}
+
+type ChartTarget = {
+  label: string
+  kind: string
+  freq: string
+}
+
+type SymbolDataCacheEntry = {
+  data: WorkbenchSymbolData
+  cachedAt: number
+}
+
+type FrequencyOption = {
+  value: string
+  label: string
+}
+
+type TimeframeMarketSnapshotStatus = 'loading' | 'ready' | 'stale' | 'empty' | 'error'
+
+type TimeframeMarketSnapshot = {
+  freq: string
+  label: string
+  status: TimeframeMarketSnapshotStatus
+  quality: TimeframeMarketSnapshotQuality
+  qualityLabel: string
+  latestPrice: string
+  periodChange: string
+  volume: string
+  amount: string
+  bars: string
+  signal: string
+  statusText: string
+}
+
+type TimeframeMarketSnapshotQuality = 'waiting_source' | 'provisional_close' | 'partial_period' | 'official'
+
+type WatchlistRangeColumn = {
+  key: string
+  label: string
+  aliases?: string[]
+}
+
+type WatchlistSignalBadge = {
+  label: string
+  side: 'buy' | 'sell' | 'neutral'
+}
+
+type DecisionStage = 'context' | 'risk_first' | 'strategy_candidate' | 'watch_preheat' | 'entry_ready'
+type TradeStage = 'clue_pool' | 'watch_pool' | 'dip_watch' | 'left_attack' | 'probe_candidate' | 'attack_entry' | 'confirmed_entry' | 'skip_now'
+type DecisionGateKey = 'source' | 'hard_technical' | 'theme_alignment' | 'upper_context' | 'trigger_30m' | 'right_side' | 'risk_clear' | 'multi_timeframe' | 'period_conflict'
+type DecisionGateStatus = 'passed' | 'waiting' | 'blocked' | 'context'
+type DecisionInterventionSide = 'context' | 'left_setup' | 'right_confirmed' | 'hybrid' | 'risk_exit'
+type DecisionOpportunitySide = 'left' | 'right' | 'risk' | 'context'
+
+type DecisionPromotionStep = {
+  key: DecisionGateKey
+  status: DecisionGateStatus
+  detail: string
+}
+
+type WatchlistDecision = {
+  stage: DecisionStage
+  interventionSide: DecisionInterventionSide
+  interventionLabel: string
+  opportunitySide: DecisionOpportunitySide
+  opportunityLabel: string
+  strategyLineage: string[]
+  missingGates: DecisionGateKey[]
+  primaryBlocker: string
+  recommendedAction: string
+  sourceKeys: string[]
+  promotionPath: DecisionPromotionStep[]
+  invalidatesWhen: string
+}
+
+type TraderDecisionTask = {
+  id: string
+  stage: DecisionStage
+  title: string
+  action: string
+  summary: string
+  invalidatesWhen: string
+  row?: WatchlistRow
+  raw: Record<string, unknown>
+}
+
+type WatchlistRow = {
+  id: string
+  kind: string
+  label: string
+  name: string
+  code: string
+  typeLabel: string
+  latest: string
+  dayChange: string
+  rangeValues: string[]
+  signal: string
+  signalBadges: WatchlistSignalBadge[]
+  tags: string[]
+  lane: string
+  freshness: string
+  traderAction: string
+  rankLabel: string
+  rankReason: string
+  invalidatesWhen: string
+  explanation: string
+  traceSummary: string
+  targetKind: string
+  targetLabel: string
+  targetFreq: string
+  decision: WatchlistDecision
+  raw: Record<string, unknown>
+}
+
+type WatchlistTabKey = 'ai_focus' | 'major_indices' | 'industry_etfs' | 'all_etfs' | 'macro_indices' | 'sector_boards' | 'focus_stocks' | 'risk_stocks' | 'watch_stocks' | 'buy_candidates'
+type TerminalLayoutMode = 'cinema' | 'desk' | 'balanced' | 'focus'
+type ChartModeKey = 'chain_heat' | 'board_heat' | 'index_price' | 'stock_price'
+type TradeRoleKey = 'all' | 'entry_review' | 'left_attack' | 'right_attack' | 'watch' | 'clue' | 'risk_first' | 'mainline_attack' | 'climax_risk' | 'chain_watch' | 'defensive_weight' | 'second_wave' | 'risk_review' | 'ordinary_watch'
+type StockTradeRoleKey = Exclude<TradeRoleKey, 'all'>
+type TradeCommandKey = 'left_attack' | 'right_attack' | 'explain_current' | 'ma_confirmation' | 'rhythm_mismatch'
+type TradeMapItem = {
+  role: StockTradeRoleKey
+  label: string
+  name: string
+  summary: string
+  phase?: string
+  asOf?: string
+  definition?: string
+  source?: string
+}
+
+const WATCHLIST_TAB_KEYS: WatchlistTabKey[] = ['major_indices', 'industry_etfs', 'all_etfs', 'sector_boards', 'buy_candidates', 'watch_stocks', 'focus_stocks']
+const STOCK_WATCHLIST_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks', 'risk_stocks']
+const OPPORTUNITY_FUNNEL_TABS: WatchlistTabKey[] = ['buy_candidates', 'watch_stocks', 'focus_stocks']
+const SHELL_REQUEST_TIMEOUT_MS = 12_000
+const SYMBOL_REQUEST_TIMEOUT_MS = 45_000
+const SYMBOL_DATA_CACHE_TTL_MS = 60_000
+const RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT = 3
+const RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS = 12_000
+const RIGHT_PANEL_SYMBOL_PREFETCH_DELAY_MS = 2_500
+const TIMEFRAME_SNAPSHOT_DELAY_MS = 2_000
+const TRADE_ROLE_FILTERS: Array<{ key: TradeRoleKey; zh: string; en: string }> = [
+  { key: 'all', zh: '全部', en: 'All' },
+  { key: 'entry_review', zh: '买点待复核', en: 'Entry review' },
+  { key: 'left_attack', zh: '低吸进攻', en: 'Left attack' },
+  { key: 'right_attack', zh: '右侧进攻', en: 'Right attack' },
+  { key: 'watch', zh: '盯盘观察', en: 'Watch' },
+  { key: 'clue', zh: '线索池', en: 'Clue pool' },
+]
+const STOCK_TRADE_ROLE_KEYS: StockTradeRoleKey[] = ['entry_review', 'left_attack', 'right_attack', 'watch', 'clue', 'risk_first', 'mainline_attack', 'climax_risk', 'second_wave', 'defensive_weight', 'chain_watch', 'risk_review', 'ordinary_watch']
+
+type ApiError = Error & {
+  status?: number
+  payload?: Record<string, unknown>
+}
+
+export type SignalCalloutItem = {
+  label: string
+  side: 'buy' | 'sell' | 'neutral'
+  color: string
+  freq?: string
+  dateLabel?: string
+  alignedDateLabel?: string
+  scope?: string
+  sourceLabel?: string
+  details?: string
+}
+
+type SignalOverlayData = {
+  calloutId?: string
+  label: string
+  side: 'buy' | 'sell' | 'neutral'
+  color: string
+  selected?: boolean
+  isCustom?: boolean
+  freq?: string
+  dateLabel?: string
+  signalDateLabel?: string
+  scope?: string
+  lane?: number
+  sourceLabel?: string
+  details?: string
+  items?: SignalCalloutItem[]
+  itemCount?: number
+  backgroundMode?: ShellBackgroundMode
+}
+
+export type SignalChartCallout = SignalOverlayData & {
+  timestamp: number
+  price: number
+  items: SignalCalloutItem[]
+  itemCount: number
+}
+
+type StrategyTrendline = {
+  id?: string
+  kind?: 'support' | 'resistance' | string
+  direction?: 'ascending' | 'descending' | 'horizontal' | string
+  start_time?: number
+  end_time?: number
+  projection_time?: number
+  start_price?: number
+  end_price?: number
+  projected_price?: number
+  status?: string
+  distance_pct?: number
+  anchor_count?: number
+  anchor_quality?: number
+  confluence_count?: number
+  confidence?: number
+  timeframe?: string
+  source?: string
+}
+
+type DivergenceOverlayData = {
+  label: string
+  side: 'top' | 'bottom'
+  color: string
+  compact?: boolean
+}
+
+type MacdPoint = {
+  timestamp: number
+  dif?: number
+  dea?: number
+  histogram?: number
+}
+
+type PivotPoint = {
+  index: number
+  timestamp: number
+  price: number
+  dif: number
+  histogram: number
+}
+
+type MacdDivergenceSignal = {
+  id: string
+  type: 'bearish' | 'bullish'
+  timestamp: number
+  price: number
+  previousTimestamp: number
+  previousPrice: number
+  macdValue: number
+  previousMacdValue: number
+  confidence: number
+  metric: 'dif' | 'histogram'
+}
+
+const FREQ_OPTIONS: FrequencyOption[] = [
+  { value: '5min', label: '5m' },
+  { value: '15min', label: '15m' },
+  { value: '30min', label: '30m' },
+  { value: 'daily', label: '日' },
+  { value: 'weekly', label: '周' },
+]
+const TIMEFRAME_SNAPSHOT_OPTIONS: FrequencyOption[] = [...FREQ_OPTIONS, { value: 'monthly', label: '月' }]
+export const TEST_CHART_FREQ_VALUES = FREQ_OPTIONS.map(option => option.value)
+export const TEST_TIMEFRAME_SNAPSHOT_FREQ_VALUES = TIMEFRAME_SNAPSHOT_OPTIONS.map(option => option.value)
+const DEFAULT_TERMINAL_FREQ = 'daily'
+const DEFAULT_AVAILABLE_FREQS = FREQ_OPTIONS.map(option => option.value)
+const WATCHLIST_RANGE_COLUMNS: WatchlistRangeColumn[] = [
+  { key: '5d', label: '5日', aliases: ['5d', '5日', 'week', '1w', '1week', 'weekly'] },
+  { key: '20d', label: '20日', aliases: ['20d', '20日', 'month', '1m', '1month', 'monthly'] },
+  { key: '60d', label: '60日', aliases: ['60d', '60日', 'quarter', '3m', '3month', 'quarterly'] },
+]
+const SIGNAL_OVERLAY_NAME = 'longclawSignalMarker'
+const SIGNAL_OVERLAY_GROUP = 'longclaw-signals'
+const VOLUME_SIGNAL_OVERLAY_NAME = 'longclawVolumeSignalMarker'
+const VOLUME_SIGNAL_OVERLAY_GROUP = 'longclaw-volume-signals'
+const DIVERGENCE_OVERLAY_NAME = 'longclawMacdDivergenceMarker'
+const DIVERGENCE_OVERLAY_GROUP = 'longclaw-macd-divergence'
+const LEVEL_OVERLAY_GROUP = 'longclaw-levels'
+const TRENDLINE_OVERLAY_NAME = 'longclawTrendline'
+const TRENDLINE_OVERLAY_GROUP = 'longclaw-trendlines'
+const A_SHARE_VOLUME_INDICATOR_NAME = 'LONGCLAW_A_SHARE_VOLUME'
+const CANDLE_PANE_ID = 'candle_pane'
+const VOLUME_PANE_ID = 'volume_pane'
+const MACD_PANE_ID = 'macd_pane'
+const MACD_ZERO_INDICATOR_NAME = 'LONGCLAW_MACD_ZERO'
+const MACD_PARAMS = [12, 26, 9]
+const MAX_CHART_SIGNAL_OVERLAYS = 10
+const MAX_MAIN_CHART_SIGNAL_OVERLAYS = 12
+const MAX_VOLUME_SIGNAL_OVERLAYS = 8
+const MAX_CHART_DIVERGENCE_OVERLAYS = 3
+const MAX_CHART_LEVEL_OVERLAYS = 4
+const MAX_EVIDENCE_SIGNAL_ROWS = 6
+const CHART_SIGNAL_LOOKBACK_BARS = 140
+const SIGNAL_CALLOUT_BAR_WINDOW = 3
+const KEY_MA_PERIODS = [5, 8, 10, 13, 20, 21]
+
+let signalOverlayRegistered = false
+let volumeSignalOverlayRegistered = false
+let divergenceOverlayRegistered = false
+let trendlineOverlayRegistered = false
+let volumeIndicatorRegistered = false
+let macdZeroIndicatorRegistered = false
+const terminalTheme = tradingDeskTheme.colors
+
+function terminalLayoutMode(width: number): TerminalLayoutMode {
+  if (width >= 1550) return 'cinema'
+  if (width >= 1250) return 'desk'
+  if (width >= 1050) return 'balanced'
+  return 'focus'
+}
+
+function terminalCompactMode(mode: TerminalLayoutMode): boolean {
+  return mode === 'balanced' || mode === 'focus'
+}
+
+function terminalStackedTopBar(mode: TerminalLayoutMode): boolean {
+  return mode === 'focus'
+}
+
+function chartBarSpaceForMode(mode: TerminalLayoutMode): number {
+  if (mode === 'cinema') return 9
+  if (mode === 'desk') return 8
+  if (mode === 'balanced') return 7
+  return 6
+}
+
+function chartRightOffsetForMode(mode: TerminalLayoutMode): number {
+  if (mode === 'cinema') return 58
+  if (mode === 'desk') return 50
+  if (mode === 'balanced') return 40
+  return 30
+}
+
+function solidLineStyle(color: string, size = 1) {
+  return { color, size, style: 'solid' as const, dashedValue: [0, 0] }
+}
+
+function alphaColor(color: string, opacity: number): string {
+  const normalized = color.trim()
+  const match = normalized.match(/^#([0-9a-f]{6})$/i)
+  if (!match) return normalized
+  const hex = match[1]
+  const red = Number.parseInt(hex.slice(0, 2), 16)
+  const green = Number.parseInt(hex.slice(2, 4), 16)
+  const blue = Number.parseInt(hex.slice(4, 6), 16)
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`
+}
+
+const terminalRootStyle: React.CSSProperties = {
+  height: '100%',
+  minHeight: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  background: terminalTheme.root,
+  color: terminalTheme.text,
+  fontFamily: fontStacks.ui,
+}
+
+function terminalTopBarStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const stacked = terminalStackedTopBar(mode)
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: stacked ? '4px 6px' : 6,
+    padding: stacked ? '4px 7px' : '3px 7px',
+    borderBottom: `1px solid ${terminalTheme.grid}`,
+    background: terminalTheme.panel,
+    boxShadow: `inset 0 -1px ${tradingDeskTheme.alpha.textHairline}`,
+  }
+}
+
+function searchFormStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const stacked = terminalStackedTopBar(mode)
+  return {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(160px, 1fr) auto',
+    gap: 6,
+    flex: stacked ? '1 0 100%' : '1 1 330px',
+    minWidth: 0,
+    maxWidth: mode === 'cinema' ? 540 : stacked ? 'none' : 460,
+  }
+}
+
+function topBarButtonGroupStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const stacked = terminalStackedTopBar(mode)
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 5,
+    flex: stacked ? '1 1 220px' : '0 1 auto',
+    minWidth: 0,
+    justifyContent: 'flex-start',
+  }
+}
+
+const searchInputStyle: React.CSSProperties = {
+  height: 28,
+  minWidth: 0,
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.root,
+  color: terminalTheme.textStrong,
+  padding: '0 8px',
+  fontFamily: fontStacks.mono,
+  fontSize: 13,
+  outline: 'none',
+}
+
+function terminalGridLayoutStyle(leftCollapsed: boolean, rightCollapsed: boolean, mode: TerminalLayoutMode): React.CSSProperties {
+  const leftExpanded: Record<TerminalLayoutMode, string> = {
+    cinema: 'clamp(380px, 19vw, 456px)',
+    desk: 'clamp(360px, 25vw, 384px)',
+    balanced: 'clamp(330px, 32vw, 356px)',
+    focus: 'clamp(314px, 40vw, 336px)',
+  }
+  const rightExpanded: Record<TerminalLayoutMode, string> = {
+    cinema: 'clamp(292px, 16vw, 388px)',
+    desk: 'clamp(236px, 17vw, 286px)',
+    balanced: 'clamp(156px, 16vw, 184px)',
+    focus: 'clamp(148px, 18vw, 168px)',
+  }
+  const collapsed = mode === 'focus' ? '36px' : '40px'
+  const leftColumn = leftCollapsed ? collapsed : leftExpanded[mode]
+  const rightColumn = rightCollapsed ? collapsed : rightExpanded[mode]
+  return {
+    flex: 1,
+    display: 'grid',
+    gridTemplateColumns: `${leftColumn} minmax(0, 1fr) ${rightColumn}`,
+    gridTemplateRows: 'minmax(0, 1fr)',
+    gap: 1,
+    alignItems: 'stretch',
+    minHeight: 0,
+    overflow: 'hidden',
+    transition: `grid-template-columns ${motion.short}`,
+  }
+}
+
+const fallbackGridStyle: React.CSSProperties = {
+  flex: 1,
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+  gap: 1,
+  minHeight: 0,
+  overflow: 'auto',
+  background: terminalTheme.grid,
+}
+
+const terminalSideStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  minWidth: 0,
+  minHeight: 0,
+  overflow: 'auto',
+  background: terminalTheme.grid,
+  fontSize: 11,
+  scrollbarGutter: 'stable',
+}
+
+const collapsedSideStyle: React.CSSProperties = {
+  display: 'flex',
+  minWidth: 0,
+  minHeight: 0,
+  alignItems: 'stretch',
+  justifyContent: 'center',
+  background: terminalTheme.panel,
+}
+
+const verticalCollapseButtonStyle: React.CSSProperties = {
+  width: '100%',
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 0,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 12,
+  fontWeight: 800,
+  writingMode: 'vertical-rl',
+  letterSpacing: 0,
+}
+
+const panelActionButtonStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+  padding: '2px 6px',
+  transition: interaction.transition,
+}
+
+const terminalPanelStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 0,
+  minHeight: 0,
+  flexShrink: 0,
+  padding: 4,
+  border: 'none',
+  borderRadius: 0,
+  background: terminalTheme.panel,
+  color: terminalTheme.text,
+  overflow: 'hidden',
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const panelHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 6,
+}
+
+const panelTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 11,
+  fontWeight: 700,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const mutedTextStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 11,
+  lineHeight: 1.35,
+}
+
+const mutedLineStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const mutedTwoLineStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+}
+
+const monoTextStyle: React.CSSProperties = {
+  color: terminalTheme.mono,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  lineHeight: 1.35,
+}
+
+const eyebrowDarkStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0,
+  textTransform: 'uppercase',
+}
+
+const rowTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontWeight: 700,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const dataRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelSoft,
+  padding: '3px 5px',
+  minWidth: 0,
+  boxShadow: `inset 2px 0 ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const emptyStateDarkStyle: React.CSSProperties = {
+  border: `1px dashed ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.empty,
+  color: terminalTheme.muted,
+  padding: '8px 8px',
+  textAlign: 'center',
+  fontSize: 11,
+}
+
+const noticeDarkStyle: React.CSSProperties = {
+  border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
+  background: tradingDeskTheme.alpha.infoSurface,
+  color: terminalTheme.infoText,
+  padding: '3px 7px',
+  fontSize: 11,
+}
+
+const warningDarkStyle: React.CSSProperties = {
+  ...noticeDarkStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.accentBorder}`,
+  background: tradingDeskTheme.alpha.accentSurface,
+  color: terminalTheme.accentText,
+}
+
+const errorDarkStyle: React.CSSProperties = {
+  ...noticeDarkStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.errorBorder}`,
+  background: tradingDeskTheme.alpha.errorSurface,
+  color: terminalTheme.errorText,
+}
+
+const cacheMonitorStripStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  padding: '3px 5px 4px',
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: `linear-gradient(180deg, ${terminalTheme.panelInset}, ${terminalTheme.panel})`,
+}
+
+const cacheMonitorToolbarStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  minWidth: 0,
+}
+
+const cacheMonitorToolbarTitleStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  color: terminalTheme.textStrong,
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 0,
+}
+
+const cacheMonitorToolbarMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontSize: 9,
+  minWidth: 0,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+}
+
+function cacheMonitorGridStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: mode === 'focus'
+      ? 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))'
+      : 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))',
+    gap: 4,
+  }
+}
+
+const cacheMonitorCellStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 0,
+  padding: '4px 5px',
+  border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+  borderRadius: tradingDeskTheme.radius.compact,
+  background: `linear-gradient(180deg, ${terminalTheme.panelRaised}, ${terminalTheme.panel})`,
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const cacheMonitorHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  minWidth: 0,
+}
+
+const cacheMonitorTitleStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 9,
+  fontWeight: 800,
+  letterSpacing: 0,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const cacheMonitorValueStyle: React.CSSProperties = {
+  color: terminalTheme.mono,
+  fontFamily: fontStacks.mono,
+  fontSize: 12,
+  fontWeight: 800,
+  lineHeight: 1,
+  whiteSpace: 'nowrap',
+}
+
+const cacheProgressTrackStyle: React.CSSProperties = {
+  height: 5,
+  overflow: 'hidden',
+  borderRadius: tradingDeskTheme.radius.pill,
+  background: terminalTheme.panelInset,
+  border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+}
+
+function cacheProgressFillStyle(value: number, color: string): React.CSSProperties {
+  return {
+    height: '100%',
+    width: `${Math.max(0, Math.min(100, value))}%`,
+    minWidth: value > 0 ? 3 : 0,
+    background: `linear-gradient(90deg, ${color}, rgba(255,255,255,0.72))`,
+    transition: `width ${motion.medium}`,
+  }
+}
+
+const cacheMonitorToplineStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  minWidth: 0,
+}
+
+function cacheStatusDotStyle(color: string): React.CSSProperties {
+  return {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    flex: '0 0 auto',
+    background: color,
+    boxShadow: `0 0 0 2px ${terminalTheme.panelInset}, 0 0 12px ${color}`,
+  }
+}
+
+const cacheMonitorMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontSize: 9,
+  lineHeight: 1.18,
+  minHeight: 12,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+}
+
+const cacheMonitorDetailStrongStyle: React.CSSProperties = {
+  color: terminalTheme.text,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 700,
+  lineHeight: 1.15,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+}
+
+const cacheStatusChipStyle = (color: string): React.CSSProperties => ({
+  display: 'inline-flex',
+  alignItems: 'center',
+  boxSizing: 'border-box',
+  minWidth: 0,
+  maxWidth: '100%',
+  flex: '0 1 auto',
+  padding: '2px 6px',
+  borderRadius: tradingDeskTheme.radius.pill,
+  border: `1px solid ${color}`,
+  background: `${color}20`,
+  color,
+  fontFamily: fontStacks.mono,
+  fontSize: 10,
+  fontWeight: 800,
+  lineHeight: 1.15,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+})
+
+const compactListStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+}
+
+const candidateGroupHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 6,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 0,
+  textTransform: 'uppercase',
+}
+
+const targetButtonStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  padding: '4px 6px',
+  textAlign: 'left',
+  cursor: 'pointer',
+  width: '100%',
+  background: terminalTheme.panelSoft,
+  color: terminalTheme.text,
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  transition: interaction.transition,
+}
+
+const timeframeMarketRowStyle = (active: boolean): React.CSSProperties => ({
+  ...targetButtonStyle,
+  borderColor: active ? terminalTheme.accent : terminalTheme.border,
+  background: active ? terminalTheme.accentSoft : terminalTheme.panelSoft,
+  padding: '5px 6px',
+})
+
+const timeframeMarketTopLineStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  flexWrap: 'wrap',
+  minWidth: 0,
+}
+
+const timeframeMarketMetricStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: 2,
+  alignItems: 'center',
+  minWidth: 0,
+}
+
+const timeframeMarketSublineStyle: React.CSSProperties = {
+  ...mutedTwoLineStyle,
+  fontSize: 10,
+}
+
+const chainDrawerStyle: React.CSSProperties = {
+  borderTop: `1px solid ${terminalTheme.border}`,
+  borderBottom: `1px solid ${terminalTheme.borderMuted}`,
+  background: terminalTheme.panel,
+  padding: 5,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+}
+
+const chainDrawerGroupStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+}
+
+const chainDrawerButtonStyle: React.CSSProperties = {
+  ...targetButtonStyle,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(80px, 1.2fr) 54px 58px',
+  alignItems: 'center',
+  gap: 5,
+  padding: '3px 5px',
+}
+
+const chainLifecycleButtonStyle: React.CSSProperties = {
+  ...targetButtonStyle,
+  padding: '4px 6px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+}
+
+const chainContextHeroStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+}
+
+const sectorTargetFocusStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: 5,
+  background: terminalTheme.accentSoft,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+}
+
+const sectorTargetGroupRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+const chainVizTargetPreviewStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  minWidth: 0,
+  color: terminalTheme.muted,
+  fontSize: 9,
+  lineHeight: 1.15,
+}
+
+const chainVizTargetNameStyle: React.CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const chartModeSummaryStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 5,
+  minWidth: 0,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  lineHeight: 1.2,
+}
+
+const chartModeCurrentStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: 3,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+  padding: '1px 4px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.2,
+  fontWeight: 800,
+  flex: '0 0 auto',
+}
+
+const chartModePurposeStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const watchlistTableStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  minWidth: 0,
+  overflowX: 'hidden',
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.panelInset,
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const watchlistGridRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(96px, 1fr) 48px 52px 56px repeat(4, 68px)',
+  minWidth: 0,
+}
+
+const watchlistButtonRowStyle: React.CSSProperties = {
+  ...watchlistGridRowStyle,
+  width: '100%',
+  border: 'none',
+  borderRadius: 0,
+  background: 'transparent',
+  padding: 0,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+}
+
+const watchlistButtonActiveRowStyle: React.CSSProperties = {
+  ...watchlistButtonRowStyle,
+  background: terminalTheme.accentSoft,
+}
+
+const watchlistNameTitleRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 0,
+}
+
+function manualClueInlineDeleteStyle(armed: boolean): React.CSSProperties {
+  return {
+    flex: '0 0 auto',
+    minWidth: armed ? 42 : 22,
+    height: 18,
+    border: `1px solid ${armed ? tradingDeskTheme.market.down : terminalTheme.borderMuted}`,
+    borderRadius: 4,
+    background: armed ? 'rgba(248, 81, 73, 0.13)' : terminalTheme.panelInset,
+    color: armed ? tradingDeskTheme.market.down : terminalTheme.mutedStrong,
+    padding: '0 5px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    fontSize: 10,
+    fontWeight: 900,
+    lineHeight: '16px',
+  }
+}
+
+const watchlistHeaderCellStyle: React.CSSProperties = {
+  padding: '5px 3px',
+  borderBottom: `1px solid ${terminalTheme.borderStrong}`,
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  fontWeight: 800,
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+}
+
+const watchlistNameHeaderCellStyle: React.CSSProperties = {
+  ...watchlistHeaderCellStyle,
+  textAlign: 'left',
+  paddingLeft: 5,
+}
+
+const watchlistCellStyle: React.CSSProperties = {
+  minWidth: 0,
+  padding: '5px 3px',
+  borderBottom: `1px solid ${terminalTheme.borderMuted}`,
+  color: terminalTheme.text,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  lineHeight: 1.2,
+  textAlign: 'right',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+
+const watchlistNameCellStyle: React.CSSProperties = {
+  ...watchlistCellStyle,
+  textAlign: 'left',
+  fontFamily: fontStacks.ui,
+  paddingLeft: 5,
+}
+
+const watchlistNameStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 750,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const watchlistSubStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 10,
+  marginTop: 2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const watchlistSignalCellStyle: React.CSSProperties = {
+  ...watchlistCellStyle,
+  padding: '5px 4px',
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.ui,
+  lineHeight: 1.25,
+  overflow: 'visible',
+  textOverflow: 'clip',
+  whiteSpace: 'normal',
+}
+
+const watchlistSignalStackStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 2,
+  minWidth: 0,
+}
+
+const watchlistSignalMainStyle: React.CSSProperties = {
+  minWidth: 0,
+  maxWidth: '100%',
+  color: terminalTheme.textStrong,
+  fontSize: 10.5,
+  fontWeight: 800,
+  lineHeight: 1.25,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+}
+
+const watchlistSignalDetailStyle: React.CSSProperties = {
+  minWidth: 0,
+  maxWidth: '100%',
+  color: terminalTheme.muted,
+  fontSize: 9,
+  lineHeight: 1.2,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+}
+
+const stockWatchlistNameCellStyle: React.CSSProperties = {
+  ...watchlistNameCellStyle,
+  padding: '7px 6px',
+  whiteSpace: 'normal',
+}
+
+const stockWatchlistTitleRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+}
+
+const stockWatchlistNameTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 850,
+  lineHeight: 1.22,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+  wordBreak: 'break-word',
+}
+
+const stockWatchlistMetaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  minWidth: 0,
+}
+
+const stockWatchlistTitleMetaStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 800,
+}
+
+const stockWatchlistBadgeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 3,
+  marginTop: 4,
+  minWidth: 0,
+  overflow: 'visible',
+}
+
+const stockWatchlistSummaryStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  marginTop: 4,
+  color: terminalTheme.text,
+  fontSize: 10,
+  lineHeight: 1.35,
+  whiteSpace: 'normal',
+  overflow: 'visible',
+  textOverflow: 'clip',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+}
+
+const stockWatchlistButtonRowStyle: React.CSSProperties = {
+  minHeight: 74,
+  borderBottom: `1px solid ${terminalTheme.borderMuted}`,
+  background: terminalTheme.panelSoft,
+}
+
+const stockWatchlistButtonActiveRowExtraStyle: React.CSSProperties = {
+  background: terminalTheme.accentSoft,
+}
+
+const indicatorLegendStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '3px 6px',
+  alignItems: 'center',
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.2,
+  maxHeight: 28,
+  overflow: 'hidden',
+}
+
+const chartTradingValueLineStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 10,
+  lineHeight: 1.2,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+
+const indicatorLegendItemStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  whiteSpace: 'nowrap',
+}
+
+const watchlistPrimaryTabsStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 4,
+  minWidth: 122,
+  flex: '1 1 122px',
+}
+
+function watchlistStockSelectLabelStyle(active: boolean): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: '36px minmax(0, 1fr)',
+    alignItems: 'center',
+    gap: 5,
+    flex: '1 1 160px',
+    minWidth: 150,
+    height: 28,
+    padding: '0 6px',
+    border: `1px solid ${active ? terminalTheme.accent : terminalTheme.border}`,
+    borderRadius: 5,
+    background: active ? terminalTheme.accentSoft : terminalTheme.control,
+    color: active ? terminalTheme.accentText : terminalTheme.controlText,
+    fontFamily: fontStacks.ui,
+    fontSize: 11,
+    fontWeight: 800,
+  }
+}
+
+const watchlistStockSelectStyle: React.CSSProperties = {
+  minWidth: 0,
+  width: '100%',
+  border: 'none',
+  outline: 'none',
+  background: 'transparent',
+  color: 'inherit',
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+}
+
+const watchlistMetaStripStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelInset,
+  color: terminalTheme.mutedStrong,
+  padding: '4px 6px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.25,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapStripStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: '6px 8px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+const tradeMapHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  minWidth: 0,
+}
+
+const tradeMapTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 11,
+  fontWeight: 900,
+  lineHeight: 1.2,
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontSize: 9,
+  textAlign: 'right',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapDefinitionStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  color: terminalTheme.mutedStrong,
+  fontSize: 9,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const topStripToggleStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  padding: '2px 6px',
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 9,
+  fontWeight: 850,
+  lineHeight: 1.15,
+  whiteSpace: 'nowrap',
+}
+
+const tradeMapCompactRailStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 4,
+  minWidth: 0,
+  overflow: 'hidden',
+  flex: '1 1 auto',
+}
+
+const tradeMapRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+function tradeMapChipStyle(role: StockTradeRoleKey, active = false): React.CSSProperties {
+  const color = tradeRoleColor(role)
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    maxWidth: 360,
+    border: `1px solid ${active ? terminalTheme.textStrong : color}`,
+    borderRadius: 4,
+    background: active ? `${color}2e` : `${color}18`,
+    color: terminalTheme.text,
+    padding: '3px 6px',
+    fontFamily: fontStacks.ui,
+    fontSize: 10,
+    fontWeight: 750,
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    appearance: 'none',
+  }
+}
+
+const aiAlertStripStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+function aiAlertChipStyle(level: string): React.CSSProperties {
+  const color = level === 'warning' ? tradingDeskTheme.colors.auroraGold : terminalTheme.accent
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    maxWidth: 520,
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: `${color}14`,
+    color: level === 'warning' ? tradingDeskTheme.colors.auroraGold : terminalTheme.accentText,
+    padding: '2px 6px',
+    fontFamily: fontStacks.mono,
+    fontSize: 9,
+    fontWeight: 800,
+    lineHeight: 1.2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+    appearance: 'none',
+  }
+}
+
+const tradeRoleFilterStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 5,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+function tradeRoleButtonStyle(active: boolean, role: TradeRoleKey): React.CSSProperties {
+  const color = role === 'all' ? terminalTheme.borderStrong : tradeRoleColor(role)
+  return {
+    border: `1px solid ${active ? color : terminalTheme.border}`,
+    borderRadius: 4,
+    background: active ? `${color}1f` : terminalTheme.control,
+    color: active ? terminalTheme.textStrong : terminalTheme.controlText,
+    padding: '4px 6px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    fontSize: 10,
+    fontWeight: 850,
+    lineHeight: 1.15,
+    minHeight: 24,
+  }
+}
+
+const commandBarShellStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+const commandBarRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  minWidth: 0,
+}
+
+const commandChipStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  padding: '4px 6px',
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  textAlign: 'left',
+}
+
+const aiReviewBodyStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  minWidth: 0,
+}
+
+const aiReviewConclusionStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.accent}`,
+  borderRadius: 5,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+  padding: '6px 7px',
+  fontFamily: fontStacks.ui,
+  fontSize: 12,
+  fontWeight: 900,
+  lineHeight: 1.25,
+}
+
+const aiReviewSectionStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelSoft,
+  padding: '5px 6px',
+  minWidth: 0,
+}
+
+const aiReviewLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 800,
+  lineHeight: 1.2,
+  textTransform: 'uppercase',
+}
+
+const aiReviewTextStyle: React.CSSProperties = {
+  color: terminalTheme.text,
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  lineHeight: 1.35,
+  marginTop: 3,
+}
+
+const aiRunMetaStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.35,
+  overflowWrap: 'anywhere',
+}
+
+const watchlistControlRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  flexWrap: 'wrap',
+  gap: 6,
+  minWidth: 0,
+}
+
+const chainVizShellStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  minWidth: 0,
+}
+
+const chainVizGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(148px, 1fr))',
+  gap: 5,
+}
+
+const chainVizNodeStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelSoft,
+  color: terminalTheme.text,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  padding: 6,
+  minWidth: 0,
+  textAlign: 'left',
+}
+
+const chainVizNodeActiveStyle: React.CSSProperties = {
+  ...chainVizNodeStyle,
+  border: `1px solid ${terminalTheme.accent}`,
+  background: terminalTheme.accentSoft,
+}
+
+const chainVizTopLineStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 6,
+  minWidth: 0,
+}
+
+const chainVizTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 11,
+  fontWeight: 800,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const chainVizMetricStyle: React.CSSProperties = {
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  fontWeight: 800,
+  whiteSpace: 'nowrap',
+}
+
+const chainVizMetaStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 4,
+  marginTop: 5,
+  minWidth: 0,
+}
+
+const chainVizChipStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  padding: '1px 4px',
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const chainVizMapStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'auto 12px minmax(0, 0.8fr) 12px minmax(0, 1.2fr)',
+  alignItems: 'center',
+  gap: 3,
+  marginTop: 6,
+  minWidth: 0,
+}
+
+const chainVizNodePillStyle: React.CSSProperties = {
+  ...chainVizChipStyle,
+  color: terminalTheme.text,
+  borderColor: terminalTheme.borderMuted,
+  background: tradingDeskTheme.alpha.textHairline,
+}
+
+const chainVizDomainRailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 3,
+  minWidth: 0,
+  overflow: 'hidden',
+}
+
+const chainVizConnectorStyle: React.CSSProperties = {
+  height: 1,
+  minWidth: 10,
+  background: terminalTheme.borderMuted,
+}
+
+const chainVizBarTrackStyle: React.CSSProperties = {
+  height: 4,
+  borderRadius: 2,
+  marginTop: 6,
+  background: tradingDeskTheme.alpha.textHairline,
+  overflow: 'hidden',
+}
+
+const chainVizBarStyle: React.CSSProperties = {
+  height: '100%',
+  borderRadius: 2,
+}
+
+const watchlistTabButtonStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  height: 28,
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+
+const watchlistTabButtonActiveStyle: React.CSSProperties = {
+  ...watchlistTabButtonStyle,
+  border: `1px solid ${terminalTheme.accent}`,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+}
+
+const watchlistRangeSelectLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  flex: '1 1 176px',
+  minWidth: 0,
+  color: terminalTheme.mutedStrong,
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 800,
+}
+
+const watchlistRangeSelectStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 120,
+  maxWidth: 170,
+  height: 28,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  fontFamily: fontStacks.ui,
+  fontSize: 11,
+  fontWeight: 800,
+  outline: 'none',
+}
+
+const decisionOverviewStripStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(94px, 1.1fr) repeat(3, minmax(52px, 0.7fr))',
+  gap: 5,
+  alignItems: 'stretch',
+  minWidth: 0,
+}
+
+const decisionModeCellStyle: React.CSSProperties = {
+  border: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+  borderRadius: 4,
+  background: terminalTheme.panel,
+  padding: '4px 5px',
+  minWidth: 0,
+}
+
+const decisionModeTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontWeight: 850,
+  fontSize: 12,
+  lineHeight: 1.15,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionModeMetaStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 9,
+  lineHeight: 1.2,
+  marginTop: 2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionMetricCellStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: 4,
+  background: terminalTheme.panelSoft,
+  padding: '4px 5px',
+  minWidth: 0,
+}
+
+const decisionMetricValueStyle: React.CSSProperties = {
+  color: terminalTheme.mono,
+  fontFamily: fontStacks.mono,
+  fontSize: 13,
+  fontWeight: 850,
+  lineHeight: 1,
+}
+
+const decisionMetricLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 9,
+  fontWeight: 800,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionFunnelShellStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+function riskPriorityButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${active ? tradingDeskTheme.market.down : tradingDeskTheme.alpha.errorBorder}`,
+    borderRadius: 5,
+    background: active ? tradingDeskTheme.alpha.errorSurface : terminalTheme.panelSoft,
+    color: active ? terminalTheme.errorText : terminalTheme.text,
+    padding: '5px 6px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    textAlign: 'left',
+    minWidth: 0,
+    boxShadow: active ? `inset 3px 0 ${tradingDeskTheme.market.down}` : `inset 3px 0 ${tradingDeskTheme.alpha.errorBorder}`,
+  }
+}
+
+const funnelRailStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) 12px minmax(0, 1fr) 12px minmax(0, 1fr)',
+  gap: 4,
+  alignItems: 'stretch',
+  minWidth: 0,
+}
+
+function funnelStepButtonStyle(active: boolean, stage: DecisionStage): React.CSSProperties {
+  const color = stage === 'entry_ready'
+    ? tradingDeskTheme.market.up
+    : stage === 'watch_preheat'
+      ? tradingDeskTheme.colors.auroraGold
+      : terminalTheme.accent
+  return {
+    border: `1px solid ${active ? color : terminalTheme.border}`,
+    borderRadius: 5,
+    background: active ? `${color}1f` : terminalTheme.control,
+    color: active ? terminalTheme.textStrong : terminalTheme.controlText,
+    padding: '5px 6px',
+    cursor: 'pointer',
+    fontFamily: fontStacks.ui,
+    textAlign: 'left',
+    minWidth: 0,
+    boxShadow: active ? `inset 0 -2px ${color}` : 'none',
+  }
+}
+
+const funnelConnectorStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+}
+
+const sectorTransitionShellStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+  padding: 6,
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: tradingDeskTheme.radius.compact,
+  background: `linear-gradient(145deg, ${terminalTheme.panelRaised}, ${terminalTheme.panelInset})`,
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const sectorTransitionHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  minWidth: 0,
+}
+
+const sectorTransitionTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: 0.2,
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionHeaderMetaStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  textAlign: 'right',
+}
+
+const sectorTransitionRailStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(6, minmax(0, 1fr))',
+  gap: 3,
+  minWidth: 0,
+}
+
+function sectorTransitionRailCellStyle(stage: SectorTransitionStage): React.CSSProperties {
+  const color = sectorTransitionStageColor(stage)
+  const surface = stage === 'pressure' || stage === 'failed'
+    ? tradingDeskTheme.alpha.errorSurface
+    : stage === 'release'
+      ? tradingDeskTheme.alpha.auroraGold
+      : stage === 'stable'
+        ? 'rgba(89, 217, 142, 0.12)'
+        : tradingDeskTheme.alpha.auroraBlue
+  return {
+    minWidth: 0,
+    padding: '4px 3px',
+    border: `1px solid ${terminalTheme.borderMuted}`,
+    borderTop: `2px solid ${color}`,
+    borderRadius: 4,
+    background: surface,
+    textAlign: 'center',
+  }
+}
+
+const sectorTransitionCountStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.mono,
+  fontSize: 12,
+  fontWeight: 900,
+  lineHeight: 1,
+}
+
+const sectorTransitionStageLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 8,
+  fontWeight: 800,
+  lineHeight: 1.15,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionCardListStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+  gap: 4,
+  minWidth: 0,
+}
+
+function sectorTransitionCardStyle(stage: SectorTransitionStage | ''): React.CSSProperties {
+  const color = sectorTransitionStageColor(stage || 'repair')
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    minWidth: 0,
+    padding: '5px 6px',
+    border: `1px solid ${terminalTheme.border}`,
+    borderLeft: `3px solid ${color}`,
+    borderRadius: 4,
+    background: terminalTheme.panelSoft,
+  }
+}
+
+const sectorTransitionCardHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 5,
+  minWidth: 0,
+}
+
+const sectorTransitionCardTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 10,
+  fontWeight: 900,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionStateChipStyle: React.CSSProperties = {
+  flex: '0 0 auto',
+  maxWidth: 94,
+  padding: '1px 4px',
+  border: `1px solid ${terminalTheme.borderMuted}`,
+  borderRadius: tradingDeskTheme.radius.pill,
+  color: terminalTheme.mono,
+  fontFamily: fontStacks.mono,
+  fontSize: 8,
+  fontWeight: 800,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionEvidenceStyle: React.CSSProperties = {
+  color: terminalTheme.text,
+  fontSize: 9,
+  lineHeight: 1.25,
+  minWidth: 0,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+}
+
+const sectorTransitionDetailStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 8,
+  lineHeight: 1.2,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const sectorTransitionSentinelButtonStyle: React.CSSProperties = {
+  ...sectorTransitionDetailStyle,
+  width: '100%',
+  padding: 0,
+  border: 'none',
+  background: 'transparent',
+  color: terminalTheme.infoText,
+  fontFamily: fontStacks.ui,
+  textAlign: 'left',
+  cursor: 'pointer',
+}
+
+const sectorTransitionBlockerStyle: React.CSSProperties = {
+  ...sectorTransitionDetailStyle,
+  color: terminalTheme.errorText,
+}
+
+const sectorTransitionFreshnessStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 6,
+  minWidth: 0,
+  paddingTop: 3,
+  borderTop: `1px solid ${tradingDeskTheme.alpha.textBorder}`,
+  color: terminalTheme.muted,
+  fontFamily: fontStacks.mono,
+  fontSize: 8,
+}
+
+const funnelButtonTopStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 4,
+  minWidth: 0,
+}
+
+const funnelButtonLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 850,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const funnelButtonCountStyle: React.CSSProperties = {
+  fontFamily: fontStacks.mono,
+  fontSize: 11,
+  fontWeight: 850,
+}
+
+const funnelButtonMetaStyle: React.CSSProperties = {
+  color: terminalTheme.muted,
+  fontSize: 9,
+  marginTop: 3,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const decisionPathStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+  gap: 4,
+  minWidth: 0,
+}
+
+function decisionGateColor(status: DecisionGateStatus): string {
+  if (status === 'passed') return palette.success
+  if (status === 'blocked') return palette.error
+  if (status === 'waiting') return palette.warning
+  return terminalTheme.borderStrong
+}
+
+function decisionGateSurface(status: DecisionGateStatus): string {
+  if (status === 'passed') return 'rgba(52, 211, 153, 0.12)'
+  if (status === 'blocked') return 'rgba(251, 113, 133, 0.12)'
+  if (status === 'waiting') return 'rgba(251, 191, 36, 0.12)'
+  return terminalTheme.panelSoft
+}
+
+function decisionPathStepStyle(status: DecisionGateStatus): React.CSSProperties {
+  const color = decisionGateColor(status)
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: decisionGateSurface(status),
+    padding: '4px 5px',
+    minWidth: 0,
+  }
+}
+
+function decisionGateDotStyle(status: DecisionGateStatus): React.CSSProperties {
+  const color = decisionGateColor(status)
+  return {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    background: color,
+    flex: '0 0 auto',
+  }
+}
+
+const decisionExplainHeroStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 6,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 5,
+  minWidth: 0,
+}
+
+const decisionExplainRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '62px minmax(0, 1fr)',
+  gap: 6,
+  alignItems: 'start',
+  minWidth: 0,
+}
+
+const decisionExplainLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 10,
+  fontWeight: 850,
+  lineHeight: 1.25,
+}
+
+const tradeActionStripStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))',
+  gap: 5,
+  minWidth: 0,
+}
+
+const tradeActionCellStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelSoft,
+  padding: '5px 6px',
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+}
+
+const tradeActionLabelStyle: React.CSSProperties = {
+  color: terminalTheme.mutedStrong,
+  fontSize: 9,
+  fontWeight: 850,
+  lineHeight: 1.15,
+}
+
+const signalBadgeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 3,
+  justifyContent: 'flex-end',
+  alignItems: 'center',
+  minWidth: 0,
+  overflow: 'hidden',
+}
+
+const contextSignalBadgeRowStyle: React.CSSProperties = {
+  ...signalBadgeRowStyle,
+  flexWrap: 'wrap',
+  maxHeight: 34,
+}
+
+const miniSignalBadgeStyle: React.CSSProperties = {
+  border: `1px solid ${tradingDeskTheme.alpha.infoBorder}`,
+  borderRadius: 3,
+  background: tradingDeskTheme.alpha.infoSurface,
+  color: terminalTheme.infoText,
+  padding: '1px 3px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  lineHeight: 1.2,
+  fontWeight: 800,
+}
+
+const miniSellSignalBadgeStyle: React.CSSProperties = {
+  ...miniSignalBadgeStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.errorBorder}`,
+  background: tradingDeskTheme.alpha.errorSurface,
+  color: tradingDeskTheme.market.down,
+}
+
+function stockDisplayBadgeStyle(tone: string): React.CSSProperties {
+  if (tone === 'risk') {
+    return miniSellSignalBadgeStyle
+  }
+  if (tone === 'buy') {
+    return {
+      ...miniSignalBadgeStyle,
+      border: `1px solid ${tradingDeskTheme.market.up}`,
+      background: 'rgba(38, 166, 154, 0.12)',
+      color: tradingDeskTheme.market.up,
+    }
+  }
+  if (tone === 'hot') {
+    return {
+      ...miniSignalBadgeStyle,
+      border: `1px solid ${tradingDeskTheme.colors.auroraGold}`,
+      background: 'rgba(224, 168, 58, 0.12)',
+      color: tradingDeskTheme.colors.auroraGold,
+    }
+  }
+  if (tone === 'wait' || tone === 'watch') {
+    return {
+      ...miniSignalBadgeStyle,
+      border: `1px solid ${terminalTheme.accent}`,
+      background: terminalTheme.accentSoft,
+      color: terminalTheme.accentText,
+    }
+  }
+  return miniNeutralSignalBadgeStyle
+}
+
+const miniNeutralSignalBadgeStyle: React.CSSProperties = {
+  ...miniSignalBadgeStyle,
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  background: terminalTheme.surfaceSoft,
+  color: terminalTheme.textMuted,
+}
+
+const indicatorLegendSwatchStyle: React.CSSProperties = {
+  width: 14,
+  height: 2,
+  borderRadius: 1,
+  background: terminalTheme.muted,
+}
+
+const chartStageStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+  minHeight: 0,
+  padding: 5,
+  border: 'none',
+  borderRadius: 0,
+  background: terminalTheme.root,
+  overflow: 'hidden',
+  boxShadow: `inset 0 1px ${tradingDeskTheme.alpha.textHairline}`,
+}
+
+const chartHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 6,
+  flexWrap: 'wrap',
+  minWidth: 0,
+}
+
+function chartTitleStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  return {
+    color: terminalTheme.textStrong,
+    fontSize: mode === 'focus' ? 13 : mode === 'cinema' ? 15 : 14,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  }
+}
+
+const chartSubtitleStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  maxWidth: '100%',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontSize: 10,
+}
+
+const chartMetaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 6,
+}
+
+function chartHeaderRightStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  const compact = terminalCompactMode(mode)
+  return {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 6,
+    justifyContent: compact ? 'space-between' : 'flex-end',
+    flexWrap: 'wrap',
+    flex: compact ? '1 1 100%' : '0 1 300px',
+    minWidth: 0,
+    maxWidth: compact ? '100%' : 'min(100%, 300px)',
+  }
+}
+
+function headerMetricsStyle(mode: TerminalLayoutMode): React.CSSProperties {
+  return {
+    display: 'grid',
+    gridTemplateColumns: mode === 'focus'
+      ? 'repeat(3, minmax(42px, 1fr))'
+      : mode === 'balanced'
+        ? 'repeat(3, minmax(46px, 60px))'
+        : 'repeat(3, minmax(48px, 64px))',
+    gap: 4,
+    minWidth: mode === 'focus' ? 0 : undefined,
+    flex: mode === 'focus' ? '1 1 180px' : '0 0 auto',
+  }
+}
+
+const headerMetricStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 4,
+  background: terminalTheme.panelInset,
+  padding: '2px 4px',
+  minWidth: 0,
+}
+
+const headerMetricValueStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontWeight: 800,
+  fontSize: 10,
+  lineHeight: 1.12,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const chartConclusionStyle: React.CSSProperties = {
+  ...noticeDarkStyle,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  flexShrink: 0,
+}
+
+const chartCanvasShellStyle: React.CSSProperties = {
+  position: 'relative',
+  minHeight: 0,
+  flex: 1,
+  overflow: 'hidden',
+  border: `1px solid ${terminalTheme.chartBorder}`,
+  borderRadius: 3,
+  background: terminalTheme.chartPanel,
+  boxShadow: tradingDeskTheme.shadows.glow,
+}
+
+const chartCanvasStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  minHeight: 0,
+}
+
+const chartOverlayMessageStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 18,
+  color: terminalTheme.text,
+  textAlign: 'center',
+  background: 'rgba(8, 11, 18, 0.88)',
+  zIndex: 2,
+}
+
+function chartCanvasShellStyleForMode(backgroundMode: ShellBackgroundMode): React.CSSProperties {
+  if (backgroundMode !== 'light') return chartCanvasShellStyle
+  return {
+    ...chartCanvasShellStyle,
+    background: '#FBFCFF',
+    boxShadow: 'inset 0 0 0 1px rgba(148, 163, 184, 0.08)',
+  }
+}
+
+function chartCanvasStyleForMode(backgroundMode: ShellBackgroundMode): React.CSSProperties {
+  return {
+    ...chartCanvasStyle,
+    background: backgroundMode === 'light'
+      ? '#FBFCFF'
+      : designThemeColor(backgroundMode, 'chart-panel', '#131722'),
+  }
+}
+
+function chartOverlayMessageStyleForMode(backgroundMode: ShellBackgroundMode): React.CSSProperties {
+  if (backgroundMode !== 'light') return chartOverlayMessageStyle
+  return {
+    ...chartOverlayMessageStyle,
+    color: '#667085',
+    background: 'rgba(251, 252, 254, 0.88)',
+  }
+}
+
+const signalRowStyle: React.CSSProperties = {
+  display: 'flex',
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelSoft,
+  padding: '4px 6px',
+  alignItems: 'center',
+  minWidth: 0,
+}
+
+const signalBlockStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  minWidth: 0,
+  padding: '4px 0 2px',
+  borderTop: `1px solid ${terminalTheme.borderMuted}`,
+}
+
+const customSignalBadgeStyle: React.CSSProperties = {
+  ...miniNeutralSignalBadgeStyle,
+  border: `1px solid ${tradingDeskTheme.chart.line}`,
+  background: 'rgba(14, 116, 144, 0.18)',
+  color: tradingDeskTheme.chart.line,
+}
+
+const chartCalloutSelectorStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))',
+  gap: 4,
+  minWidth: 0,
+}
+
+function chartCalloutButtonStyle(active: boolean, color: string): React.CSSProperties {
+  return {
+    border: `1px solid ${active ? terminalTheme.textStrong : color}`,
+    borderRadius: 5,
+    background: active ? `${color}26` : terminalTheme.panelInset,
+    color: terminalTheme.text,
+    padding: '4px 6px',
+    cursor: 'pointer',
+    appearance: 'none',
+    textAlign: 'left',
+    minWidth: 0,
+    boxShadow: active ? `inset 3px 0 0 ${color}` : `inset 2px 0 0 ${color}`,
+  }
+}
+
+const chartCalloutButtonTitleStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 5,
+  minWidth: 0,
+  color: terminalTheme.textStrong,
+  fontFamily: fontStacks.ui,
+  fontSize: 10,
+  fontWeight: 900,
+  lineHeight: 1.15,
+}
+
+const chartCalloutButtonSubStyle: React.CSSProperties = {
+  ...mutedLineStyle,
+  marginTop: 2,
+  fontSize: 9,
+}
+
+const chartCalloutDateBadgeStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 4,
+  background: terminalTheme.panelSoft,
+  color: terminalTheme.textStrong,
+  padding: '1px 4px',
+  fontFamily: fontStacks.mono,
+  fontSize: 9,
+  fontWeight: 800,
+  lineHeight: 1.15,
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+}
+
+function chartCalloutIdBadgeStyle(color: string): React.CSSProperties {
+  return {
+    border: `1px solid ${color}`,
+    borderRadius: 4,
+    background: `${color}1f`,
+    color,
+    padding: '1px 4px',
+    fontFamily: fontStacks.mono,
+    fontSize: 9,
+    fontWeight: 900,
+    lineHeight: 1.1,
+    flexShrink: 0,
+  }
+}
+
+const chartCalloutDetailStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  border: `1px solid ${terminalTheme.border}`,
+  borderRadius: 5,
+  background: terminalTheme.panelInset,
+  padding: 5,
+  minWidth: 0,
+}
+
+function chartCalloutItemStyle(color: string): React.CSSProperties {
+  return {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 3,
+    borderLeft: `3px solid ${color}`,
+    background: terminalTheme.panelSoft,
+    padding: '4px 6px',
+    minWidth: 0,
+  }
+}
+
+const aiFactorStrategyStripStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  gap: 6,
+  minHeight: 42,
+  padding: '4px 6px',
+  borderBottom: `1px solid ${terminalTheme.grid}`,
+  background: terminalTheme.panelInset,
+  overflowX: 'auto',
+  scrollbarGutter: 'stable',
+}
+
+const aiFactorStrategyCardStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  gap: 8,
+  minWidth: 260,
+  flex: '1 1 280px',
+  border: `1px solid ${tradingDeskTheme.alpha.accentBorder}`,
+  borderRadius: 5,
+  background: tradingDeskTheme.alpha.accentSurface,
+  padding: '5px 7px',
+  cursor: 'pointer',
+}
+
+const aiFactorStrategyTitleStyle: React.CSSProperties = {
+  color: terminalTheme.textStrong,
+  fontSize: 12,
+  fontWeight: 800,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const aiFactorSignalBadgeStyle: React.CSSProperties = {
+  ...miniNeutralSignalBadgeStyle,
+  border: `1px solid ${tradingDeskTheme.alpha.accentBorder}`,
+  background: tradingDeskTheme.alpha.accentSurface,
+  color: terminalTheme.accentText,
+}
+
+const quickChipStyle: React.CSSProperties = {
+  border: `1px solid ${terminalTheme.borderStrong}`,
+  borderRadius: 5,
+  background: terminalTheme.control,
+  color: terminalTheme.controlText,
+  padding: '5px 7px',
+  cursor: 'pointer',
+  fontFamily: fontStacks.ui,
+  fontSize: 13,
+  fontWeight: 600,
+  justifyContent: 'center',
+  minHeight: 26,
+}
+
+const quickChipActiveStyle: React.CSSProperties = {
+  ...quickChipStyle,
+  border: `1px solid ${terminalTheme.accent}`,
+  background: terminalTheme.accentSoft,
+  color: terminalTheme.accentText,
+  justifyContent: 'center',
+  minHeight: 26,
+}
+
+function terminalButtonStyle(active = false, disabled = false): React.CSSProperties {
+  return {
+    height: 28,
+    minWidth: 42,
+    border: `1px solid ${active ? terminalTheme.accent : terminalTheme.borderStrong}`,
+    borderRadius: 5,
+    background: active ? terminalTheme.accentSoft : terminalTheme.control,
+    color: active ? terminalTheme.accentText : terminalTheme.controlText,
+    padding: '0 9px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.45 : 1,
+    fontFamily: fontStacks.ui,
+    fontSize: 13,
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    flex: '0 0 auto',
+  }
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
+function firstNumberValue(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const parsed = numberValue(value)
+    if (parsed !== undefined) return parsed
+  }
+  return undefined
+}
+
+function compactText(value: unknown, fallback = ''): string {
+  return stringValue(value) ?? (typeof value === 'number' ? String(value) : fallback)
+}
+
+const SECTOR_TRANSITION_STAGES: SectorTransitionStage[] = [
+  'pressure',
+  'release',
+  'repair',
+  'intraday',
+  'stable',
+  'failed',
+]
+
+function textList(value: unknown, keys: string[] = []): string[] {
+  const values = Array.isArray(value)
+    ? value
+    : Object.keys(recordValue(value)).length > 0
+      ? [value]
+      : []
+  return values
+    .map(item => {
+      const direct = compactText(item)
+      if (direct) return direct
+      const row = recordValue(item)
+      for (const key of keys) {
+        const text = compactText(row[key])
+        if (text) return text
+      }
+      for (const nested of Object.values(row)) {
+        const text = stringValue(nested)
+        if (text) return text
+        const nestedRow = recordValue(nested)
+        for (const key of keys) {
+          const nestedText = compactText(nestedRow[key])
+          if (nestedText) return nestedText
+        }
+      }
+      return ''
+    })
+    .filter(Boolean)
+}
+
+function sentinelList(value: unknown): string[] {
+  const raw = recordValue(value)
+  const values = Array.isArray(value)
+    ? value
+    : Object.values(raw).flatMap(item => Array.isArray(item) ? item : [item])
+  return values
+    .map(item => {
+      const direct = compactText(item)
+      if (direct) return direct
+      const row = recordValue(item)
+      const symbol = compactText(row.symbol) || compactText(row.code)
+      const name = compactText(row.name) || compactText(row.label) || compactText(row.sector_name)
+      return [symbol, name].filter(Boolean).join(' ')
+    })
+    .filter(Boolean)
+}
+
+function metricEvidenceSummary(value: unknown): string {
+  const metrics = recordValue(value)
+  const parts: string[] = []
+  const ratioText = (input: unknown) => {
+    const value = numberValue(input)
+    if (value === undefined) return ''
+    const normalized = Math.abs(value) <= 1 ? value * 100 : value
+    return `${normalized.toFixed(1)}%`
+  }
+  const signedText = (input: unknown, suffix = '') => {
+    const value = numberValue(input)
+    if (value === undefined) return ''
+    return `${value > 0 ? '+' : ''}${value.toFixed(2)}${suffix}`
+  }
+  const breadth = ratioText(metrics.breadth_ratio)
+  const change = signedText(metrics.change_pct, '%')
+  const amountShare = ratioText(metrics.amount_share)
+  const relativeStrength = signedText(metrics.relative_strength)
+  if (breadth) parts.push(`宽度 ${breadth}`)
+  if (change) parts.push(`涨幅 ${change}`)
+  if (amountShare) parts.push(`成交占比 ${amountShare}`)
+  if (relativeStrength) parts.push(`相对强弱 ${relativeStrength}`)
+  return parts.join(' · ')
+}
+
+function sectorTransitionStage(value: unknown): SectorTransitionStage | '' {
+  const normalized = compactText(value).trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (['pressure', 'stress', 'stressed', 't0', '压力', '压力态'].includes(normalized)) return 'pressure'
+  if (['release', 'panic_release', 't1', '释放', '恐慌释放'].includes(normalized)) return 'release'
+  if (['repair', 'short_repair', 't2', '修复', '短周期修复'].includes(normalized)) return 'repair'
+  if (['intraday', 'intraday_confirmed', 'intraday_confirmation', 'confirmed_intraday', '盘中', '盘中确认'].includes(normalized)) return 'intraday'
+  if (['stable', 'stable_turn', 'confirmed', 't3', '稳定', '稳定转折'].includes(normalized)) return 'stable'
+  if (['failed', 'failure', 'invalidated', 'invalid', 'tx', '失效', '失败'].includes(normalized)) return 'failed'
+  return ''
+}
+
+function sectorTransitionStageColor(stage: SectorTransitionStage): string {
+  if (stage === 'pressure' || stage === 'failed') return palette.error
+  if (stage === 'release') return tradingDeskTheme.colors.auroraGold
+  if (stage === 'repair' || stage === 'intraday') return tradingDeskTheme.colors.auroraBlue
+  return palette.success
+}
+
+function sectorTransitionStageLabel(stage: SectorTransitionStage, locale: LongclawLocale): string {
+  const labels: Record<SectorTransitionStage, [string, string]> = {
+    pressure: ['压力', 'Pressure'],
+    release: ['释放', 'Release'],
+    repair: ['修复', 'Repair'],
+    intraday: ['盘中确认', 'Intraday'],
+    stable: ['稳定转折', 'Stable'],
+    failed: ['失效', 'Failed'],
+  }
+  return labels[stage][locale === 'zh-CN' ? 0 : 1]
+}
+
+function sectorTransitionFreshnessLabel(status: string, locale: LongclawLocale): string {
+  const normalized = status.trim().toLowerCase()
+  if (['fresh', 'ready', 'ok', 'available'].includes(normalized)) return locale === 'zh-CN' ? '数据新鲜' : 'Fresh'
+  if (['stale', 'old'].includes(normalized)) return locale === 'zh-CN' ? '数据待更新' : 'Stale'
+  if (['blocked', 'failed', 'error'].includes(normalized)) return locale === 'zh-CN' ? '数据受阻' : 'Blocked'
+  if (['partial', 'degraded'].includes(normalized)) return locale === 'zh-CN' ? '部分可用' : 'Partial'
+  return status || (locale === 'zh-CN' ? '新鲜度未知' : 'Freshness unknown')
+}
+
+function sectorTransitionCount(
+  counts: Record<string, unknown>,
+  stage: SectorTransitionStage,
+): number {
+  const aliases: Record<SectorTransitionStage, string[]> = {
+    pressure: ['pressure', 'stress', 't0'],
+    release: ['release', 'panic_release', 't1'],
+    repair: ['repair', 'short_repair', 't2'],
+    intraday: ['intraday', 'intraday_confirmed', 'intraday_confirmation', 'confirmed_intraday'],
+    stable: ['stable', 'stable_turn', 'confirmed', 't3'],
+    failed: ['failed', 'failure', 'invalidated', 'tx'],
+  }
+  for (const key of aliases[stage]) {
+    const count = numberValue(counts[key])
+    if (count !== undefined) return Math.max(0, Math.round(count))
+  }
+  return 0
+}
+
+function normalizeSectorTransitionItem(value: unknown, index: number, kind: 'event' | 'state'): SectorTransitionRadarItem | null {
+  const row = recordValue(value)
+  if (Object.keys(row).length === 0) return null
+  const sectorName =
+    compactText(row.sector_name) ||
+    compactText(row.board_name) ||
+    compactText(row.name) ||
+    compactText(row.title)
+  const turnState = compactText(row.turn_state) || compactText(row.state) || compactText(row.status)
+  const toState = compactText(row.to_state) || turnState
+  const id =
+    compactText(row.event_id) ||
+    compactText(row.id) ||
+    `${kind}:${compactText(row.sector_id, sectorName || String(index))}:${toState || index}`
+  if (!sectorName && !turnState && !toState) return null
+  const sentinels = [
+    ...sentinelList(row.sentinels),
+    ...sentinelList(row.sentinel_symbols),
+  ]
+  const evidence = [
+    ...textList(row.evidence, ['summary', 'detail', 'label', 'reason']),
+    metricEvidenceSummary(row.evidence),
+    metricEvidenceSummary(row.metrics),
+  ].filter(Boolean)
+  const weakerIf = Array.isArray(row.weaker_if) || Object.keys(recordValue(row.weaker_if)).length > 0
+    ? textList(row.weaker_if, ['summary', 'detail', 'label', 'condition', 'reason']).join(' / ')
+    : compactText(row.weaker_if)
+  return {
+    id,
+    sectorName: sectorName || id,
+    sectorKind: compactText(row.sector_kind) || compactText(row.kind),
+    observedAt: compactText(row.observed_at) || compactText(row.as_of) || compactText(row.updated_at),
+    fromState: compactText(row.from_state),
+    toState,
+    turnState,
+    flowState: compactText(row.flow_state),
+    sentinels: [...new Set(sentinels)],
+    evidence: [...new Set(evidence)],
+    blockers: textList(row.blockers, ['summary', 'detail', 'label', 'reason']),
+    nextChecks: textList(row.next_checks, ['summary', 'detail', 'label', 'condition']),
+    weakerIf,
+    raw: row,
+  }
+}
+
+function normalizeSectorTransitionItems(value: unknown, kind: 'event' | 'state'): SectorTransitionRadarItem[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item, index) => normalizeSectorTransitionItem(item, index, kind))
+    .filter((item): item is SectorTransitionRadarItem => Boolean(item))
+}
+
+export function sectorTransitionRadarFromShell(shell: WorkbenchShell | null): SectorTransitionRadarView | null {
+  const rawValue = shell?.sector_transition_radar
+  if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) return null
+  const raw = recordValue(rawValue)
+  const rawCounts = recordValue(raw.counts ?? raw.status_counts)
+  const events = normalizeSectorTransitionItems(raw.events ?? raw.cards, 'event')
+  const states = normalizeSectorTransitionItems(raw.states, 'state')
+  const explicitUnreadIds = Array.isArray(raw.unread_event_ids)
+    ? textList(raw.unread_event_ids)
+    : null
+  const unreadEventIds = explicitUnreadIds ?? events.map(item => item.id)
+  const freshness = recordValue(raw.freshness ?? raw.freshness_status)
+  const counts = Object.fromEntries(
+    SECTOR_TRANSITION_STAGES.map(stage => [stage, sectorTransitionCount(rawCounts, stage)]),
+  ) as Record<SectorTransitionStage, number>
+  if (Object.values(counts).every(count => count === 0) && states.length > 0) {
+    for (const item of states) {
+      const stage = sectorTransitionStage(item.toState || item.turnState)
+      if (stage) counts[stage] += 1
+    }
+  }
+  return {
+    asOf: compactText(raw.as_of) || compactText(freshness.as_of),
+    counts,
+    events,
+    states,
+    unreadEventIds: [...new Set(unreadEventIds.filter(Boolean))],
+    freshness: {
+      status: compactText(freshness.status) || compactText(raw.status),
+      asOf: compactText(freshness.as_of) || compactText(raw.as_of),
+      blockers: textList(freshness.blockers ?? raw.blockers, ['summary', 'detail', 'label', 'reason']),
+    },
+  }
+}
+
+export function sectorTransitionHasNewUnreadEvents(
+  seenEventIds: Iterable<string>,
+  shell: WorkbenchShell | null,
+): boolean {
+  const radar = sectorTransitionRadarFromShell(shell)
+  if (!radar) return false
+  const seen = new Set(seenEventIds)
+  return radar.unreadEventIds.some(eventId => !seen.has(eventId))
+}
+
+function meaningfulSignalText(value: unknown): string {
+  const text = compactText(value)
+  const normalized = text.toLowerCase()
+  return text && !['无', '暂无', 'none', 'n/a', 'na', 'null'].includes(normalized) ? text : ''
+}
+
+export function timeframeBadgeDisplayLabel(value: unknown, locale: LongclawLocale = 'zh-CN'): string {
+  const text = compactText(value)
+  const normalized = text.toLowerCase()
+  if (['weekly', 'week', '1w', 'w', '周', '周线'].includes(normalized)) {
+    return locale === 'zh-CN' ? '周线' : 'Weekly'
+  }
+  if (['monthly', 'month', '1mo', '1m', 'm', '月', '月线'].includes(normalized)) {
+    return locale === 'zh-CN' ? '月线' : 'Monthly'
+  }
+  if (['daily', 'day', '1d', 'd', '日', '日线'].includes(normalized)) {
+    return locale === 'zh-CN' ? '日线' : 'Daily'
+  }
+  if (['30m', '30min', '30分钟', 'f30'].includes(normalized)) {
+    return locale === 'zh-CN' ? '30分钟' : '30m'
+  }
+  if (['15m', '15min', '15分钟', 'f15'].includes(normalized)) {
+    return locale === 'zh-CN' ? '15分钟' : '15m'
+  }
+  if (['5m', '5min', '5分钟', 'f5'].includes(normalized)) {
+    return locale === 'zh-CN' ? '5分钟' : '5m'
+  }
+  return text
+}
+
+function signalBadgeDisplayLabel(badge: WatchlistSignalBadge, locale: LongclawLocale): string {
+  const label = timeframeBadgeDisplayLabel(badge.label, locale)
+  if (badge.side === 'sell') return locale === 'zh-CN' ? `${label}卖点` : `${label} sell`
+  if (badge.side === 'buy') return locale === 'zh-CN' ? `${label}买点` : `${label} buy`
+  return label
+}
+
+function localizedPair(pair: [string, string] | undefined, locale: LongclawLocale, fallback = ''): string {
+  if (!pair) return fallback
+  return locale === 'zh-CN' ? pair[0] : pair[1]
+}
+
+function uniqueCompact(values: unknown[]): string[] {
+  const seen = new Set<string>()
+  const output: string[] = []
+  values.forEach(value => {
+    const text = compactText(value)
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    output.push(text)
+  })
+  return output
+}
+
+function compactHash(value: unknown): string {
+  const text = JSON.stringify(value)
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return uniqueCompact(value).slice(0, 6)
+  const text = compactText(value)
+  return text ? [text] : []
+}
+
+function normalizeAiVerdict(value: unknown): StrategyAiVerdict {
+  const text = compactText(value).toLowerCase()
+  if (['focus', '重点', '重点盯', '可行动', 'action'].some(token => text.includes(token))) return 'focus'
+  if (['avoid', '不追', 'skip', '别碰'].some(token => text.includes(token))) return 'avoid'
+  if (['remove', '移出', '失效'].some(token => text.includes(token))) return 'remove'
+  return 'wait'
+}
+
+function normalizeAiReview(raw: unknown, run?: StrategyAiRun): AiCandidateReview | null {
+  const record = recordValue(raw)
+  const symbol = compactText(record.symbol) || compactText(record.code) || compactText(record.target)
+  const name = compactText(record.name) || symbol
+  if (!symbol && !name) return null
+  return {
+    symbol,
+    name,
+    verdict: normalizeAiVerdict(record.verdict),
+    rank: numberValue(record.rank),
+    why_watch: compactText(record.why_watch) || compactText(record.summary) || compactText(record.reason),
+    wait_for: normalizeStringList(record.wait_for),
+    risk_flags: normalizeStringList(record.risk_flags),
+    dont_do: compactText(record.dont_do) || compactText(record.do_not) || compactText(record.warning),
+    invalidation: compactText(record.invalidation) || compactText(record.invalidates_when),
+    next_action: compactText(record.next_action),
+    run,
+  }
+}
+
+function normalizeAiRanking(raw: unknown, run?: StrategyAiRun, error?: string): AiRankingResult {
+  const record = recordValue(raw)
+  const selectedRaw = Array.isArray(record.selected)
+    ? record.selected
+    : Array.isArray(record.items)
+      ? record.items
+      : []
+  const selected = selectedRaw
+    .map((item, index) => normalizeAiReview({ ...recordValue(item), rank: numberValue(recordValue(item).rank) ?? index + 1 }, run))
+    .filter((item): item is AiCandidateReview => Boolean(item))
+    .slice(0, 10)
+  return {
+    summary: compactText(record.summary) || compactText(record.headline),
+    selected,
+    run,
+    error,
+  }
+}
+
+function rowAiKey(row: WatchlistRow): string {
+  return uniqueCompact([row.code, row.targetLabel, row.label, row.name]).join('|').toLowerCase()
+}
+
+function rowMatchesAiReview(row: WatchlistRow, review: AiCandidateReview): boolean {
+  const aliases = uniqueCompact([row.code, row.targetLabel, row.label, row.name]).map(item => item.toLowerCase())
+  const targets = uniqueCompact([review.symbol, review.name]).map(item => item.toLowerCase())
+  return targets.some(target => aliases.some(alias => alias === target || alias.includes(target) || target.includes(alias)))
+}
+
+function aiCandidateInput(row: WatchlistRow, index: number): Record<string, unknown> {
+  return {
+    index,
+    symbol: row.code || row.targetLabel || row.label,
+    name: row.name,
+    source_pool: row.lane,
+    latest: row.latest,
+    day_change: row.dayChange,
+    decision_stage: row.decision.stage,
+    opportunity_side: row.decision.opportunitySide,
+    recommended_action: row.decision.recommendedAction || row.traderAction,
+    missing_gates: row.decision.missingGates,
+    primary_blocker: row.decision.primaryBlocker,
+    promotion_path: row.decision.promotionPath,
+    invalidates_when: row.decision.invalidatesWhen || row.invalidatesWhen,
+    trader_read: traderReadLine(row, 'zh-CN'),
+    evidence_summary: traderEvidenceSummary(row, 'zh-CN'),
+    source_keys: row.decision.sourceKeys,
+  }
+}
+
+function decorateAiFocusRow(row: WatchlistRow, review: AiCandidateReview | null, rank: number): WatchlistRow {
+  const why = review?.why_watch || row.rankReason || traderReadLine(row, 'zh-CN')
+  const waitFor = review?.wait_for?.join(' / ') || decisionMissingSummary(row.decision, 'zh-CN')
+  return {
+    ...row,
+    id: `ai-focus-${rank}-${row.id}`,
+    rankLabel: `AI#${rank}`,
+    rankReason: why,
+    traderAction: review?.next_action || review?.dont_do || row.traderAction,
+    explanation: why,
+    raw: {
+      ...row.raw,
+      ai_review: review ?? null,
+      ai_rank: rank,
+      trader_read: why,
+      ai_wait_for: waitFor,
+    },
+  }
+}
+
+function aiFocusRowsFromRanking(rows: WatchlistRow[], ranking: AiRankingResult | null): WatchlistRow[] {
+  if (!ranking?.selected.length) return []
+  const used = new Set<string>()
+  const selected: WatchlistRow[] = []
+  ranking.selected.forEach((review, index) => {
+    const match = rows.find(row => !used.has(rowAiKey(row)) && rowMatchesAiReview(row, review))
+    if (!match) return
+    used.add(rowAiKey(match))
+    selected.push(decorateAiFocusRow(match, review, numberValue(review.rank) ?? index + 1))
+  })
+  return selected.slice(0, 10)
+}
+
+function aiReviewForRow(row: WatchlistRow | null, reviewsByKey: Record<string, AiCandidateReview>): AiCandidateReview | null {
+  if (!row) return null
+  return reviewsByKey[rowAiKey(row)] ?? null
+}
+
+function isStockTradeRoleKey(value: string): value is StockTradeRoleKey {
+  return STOCK_TRADE_ROLE_KEYS.includes(value as StockTradeRoleKey)
+}
+
+function tradeRoleLabel(role: TradeRoleKey | string, locale: LongclawLocale): string {
+  const match = TRADE_ROLE_FILTERS.find(item => item.key === role)
+  if (!match) return role || (locale === 'zh-CN' ? '观察' : 'Watch')
+  return locale === 'zh-CN' ? match.zh : match.en
+}
+
+function tradeRoleColor(role: TradeRoleKey | string): string {
+  if (role === 'left_attack') return tradingDeskTheme.colors.auroraGold
+  if (role === 'right_attack') return tradingDeskTheme.market.up
+  if (role === 'watch') return terminalTheme.accent
+  if (role === 'clue') return terminalTheme.infoText
+  if (role === 'risk_first') return tradingDeskTheme.market.down
+  if (role === 'climax_risk') return tradingDeskTheme.colors.auroraGold
+  if (role === 'chain_watch' || role === 'holding_chain') return tradingDeskTheme.market.up
+  if (role === 'defensive_weight') return '#7aa7ff'
+  if (role === 'second_wave') return terminalTheme.accent
+  if (role === 'risk_review') return tradingDeskTheme.market.down
+  if (role === 'mainline_attack') return terminalTheme.infoText
+  return terminalTheme.borderStrong
+}
+
+const DECISION_STAGES: DecisionStage[] = ['context', 'risk_first', 'strategy_candidate', 'watch_preheat', 'entry_ready']
+const TRADE_STAGES: TradeStage[] = ['clue_pool', 'watch_pool', 'dip_watch', 'left_attack', 'probe_candidate', 'attack_entry', 'confirmed_entry', 'skip_now']
+const DECISION_GATE_KEYS: DecisionGateKey[] = [
+  'source',
+  'hard_technical',
+  'theme_alignment',
+  'upper_context',
+  'trigger_30m',
+  'right_side',
+  'risk_clear',
+  'multi_timeframe',
+  'period_conflict',
+]
+const DECISION_GATE_STATUSES: DecisionGateStatus[] = ['passed', 'waiting', 'blocked', 'context']
+
+function isDecisionStage(value: string): value is DecisionStage {
+  return DECISION_STAGES.includes(value as DecisionStage)
+}
+
+function isTradeStage(value: string): value is TradeStage {
+  return TRADE_STAGES.includes(value as TradeStage)
+}
+
+function isDecisionGateKey(value: string): value is DecisionGateKey {
+  return DECISION_GATE_KEYS.includes(value as DecisionGateKey)
+}
+
+function isDecisionGateStatus(value: string): value is DecisionGateStatus {
+  return DECISION_GATE_STATUSES.includes(value as DecisionGateStatus)
+}
+
+function decisionStageLabel(stage: DecisionStage, locale: LongclawLocale): string {
+  const labels: Record<DecisionStage, [string, string]> = {
+    context: ['背景', 'Context'],
+    risk_first: ['暂不参与', 'Skip now'],
+    strategy_candidate: ['线索池', 'Clue pool'],
+    watch_preheat: ['盯盘池', 'Watch pool'],
+    entry_ready: ['买点池', 'Entry pool'],
+  }
+  return localizedPair(labels[stage], locale, compactText(stage, locale === 'zh-CN' ? '线索池' : 'Clue pool'))
+}
+
+function decisionStageMeta(stage: DecisionStage, locale: LongclawLocale): string {
+  const meta: Record<DecisionStage, [string, string]> = {
+    context: ['看方向，不直接当买卖点。', 'Direction only, not an entry.'],
+    risk_first: ['暂不参与；非持仓不推风险动作。', 'Skip now; no non-held risk action.'],
+    strategy_candidate: ['有线索，还没形成买点。', 'There is a clue, but not an entry.'],
+    watch_preheat: ['值得盯盘，重点看买点还差哪一步。', 'Worth watching; check the missing entry step.'],
+    entry_ready: ['买点路径基本走通，复核位置和失效条件。', 'Entry path is mostly complete; review level and invalidation.'],
+  }
+  return localizedPair(meta[stage], locale, locale === 'zh-CN' ? '等待更多确认。' : 'Waiting for more confirmation.')
+}
+
+function decisionGateLabel(key: DecisionGateKey, locale: LongclawLocale): string {
+  const labels: Record<DecisionGateKey, [string, string]> = {
+    source: ['线索', 'Source'],
+    hard_technical: ['硬技术', 'Hard tech'],
+    theme_alignment: ['主线强度', 'Mainline'],
+    upper_context: ['大周期', 'Big cycle'],
+    trigger_30m: ['交易周期', 'Trade cycle'],
+    right_side: ['下单周期', 'Order cycle'],
+    risk_clear: ['失效条件', 'Invalidation'],
+    multi_timeframe: ['周期共振', 'Timeframe resonance'],
+    period_conflict: ['周期冲突', 'Timeframe conflict'],
+  }
+  return localizedPair(labels[key], locale, compactText(key, locale === 'zh-CN' ? '未知条件' : 'Unknown gate'))
+}
+
+function decisionGateStatusLabel(status: DecisionGateStatus, locale: LongclawLocale): string {
+  const labels: Record<DecisionGateStatus, [string, string]> = {
+    passed: ['已过', 'Passed'],
+    waiting: ['等待', 'Waiting'],
+    blocked: ['不看', 'Skip'],
+    context: ['参考', 'Context'],
+  }
+  return localizedPair(labels[status], locale, compactText(status, locale === 'zh-CN' ? '等待' : 'Waiting'))
+}
+
+function isDecisionInterventionSide(value: string): value is DecisionInterventionSide {
+  return ['context', 'left_setup', 'right_confirmed', 'hybrid', 'risk_exit'].includes(value)
+}
+
+function isDecisionOpportunitySide(value: string): value is DecisionOpportunitySide {
+  return ['left', 'right', 'risk', 'context'].includes(value)
+}
+
+function opportunitySideLabel(side: DecisionOpportunitySide, locale: LongclawLocale): string {
+  const labels: Record<DecisionOpportunitySide, [string, string]> = {
+    left: ['低吸观察', 'Dip watch'],
+    right: ['买点池', 'Entry pool'],
+    risk: ['暂不参与', 'Skip now'],
+    context: ['线索池', 'Clue pool'],
+  }
+  return localizedPair(labels[side], locale, compactText(side, locale === 'zh-CN' ? '线索池' : 'Clue pool'))
+}
+
+function interventionSideLabel(side: DecisionInterventionSide, locale: LongclawLocale): string {
+  const labels: Record<DecisionInterventionSide, [string, string]> = {
+    context: ['线索池', 'Clue pool'],
+    left_setup: ['低吸观察', 'Dip watch'],
+    right_confirmed: ['买点池', 'Entry pool'],
+    hybrid: ['买点池', 'Entry pool'],
+    risk_exit: ['暂不参与', 'Skip now'],
+  }
+  return localizedPair(labels[side], locale, compactText(side, locale === 'zh-CN' ? '线索池' : 'Clue pool'))
+}
+
+function strategyLineageLabel(lineage: string[], locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    daozhang: ['道长', 'Daozhang'],
+    pangge: ['胖哥', 'Pangge'],
+    system: ['系统', 'System'],
+    knowledge: ['知识库', 'Knowledge'],
+  }
+  const mapped = lineage
+    .map(item => {
+      const label = labels[item.toLowerCase()]
+      return label ? (locale === 'zh-CN' ? label[0] : label[1]) : item
+    })
+    .filter(Boolean)
+  return mapped.join(' / ')
+}
+
+function decisionSourceLabel(source: string, locale: LongclawLocale): string {
+  const normalized = source.toLowerCase()
+  const labels: Array<[string, [string, string]]> = [
+    ['ai_factor_factory', ['AI因子工厂', 'AI factor factory']],
+    ['terminal_technical_signals', ['技术信号', 'Technical signals']],
+    ['technical_trigger', ['技术触发', 'Technical trigger']],
+    ['technical_signal', ['技术信号', 'Technical signal']],
+    ['strategy_snapshots', ['策略快照', 'Strategy snapshot']],
+    ['chain_heat_snapshots', ['产业链热度', 'Chain heat']],
+    ['knowledge', ['知识库观点', 'Knowledge view']],
+    ['market_pools', ['活跃池', 'Market pool']],
+    ['active_pool_watch', ['活跃池观察', 'Active pool']],
+    ['quote_snapshots', ['行情快照', 'Quotes']],
+    ['board', ['板块/概念', 'Board/concept']],
+    ['concept', ['板块/概念', 'Board/concept']],
+    ['signals', ['历史信号', 'Signals']],
+    ['fallback_watch', ['降级观察', 'Fallback watch']],
+    ['source_leader', ['领涨线索', 'Source leader']],
+    ['constituent_hot', ['成分股异动', 'Constituent heat']],
+  ]
+  const match = labels.find(([key]) => normalized.includes(key))
+  if (match) return locale === 'zh-CN' ? match[1][0] : match[1][1]
+  return source || (locale === 'zh-CN' ? '未知线索' : 'Unknown source')
+}
+
+function decisionActionFallback(stage: DecisionStage, missingGates: DecisionGateKey[], locale: LongclawLocale): string {
+  if (stage === 'risk_first') return locale === 'zh-CN' ? '暂不参与' : 'Skip now'
+  if (stage === 'entry_ready') return locale === 'zh-CN' ? '买点池复核' : 'Review entry pool'
+  if (stage === 'strategy_candidate') return locale === 'zh-CN' ? '先放线索池' : 'Keep as clue'
+  if (missingGates.includes('trigger_30m')) return locale === 'zh-CN' ? '盯盘等30m' : 'Watch for 30m'
+  if (missingGates.includes('right_side')) return locale === 'zh-CN' ? '试仓候选，等5m/15m' : 'Probe candidate, wait for 5m/15m'
+  if (missingGates.includes('upper_context')) return locale === 'zh-CN' ? '盯盘等大周期' : 'Watch big cycle'
+  if (stage === 'watch_preheat') return locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entry'
+  return locale === 'zh-CN' ? '看背景' : 'Watch context'
+}
+
+function decisionActionLabel(decision: WatchlistDecision, locale: LongclawLocale): string {
+  return compactText(decision.recommendedAction) || decisionActionFallback(decision.stage, decision.missingGates, locale)
+}
+
+export function publishedPoolRole(row: Record<string, unknown>): StockTradeRoleKey | '' {
+  if (row.display_policy !== 'published_daily_weekly_review') return ''
+  const roles: Record<string, StockTradeRoleKey> = { focus_stocks: 'entry_review', watch_stocks: 'watch', clue_stocks: 'clue', risk_stocks: 'risk_first' }
+  return roles[compactText(row.published_pool_group)] ?? ''
+}
+
+export function rawDecisionStage(row: Record<string, unknown>, stageHint?: WatchlistTabKey): DecisionStage {
+  const published = publishedPoolRole(row)
+  if (published) return published === 'entry_review' ? 'entry_ready' : published === 'watch' ? 'watch_preheat' : published === 'risk_first' ? 'risk_first' : 'strategy_candidate'
+  const tradeStage = compactText(row.trade_stage)
+  if (isTradeStage(tradeStage)) {
+    if (['left_attack', 'attack_entry', 'confirmed_entry'].includes(tradeStage)) return 'entry_ready'
+    if (tradeStage === 'skip_now') return 'risk_first'
+    if (tradeStage === 'clue_pool') return 'strategy_candidate'
+    return 'watch_preheat'
+  }
+  const explicitStage = compactText(row.decision_stage)
+  if (isDecisionStage(explicitStage)) return explicitStage
+  const statusText = [
+    compactText(row.pool_type),
+    compactText(row.queue_lane),
+    compactText(row.action_status),
+    compactText(row.entry_gate_status),
+    compactText(row.decision_effect),
+    compactText(row.trader_action),
+    compactText(row.latest_signal),
+    compactText(row.reason),
+  ].join(' ').toLowerCase()
+  const explicitRisk =
+    stageHint === 'risk_stocks' ||
+    statusText.includes('risk_exit_first') ||
+    statusText.includes('risk_review') ||
+    statusText.includes('blocked_by_risk') ||
+    statusText.includes('exit_priority')
+  const inferredRisk = !stageHint && (
+    statusText.includes('风险') ||
+    statusText.includes('止盈') ||
+    statusText.includes('止损') ||
+    statusText.includes('卖')
+  )
+  if (explicitRisk || inferredRisk) {
+    return 'risk_first'
+  }
+  if (stageHint === 'focus_stocks' || statusText.includes('entry_confirmed') || statusText.includes('entry_ready')) {
+    return 'entry_ready'
+  }
+  if (
+    stageHint === 'watch_stocks' ||
+    statusText.includes('watch_preheat') ||
+    statusText.includes('entry_waiting') ||
+    statusText.includes('watch_only_not_hard_buy')
+  ) {
+    return 'watch_preheat'
+  }
+  if (stageHint === 'buy_candidates') return 'strategy_candidate'
+  if (stageHint === 'major_indices' || stageHint === 'industry_etfs' || stageHint === 'macro_indices' || stageHint === 'sector_boards') return 'context'
+  return compactText(row.symbol) || compactText(row.code) ? 'strategy_candidate' : 'context'
+}
+
+function rawSourceKeys(row: Record<string, unknown>): string[] {
+  const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  const metadata = recordValue(row.metadata)
+  const aiFactorOverlay = recordValue(metadata.ai_factor_factory)
+  return uniqueCompact([
+    ...(Array.isArray(row.source_collections) ? row.source_collections : []),
+    ...(Array.isArray(row.source_tags) ? row.source_tags : []),
+    ...(Array.isArray(row.focus_reasons) ? row.focus_reasons : []),
+    row.source_collection,
+    row.source,
+    row.heat_source,
+    row.signal_origin,
+    row.signal_family,
+    metadata.source,
+    aiFactorOverlay.source,
+    ...reasons.flatMap(reason => [
+      reason.source_collection,
+      reason.reason_type,
+      reason.signal_family,
+    ]),
+  ]).slice(0, 5)
+}
+
+function rawFreqTokens(row: Record<string, unknown>): string[] {
+  const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  const buyTimeframes = Array.isArray(row.buy_timeframes) ? row.buy_timeframes.map(item => recordValue(item)) : []
+  const sellTimeframes = Array.isArray(row.sell_timeframes) ? row.sell_timeframes.map(item => recordValue(item)) : []
+  const technical = recordValue(row.technical_evidence)
+  const topBuy = recordValue(row.top_buy_reason)
+  const resonance = recordValue(row.resonance_context)
+  const evidenceResonance = recordValue(technical.resonance_context)
+  return uniqueCompact([
+    row.freq,
+    row.target_freq,
+    topBuy.freq,
+    technical.freq,
+    ...(Array.isArray(resonance.aligned_freqs) ? resonance.aligned_freqs : []),
+    ...(Array.isArray(evidenceResonance.aligned_freqs) ? evidenceResonance.aligned_freqs : []),
+    ...buyTimeframes.flatMap(item => [item.freq, item.badge]),
+    ...sellTimeframes.flatMap(item => [item.freq, item.badge]),
+    ...reasons.flatMap(reason => [
+      reason.freq,
+      ...(Array.isArray(recordValue(reason.resonance_context).aligned_freqs) ? recordValue(reason.resonance_context).aligned_freqs : []),
+    ]),
+  ])
+}
+
+function freqTokenHas(tokens: string[], matcher: RegExp): boolean {
+  return tokens.some(token => matcher.test(token.toLowerCase()))
+}
+
+function rawHasTechnicalEvidence(row: Record<string, unknown>): boolean {
+  const technical = recordValue(row.technical_evidence)
+  if (Object.keys(technical).length > 0 && compactText(technical.status) !== 'missing') return true
+  const reasons = Array.isArray(row.inclusion_reasons) ? row.inclusion_reasons.map(item => recordValue(item)) : []
+  return reasons.some(reason => {
+    const type = compactText(reason.reason_type)
+    const source = compactText(reason.source_collection)
+    return ['technical_trigger', 'technical_signal'].includes(type) || source === 'terminal_technical_signals'
+  })
+}
+
+function rawMissingGates(row: Record<string, unknown>, stage: DecisionStage): DecisionGateKey[] {
+  const explicit = Array.isArray(row.missing_gates)
+    ? row.missing_gates.map(item => compactText(item)).filter(isDecisionGateKey)
+    : []
+  if (publishedPoolRole(row)) return uniqueCompact(explicit.filter(key => !['trigger_30m', 'right_side', 'multi_timeframe'].includes(key))) as DecisionGateKey[]
+  if (explicit.length > 0) return uniqueCompact(explicit) as DecisionGateKey[]
+  const status = [
+    compactText(row.entry_gate_status),
+    compactText(row.action_status),
+    compactText(row.queue_lane),
+    ...(Array.isArray(row.blocked_by) ? row.blocked_by.map(item => compactText(item)) : []),
+  ].join(' ').toLowerCase()
+  const gates: DecisionGateKey[] = []
+  if (stage === 'risk_first' || status.includes('risk_signal_present') || status.includes('blocked_by_risk')) gates.push('risk_clear')
+  if (status.includes('entry_waiting_30m') || status.includes('30m_missing') || status.includes('30m_stale')) gates.push('trigger_30m')
+  if (status.includes('entry_waiting_upper') || status.includes('daily_or_weekly_missing') || status.includes('daily_or_weekly_stale')) gates.push('upper_context')
+  if (status.includes('entry_waiting_right') || status.includes('5m_or_15m_missing') || status.includes('5m_or_15m_stale')) gates.push('right_side')
+  if (status.includes('entry_waiting_resonance') || status.includes('partner_period_missing')) gates.push('multi_timeframe')
+  if (status.includes('period_conflict') || status.includes('blocked_by_period')) gates.push('period_conflict')
+  if (status.includes('watch_only_not_hard_buy') || status.includes('missing_buy_technical')) gates.push('hard_technical')
+  if (stage === 'strategy_candidate' && gates.length === 0) gates.push('hard_technical')
+  return uniqueCompact(gates) as DecisionGateKey[]
+}
+
+function rawPromotionPath(row: Record<string, unknown>, stage: DecisionStage, sourceKeys: string[], missingGates: DecisionGateKey[]): DecisionPromotionStep[] {
+  if (Array.isArray(row.promotion_path)) {
+    const explicit = row.promotion_path
+      .map(item => {
+        const record = recordValue(item)
+        const key = compactText(record.key)
+        const status = compactText(record.status)
+        if (!isDecisionGateKey(key) || !isDecisionGateStatus(status)) return null
+        return {
+          key,
+          status,
+          detail: compactText(record.detail),
+        }
+      })
+      .filter((item): item is DecisionPromotionStep => Boolean(item))
+    if (explicit.length > 0) return explicit
+  }
+  const freqs = rawFreqTokens(row)
+  const hasUpper = freqTokenHas(freqs, /^(daily|weekly|day|week|d|w|1d|1w|日线|周线)$/)
+  const has30m = freqTokenHas(freqs, /^(30m|30min|30分钟|f30)$/)
+  const hasRightSide = freqTokenHas(freqs, /^(5m|5min|5分钟|15m|15min|15分钟|f5|f15)$/)
+  const hasTechnical = rawHasTechnicalEvidence(row)
+  const waiting = (key: DecisionGateKey): DecisionGateStatus =>
+    missingGates.includes(key) ? (key === 'risk_clear' || key === 'period_conflict' ? 'blocked' : 'waiting') : 'passed'
+  return [
+    {
+      key: 'source',
+      status: sourceKeys.length > 0 ? 'passed' : 'waiting',
+      detail: sourceKeys.slice(0, 2).join('/'),
+    },
+    {
+      key: 'hard_technical',
+      status: stage === 'strategy_candidate' && !hasTechnical ? 'waiting' : waiting('hard_technical'),
+      detail: compactText(row.latest_signal) || compactText(row.reason),
+    },
+    {
+      key: 'upper_context',
+      status: missingGates.includes('upper_context') ? 'waiting' : (hasUpper || stage === 'entry_ready' ? 'passed' : stage === 'strategy_candidate' ? 'waiting' : 'context'),
+      detail: freqs.filter(freq => /daily|weekly|日线|周线|1d|1w|^d$|^w$/i.test(freq)).slice(0, 2).join('/'),
+    },
+    {
+      key: 'trigger_30m',
+      status: missingGates.includes('trigger_30m') ? 'waiting' : (has30m || stage === 'entry_ready' ? 'passed' : stage === 'strategy_candidate' ? 'waiting' : 'context'),
+      detail: freqs.filter(freq => /30m|30min|30分钟|f30/i.test(freq)).slice(0, 2).join('/'),
+    },
+    {
+      key: 'right_side',
+      status: missingGates.includes('right_side') ? 'waiting' : (hasRightSide || stage === 'entry_ready' ? 'passed' : stage === 'strategy_candidate' ? 'waiting' : 'context'),
+      detail: freqs.filter(freq => /5m|5min|5分钟|15m|15min|15分钟|f5|f15/i.test(freq)).slice(0, 3).join('/'),
+    },
+    {
+      key: missingGates.includes('period_conflict') ? 'period_conflict' : 'risk_clear',
+      status: missingGates.includes('period_conflict') ? 'blocked' : waiting('risk_clear'),
+      detail: compactText(row.top_risk_reason) || compactText(row.invalidates_when),
+    },
+  ]
+}
+
+function rawOpportunitySide(row: Record<string, unknown>, stage: DecisionStage, rawSide: string): DecisionOpportunitySide {
+  const explicit = compactText(row.opportunity_side)
+  if (isDecisionOpportunitySide(explicit)) return explicit
+  if (stage === 'risk_first' || rawSide === 'risk_exit') return 'risk'
+  if (stage === 'entry_ready' || rawSide === 'right_confirmed' || rawSide === 'hybrid') return 'right'
+  if (stage === 'watch_preheat' || rawSide === 'left_setup') return 'left'
+  return 'context'
+}
+
+function createWatchlistDecision(row: Record<string, unknown>, stageHint?: WatchlistTabKey): WatchlistDecision {
+  const stage = rawDecisionStage(row, stageHint)
+  const semantics = recordValue(row.strategy_semantics)
+  const rawSide = compactText(row.intervention_side) || compactText(semantics.intervention_side)
+  const opportunitySide = rawOpportunitySide(row, stage, rawSide)
+  const interventionSide = isDecisionInterventionSide(rawSide)
+    ? rawSide
+    : stage === 'risk_first'
+      ? 'risk_exit'
+      : stage === 'entry_ready'
+        ? 'right_confirmed'
+        : stage === 'watch_preheat'
+          ? 'left_setup'
+          : 'context'
+  const lineage = [
+    ...(Array.isArray(row.strategy_lineage) ? row.strategy_lineage : []),
+    ...(Array.isArray(semantics.strategy_lineage) ? semantics.strategy_lineage : []),
+  ].map(item => compactText(item)).filter(Boolean)
+  const sourceKeys = rawSourceKeys(row)
+  const missingGates = rawMissingGates(row, stage)
+  return {
+    stage,
+    interventionSide,
+    interventionLabel: compactText(row.intervention_label) || compactText(semantics.intervention_label),
+    opportunitySide,
+    opportunityLabel: compactText(row.trade_intent_label) || compactText(row.setup_side_label) || compactText(row.stage_label) || compactText(row.current_position) || compactText(row.opportunity_label),
+    strategyLineage: uniqueCompact(lineage),
+    missingGates,
+    primaryBlocker: compactText(row.missing_condition) || compactText(row.primary_blocker) || (missingGates[0] ?? ''),
+    recommendedAction: compactText(row.recommended_action) || compactText(row.next_action) || compactText(row.trader_action),
+    sourceKeys,
+    promotionPath: rawPromotionPath(row, stage, sourceKeys, missingGates),
+    invalidatesWhen: compactText(row.invalidation) || compactText(row.invalidates_when) || compactText(row.exit_condition),
+  }
+}
+
+function percentValue(value: unknown): number {
+  const parsed = numberValue(value)
+  if (parsed === undefined) return 0
+  return Math.max(0, Math.min(100, parsed))
+}
+
+function countText(value: unknown): string {
+  const parsed = numberValue(value)
+  return parsed === undefined ? '0' : Math.round(parsed).toLocaleString()
+}
+
+function compactDuration(value: unknown, locale: LongclawLocale): string {
+  const seconds = numberValue(value)
+  if (seconds === undefined || seconds <= 0) return ''
+  const minutes = Math.ceil(seconds / 60)
+  if (minutes < 60) return locale === 'zh-CN' ? `ETA ${minutes}分` : `ETA ${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return locale === 'zh-CN' ? `ETA ${hours}时${rest}分` : `ETA ${hours}h ${rest}m`
+}
+
+function compactClock(value: unknown, locale: LongclawLocale): string {
+  const text = compactText(value)
+  if (!text) return ''
+  const dt = new Date(text)
+  if (Number.isNaN(dt.getTime())) return text.slice(11, 16)
+  return dt.toLocaleTimeString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: locale === 'zh-CN' ? 'Asia/Shanghai' : undefined,
+  })
+}
+
+function firstRecord(rows: Record<string, unknown>[], key: string, value: string): Record<string, unknown> {
+  return rows.find(row => compactText(row[key]) === value) ?? {}
+}
+
+function normalizeCacheStatus(value: StrategyDashboard['cache_status'] | undefined): StrategyDashboard['cache_status'] {
+  const cacheStatus = recordValue(value)
+  const postmarketBackfill = recordValue(cacheStatus.postmarket_backfill)
+  const mongoStockCache = recordValue(cacheStatus.mongo_stock_cache)
+  return {
+    available: Boolean(cacheStatus.available),
+    mode: compactText(cacheStatus.mode, 'unavailable'),
+    updated_at: compactText(cacheStatus.updated_at),
+    trade_date: compactText(cacheStatus.trade_date),
+    recovery_state: compactText(cacheStatus.recovery_state),
+    critical_blocker: recordValue(cacheStatus.critical_blocker),
+    daily_coverage_date: compactText(cacheStatus.daily_coverage_date),
+    terminal_ready_date: compactText(cacheStatus.terminal_ready_date),
+    daily_reconciliation: cacheStatus.daily_reconciliation,
+    error: compactText(cacheStatus.error),
+    live_low_latency: {
+      modules: Array.isArray(recordValue(cacheStatus.live_low_latency).modules)
+        ? recordValue(cacheStatus.live_low_latency).modules
+        : [],
+      summary: recordValue(recordValue(cacheStatus.live_low_latency).summary),
+    },
+    postmarket_backfill: {
+      run: postmarketBackfill.run ?? null,
+      tasks: Array.isArray(postmarketBackfill.tasks) ? postmarketBackfill.tasks : [],
+      summary: recordValue(postmarketBackfill.summary),
+    },
+    mongo_stock_cache: {
+      freqs: Array.isArray(mongoStockCache.freqs) ? mongoStockCache.freqs : [],
+      summary: recordValue(mongoStockCache.summary),
+    },
+    terminal_outputs: Array.isArray(cacheStatus.terminal_outputs) ? cacheStatus.terminal_outputs : [],
+    provider_health: Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : [],
+    blockers: Array.isArray(cacheStatus.blockers) ? cacheStatus.blockers : [],
+  }
+}
+
+function cacheProgressColor(value: number, status?: unknown): string {
+  const normalized = compactText(status).toLowerCase()
+  if (normalized.includes('error') || normalized.includes('degraded') || normalized.includes('stale')) {
+    return palette.error
+  }
+  if (normalized.includes('running')) return tradingDeskTheme.colors.auroraBlue
+  if (normalized.includes('partial')) return tradingDeskTheme.colors.auroraGold
+  if (value < 100) return tradingDeskTheme.colors.auroraBlue
+  return palette.success
+}
+
+function cacheModuleOk(module: Record<string, unknown>): boolean {
+  const status = compactText(module.status || module.raw_status).toLowerCase()
+  return status === 'ok' || status === 'fresh'
+}
+
+function liveCacheStrictStatus(cacheStatus: StrategyDashboard['cache_status']): 'ok' | 'partial' | 'degraded' {
+  if (!cacheStatus.available) return 'degraded'
+  const summary = recordValue(cacheStatus.live_low_latency.summary)
+  const modules = cacheStatus.live_low_latency.modules.map(item => recordValue(item))
+  const explicit = compactText(summary.strict_status).toLowerCase()
+  const moduleOk = modules.filter(cacheModuleOk).length
+  const okFromSummary = numberValue(summary.ok_modules)
+  const totalFromSummary = numberValue(summary.total_modules)
+  const ok = okFromSummary !== undefined && okFromSummary > 0 ? okFromSummary : moduleOk
+  const total = totalFromSummary !== undefined && totalFromSummary > 0 ? totalFromSummary : modules.length
+  const notReady = numberValue(summary.minute_not_ready) ?? 0
+  if (explicit === 'ok' && notReady === 0) return 'ok'
+  if (['partial', 'running', 'warm'].includes(explicit)) return 'partial'
+  if (['degraded', 'error', 'stale', 'missing'].includes(explicit)) {
+    if (notReady > 0 || ok === 0) return 'degraded'
+    return 'partial'
+  }
+  if (total > 0 && ok === total && notReady === 0) return 'ok'
+  return total > 0 && ok > 0 ? 'partial' : 'degraded'
+}
+
+function cacheProblemModules(summary: Record<string, unknown>, modules: Record<string, unknown>[] = []): string {
+  const rows = Array.isArray(summary.problem_modules) ? summary.problem_modules : []
+  const names = rows.map(item => compactText(item)).filter(Boolean)
+  if (names.length > 0) return names.slice(0, 3).join('/')
+  return modules
+    .filter(item => !cacheModuleOk(item))
+    .map(item => compactText(item.module) || compactText(item.label))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('/')
+}
+
+function providerCurrentStatus(item: Record<string, unknown>): string {
+  const status = compactText(item.current_health, compactText(item.status)).toLowerCase()
+  if (status === 'ok') return item.is_current_healthy === true ? 'ok' : 'unverified'
+  return status === 'running' || !status ? 'unverified' : status
+}
+
+function activeProviderProblems(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  // A usable alternate source does not repair the failed provider itself.
+  return rows.filter(item => providerCurrentStatus(item) !== 'ok')
+}
+
+export function sourceMonitorSummary(
+  providerHealthInput: unknown[],
+  blockersInput: unknown[],
+  locale: LongclawLocale,
+  cacheAvailable = true,
+) {
+  const providerHealth = providerHealthInput.map(item => recordValue(item))
+  const providerProblems = activeProviderProblems(providerHealth)
+  const sourceProblemCount = providerProblems.length
+  const sourceTotalCount = providerHealth.length
+  const taskBlockerCount = blockersInput.length
+  const firstProviderProblem = providerProblems[0] ?? {}
+  const pendingValidation = providerProblems.length > 0 && providerProblems.every(item => {
+    const status = providerCurrentStatus(item)
+    return ['unverified', 'stale', 'unknown'].includes(status) || status === 'cooldown_expired' || (status === 'cooldown'
+      && Boolean(compactText(item.cooldown_until)) && Boolean(compactText(item.updated_at))
+      && compactText(item.cooldown_until) <= compactText(item.updated_at))
+  })
+
+  if (!cacheAvailable) {
+    return {
+      providerCount: sourceTotalCount,
+      problemCount: sourceProblemCount,
+      value: locale === 'zh-CN' ? '待连接' : 'OFF',
+      progress: 0,
+      status: 'degraded',
+      statusLabel: locale === 'zh-CN' ? '待连接' : 'OFF',
+      detail: locale === 'zh-CN' ? '行情不可用' : 'cache unavailable',
+      subdetail: compactText(firstProviderProblem.last_error_type, compactText(firstProviderProblem.cooldown_hit_type)),
+    }
+  }
+
+  if (sourceProblemCount > 0) {
+    return {
+      providerCount: sourceTotalCount,
+      problemCount: sourceProblemCount,
+      value: sourceTotalCount > 0
+        ? `${countText(sourceTotalCount - sourceProblemCount)}/${countText(sourceTotalCount)}`
+        : countText(sourceProblemCount),
+      progress: sourceTotalCount > 0 ? ((sourceTotalCount - sourceProblemCount) / sourceTotalCount) * 100 : 0,
+      status: pendingValidation ? 'partial' : 'error',
+      statusLabel: pendingValidation ? (locale === 'zh-CN' ? '待验证' : 'UNVERIFIED') : (locale === 'zh-CN' ? '待恢复' : 'BLOCKED'),
+      detail: pendingValidation ? (locale === 'zh-CN' ? `近15分钟有效验证 ${sourceTotalCount - sourceProblemCount}/${sourceTotalCount}` : 'Awaiting validated data; historical success is insufficient') : locale === 'zh-CN'
+        ? `来源暂未恢复 · 近15分钟有效验证 ${sourceTotalCount - sourceProblemCount}/${sourceTotalCount}`
+        : `${compactText(firstProviderProblem.provider, 'provider')} · ${compactText(firstProviderProblem.endpoint, compactText(firstProviderProblem.status, 'blocked'))}`,
+      subdetail: locale === 'zh-CN' ? (pendingValidation ? '验证已过期或尚未完成，不代表连接已中断' : '已存数据仍可查看，更新可能延迟') : 'See data details for source history',
+    }
+  }
+
+  if (sourceTotalCount === 0) {
+    return {
+      providerCount: 0,
+      problemCount: 0,
+      value: '0',
+      progress: 0,
+      status: 'partial',
+      statusLabel: locale === 'zh-CN' ? '未加载' : 'NO DATA',
+      detail: locale === 'zh-CN' ? '尚无来源验证记录' : 'provider_health not loaded',
+      subdetail: locale === 'zh-CN'
+        ? `${countText(taskBlockerCount)} 个补数任务等待`
+        : `${countText(taskBlockerCount)} task blockers shown in data tasks`,
+    }
+  }
+
+  return {
+    providerCount: sourceTotalCount,
+    problemCount: 0,
+    value: countText(sourceTotalCount),
+    progress: 100,
+    status: 'ok',
+    statusLabel: locale === 'zh-CN' ? '正常' : 'OK',
+    detail: locale === 'zh-CN' ? '近15分钟验证通过' : 'no blocking source',
+    subdetail: locale === 'zh-CN'
+      ? `${countText(sourceTotalCount)} 个行情通道 · ${countText(taskBlockerCount)} 个补数任务等待`
+      : `${countText(sourceTotalCount)} provider records · ${countText(taskBlockerCount)} task blockers shown in data tasks`,
+  }
+}
+
+function cacheRefreshSeconds(cacheStatus: StrategyDashboard['cache_status']): number {
+  if (!cacheStatus.available) return 10
+  const runStatus = compactText(recordValue(cacheStatus.postmarket_backfill.run).status).toLowerCase()
+  const criticalStatus = compactText(recordValue(cacheStatus.postmarket_backfill.summary).critical_status).toLowerCase()
+  if (['running', 'partial', 'stale'].includes(runStatus) && criticalStatus !== 'ok') return 10
+  const freshness = numberValue(recordValue(cacheStatus.live_low_latency.summary).freshness_seconds_max)
+  return freshness !== undefined && freshness <= 60 * 60 ? 10 : 60
+}
+
+function cacheStatusLabel(value: unknown, fallback: string, locale: LongclawLocale): string {
+  const text = compactText(value, fallback)
+  if (locale === 'zh-CN') {
+    if (text === 'ok') return '已完成'
+    if (text === 'running') return '更新中'
+    if (text === 'partial') return '部分完成'
+    if (text === 'pending') return '等待更新'
+    if (['failed', 'error', 'degraded', 'source_blocked'].includes(text)) return '暂未恢复'
+    return '待更新'
+  }
+  if (text === 'ok') return 'OK'
+  if (text === 'running') return 'RUNNING'
+  if (text === 'partial') return 'PARTIAL'
+  if (text === 'pending') return 'PENDING'
+  return text.toUpperCase()
+}
+
+function recoveryStateLabel(value: unknown, locale: LongclawLocale): string {
+  const state = compactText(value).toLowerCase()
+  if (state === 'waiting_for_source' || state === 'source_blocked' || state === 'partial/source_blocked') {
+    return locale === 'zh-CN' ? '来源待恢复' : 'SOURCE'
+  }
+  if (state === 'old_cache_readable') return locale === 'zh-CN' ? '旧行情可读' : 'OLD CACHE'
+  if (state === 'postmarket_running') return locale === 'zh-CN' ? '恢复中' : 'RUNNING'
+  if (state === 'terminal_ready') return locale === 'zh-CN' ? '终端池已刷新' : 'TERMINAL READY'
+  return ''
+}
+
+export function mongoCoverageState(
+  cacheStatusInput: StrategyDashboard['cache_status'],
+  locale: LongclawLocale,
+) {
+  const cacheStatus = normalizeCacheStatus(cacheStatusInput)
+  const freqs = cacheStatus.mongo_stock_cache.freqs.map(item => recordValue(item))
+  const mongoSummary = recordValue(cacheStatus.mongo_stock_cache.summary)
+  const dailyCache = firstRecord(freqs, 'freq', '日线')
+  const weeklyCache = firstRecord(freqs, 'freq', '周线')
+  const monthlyCache = firstRecord(freqs, 'freq', '月线')
+  const dailySymbols = numberValue(dailyCache.symbols)
+  const dailyToday = numberValue(dailyCache.today_symbols) ?? numberValue(mongoSummary.daily_today_symbols)
+  const denominatorKnown = dailySymbols !== undefined && dailySymbols > 0 && mongoSummary.daily_expected_universe_verified === true
+  const dailyCount = dailyToday === undefined ? (locale === 'zh-CN' ? '未知' : 'unknown') : countText(dailyToday)
+  const dailyRatio = denominatorKnown ? `${dailyCount}/${countText(dailySymbols)}` : `${dailyCount} · ${locale === 'zh-CN' ? '总数未确认' : 'denominator pending'}`
+  const coverageDate =
+    compactText(recordValue(cacheStatus).daily_coverage_date)
+    || compactText(mongoSummary.daily_coverage_date)
+    || compactText(dailyCache.coverage_date)
+  const tradeDate = compactText(cacheStatus.trade_date)
+  const isCurrent = Boolean(tradeDate && coverageDate && coverageDate === tradeDate)
+  const progress = denominatorKnown && dailyToday !== undefined && dailyToday >= 0 && dailyToday <= dailySymbols! ? (dailyToday / dailySymbols!) * 100 : null
+  const minuteFreqs = freqs
+    .filter(row => ['5分钟', '15分钟', '30分钟', '60分钟'].includes(compactText(row.freq)))
+    .map(row => `${compactText(row.freq)} ${countText(row.today_symbols)}`)
+    .join(' · ')
+  const minuteUniverseTotal = numberValue(mongoSummary.minute_universe_total) ?? 0
+  const minuteUniverseCached = numberValue(mongoSummary.minute_universe_cached) ?? 0
+  const minuteUniversePending = numberValue(mongoSummary.minute_universe_pending) ?? 0
+  const minuteUniverseError = numberValue(mongoSummary.minute_universe_error) ?? 0
+  const postRun = recordValue(cacheStatus.postmarket_backfill.run)
+  const postSummary = recordValue(cacheStatus.postmarket_backfill.summary)
+  const postRunStatus = compactText(postRun.status, compactText(postSummary.status)).toLowerCase()
+  const postCriticalStatus = compactText(postSummary.critical_status).toLowerCase()
+  const recoveryState = compactText(recordValue(cacheStatus).recovery_state)
+    || compactText(postSummary.recovery_state)
+    || compactText(postRun.recovery_state)
+  const backfillActive = ['running', 'partial'].includes(postRunStatus)
+    || ['running', 'partial'].includes(postCriticalStatus)
+    || recoveryState === 'postmarket_running'
+  const currentCoveragePending = isCurrent
+    && (minuteUniversePending > 0 || (denominatorKnown && dailyToday !== undefined && dailyToday < dailySymbols!))
+  const detail = locale === 'zh-CN'
+    ? (isCurrent
+      ? `已存股票 ${dailyRatio}`
+      : `旧行情可读 ${coverageDate || '-'} ${dailyRatio}`)
+    : (isCurrent
+      ? `observed stocks ${dailyRatio}`
+      : `old cache readable ${coverageDate || '-'} ${dailyRatio}`)
+  const minuteDetail = locale === 'zh-CN'
+    ? (minuteUniverseTotal
+      ? `分钟候选 ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · 待 ${countText(minuteUniversePending)} · 失败 ${countText(minuteUniverseError)}`
+      : `分钟覆盖：${minuteFreqs || '0'}`)
+    : (minuteUniverseTotal
+      ? `minute universe ${countText(minuteUniverseCached)}/${countText(minuteUniverseTotal)} · pending ${countText(minuteUniversePending)} · failed ${countText(minuteUniverseError)}`
+      : `minute coverage: ${minuteFreqs || '0'}`)
+  const etfs = recordValue(mongoSummary.daily_observed_etf_coverage)
+  const etfDetail = numberValue(etfs.cached) !== undefined && numberValue(etfs.snapshot_symbols) !== undefined
+    ? (locale === 'zh-CN' ? `已存 ${countText(etfs.cached)} 只ETF日线` : `ETF snapshot intersection ${countText(etfs.cached)}/${countText(etfs.snapshot_symbols)} (separate scope)`)
+    : ''
+  const subdetail = [etfDetail, minuteDetail].filter(Boolean).join(' · ')
+  const status = !cacheStatus.available
+    ? 'degraded'
+    : minuteUniverseError > 0
+      ? 'degraded'
+      : !isCurrent || !coverageDate || progress === null
+      ? 'partial'
+      : currentCoveragePending
+        ? (backfillActive ? 'running' : 'partial')
+        : 'ok'
+  const datePrefix = coverageDate ? `${coverageDate} ` : ''
+  const periodState = (row: Record<string, unknown>, label: string) => {
+    const available = (numberValue(row.symbols) ?? 0) > 0 || Boolean(compactText(row.latest_dt))
+    if (!available) return `${label} ${locale === 'zh-CN' ? '等待更新' : 'waiting'}`
+    if (booleanValue(row.is_partial_period)) {
+      return `${label} ${locale === 'zh-CN' ? '周期未结束' : 'partial'}`
+    }
+    return `${label} ${locale === 'zh-CN' ? '已派生' : 'derived'}`
+  }
+  const quality = compactText(
+    dailyCache.quality
+    || dailyCache.source_quality
+    || mongoSummary.daily_quality,
+  ).toLowerCase()
+  const qualityLabel = quality === 'provisional_close' || booleanValue(dailyCache.provisional_close)
+    ? (locale === 'zh-CN' ? '临时收盘' : 'provisional')
+    : ['final_close', 'source_confirmed_close', 'official'].includes(quality)
+      ? (locale === 'zh-CN' ? '正式收盘' : 'official')
+      : quality
+        ? (locale === 'zh-CN' ? '完整性未确认' : 'inventory observed')
+      : ''
+  const compactPeriods = [
+    `${locale === 'zh-CN' ? '日' : 'D'} ${datePrefix}${dailyRatio}`,
+    periodState(weeklyCache, locale === 'zh-CN' ? '周' : 'W'),
+    periodState(monthlyCache, locale === 'zh-CN' ? '月' : 'M'),
+    qualityLabel,
+  ].filter(Boolean).join(' · ')
+  return {
+    coverageDate,
+    tradeDate,
+    isCurrent,
+    dailySymbols,
+    dailyToday,
+    progress,
+    status,
+    statusLabel: !coverageDate || !tradeDate ? (locale === 'zh-CN' ? '日期未确认' : 'DATE UNKNOWN') : progress === null ? (locale === 'zh-CN' ? (denominatorKnown ? '数量待确认' : '总数未确认') : 'COVERAGE UNKNOWN') : (locale === 'zh-CN' ? '数量已核验' : 'COUNT VERIFIED'),
+    compactLabel: compactPeriods,
+    detail,
+    subdetail,
+  }
+}
+
+export function postmarketDailyTaskSummary(tasks: Record<string, unknown>[], locale: LongclawLocale) {
+  const dailyTasks = tasks.filter(task => compactText(task.module) === 'stock_daily')
+  const rows = dailyTasks.map(task => {
+    const summary = recordValue(task.result_summary)
+    const result = recordValue(summary.result)
+    const cursor = recordValue(task.cursor)
+    const metric = (key: string, ...fallbacks: string[]) => {
+      if (Object.prototype.hasOwnProperty.call(task, key)) return numberValue(task[key])
+      const source = Object.keys(result).length ? result : summary
+      return firstNumberValue(...fallbacks.map(field => source[field]), ...fallbacks.map(field => cursor[field]))
+    }
+    return {
+      processed: metric('processed', 'processed'),
+      covered: metric('covered', 'covered_codes', 'covered'),
+      expected: metric('expected', 'expected_codes', 'total'),
+      closeComplete: task.close_complete === true,
+      cacheUsable: task.cache_usable === true,
+    }
+  })
+  const sumKnown = (key: 'processed' | 'covered' | 'expected') => rows.length && rows.every(row => row[key] !== undefined)
+    ? rows.reduce((sum, row) => sum + row[key]!, 0) : undefined
+  const expected = sumKnown('expected')
+  const processed = sumKnown('processed')
+  const covered = sumKnown('covered')
+  const finalTasks = rows.filter(row => row.closeComplete).length
+  const usableTasks = rows.filter(row => row.cacheUsable).length
+  const knownCount = (count: number | undefined) => count === undefined ? '?' : countText(count)
+  const detail = locale === 'zh-CN'
+    ? `已处理 ${knownCount(processed)}/${knownCount(expected)} · 已覆盖 ${knownCount(covered)}/${knownCount(expected)} · 正式收盘 ${finalTasks}/${rows.length}任务 · 缓存可用 ${usableTasks}/${rows.length}任务`
+    : `processed ${knownCount(processed)}/${knownCount(expected)} · covered ${knownCount(covered)}/${knownCount(expected)} · final ${finalTasks}/${rows.length} tasks · usable ${usableTasks}/${rows.length} tasks`
+  return { taskCount: rows.length, processed, covered, expected, finalTasks, usableTasks,
+    fullyUsable: rows.length > 0 && rows.every(row => row.closeComplete && row.cacheUsable
+      && row.expected !== undefined && row.expected > 0 && row.covered === row.expected), detail }
+}
+
+function cacheReasonLabel(reason: string, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  if (reason === 'index_minute_unsupported') return zh ? '该市场未接入指数分钟行情' : 'index minute cache is not connected for this market'
+  if (reason === 'index_minute_not_ready') return zh ? '指数分钟行情未就绪' : 'index minute cache is not ready'
+  if (reason === 'stock_minute_not_ready') return zh ? '股票分钟行情未就绪' : 'stock minute cache is not ready'
+  if (reason === 'board_heat_not_ready') return zh ? '板块分钟热度未就绪' : 'sector minute heat is not ready'
+  if (reason === 'daily_cache_missing') return zh ? '日线行情缺失' : 'daily cache is missing'
+  if (reason === 'weekly_cache_missing') return zh ? '周线行情缺失' : 'weekly cache is missing'
+  if (reason === 'monthly_cache_missing') return zh ? '月线行情缺失' : 'monthly cache is missing'
+  return zh ? '所需行情尚未就绪' : reason || 'cache is not ready'
+}
+
+function chartCacheNotReadyMessage(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
+  const chartMeta = recordValue(symbolData?.chart?.meta)
+  const target = recordValue(symbolData?.target)
+  const probe = recordValue(target.cache_probe)
+  const status = compactText(chartMeta.cache_status)
+  const reason = compactText(chartMeta.not_ready_reason, compactText(target.not_ready_reason))
+  const loadStatus = compactText(chartMeta.load_status)
+  if (loadStatus === 'local_only') return locale === 'zh-CN' ? '本地暂无该周期缓存，未启动补数' : 'No local cache for this timeframe; no backfill started'
+  if (status !== 'not_ready' && !reason && !loadStatus) return ''
+  const requested = compactText(chartMeta.requested_freq, compactText(target.requested_freq))
+  const label = compactText(target.label, compactText(target.symbol))
+  const hasCandles = Array.isArray(symbolData?.chart?.ohlcv) && symbolData.chart.ohlcv.length > 0
+  const probeStatus = compactText(probe.status)
+  const loadEta = numberValue(chartMeta.load_eta_seconds)
+  const loadError = compactText(chartMeta.load_error)
+  const loadLine = (() => {
+    if (!loadStatus) return ''
+    if (loadStatus === 'failed') {
+      return locale === 'zh-CN'
+        ? '图表数据暂时无法加载'
+        : `load failed${loadError ? `: ${loadError}` : ''}; will retry automatically`
+    }
+    if (['triggered', 'running', 'pending'].includes(loadStatus)) {
+      const etaText = loadEta !== undefined ? Math.max(1, Math.round(loadEta)) : 10
+      return locale === 'zh-CN'
+        ? `已触发加载，预计 ${etaText} 秒内完成，会自动刷新`
+        : `load started, ETA ${etaText}s; will refresh automatically`
+    }
+    if (loadStatus === 'ready') {
+      return locale === 'zh-CN' ? '加载已完成，正在刷新图表' : 'load finished; refreshing chart'
+    }
+    return locale === 'zh-CN' ? `加载状态 ${loadStatus}` : `load status ${loadStatus}`
+  })()
+  const rows = Array.isArray(probe.rows) ? probe.rows.map(item => recordValue(item)) : []
+  const requestedLabel = compactText(probe.requested_freq_label, requested)
+  const hitLine = rows.length
+    ? rows
+        .slice(0, 3)
+        .map(row => `${compactText(row.collection)}:${compactText(row.symbol)}:${compactText(row.freq)}=${countText(row.count)}`)
+        .join(' · ')
+    : ''
+  if (locale === 'zh-CN') {
+    return [hasCandles ? '当前图表数据尚未更新' : '所选图表暂无可用K线',
+      reason ? cacheReasonLabel(reason, locale) : '', loadStatus === 'failed' ? '图表数据暂时无法加载' : ''].filter(Boolean).join(' · ')
+  }
+  return [
+    hasCandles
+      ? `${label || 'Current target'} ${requested || requestedLabel || ''} cache is stale`
+      : `${label || 'Current target'} has no ${requested || requestedLabel || ''} candles`,
+    reason ? cacheReasonLabel(reason, locale) : '',
+    loadLine,
+    probeStatus ? `probe=${probeStatus}` : '',
+    hitLine ? `cached ${hitLine}` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+function trimTrailingSlash(value?: string): string {
+  return value?.trim().replace(/\/+$/, '') ?? ''
+}
+
+function urlFromDashboard(dashboard: StrategyDashboard): string {
+  const terminalLink = dashboard.deep_links.find(link => link.link_id === 'signals-terminal')
+  return trimTrailingSlash(terminalLink?.url)
+}
+
+function normalizeTimestamp(value: unknown): number | undefined {
+  const raw = numberValue(value)
+  if (!raw || raw <= 0) return undefined
+  return raw < 10_000_000_000 ? raw * 1000 : raw
+}
+
+function marketDateTimestamp(value: unknown): number | undefined {
+  const raw = compactText(value)
+  if (!raw) return undefined
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/)
+  if (!match) {
+    const parsed = Date.parse(raw)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = match[4] ? Number(match[4]) : 15
+  const minute = match[5] ? Number(match[5]) : 0
+  const second = match[6] ? Number(match[6]) : 0
+  if (![year, month, day, hour, minute, second].every(Number.isFinite)) return undefined
+  return Date.UTC(year, month - 1, day, hour - 8, minute, second)
+}
+
+function isBuySignal(value?: string): boolean {
+  const normalized = String(value ?? '').toLowerCase()
+  return (
+    normalized.includes('buy') ||
+    normalized.includes('long') ||
+    normalized.includes('entry') ||
+    normalized.includes('买') ||
+    normalized.includes('breakout') ||
+    normalized.includes('gap') ||
+    normalized.includes('volsqueeze') ||
+    normalized.includes('candlerun') ||
+    normalized.includes('candleaccel') ||
+    normalized.includes('零上回踩') ||
+    normalized.includes('零下企稳') ||
+    normalized.includes('突破') ||
+    normalized.includes('缺口')
+  )
+}
+
+function isSellSignal(value?: string): boolean {
+  const normalized = String(value ?? '').toLowerCase()
+  return (
+    normalized.includes('sell') ||
+    normalized.includes('short') ||
+    normalized.includes('exit') ||
+    normalized.includes('卖')
+  )
+}
+
+function signalTone(value?: string): string {
+  if (isSellSignal(value)) return 'warning'
+  if (isBuySignal(value)) return 'success'
+  return 'open'
+}
+
+function isPersonalizedSignalType(value?: string): boolean {
+  const normalized = String(value ?? '').toLowerCase()
+  return (
+    normalized.includes('breakout') ||
+    normalized.includes('gap') ||
+    normalized.includes('volsqueeze') ||
+    normalized.includes('candlerun') ||
+    normalized.includes('candleaccel') ||
+    normalized.includes('macd') ||
+    normalized.includes('缺口') ||
+    normalized.includes('趋势') ||
+    normalized.includes('形态') ||
+    normalized.includes('一买') ||
+    normalized.includes('二买') ||
+    normalized.includes('三买') ||
+    normalized.includes('一卖') ||
+    normalized.includes('二卖') ||
+    normalized.includes('三卖') ||
+    normalized.includes('背驰')
+  )
+}
+
+function isAiFactorStrategySignal(signal: StrategySignal): boolean {
+  return String(signal.source ?? '').toLowerCase().includes('ai_factor_factory')
+}
+
+function isControlledReadOnlySession(session?: WorkbenchSession): boolean {
+  return session?.read_only === true && ['bounded_readonly', 'bounded_no_backfill'].includes(compactText(session.startup_profile).toLowerCase())
+}
+
+export function isControlledReadModelReady(session?: WorkbenchSession): boolean {
+  return isControlledReadOnlySession(session) && session?.read_model_ready === true
+}
+
+export function marketLabel(session?: WorkbenchSession, locale: LongclawLocale = 'zh-CN'): string {
+  if (!session) return locale === 'zh-CN' ? '未连接' : 'Disconnected'
+  if (isControlledReadOnlySession(session)) {
+    return isControlledReadModelReady(session)
+      ? (locale === 'zh-CN' ? '本地数据可查看' : 'Cache ready · Controlled mode')
+      : (locale === 'zh-CN' ? '本地数据加载中' : 'Controlled mode · Cache pending')
+  }
+  if (session.a_live || session.hk_live || session.us_live) {
+    const liveMarkets = [
+      session.a_live ? 'A' : '',
+      session.hk_live ? 'H' : '',
+      session.us_live ? 'US' : '',
+    ].filter(Boolean)
+    return locale === 'zh-CN' ? `${liveMarkets.join('+')} 实时` : `${liveMarkets.join('+')} live`
+  }
+  return session.ready
+    ? (locale === 'zh-CN' ? '已就绪' : 'Ready')
+    : (session.running ? (locale === 'zh-CN' ? '启动中' : 'Booting') : (locale === 'zh-CN' ? '等待' : 'Idle'))
+}
+
+export function DataDetails({ locale, reason, impact, nextStep, children }: {
+  locale: LongclawLocale; reason: string; impact: string; nextStep: string; children?: React.ReactNode
+}) {
+  const zh = locale === 'zh-CN'
+  return <details style={{ ...mutedTextStyle, marginTop: 4 }}>
+    <summary style={{ cursor: 'pointer' }}>{zh ? '数据说明' : 'About this data'}</summary>
+    <div style={{ display: 'grid', gap: 4, paddingTop: 6 }}>
+      <div><strong>{zh ? '原因：' : 'Reason: '}</strong>{reason}</div>
+      <div><strong>{zh ? '影响：' : 'Impact: '}</strong>{impact}</div>
+      <div><strong>{zh ? '下一步：' : 'Next: '}</strong>{nextStep}</div>
+      {children}
+    </div>
+  </details>
+}
+
+export function MaintenanceDiagnostics({ locale, data, open, onClose }: {
+  locale: LongclawLocale; data: unknown; open: boolean; onClose: () => void
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const contentRef = useRef<HTMLPreElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const previous = document.activeElement as HTMLElement | null
+    closeRef.current?.focus()
+    return () => previous?.focus()
+  }, [open])
+  if (!open) return null
+  const zh = locale === 'zh-CN'
+  return <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.65)', display: 'grid', placeItems: 'center', padding: 20 }}
+    onClick={event => { if (event.target === event.currentTarget) onClose() }}
+    onKeyDown={event => {
+      event.stopPropagation()
+      if (event.key === 'Escape') { event.preventDefault(); onClose() }
+      if (event.key === 'Tab') {
+        // Keep keyboard navigation in the maintenance window; chart shortcuts stay inactive.
+        event.preventDefault()
+        if (document.activeElement === closeRef.current) contentRef.current?.focus()
+        else closeRef.current?.focus()
+      }
+    }}>
+    <section role="dialog" aria-modal="true" aria-label={zh ? '维护诊断（技术信息）' : 'Maintenance diagnostics'}
+      style={{ ...terminalPanelStyle, width: 'min(900px, 100%)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 16, boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <strong>{zh ? '维护诊断 · 仅供排查问题' : 'Maintenance diagnostics · Technical use only'}</strong>
+        <button type="button" ref={closeRef} style={terminalButtonStyle(false, false)} onClick={onClose}>{zh ? '关闭，返回看盘' : 'Close and return to charts'}</button>
+      </div>
+      <p style={mutedTextStyle}>{zh ? '以下为原始技术记录，你无需据此修改数据库或执行命令。关闭此窗口即可继续看盘。' : 'Raw technical records. No database changes or commands are required. Close this window to return to charts.'}</p>
+      <pre ref={contentRef} tabIndex={0} aria-label={zh ? '原始技术记录' : 'Raw technical records'} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', overflow: 'auto', fontSize: 11 }}>{JSON.stringify(data, null, 2)}</pre>
+    </section>
+  </div>
+}
+
+export function runtimeDataExplanation({ locale, session, cacheStatus, poolMeta = {}, error, chartNotice, frequencyNotice }: {
+  locale: LongclawLocale; session?: WorkbenchSession; cacheStatus?: StrategyDashboard['cache_status']; poolMeta?: Record<string, unknown>;
+  error?: string | null; chartNotice?: string | null; frequencyNotice?: string | null
+}) {
+  const zh = locale === 'zh-CN'
+  const coverage = cacheStatus ? mongoCoverageState(cacheStatus, locale) : undefined
+  const readable = isControlledReadModelReady(session) || Boolean(cacheStatus?.available && coverage?.dailyToday !== undefined && coverage.dailyToday > 0)
+  const dataDate = coverage?.coverageDate || ''
+  const targetDate = compactText(cacheStatus?.trade_date)
+  const listDate = compactText(poolMeta.base_trade_date)
+  const listUpdated = compactText(poolMeta.status) === 'healthy'
+    && Boolean(listDate && (targetDate ? listDate === targetDate : poolMeta.today_updated === true))
+  const hasList = Object.keys(poolMeta).length > 0
+  const source = cacheStatus ? sourceMonitorSummary(cacheStatus.provider_health || [], cacheStatus.blockers || [], locale, cacheStatus.available) : undefined
+  const dataText = readable
+    ? (zh ? (dataDate ? `可查看${dataDate}已存行情` : '可查看已存行情，数据日期待确认') : `Saved market data is readable${dataDate ? ` as of ${dataDate}` : '; date unconfirmed'}`)
+    : (zh ? '当前可用行情尚未确认' : 'Available market data is not confirmed')
+  const listText = hasList
+    ? (zh ? listUpdated ? `策略名单已更新至${listDate}` : listDate ? targetDate ? `名单仍为${listDate}，不能视作当日结果` : `名单日期${listDate}，当日状态待确认` : '名单日期未确认，不能视作当日结果'
+      : listUpdated ? `Strategy list updated to ${listDate}` : `Strategy list ${listDate || 'date unknown'} is not a confirmed current-day result`)
+    : ''
+  const limits = [
+    error ? (zh ? '部分数据暂时无法更新' : 'Some data cannot be updated') : '',
+    chartNotice ? (zh ? '所选图表数据尚不完整' : 'Selected chart data is incomplete') : '',
+    frequencyNotice ? (zh ? '当前显示可用周期' : 'Showing an available timeframe') : '',
+    source && source.status !== 'ok' ? (zh ? source.status === 'partial' ? '来源更新尚待确认' : '部分来源暂时无法更新' : 'Source updates are not confirmed') : '',
+    session && session.ready !== true ? (zh ? '完整分析尚未完成' : 'Full analysis is not complete') : '',
+  ].filter(Boolean)
+  const reason = zh
+    ? [readable ? '当前显示的是已保存的行情。' : '目前没有足够信息确认行情是否可用。',
+      hasList && !listUpdated ? '当日策略名单尚未核验。' : '',
+      source && source.status === 'partial' ? '近期来源验证已过期或尚未完成，这不等于连接中断。' : source && source.status !== 'ok' ? '部分来源未能返回已验证的数据。' : '',
+      ...limits.map(text => `${text}。`)].filter(Boolean).join('')
+    : [dataText, listText, ...limits].filter(Boolean).join('. ')
+  const impact = zh
+    ? [readable ? '可以查看已有K线和报价，但不代表实时或完整覆盖。' : '请先不要根据尚未确认的数据作判断。',
+      hasList && !listUpdated ? '旧名单仅供回看，不能作为当日新策略结果。' : '',
+      chartNotice ? '所选图表可能缺少部分K线。' : ''].filter(Boolean).join('')
+    : 'Saved data is not a guarantee of live or complete coverage. An older list is for historical reference only.'
+  const nextStep = zh
+    ? readable ? '你可以继续查看已存行情，无需手动修库或执行命令。使用当日策略前，先确认名单日期已更新。' : '无需手动修库或执行命令；在数据可用范围确认前，请暂不依赖当前结果。'
+    : 'No database repair or commands are required. Check the list date before using current-day strategy results.'
+  const actionText = readable
+    ? (zh ? '可继续浏览已存行情' : 'Saved data remains available for review')
+    : (zh ? '暂不依赖当前结果' : 'Do not rely on unconfirmed results')
+  return { summary: [dataText, listText, ...limits.slice(0, 1), actionText].filter(Boolean).join(' · '), reason, impact, nextStep, readable, listUpdated }
+}
+
+export function RuntimeStatusNotice({ session, locale, notices = [], error, frequencyNotice, chartNotice, cacheStatus, poolMeta, diagnostics }: {
+  session?: WorkbenchSession; locale: LongclawLocale; notices?: string[]; error?: string | null; frequencyNotice?: string | null; chartNotice?: string | null;
+  cacheStatus?: StrategyDashboard['cache_status']; poolMeta?: Record<string, unknown>; diagnostics?: unknown
+}) {
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const controlled = isControlledReadOnlySession(session)
+  if (!cacheStatus && !poolMeta && !controlled && !notices.length && !error && !frequencyNotice && !chartNotice) return null
+  const explanation = runtimeDataExplanation({ locale, session, cacheStatus, poolMeta, error, frequencyNotice, chartNotice })
+  return <div style={noticeDarkStyle}>
+    {explanation.summary}
+    <DataDetails locale={locale} reason={explanation.reason} impact={explanation.impact} nextStep={explanation.nextStep}>
+      <button type="button" style={{ ...terminalButtonStyle(false, false), justifySelf: 'start' }} onClick={() => setMaintenanceOpen(true)}>
+        {locale === 'zh-CN' ? '查看维护诊断（技术信息）' : 'Open maintenance diagnostics (technical)'}
+      </button>
+    </DataDetails>
+    <MaintenanceDiagnostics locale={locale} open={maintenanceOpen} onClose={() => setMaintenanceOpen(false)}
+      data={{ cacheStatus, poolMeta, session, notices, error, frequencyNotice, chartNotice, diagnostics }} />
+  </div>
+}
+
+export function ControlledSessionNotice({ session, locale }: { session?: WorkbenchSession; locale: LongclawLocale }) {
+  if (!isControlledReadOnlySession(session)) return null
+  const analysis = session?.ready === true
+    ? (locale === 'zh-CN' ? '完整分析已就绪。' : 'Full analysis is ready.')
+    : (locale === 'zh-CN' ? '完整分析尚未完成。' : 'Full analysis is not ready.')
+  return <div style={noticeDarkStyle}>
+    {marketLabel(session, locale)} · {analysis}
+    {locale === 'zh-CN'
+      ? ' 当前显示已存数据，来源状态见行情更新。'
+      : ' Persistent cache only; no automatic backfill. Readable cache does not mean providers have recovered.'}
+  </div>
+}
+
+function shouldUseLiveRefresh(session?: WorkbenchSession): boolean {
+  return Boolean(session?.a_live || session?.hk_live || session?.us_live)
+}
+
+export function shellGroupCount(shell: WorkbenchShell | null): number {
+  const groups = shell?.watchlist_groups ?? {}
+  return Object.values(groups).reduce((total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0)
+}
+
+export function initialCoreWatchlistTab(shell: WorkbenchShell | null, current: WatchlistTabKey, userSelected: boolean): WatchlistTabKey {
+  if (userSelected || current !== 'sector_boards' || shell?.cache?.status !== 'local_core_ready'
+    || recordValue(shell.sections?.published_pool).status !== 'ready') return current
+  const groups = shell.watchlist_groups ?? {}
+  if (groups.focus_stocks?.length) return 'focus_stocks'
+  if (groups.buy_candidates?.length) return 'buy_candidates'
+  if (groups.watch_stocks?.length) return 'watch_stocks'
+  return current
+}
+
+export function watchlistGroupIsLoading(meta: Record<string, unknown>, tab: WatchlistTabKey): boolean {
+  return recordValue(meta[tab]).status === 'loading'
+}
+
+export function shellNeedsWarmRefresh(shell: WorkbenchShell | null): boolean {
+  if (!shell) return true
+  const cache = recordValue(shell.cache)
+  const cacheStatus = compactText(cache.status).toLowerCase()
+  return (
+    Boolean(cache.building) ||
+    cacheStatus === 'building' ||
+    shellGroupCount(shell) === 0
+  )
+}
+
+async function fetchJson<T>(
+  baseUrl: string,
+  path: string,
+  signal: AbortSignal | undefined,
+  source: string,
+  action?: string,
+  request?: { method?: string; body?: BodyInit | null; headers?: HeadersInit; timeoutMs?: number },
+): Promise<T> {
+  return observedFetchJson<T>(baseUrl, path, {
+    signal,
+    source,
+    action,
+    method: request?.method,
+    headers: request?.headers,
+    body: request?.body,
+    timeoutMs: request?.timeoutMs ?? SYMBOL_REQUEST_TIMEOUT_MS,
+  })
+}
+
+function chartStyles(backgroundMode: ShellBackgroundMode): DeepPartial<Styles> {
+  const tokens = chartColorTokens(backgroundMode)
+  const chartPanel = tokens.chartPanel
+  const panelSoft = tokens.panelSoft
+  const border = tokens.chartBorder
+  const borderStrong = tokens.axisStrong
+  const muted = tokens.axis
+  const text = tokens.text
+  const crosshair = tokens.crosshair
+  const gridHorizontal = tokens.gridMajor
+  const gridVertical = tokens.gridMinor
+  const tooltipBackground = tokens.tooltipBg
+  const upColor = tokens.marketUp
+  const downColor = tokens.marketDown
+  const flatColor = tokens.marketFlat
+  const lineColor = tokens.macdDif
+  const maColors = tokens.ma
+  return {
+    grid: {
+      horizontal: { color: gridHorizontal },
+      vertical: { color: gridVertical },
+    },
+    candle: {
+      area: {
+        backgroundColor: chartPanel,
+      },
+      bar: {
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
+        upBorderColor: upColor,
+        downBorderColor: downColor,
+        noChangeBorderColor: flatColor,
+        upWickColor: upColor,
+        downWickColor: downColor,
+        noChangeWickColor: flatColor,
+      },
+      tooltip: {
+        rect: {
+          color: tooltipBackground,
+          borderColor: border,
+        },
+        text: {
+          color: text,
+          size: 10,
+          family: 'IBM Plex Mono, Menlo, monospace',
+        },
+      },
+      priceMark: {
+        last: {
+          line: { show: true, ...solidLineStyle(lineColor, 1) },
+          text: {
+            show: true,
+            color: terminalTheme.white,
+            backgroundColor: lineColor,
+            size: 10,
+            paddingLeft: 5,
+            paddingRight: 5,
+            paddingTop: 2,
+            paddingBottom: 2,
+            borderRadius: 3,
+          },
+        },
+      },
+    },
+    xAxis: {
+      axisLine: { color: borderStrong },
+      tickLine: { color: border },
+      tickText: { color: muted, size: 10 },
+    },
+    yAxis: {
+      axisLine: { color: borderStrong },
+      tickLine: { color: border },
+      tickText: { color: muted, size: 10 },
+    },
+    separator: {
+      color: border,
+      activeBackgroundColor: panelSoft,
+    },
+    crosshair: {
+      horizontal: {
+        line: { color: crosshair },
+        text: { color: terminalTheme.white, backgroundColor: crosshair },
+      },
+      vertical: {
+        line: { color: crosshair },
+        text: { color: terminalTheme.white, backgroundColor: crosshair },
+      },
+    },
+    indicator: {
+      lines: maColors.map(color => solidLineStyle(alphaColor(color, 0.8), 1)),
+      lastValueMark: {
+        show: false,
+      },
+      tooltip: {
+        showRule: TooltipShowRule.FollowCross,
+        text: {
+          color: text,
+          size: 9,
+          family: 'IBM Plex Mono, Menlo, monospace',
+        },
+      },
+      bars: [
+        {
+          upColor,
+          downColor,
+          noChangeColor: flatColor,
+        },
+      ],
+    },
+  }
+}
+
+export function maPeriodsForChart(freq?: string, targetKind?: string): number[] {
+  void freq
+  void targetKind
+  return KEY_MA_PERIODS
+}
+
+function maIndicatorStyles(periods: number[], backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const colors = chartColorTokens(backgroundMode).ma
+  return {
+    lines: periods.map((period, index) => ({
+      ...solidLineStyle(alphaColor(colors[index % colors.length], index <= 1 ? 0.92 : 0.68), period <= 8 ? 1.15 : 0.95),
+    })),
+    lastValueMark: {
+      show: false,
+    },
+    tooltip: {
+      showRule: TooltipShowRule.None,
+      showName: false,
+      showParams: false,
+    },
+  }
+}
+
+function macdIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const tokens = chartColorTokens(backgroundMode)
+  const lineColors = [tokens.macdDif, tokens.macdDea]
+  const upColor = tokens.macdHistUp
+  const downColor = tokens.macdHistDown
+  const flatColor = tokens.marketFlat
+  return {
+    lines: lineColors.map(color => solidLineStyle(color, 1.2)),
+    lastValueMark: {
+      show: false,
+    },
+    bars: [
+      {
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
+      },
+    ],
+  }
+}
+
+function volumeIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const tokens = chartColorTokens(backgroundMode)
+  const upColor = tokens.volumeUp
+  const downColor = tokens.volumeDown
+  const flatColor = tokens.volumeNeutral
+  return {
+    lastValueMark: {
+      show: false,
+    },
+    bars: [
+      {
+        upColor,
+        downColor,
+        noChangeColor: flatColor,
+      },
+    ],
+    tooltip: {
+      text: {
+        color: tokens.text,
+        size: 9,
+        family: 'IBM Plex Mono, Menlo, monospace',
+      },
+    },
+  }
+}
+
+function ensureVolumeIndicator() {
+  if (volumeIndicatorRegistered) return
+  registerIndicator<{ volumeWanHands: number }>({
+    name: A_SHARE_VOLUME_INDICATOR_NAME,
+    shortName: 'VOL(万手)',
+    precision: 2,
+    calcParams: [],
+    shouldOhlc: false,
+    shouldFormatBigNumber: false,
+    series: IndicatorSeries.Volume,
+    figures: [{ key: 'volumeWanHands', title: 'VOL(万手): ', type: 'bar' }],
+    calc: dataList => dataList.map(item => ({ volumeWanHands: Number(item.volume) || 0 })),
+  })
+  volumeIndicatorRegistered = true
+}
+
+function macdZeroIndicatorStyles(backgroundMode: ShellBackgroundMode): DeepPartial<IndicatorStyle> {
+  const tokens = chartColorTokens(backgroundMode)
+  return {
+    lines: [
+      {
+        color: tokens.macdZero,
+        size: 1,
+        style: 'dashed',
+        dashedValue: [4, 4],
+      },
+    ],
+    tooltip: { showName: false, showParams: false },
+  }
+}
+
+function ensureMacdZeroIndicator() {
+  if (macdZeroIndicatorRegistered) return
+  registerIndicator<{ zero: number }>({
+    name: MACD_ZERO_INDICATOR_NAME,
+    shortName: 'MACD 0',
+    precision: 2,
+    calcParams: [],
+    shouldOhlc: false,
+    shouldFormatBigNumber: false,
+    series: IndicatorSeries.Normal,
+    figures: [{ key: 'zero', title: '0轴: ', type: 'line' }],
+    calc: dataList => dataList.map(() => ({ zero: 0 })),
+  })
+  macdZeroIndicatorRegistered = true
+}
+
+function applyMovingAverageIndicator(
+  chart: Chart,
+  freq: string | undefined,
+  targetKind: string | undefined,
+  backgroundMode: ShellBackgroundMode,
+) {
+  const periods = maPeriodsForChart(freq, targetKind)
+  chart.overrideIndicator(
+    {
+      name: 'MA',
+      calcParams: periods,
+      styles: maIndicatorStyles(periods, backgroundMode),
+    },
+    CANDLE_PANE_ID,
+  )
+}
+
+function createChartIndicators(
+  chart: Chart,
+  freq: string | undefined,
+  targetKind: string | undefined,
+  backgroundMode: ShellBackgroundMode,
+) {
+  const periods = maPeriodsForChart(freq, targetKind)
+  chart.createIndicator(
+    {
+      name: 'MA',
+      calcParams: periods,
+      styles: maIndicatorStyles(periods, backgroundMode),
+    },
+    true,
+    { id: CANDLE_PANE_ID },
+  )
+  chart.createIndicator(
+    {
+      name: A_SHARE_VOLUME_INDICATOR_NAME,
+      styles: volumeIndicatorStyles(backgroundMode),
+    },
+    false,
+    { id: VOLUME_PANE_ID, minHeight: 64, height: 82 },
+  )
+  chart.createIndicator(
+    {
+      name: 'MACD',
+      calcParams: MACD_PARAMS,
+      styles: macdIndicatorStyles(backgroundMode),
+    },
+    false,
+    { id: MACD_PANE_ID, minHeight: 86, height: 116 },
+  )
+  chart.createIndicator(
+    {
+      name: MACD_ZERO_INDICATOR_NAME,
+      styles: macdZeroIndicatorStyles(backgroundMode),
+    },
+    true,
+    { id: MACD_PANE_ID },
+  )
+}
+
+function ensureSignalOverlay() {
+  if (signalOverlayRegistered) return
+  registerOverlay({
+    name: SIGNAL_OVERLAY_NAME,
+    totalStep: 2,
+    lock: false,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates, bounding }: OverlayCreateFiguresCallbackParams) => {
+      const point = coordinates[0]
+      if (!point) return []
+      const data = recordValue(overlay.extendData) as SignalOverlayData
+      const label = data.label || 'SIG'
+      const calloutId = compactText(data.calloutId)
+      const selected = Boolean(data.selected)
+      const side = data.side === 'sell' ? 'sell' : data.side === 'neutral' ? 'neutral' : 'buy'
+      const backgroundMode: ShellBackgroundMode = data.backgroundMode === 'light' ? 'light' : 'dark'
+      const tokens = chartColorTokens(backgroundMode)
+      const color = data.color || signalOverlayColor(side, backgroundMode)
+      const rawItems = Array.isArray(data.items) ? data.items : []
+      const items = rawItems.length > 0
+        ? rawItems.map(item => {
+          const record = recordValue(item)
+          const itemSide = record.side === 'sell' ? 'sell' : record.side === 'neutral' ? 'neutral' : 'buy'
+          return {
+            label: compactText(record.label, label),
+            side: itemSide,
+            color: compactText(record.color, signalOverlayColor(itemSide, backgroundMode)),
+            freq: compactText(record.freq),
+            dateLabel: compactText(record.dateLabel),
+            alignedDateLabel: compactText(record.alignedDateLabel),
+            scope: compactText(record.scope),
+            sourceLabel: compactText(record.sourceLabel),
+            details: compactText(record.details),
+          } satisfies SignalCalloutItem
+        }).filter(item => item.label)
+        : [{
+          label,
+          side,
+          color,
+          freq: data.freq,
+          scope: data.scope,
+          sourceLabel: data.sourceLabel,
+          details: data.details,
+        }]
+      const badge = signalCalloutBadgeSummary(items, data.itemCount, label, data.freq, calloutId)
+      const totalItems = badge.totalItems
+      const displayText = badge.title
+      const subText = uniqueCompact([data.dateLabel, badge.subtitle]).join(' · ')
+      const width = Math.max(totalItems > 1 ? 120 : 92, Math.min(210, Math.max(displayText.length * 7.2, subText.length * 5.8) + 30))
+      const height = subText ? 36 : 22
+      const gap = 10
+      const lane = Math.max(0, Math.min(5, Math.floor(numberValue(data.lane) ?? 0)))
+      const chartWidth = bounding?.width ?? point.x + width + 96
+      const chartHeight = bounding?.height ?? point.y + height + 32
+      const maxX = Math.max(2, chartWidth - width - 86)
+      const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, Math.max(min, max)))
+      const preferLeft = point.x > chartWidth * 0.6
+      const rectX = clamp(preferLeft ? point.x - width - gap : point.x + gap, 2, maxX)
+      const laneStep = height + 6
+      const placeBelow = point.y < chartHeight * 0.48
+      const topRailY = 48 + lane * laneStep
+      const bottomRailY = chartHeight - height - 10 - lane * laneStep
+      const rectY = clamp(placeBelow ? bottomRailY : topRailY, 28, chartHeight - height - 2)
+      const connectorX = clamp(point.x, rectX + 8, rectX + width - 8)
+      const connectorY = point.y < rectY ? rectY : rectY + height
+      const fillColor = selected ? tokens.signalCalloutSelectedBg : tokens.signalCalloutBg
+      const headerFillColor = selected
+        ? `${color}26`
+        : data.isCustom
+          ? (backgroundMode === 'light' ? 'rgba(8, 145, 178, 0.12)' : 'rgba(56, 189, 248, 0.18)')
+          : (backgroundMode === 'light' ? 'rgba(37, 99, 235, 0.10)' : 'rgba(37, 99, 235, 0.18)')
+      const borderSize = selected ? 2 : 1
+
+      const figures = [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: point.x, y: point.y },
+              { x: point.x, y: connectorY },
+              { x: connectorX, y: connectorY },
+            ],
+          },
+          styles: { color, size: 1, style: 'dashed', dashedValue: [3, 3] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'polygon',
+          attrs: {
+            coordinates: [
+              { x: point.x, y: point.y - 5 },
+              { x: point.x - 4, y: point.y },
+              { x: point.x, y: point.y + 5 },
+              { x: point.x + 4, y: point.y },
+            ],
+          },
+          styles: { color, borderColor: terminalTheme.root },
+          ignoreEvent: true,
+        },
+        {
+          key: 'callout-body',
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color: fillColor,
+            borderColor: color,
+            borderSize,
+            borderRadius: 4,
+          },
+        },
+        {
+          key: 'callout-header',
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color: headerFillColor,
+            borderColor: headerFillColor,
+            borderRadius: 4,
+          },
+        },
+        {
+          key: 'callout-stripe',
+          type: 'rect',
+          attrs: { x: rectX + 5, y: rectY + 5, width: 4, height: height - 10 },
+          styles: {
+            color,
+            borderColor: color,
+            borderRadius: 2,
+          },
+        },
+        {
+          key: 'callout-title',
+          type: 'text',
+          attrs: {
+            x: rectX + 12,
+            y: rectY + (subText ? 10 : height / 2),
+            text: displayText.slice(0, 18),
+            align: 'left',
+            baseline: 'middle',
+          },
+          styles: {
+            color: tokens.signalCalloutText,
+            size: 10,
+            weight: 800,
+            family: 'IBM Plex Mono, Menlo, monospace',
+          },
+        },
+      ]
+
+      if (subText) {
+        figures.push(
+          {
+            key: 'callout-subtitle',
+            type: 'text',
+            attrs: {
+              x: rectX + 12,
+              y: rectY + 26,
+              text: subText.slice(0, 25),
+              align: 'left',
+              baseline: 'middle',
+            },
+            styles: {
+              color: tokens.signalCalloutMuted,
+              size: 9,
+              weight: 720,
+              family: 'IBM Plex Mono, Menlo, monospace',
+            },
+          },
+        )
+      }
+
+      items.slice(0, 4).forEach((item, index) => {
+        const itemColor = item.color || signalOverlayColor(item.side, backgroundMode)
+        figures.push({
+          type: 'rect',
+          attrs: {
+            x: rectX + width - 8 - index * 8,
+            y: rectY + height - 6,
+            width: 4,
+            height: 4,
+          },
+          styles: {
+            color: itemColor,
+            borderColor: itemColor,
+            borderRadius: 2,
+          },
+          ignoreEvent: true,
+        })
+      })
+
+      if (totalItems > 4) {
+        figures.push({
+          type: 'text',
+          attrs: {
+            x: rectX + width - 8,
+            y: rectY + height - 4,
+            text: '+',
+            align: 'right',
+            baseline: 'middle',
+          },
+          styles: {
+                color: tokens.signalCalloutMuted,
+            size: 9,
+            weight: 720,
+            family: 'IBM Plex Mono, Menlo, monospace',
+          },
+          ignoreEvent: true,
+        })
+      }
+
+      return figures
+    },
+  })
+  signalOverlayRegistered = true
+}
+
+function ensureVolumeSignalOverlay() {
+  if (volumeSignalOverlayRegistered) return
+  registerOverlay({
+    name: VOLUME_SIGNAL_OVERLAY_NAME,
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates, bounding }: OverlayCreateFiguresCallbackParams) => {
+      const point = coordinates[0]
+      if (!point) return []
+      const data = recordValue(overlay.extendData) as SignalOverlayData
+      const label = data.label || '量能'
+      const side = data.side === 'sell' ? 'sell' : data.side === 'buy' ? 'buy' : 'neutral'
+      const backgroundMode: ShellBackgroundMode = data.backgroundMode === 'light' ? 'light' : 'dark'
+      const tokens = chartColorTokens(backgroundMode)
+      const color = data.color || signalOverlayColor(side, backgroundMode)
+      const width = Math.max(34, Math.min(58, label.length * 8 + 16))
+      const height = 16
+      const gap = 5
+      const rectX = Math.max(2, Math.min(point.x - width / 2, bounding.width - width - 2))
+      const rectY = Math.max(2, point.y - gap - height)
+      const fillColor = tokens.signalCalloutBg
+
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: point.x, y: point.y },
+              { x: point.x, y: rectY + height },
+            ],
+          },
+          styles: { color, size: 1, style: 'dashed', dashedValue: [2, 3] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color: fillColor,
+            borderColor: color,
+            borderSize: 1,
+            borderRadius: 3,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: rectX + width / 2,
+            y: rectY + height / 2,
+            text: label.slice(0, 6),
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: {
+            color: tokens.signalCalloutText,
+            size: 9,
+            weight: 800,
+            family: 'IBM Plex Mono, Menlo, monospace',
+          },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+  volumeSignalOverlayRegistered = true
+}
+
+function ensureDivergenceOverlay() {
+  if (divergenceOverlayRegistered) return
+  registerOverlay({
+    name: DIVERGENCE_OVERLAY_NAME,
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates }: OverlayCreateFiguresCallbackParams) => {
+      const previous = coordinates[0]
+      const current = coordinates[1] ?? coordinates[0]
+      if (!previous || !current) return []
+      const data = recordValue(overlay.extendData) as DivergenceOverlayData
+      const side = data.side === 'bottom' ? 'bottom' : 'top'
+      const color = data.color || (side === 'top' ? tradingDeskTheme.market.up : tradingDeskTheme.market.down)
+      const label = data.label || (side === 'top' ? '顶背离' : '底背离')
+      const compact = Boolean(data.compact)
+      const width = compact ? Math.max(42, label.length * 8 + 12) : 58
+      const height = compact ? 16 : 20
+      const gap = compact ? 6 : 10
+      const rectX = current.x - width / 2
+      const rectY = side === 'top' ? current.y - gap - height : current.y + gap
+      const pointerY = side === 'top' ? rectY + height : rectY
+      const tipY = side === 'top' ? current.y - 2 : current.y + 2
+
+      return [
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: previous.x, y: previous.y },
+              { x: current.x, y: current.y },
+            ],
+          },
+          styles: { color, size: compact ? 1 : 1.4, style: 'dashed', dashedValue: [4, 3] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: current.x, y: tipY },
+              { x: current.x, y: pointerY },
+            ],
+          },
+          styles: solidLineStyle(color, 1),
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: {
+            color,
+            borderColor: tradingDeskTheme.alpha.textBorderStrong,
+            borderRadius: 4,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: current.x,
+            y: rectY + height / 2,
+            text: label,
+            align: 'center',
+            baseline: 'middle',
+          },
+          styles: {
+            color: terminalTheme.white,
+            size: compact ? 9 : 10,
+            weight: 800,
+            family: fontStacks.ui,
+          },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+  divergenceOverlayRegistered = true
+}
+
+function ensureTrendlineOverlay() {
+  if (trendlineOverlayRegistered) return
+  registerOverlay({
+    name: TRENDLINE_OVERLAY_NAME,
+    totalStep: 2,
+    lock: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates, bounding }: OverlayCreateFiguresCallbackParams) => {
+      const start = coordinates[0]
+      const end = coordinates[1] ?? coordinates[0]
+      if (!start || !end) return []
+      const data = recordValue(overlay.extendData)
+      const backgroundMode: ShellBackgroundMode = data.backgroundMode === 'light' ? 'light' : 'dark'
+      const tokens = chartColorTokens(backgroundMode)
+      const kind = compactText(data.kind)
+      const direction = compactText(data.direction)
+      const color = kind === 'resistance'
+        ? tokens.semanticDanger
+        : direction === 'horizontal'
+          ? tokens.semanticInfo
+          : tokens.semanticSuccess
+      const label = compactText(data.label, direction === 'descending' ? '下降阻力' : kind === 'support' ? '支撑' : '阻力')
+      const timeframe = compactText(data.timeframe)
+      const width = Math.max(48, Math.min(168, label.length * 8 + 18))
+      const height = 18
+      const chartWidth = bounding?.width ?? end.x + width + 6
+      const rectX = Math.max(2, Math.min(end.x + 5, chartWidth - width - 2))
+      const rectY = Math.max(4, end.y - height - 5)
+      return [
+        {
+          type: 'line',
+          attrs: { coordinates: [start, end] },
+          styles: { color, size: timeframe === 'weekly' ? 2.1 : direction === 'horizontal' ? 1.2 : 1.6, style: timeframe === 'weekly' ? 'dashed' : 'solid', dashedValue: [5, 4] },
+          ignoreEvent: true,
+        },
+        {
+          type: 'rect',
+          attrs: { x: rectX, y: rectY, width, height },
+          styles: { color: alphaColor(color, 0.15), borderColor: color, borderSize: 1, borderRadius: 3 },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: { x: rectX + 7, y: rectY + height / 2, text: label.slice(0, 16), align: 'left', baseline: 'middle' },
+          styles: { color, size: 9, weight: 800, family: 'IBM Plex Mono, Menlo, monospace' },
+          ignoreEvent: true,
+        },
+      ]
+    },
+  })
+  trendlineOverlayRegistered = true
+}
+
+function toKLineData(rawChart: Record<string, unknown> | undefined): KLineData[] {
+  const rows = Array.isArray(rawChart?.ohlcv) ? rawChart.ohlcv : []
+  return rows
+    .map(item => {
+      const record = recordValue(item)
+      const timestamp = normalizeTimestamp(record.time ?? record.dt ?? record.timestamp)
+      const close = numberValue(record.close)
+      if (!timestamp || close === undefined) return null
+      const open = numberValue(record.open) ?? close
+      const high = numberValue(record.high) ?? Math.max(open, close)
+      const low = numberValue(record.low) ?? Math.min(open, close)
+      return {
+        timestamp,
+        open,
+        high,
+        low,
+        close,
+        volume: numberValue(record.volume) ?? numberValue(record.vol) ?? 0,
+        turnover: numberValue(record.turnover) ?? numberValue(record.amount),
+      } satisfies KLineData
+    })
+    .filter((item): item is KLineData => Boolean(item))
+    .sort((left, right) => left.timestamp - right.timestamp)
+}
+
+function toWanHandChartData(data: KLineData[], enabled: boolean): KLineData[] {
+  if (!enabled) return data
+  return data.map(item => ({
+    ...item,
+    volume: (numberValue(item.volume) ?? 0) / 1_000_000,
+  }))
+}
+
+export function signalsFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
+  if (!symbolData) return []
+  if (Array.isArray(symbolData.signals)) return symbolData.signals
+  const chartSignals = symbolData.chart?.signals
+  return Array.isArray(chartSignals) ? (chartSignals as StrategySignal[]) : []
+}
+
+function securityMatchKeys(value: unknown): string[] {
+  const raw = compactText(value).trim().toUpperCase()
+  if (!raw) return []
+  const compact = raw.replace(/[^A-Z0-9]/g, '')
+  const digits = raw.match(/\d{6}/)?.[0] ?? ''
+  return Array.from(new Set([raw, compact, digits].filter(Boolean)))
+}
+
+function aiFactorSignalMatchesTarget(
+  signal: AiFactorStrategySignal,
+  symbolData: WorkbenchSymbolData | null,
+  target: ChartTarget,
+): boolean {
+  const sourceSymbols = signal.sourceSymbols ?? []
+  if (sourceSymbols.length === 0) return false
+  const targetKeys = new Set(
+    [
+      target.label,
+      symbolData?.target?.label,
+      symbolData?.target?.symbol,
+      symbolData?.analysis_target,
+    ].flatMap(securityMatchKeys),
+  )
+  if (targetKeys.size === 0) return false
+  return sourceSymbols
+    .flatMap(securityMatchKeys)
+    .some(key => targetKeys.has(key))
+}
+
+function aiFactorStrategySignalsForChart(
+  signals: AiFactorStrategySignal[] = [],
+  data: KLineData[],
+  currentFreq: string,
+  symbolData: WorkbenchSymbolData | null,
+  target: ChartTarget,
+): StrategySignal[] {
+  if (signals.length === 0) return []
+  const latestBar = data[data.length - 1]
+  return signals.filter(signal => aiFactorSignalMatchesTarget(signal, symbolData, target)).map(signal => ({
+    timestamp: latestBar?.timestamp ?? Date.parse(signal.createdAt),
+    date_str: latestBar?.timestamp
+      ? new Date(latestBar.timestamp).toISOString().slice(0, 10)
+      : signal.createdAt.slice(0, 10),
+    type: 'AI因子观察',
+    signal_type: signal.title,
+    price: numberValue(latestBar?.close),
+    confidence: 0.72,
+    freq: currentFreq,
+    details: signal.thesis,
+    source: 'ai_factor_factory',
+    pool_status: 'strategy_observation',
+    chart_aligned: Boolean(latestBar),
+    display_scope: 'current',
+    signal_side: 'buy',
+    signal_family: 'ai_factor_factory',
+    symbol: signal.factorId,
+    name: signal.title,
+    relation: signal.strategyRole,
+    target_kind: 'factor',
+  }))
+}
+
+function referenceSignalsForIndexChart(symbolData: WorkbenchSymbolData | null): StrategySignal[] {
+  if (!symbolData || compactText(symbolData.target?.kind) !== 'index') return []
+  const rows = Array.isArray(symbolData.related_custom_signals) ? symbolData.related_custom_signals : []
+  const currentFreq = normalizeSignalFreq(symbolData.target?.effective_freq ?? symbolData.target?.requested_freq)
+  return rows
+    .map(row => {
+      const record = recordValue(row)
+      const signalType = compactText(record.type) || compactText(record.signal_type)
+      const freq = compactText(record.freq)
+      const normalizedFreq = normalizeSignalFreq(freq)
+      const name = compactText(record.name) || compactText(record.symbol)
+      if (!signalType || !freq) return null
+      return {
+        ...(row as StrategySignal),
+        type: signalType,
+        signal_type: signalType,
+        price: undefined,
+        source: [compactText(record.source), 'reference_stock_signal'].filter(Boolean).join(' '),
+        details: [name, compactText(record.details), compactText(record.relation)].filter(Boolean).join(' · '),
+        display_scope: normalizedFreq && currentFreq && normalizedFreq !== currentFreq ? 'other_timeframe' : 'current_timeframe',
+        target_kind: 'reference_stock',
+      } satisfies StrategySignal
+    })
+    .filter((item): item is StrategySignal => Boolean(item))
+}
+
+function keyLevelsFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategyKeyLevel[] {
+  if (!symbolData) return []
+  const summaryLevels = symbolData.summary?.key_levels
+  if (Array.isArray(summaryLevels)) return summaryLevels as StrategyKeyLevel[]
+  const chartReport = recordValue(symbolData.chart?.report)
+  const chartLevels = chartReport.key_levels
+  return Array.isArray(chartLevels) ? (chartLevels as StrategyKeyLevel[]) : []
+}
+
+export function trendlinesFromSymbolData(symbolData: WorkbenchSymbolData | null): StrategyTrendline[] {
+  const chart = recordValue(symbolData?.chart)
+  const directRows = Array.isArray(chart.trendlines) ? chart.trendlines : []
+  const byTimeframe = recordValue(chart.trendlines_by_timeframe)
+  const nestedRows = Object.entries(byTimeframe).flatMap(([timeframe, value]) => {
+    const bucket = recordValue(value)
+    return (Array.isArray(bucket.trendlines) ? bucket.trendlines : []).map(item => ({
+      ...recordValue(item),
+      timeframe: compactText(recordValue(item).timeframe, timeframe),
+    }))
+  })
+  const rows = nestedRows.length > 0 ? nestedRows : directRows
+  return rows
+    .map(item => {
+      const row = recordValue(item)
+      const startTime = numberValue(row.start_time)
+      const projectionTime = numberValue(row.projection_time ?? row.end_time)
+      const startPrice = numberValue(row.start_price)
+      const projectedPrice = numberValue(row.projected_price ?? row.end_price)
+      if (!startTime || !projectionTime || startPrice === undefined || projectedPrice === undefined) return null
+      return {
+        ...row,
+        start_time: startTime,
+        end_time: projectionTime,
+        projection_time: projectionTime,
+        start_price: startPrice,
+        projected_price: projectedPrice,
+      } as StrategyTrendline
+    })
+    .filter((item): item is StrategyTrendline => Boolean(item))
+    .filter((item, index, all) => all.findIndex(candidate => (
+      candidate.timeframe === item.timeframe
+      && candidate.kind === item.kind
+      && candidate.direction === item.direction
+      && candidate.start_time === item.start_time
+      && candidate.projected_price === item.projected_price
+    )) === index)
+}
+
+function trendlineDisplayLabel(line: StrategyTrendline, locale: LongclawLocale): string {
+  const kind = line.kind === 'resistance' ? 'resistance' : 'support'
+  const direction = line.direction
+  const timeframe = compactText(line.timeframe)
+  if (locale !== 'zh-CN') {
+    const prefix = timeframe ? `${timeframe} · ` : ''
+    if (direction === 'descending') return `${prefix}Descending resistance`
+    if (direction === 'ascending') return `${prefix}Ascending support`
+    return `${prefix}${kind === 'support' ? 'Horizontal support' : 'Horizontal resistance'}`
+  }
+  const timeframeLabel: Record<string, string> = { weekly: '周', daily: '日', '60min': '60m', '30min': '30m', '15min': '15m', '5min': '5m' }
+  const prefix = timeframe ? `${timeframeLabel[timeframe] || timeframe}·` : ''
+  if (direction === 'descending') return `${prefix}下降趋势线阻力`
+  if (direction === 'ascending') return `${prefix}上升趋势线支撑`
+  const level = line.projected_price === undefined ? '' : ` ${line.projected_price.toFixed(2)}`
+  return `${prefix}${kind === 'support' ? '水平支撑' : '水平阻力'}${level}`
+}
+
+function latestClose(data: KLineData[]): number | undefined {
+  return data[data.length - 1]?.close
+}
+
+function latestVolume(data: KLineData[]): number | undefined {
+  return numberValue(data[data.length - 1]?.volume)
+}
+
+function latestAmount(data: KLineData[]): number | undefined {
+  return numberValue(data[data.length - 1]?.turnover)
+}
+
+function movingAverageLevel(data: KLineData[], period: number): number | undefined {
+  if (data.length < period) return undefined
+  const window = data.slice(-period)
+  const sum = window.reduce((total, item) => total + item.close, 0)
+  return sum / period
+}
+
+function isDailyFreq(freq?: string): boolean {
+  return normalizeSignalFreq(freq) === 'daily'
+}
+
+function derivedMaKeyLevels(data: KLineData[], freq?: string, targetKind?: string): StrategyKeyLevel[] {
+  const normalized = normalizeSignalFreq(freq)
+  void targetKind
+  return KEY_MA_PERIODS
+    .map(period => {
+      const value = movingAverageLevel(data, period)
+      if (value === undefined) return null
+      const close = latestClose(data)
+      return {
+        name: `${displayFreqLabel(normalized)}MA${period}`,
+        value,
+        role: '关键均线',
+        position: close !== undefined && close >= value ? '下方' : '上方',
+        distance_pct: close !== undefined && value > 0 ? ((value - close) / close) * 100 : null,
+        timeframe: normalized,
+      } satisfies StrategyKeyLevel
+    })
+    .filter((item): item is StrategyKeyLevel => Boolean(item))
+}
+
+function mergeKeyLevels(base: StrategyKeyLevel[], derived: StrategyKeyLevel[]): StrategyKeyLevel[] {
+  const output: StrategyKeyLevel[] = []
+  const seen = new Set<string>()
+  ;[...base, ...derived].forEach(level => {
+    const value = numberValue(level.value)
+    const name = compactText(level.name)
+    const key = `${name}:${value === undefined ? '' : value.toFixed(2)}`
+    if (!name && value === undefined) return
+    if (seen.has(key)) return
+    seen.add(key)
+    output.push(level)
+  })
+  return output
+}
+
+export function isMovingAverageLevelName(value: unknown): boolean {
+  const normalized = compactText(value).trim().replace(/\s+/g, '').toUpperCase()
+  if (!normalized) return false
+  return (
+    /^MA\d+$/.test(normalized) ||
+    /^(日|周|日线|周线|DAILY|WEEKLY)?MA\d+$/.test(normalized) ||
+    /^\d+(日|天|周|D|W)?线$/.test(normalized)
+  )
+}
+
+function divergenceWindowForFreq(freq?: string): number {
+  const normalized = String(freq ?? '').toLowerCase()
+  if (normalized.includes('week') || normalized === 'w' || normalized === '1w') return 2
+  if (normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily') return 3
+  return 4
+}
+
+function divergenceMinPriceMoveForFreq(freq?: string): number {
+  const normalized = String(freq ?? '').toLowerCase()
+  if (normalized.includes('week') || normalized === 'w' || normalized === '1w') return 0.012
+  if (normalized.includes('day') || normalized === 'd' || normalized === '1d' || normalized === 'daily') return 0.008
+  return 0.003
+}
+
+function calculateMacdPoints(data: KLineData[]): MacdPoint[] {
+  let closeSum = 0
+  let emaShort: number | undefined
+  let emaLong: number | undefined
+  let dif = 0
+  let difSum = 0
+  let dea = 0
+  const [shortPeriod, longPeriod, signalPeriod] = MACD_PARAMS
+  const maxPeriod = Math.max(shortPeriod, longPeriod)
+
+  return data.map((item, index) => {
+    const close = item.close
+    closeSum += close
+    if (index >= shortPeriod - 1) {
+      emaShort = index > shortPeriod - 1 && emaShort !== undefined
+        ? (2 * close + (shortPeriod - 1) * emaShort) / (shortPeriod + 1)
+        : closeSum / shortPeriod
+    }
+    if (index >= longPeriod - 1) {
+      emaLong = index > longPeriod - 1 && emaLong !== undefined
+        ? (2 * close + (longPeriod - 1) * emaLong) / (longPeriod + 1)
+        : closeSum / longPeriod
+    }
+    const macd: MacdPoint = { timestamp: item.timestamp }
+    if (index >= maxPeriod - 1 && emaShort !== undefined && emaLong !== undefined) {
+      dif = emaShort - emaLong
+      macd.dif = dif
+      difSum += dif
+      if (index >= maxPeriod + signalPeriod - 2) {
+        dea = index > maxPeriod + signalPeriod - 2
+          ? (dif * 2 + dea * (signalPeriod - 1)) / (signalPeriod + 1)
+          : difSum / signalPeriod
+        macd.dea = dea
+        macd.histogram = (dif - dea) * 2
+      }
+    }
+    return macd
+  })
+}
+
+function hasMacdValue(value: MacdPoint | undefined): value is MacdPoint & { dif: number; histogram: number } {
+  return value?.dif !== undefined && value.histogram !== undefined
+}
+
+function findSwingHighs(data: KLineData[], macd: MacdPoint[], windowSize: number): PivotPoint[] {
+  const output: PivotPoint[] = []
+  for (let index = windowSize; index < data.length - windowSize; index += 1) {
+    const current = data[index]
+    const macdPoint = macd[index]
+    if (!current || !hasMacdValue(macdPoint)) continue
+    let isPivot = true
+    for (let offset = 1; offset <= windowSize; offset += 1) {
+      if (current.high <= data[index - offset].high || current.high < data[index + offset].high) {
+        isPivot = false
+        break
+      }
+    }
+    if (isPivot) {
+      output.push({
+        index,
+        timestamp: current.timestamp,
+        price: current.high,
+        dif: macdPoint.dif,
+        histogram: macdPoint.histogram,
+      })
+    }
+  }
+  return output
+}
+
+function findSwingLows(data: KLineData[], macd: MacdPoint[], windowSize: number): PivotPoint[] {
+  const output: PivotPoint[] = []
+  for (let index = windowSize; index < data.length - windowSize; index += 1) {
+    const current = data[index]
+    const macdPoint = macd[index]
+    if (!current || !hasMacdValue(macdPoint)) continue
+    let isPivot = true
+    for (let offset = 1; offset <= windowSize; offset += 1) {
+      if (current.low >= data[index - offset].low || current.low > data[index + offset].low) {
+        isPivot = false
+        break
+      }
+    }
+    if (isPivot) {
+      output.push({
+        index,
+        timestamp: current.timestamp,
+        price: current.low,
+        dif: macdPoint.dif,
+        histogram: macdPoint.histogram,
+      })
+    }
+  }
+  return output
+}
+
+function weakeningRatio(previousValue: number, currentValue: number, type: 'bearish' | 'bullish'): number {
+  const denominator = Math.max(Math.abs(previousValue), Math.abs(currentValue), 0.000001)
+  const delta = type === 'bearish' ? previousValue - currentValue : currentValue - previousValue
+  return delta / denominator
+}
+
+function divergenceConfidence(priceMove: number, indicatorWeakening: number): number {
+  return Math.min(0.99, 0.45 + Math.min(priceMove * 18, 0.28) + Math.min(indicatorWeakening * 1.1, 0.26))
+}
+
+function divergenceFromPivots(
+  previous: PivotPoint,
+  current: PivotPoint,
+  type: 'bearish' | 'bullish',
+  minPriceMove: number,
+): MacdDivergenceSignal | null {
+  const priceMove = type === 'bearish'
+    ? (current.price - previous.price) / Math.max(Math.abs(previous.price), 0.000001)
+    : (previous.price - current.price) / Math.max(Math.abs(previous.price), 0.000001)
+  if (priceMove < minPriceMove) return null
+
+  const difWeakening = weakeningRatio(previous.dif, current.dif, type)
+  const histogramWeakening = weakeningRatio(previous.histogram, current.histogram, type)
+  const metric = histogramWeakening >= difWeakening ? 'histogram' : 'dif'
+  const indicatorWeakening = Math.max(difWeakening, histogramWeakening)
+  if (indicatorWeakening < 0.08) return null
+
+  const macdValue = metric === 'histogram' ? current.histogram : current.dif
+  const previousMacdValue = metric === 'histogram' ? previous.histogram : previous.dif
+  return {
+    id: `${type}:${previous.timestamp}:${current.timestamp}:${metric}`,
+    type,
+    timestamp: current.timestamp,
+    price: current.price,
+    previousTimestamp: previous.timestamp,
+    previousPrice: previous.price,
+    macdValue,
+    previousMacdValue,
+    confidence: divergenceConfidence(priceMove, indicatorWeakening),
+    metric,
+  }
+}
+
+function macdDivergences(data: KLineData[], freq?: string): MacdDivergenceSignal[] {
+  if (data.length < 42) return []
+  const windowSize = divergenceWindowForFreq(freq)
+  const minPriceMove = divergenceMinPriceMoveForFreq(freq)
+  const macd = calculateMacdPoints(data)
+  const highs = findSwingHighs(data, macd, windowSize)
+  const lows = findSwingLows(data, macd, windowSize)
+  const candidates: MacdDivergenceSignal[] = []
+  for (let index = 1; index < highs.length; index += 1) {
+    const signal = divergenceFromPivots(highs[index - 1], highs[index], 'bearish', minPriceMove)
+    if (signal) candidates.push(signal)
+  }
+  for (let index = 1; index < lows.length; index += 1) {
+    const signal = divergenceFromPivots(lows[index - 1], lows[index], 'bullish', minPriceMove)
+    if (signal) candidates.push(signal)
+  }
+  return candidates
+    .filter(signal => signal.confidence >= 0.58)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-6)
+}
+
+function signalTimestamp(signal: StrategySignal): number | undefined {
+  return (
+    normalizeTimestamp(signal.dt ?? signal.time ?? signal.timestamp) ??
+    marketDateTimestamp(signal.signal_date ?? signal.date_str)
+  )
+}
+
+function nearestChartBarForTimestamp(data: KLineData[], timestamp: number): KLineData | undefined {
+  if (data.length === 0) return undefined
+  const exact = data.find(item => item.timestamp === timestamp)
+  if (exact) return exact
+  const first = data[0]
+  const last = data[data.length - 1]
+  if (!first || !last || timestamp < first.timestamp || timestamp > last.timestamp + 86400) return undefined
+  return data.find(item => item.timestamp >= timestamp) ?? last
+}
+
+function signalSideForOverlay(signal: StrategySignal): SignalOverlayData['side'] {
+  if (isMaAcceptanceOverlaySignal(signal)) return 'buy'
+  if (signal.signal_side === 'sell') return 'sell'
+  if (signal.signal_side === 'buy') return 'buy'
+  return signalOverlaySide(signal.type ?? signal.signal_type)
+}
+
+function signalOverlayPrice(signal: StrategySignal, bar: KLineData | undefined): number | undefined {
+  const explicit = numberValue(signal.price)
+  if (explicit !== undefined) return explicit
+  if (!bar) return undefined
+  const side = signalSideForOverlay(signal)
+  if (side === 'sell') return bar.high
+  if (side === 'buy') return bar.low
+  return bar.close
+}
+
+function shortSignalLabel(value?: string): string {
+  const raw = String(value ?? '').trim()
+  if (!raw) return 'SIG'
+  const normalized = raw.toLowerCase()
+  if (normalized.includes('量价齐升')) return '量价升'
+  if (normalized.includes('量价共振下杀')) return '共振跌'
+  if (normalized.includes('价升量缩背离')) return '价量背'
+  if (normalized.includes('量价背离')) return '背离顶'
+  if (normalized.includes('价平量增')) return '价量歧'
+  if (normalized.includes('量价同步扩张')) return '量价扩'
+  if (normalized.includes('量价同步扩跌')) return '扩跌'
+  if (normalized.includes('头肩顶')) return '头肩'
+  if (normalized.includes('量价收敛')) return '收敛'
+  if (normalized.includes('巨量分歧') || normalized.includes('极端量能分歧')) return '分歧'
+  if (normalized.includes('背驰买') || normalized.includes('底背离')) return '底背'
+  if (normalized.includes('顶背离')) return '顶背'
+  if (normalized.includes('放量突破')) return '突'
+  if (normalized.includes('放量滞涨')) return '滞'
+  if (normalized.includes('放量长上影')) return '上影'
+  if (normalized.includes('放量跌破')) return '跌破'
+  if (normalized.includes('价涨量缩') || normalized.includes('缩量新高')) return '量缩'
+  if (normalized.includes('缩量回踩') || normalized.includes('极致缩量')) return '缩'
+  if (normalized.includes('波动收缩后放量扩张')) return '扩'
+  if (normalized.includes('巨量无方向')) return '巨量'
+  if (normalized.includes('成交量异常放大') || normalized.includes('放量')) return '放量'
+  if (normalized.includes('成交量极致缩量') || normalized.includes('缩量')) return '缩量'
+  if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) return '突破'
+  if (normalized.includes('volsqueeze')) return '缩量'
+  if (normalized.includes('candlerun') || normalized.includes('candleaccel')) return '加速'
+  if (normalized.includes('零上回踩')) return '零上'
+  if (normalized.includes('零下企稳')) return '零下'
+  if (normalized.includes('ai因子') || normalized.includes('ai factor')) return 'AI因子'
+  if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) return '观察'
+  if (isSellSignal(raw)) return '卖'
+  if (isBuySignal(raw)) return '买'
+  if (normalized.includes('gap') || normalized.includes('缺口')) return '缺口'
+  if (normalized.includes('macd')) return 'MACD'
+  if (/^[\x00-\x7F]+$/.test(raw)) return raw.toUpperCase().slice(0, 4)
+  return raw.slice(0, 3)
+}
+
+function normalizeSignalFreq(value?: string): string {
+  const raw = String(value ?? '').trim().toLowerCase()
+  if (!raw) return ''
+  if (['5m', '5min', '5分钟'].includes(raw)) return '5min'
+  if (['15m', '15min', '15分钟'].includes(raw)) return '15min'
+  if (['30m', '30min', '30分钟'].includes(raw)) return '30min'
+  if (['daily', 'day', '1d', '日线'].includes(raw)) return 'daily'
+  if (['weekly', 'week', '1w', '周线'].includes(raw)) return 'weekly'
+  if (['monthly', 'month', '1mo', '1m', '月线'].includes(raw)) return 'monthly'
+  return raw
+}
+
+function displayFreqLabel(value?: string): string {
+  const normalized = normalizeSignalFreq(value)
+  if (normalized === '5min') return '5m'
+  if (normalized === '15min') return '15m'
+  if (normalized === '30min') return '30m'
+  if (normalized === 'daily') return '日'
+  if (normalized === 'weekly') return '周'
+  if (normalized === 'monthly') return '月'
+  return compactText(value)
+}
+
+function booleanValue(value: unknown): boolean {
+  if (value === true || value === 1) return true
+  if (typeof value !== 'string') return false
+  return ['true', '1', 'yes', 'y'].includes(value.trim().toLowerCase())
+}
+
+function maPeriodNumbers(value: unknown): number[] {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,\s/]+/)
+      : [value]
+  const seen = new Set<number>()
+  rawValues.forEach(item => {
+    const period = numberValue(item)
+    if (period === undefined || period <= 0) return
+    seen.add(Math.round(period))
+  })
+  return Array.from(seen).sort((left, right) => left - right)
+}
+
+function maAcceptanceFromRecord(value: unknown): MaAcceptanceSummary | null {
+  const record = recordValue(value)
+  if (Object.keys(record).length === 0) return null
+  const items = Array.isArray(record.items)
+    ? record.items.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const directPrimary = recordValue(record.primary)
+  const primary = Object.keys(directPrimary).length > 0 ? directPrimary : (items[0] ?? {})
+  const periods = maPeriodNumbers(record.periods ?? record.fib_accept_periods)
+  const inferredPeriod = numberValue(primary.period)
+  if (periods.length === 0 && inferredPeriod !== undefined) periods.push(Math.round(inferredPeriod))
+  const summary =
+    compactText(record.summary) ||
+    compactText(record.fib_array_summary) ||
+    (periods.length > 0 ? periods.map(period => `MA${period}`).join('/') + '回踩承接' : '')
+  const detail = compactText(record.detail)
+  const hasPrimaryMetric = [
+    primary.value,
+    primary.touch_distance_pct,
+    primary.low_distance_pct,
+    primary.distance_pct,
+    primary.acceptance_score,
+  ].some(item => numberValue(item) !== undefined)
+  if (!summary && periods.length === 0 && !detail && !hasPrimaryMetric) return null
+  return {
+    summary,
+    periods,
+    primary,
+    items,
+    detail,
+    state: compactText(record.state),
+    score: numberValue(record.score),
+    source_collection: compactText(record.source_collection),
+    signal_type: compactText(record.signal_type),
+    freq: 'daily',
+    as_of: compactText(record.as_of),
+    event_dt: compactText(record.event_dt),
+  }
+}
+
+function maAcceptanceFromAlignment(value: unknown): MaAcceptanceSummary | null {
+  const alignment = recordValue(value)
+  if (Object.keys(alignment).length === 0) return null
+  const periods = maPeriodNumbers(alignment.fib_accept_periods)
+  const maArray = Array.isArray(alignment.fib_ma_array)
+    ? alignment.fib_ma_array.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const accepted = maArray.filter(item => {
+    const period = numberValue(item.period)
+    return booleanValue(item.pullback_acceptance) || (period !== undefined && periods.includes(Math.round(period)))
+  })
+  if (periods.length === 0 && accepted.length === 0) return null
+  const primary = accepted[0] ?? {}
+  const summary =
+    compactText(alignment.fib_array_summary) ||
+    (periods.length > 0 ? periods.map(period => `MA${period}`).join('/') + '回踩承接' : '')
+  if (!summary && periods.length === 0 && accepted.length === 0) return null
+  return {
+    summary,
+    periods,
+    primary,
+    items: accepted,
+    detail: compactText(alignment.detail),
+    state: compactText(alignment.fib_ma_array_state),
+    score: numberValue(primary.acceptance_score),
+    freq: 'daily',
+  }
+}
+
+function maAcceptanceWithSignalContext(acceptance: MaAcceptanceSummary | null, signal: StrategySignal): MaAcceptanceSummary | null {
+  if (!acceptance) return null
+  return {
+    ...acceptance,
+    freq: acceptance.freq || 'daily',
+    signal_type: acceptance.signal_type || compactText(signal.signal_type ?? signal.type),
+    event_dt: acceptance.event_dt || compactText(signal.signal_date ?? signal.date_str),
+  }
+}
+
+function maAcceptanceFromSignal(signal: StrategySignal): MaAcceptanceSummary | null {
+  return (
+    maAcceptanceWithSignalContext(maAcceptanceFromRecord(signal.ma_acceptance), signal) ??
+    maAcceptanceWithSignalContext(maAcceptanceFromAlignment(signal.ma_alignment), signal)
+  )
+}
+
+function maAcceptanceFromSignals(signals: StrategySignal[]): MaAcceptanceSummary | null {
+  const ranked = signals
+    .map(signal => ({
+      acceptance: maAcceptanceFromSignal(signal),
+      timestamp: signalTimestamp(signal) ?? 0,
+      priority: signalOverlayPriority(signal),
+    }))
+    .filter((item): item is { acceptance: MaAcceptanceSummary; timestamp: number; priority: number } => Boolean(item.acceptance))
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+  return ranked[0]?.acceptance ?? null
+}
+
+export function maAcceptanceFromSymbolData(symbolData: WorkbenchSymbolData | null): MaAcceptanceSummary | null {
+  if (!symbolData) return null
+  const fromSummary = maAcceptanceFromRecord(symbolData.summary?.ma_acceptance) ?? maAcceptanceFromAlignment(symbolData.summary?.ma_alignment)
+  if (fromSummary) return fromSummary
+  const chartSignals = symbolData.chart?.signals
+  const allSignals = [
+    ...(Array.isArray(symbolData.signals) ? symbolData.signals : []),
+    ...(Array.isArray(chartSignals) ? (chartSignals as StrategySignal[]) : []),
+  ]
+  return maAcceptanceFromSignals(allSignals)
+}
+
+function maAcceptanceRecord(acceptance: MaAcceptanceSummary): Record<string, unknown> {
+  return {
+    summary: acceptance.summary,
+    periods: acceptance.periods,
+    primary: acceptance.primary,
+    items: acceptance.items,
+    detail: acceptance.detail,
+    state: acceptance.state,
+    score: acceptance.score,
+    source_collection: acceptance.source_collection,
+    signal_type: acceptance.signal_type,
+    freq: 'daily',
+    as_of: acceptance.as_of,
+    event_dt: acceptance.event_dt,
+  }
+}
+
+export function dailyMaAcceptanceSignalForChart(
+  data: KLineData[],
+  acceptance: MaAcceptanceSummary | null,
+  currentFreq?: string,
+): StrategySignal | null {
+  if (!acceptance || normalizeSignalFreq(currentFreq) !== 'daily' || data.length === 0) return null
+  const eventTimestamp = marketDateTimestamp(acceptance.event_dt ?? acceptance.as_of)
+  const bar = eventTimestamp ? nearestChartBarForTimestamp(data, eventTimestamp) : data[data.length - 1]
+  const targetBar = bar ?? data[data.length - 1]
+  if (!targetBar) return null
+  return {
+    timestamp: targetBar.timestamp,
+    date_str: new Date(targetBar.timestamp).toISOString().slice(0, 10),
+    type: 'MA承接',
+    signal_type: acceptance.summary || shortMaAcceptanceLabel(acceptance),
+    price: numberValue(acceptance.primary.value) ?? targetBar.low,
+    confidence: numberValue(acceptance.score),
+    freq: 'daily',
+    details: acceptance.detail,
+    source: acceptance.source_collection || 'terminal_ma_acceptance',
+    pool_status: acceptance.state,
+    chart_aligned: true,
+    display_scope: 'current_timeframe',
+    signal_side: 'buy',
+    signal_family: 'ma_acceptance',
+    ma_acceptance: maAcceptanceRecord(acceptance),
+  }
+}
+
+function shortMaAcceptanceLabel(acceptance: MaAcceptanceSummary | null): string {
+  if (!acceptance) return ''
+  const primaryPeriod = numberValue(acceptance.primary.period)
+  const period = acceptance.periods[0] ?? (primaryPeriod === undefined ? undefined : Math.round(primaryPeriod))
+  if (period !== undefined) return `MA${period}承接`
+  const summary = compactText(acceptance.summary).replace(/回踩承接/g, '承接')
+  return summary ? summary.slice(0, 8) : '均线承接'
+}
+
+function signalOverlayLabel(signal: StrategySignal): string {
+  const maAcceptance = isMaAcceptanceOverlaySignal(signal) ? maAcceptanceFromSignal(signal) : null
+  if (maAcceptance) return shortMaAcceptanceLabel(maAcceptance)
+  return shortSignalLabel(signal.type ?? signal.signal_type)
+}
+
+function signalEvidenceDetails(signal: StrategySignal): string {
+  const maAcceptance = isMaAcceptanceOverlaySignal(signal) ? maAcceptanceFromSignal(signal) : null
+  return uniqueCompact([signal.details, maAcceptance?.detail]).join(' · ')
+}
+
+function isMaAcceptanceOverlaySignal(signal: StrategySignal): boolean {
+  return compactText(signal.signal_family) === 'ma_acceptance' && Boolean(maAcceptanceFromSignal(signal))
+}
+
+function signalOverlaySide(value?: string): SignalOverlayData['side'] {
+  const normalized = String(value ?? '').toLowerCase()
+  if (isSellSignal(value) || normalized.includes('顶背离')) return 'sell'
+  if (isBuySignal(value) || normalized.includes('底背离') || normalized.includes('背驰买')) return 'buy'
+  return 'neutral'
+}
+
+function signalOverlayColor(side: SignalOverlayData['side'], backgroundMode: ShellBackgroundMode = 'dark'): string {
+  const tokens = chartColorTokens(backgroundMode)
+  if (side === 'sell') return tokens.semanticDanger
+  if (side === 'buy') return tokens.semanticWarning
+  return tokens.semanticInfo
+}
+
+function isVolumeSignal(signal: StrategySignal): boolean {
+  const source = `${signal.source ?? ''} ${signal.pool_status ?? ''} ${signal.signal_family ?? ''} ${signal.render_pane ?? ''}`.toLowerCase()
+  const type = String(signal.type ?? signal.signal_type ?? '').toLowerCase()
+  return (
+    source.includes('terminal_volume_signals') ||
+    source.includes('volume_warning') ||
+    source.includes('volume') ||
+    source.includes('量能') ||
+    type.includes('成交量') ||
+    type.includes('放量') ||
+    type.includes('缩量') ||
+    type.includes('量价')
+  )
+}
+
+export function signalOverlayPriority(signal: StrategySignal): number {
+  const normalized = String(signal.type ?? '').toLowerCase()
+  const side = signalSideForOverlay(signal)
+  let priority = 35
+  if (isMaAcceptanceOverlaySignal(signal)) priority = 140
+  else if (isAiFactorStrategySignal(signal)) priority = 88
+  else if (side === 'sell' || normalized.includes('顶背离')) priority = 90
+  else if (side === 'buy' || normalized.includes('底背离') || normalized.includes('背驰买')) priority = 85
+  else if (normalized.includes('break') || normalized.includes('brea') || normalized.includes('突破')) priority = 70
+  else if (normalized.includes('macd') || normalized.includes('背驰')) priority = 60
+  else if (normalized.includes('成交量') || normalized.includes('放量') || normalized.includes('缩量')) priority = 58
+  else if (normalized.includes('gap') || normalized.includes('缺口')) priority = 45
+  else if (normalized.includes('candidate') || normalized.includes('cand') || normalized.includes('候选')) priority = 20
+  return isCustomUserSignal(signal) ? priority + 18 : priority
+}
+
+function signalScopePriority(signal: StrategySignal, currentFreq?: string): number {
+  const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+  if (scopeLabel === '本周期') return 14
+  if (scopeLabel === '上级周期') return 12
+  if (scopeLabel === '下级周期') return 10
+  return 6
+}
+
+function compactScopeLabel(signal: StrategySignal, currentFreq?: string): string {
+  const freq = displayFreqLabel(signal.freq)
+  const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+  if (scopeLabel === '上级周期') return freq ? `${freq}↧` : '上级'
+  if (scopeLabel === '下级周期') return freq ? `${freq}↥` : '下级'
+  return freq
+}
+
+function isCustomUserSignal(signal: StrategySignal): boolean {
+  const source = `${signal.source ?? ''} ${signal.pool_status ?? ''} ${signal.details ?? ''}`.toLowerCase()
+  if (source.includes('reference_stock_signal') || source.includes('terminal_technical_signals') || source.includes('technical_signal_scan')) {
+    return false
+  }
+  if (source.includes('ai_factor_factory')) return true
+  return source.includes('signal_records') || source.includes('backtest') || source.includes('custom') || source.includes('自定义') || source.includes('回测') || isPersonalizedSignalType(signal.type)
+}
+
+function signalSourceLabel(signal: StrategySignal): string {
+  if (isAiFactorStrategySignal(signal)) return 'AI因子'
+  if (isCustomUserSignal(signal)) return '自定义'
+  const source = String(signal.source ?? '').toLowerCase()
+  if (source.includes('volume')) return '量能'
+  if (source.includes('terminal_technical_signals') || source.includes('technical_signal_scan')) return '硬技术'
+  if (source.includes('signal_pool') || source.includes('signals')) return '信号池'
+  if (source.includes('reference_stock_signal')) return '参考'
+  return ''
+}
+
+export function displaySignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
+  if (data.length === 0 || signals.length === 0) return []
+  const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
+  const valid = signals
+    .map(signal => {
+      const timestamp = signalTimestamp(signal)
+      const bar = timestamp === undefined ? undefined : nearestChartBarForTimestamp(data, timestamp)
+      return {
+        signal,
+        timestamp,
+        alignedTimestamp: bar?.timestamp ?? timestamp,
+        side: signalSideForOverlay(signal),
+        priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
+      }
+    })
+    .filter((item): item is { signal: StrategySignal; timestamp: number; alignedTimestamp: number; side: SignalOverlayData['side']; priority: number } =>
+      item.timestamp !== undefined &&
+      item.alignedTimestamp !== undefined &&
+      !isVolumeSignal(item.signal),
+    )
+  const recent = valid.filter(item => item.timestamp >= cutoff)
+  const source = recent.length > 0 ? recent : valid.slice(-MAX_CHART_SIGNAL_OVERLAYS)
+  const bestByLane = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
+  source.forEach(item => {
+    const scopeLabel = signalScopeLabel(item.signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+    const key = `${item.alignedTimestamp}:${item.side}:${scopeLabel}`
+    const existing = bestByLane.get(key)
+    if (!existing || item.priority > existing.priority) bestByLane.set(key, item)
+  })
+  const maAcceptance = source
+    .filter(item => isMaAcceptanceOverlaySignal(item.signal))
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })[0]
+  const selectedByKey = new Map<string, { signal: StrategySignal; timestamp: number; priority: number }>()
+  ;[maAcceptance, ...Array.from(bestByLane.values())].forEach(item => {
+    if (!item) return
+    const key = isMaAcceptanceOverlaySignal(item.signal)
+      ? 'ma_acceptance'
+      : `${item.timestamp}:${normalizeSignalFreq(item.signal.freq)}:${item.signal.type ?? item.signal.signal_type ?? ''}:${item.signal.source ?? ''}`
+    const existing = selectedByKey.get(key)
+    if (!existing || item.priority > existing.priority) selectedByKey.set(key, item)
+  })
+  return Array.from(selectedByKey.values())
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+    .slice(0, MAX_MAIN_CHART_SIGNAL_OVERLAYS)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .map(item => item.signal)
+}
+
+function signalCalloutItem(signal: StrategySignal, currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark'): SignalCalloutItem {
+  const side = signalSideForOverlay(signal)
+  const tokens = chartColorTokens(backgroundMode)
+  const scopeLabel = signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq))
+  const sourceLabel = [scopeLabel, signalSourceLabel(signal)].filter(Boolean).join(' · ')
+  return {
+    label: signalOverlayLabel(signal),
+    side,
+    color: isCustomUserSignal(signal) ? (side === 'sell' ? tokens.semanticDanger : tokens.semanticInfo) : signalOverlayColor(side, backgroundMode),
+    freq: compactScopeLabel(signal, currentFreq),
+    scope: scopeLabel,
+    sourceLabel,
+    details: signalEvidenceDetails(signal),
+  }
+}
+
+export function signalCalloutBadgeSummary(
+  items: SignalCalloutItem[],
+  itemCount?: number,
+  label = 'SIG',
+  freq?: string,
+  calloutId?: string,
+): { title: string; subtitle: string; totalItems: number } {
+  const totalItems = Math.max(itemCount ?? items.length, items.length)
+  const idPrefix = calloutId ? `${calloutId} ` : ''
+  const primaryLabels = uniqueCompact(items.map(item => item.label)).slice(0, totalItems > 1 ? 2 : 1)
+  const primarySummary = primaryLabels.join('/')
+  const freqSummary = uniqueCompact(items.map(item => item.freq)).slice(0, 3).join('/')
+  if (totalItems > 1) {
+    return {
+      title: `${idPrefix}共振 ${totalItems}`,
+      subtitle: primarySummary || freqSummary,
+      totalItems,
+    }
+  }
+  return {
+    title: `${idPrefix}${freq ? `${freq} ` : ''}${primarySummary || label}`,
+    subtitle: primarySummary && primarySummary !== label ? label : '',
+    totalItems,
+  }
+}
+
+export function withSignalCalloutIds(callouts: SignalChartCallout[]): SignalChartCallout[] {
+  return callouts.map((callout, index) => ({
+    ...callout,
+    calloutId: `G${index + 1}`,
+  }))
+}
+
+type SignalCalloutCandidate = {
+  signal: StrategySignal
+  timestamp: number
+  alignedTimestamp: number
+  price: number
+  barIndex: number
+  priority: number
+  custom: boolean
+  item: SignalCalloutItem
+}
+
+function signalCalloutsFromCandidates(candidates: SignalCalloutCandidate[]): SignalChartCallout[] {
+  const clusters: Array<{ minIndex: number; maxIndex: number; candidates: SignalCalloutCandidate[] }> = []
+  candidates.forEach(candidate => {
+    const cluster = clusters.find(item => candidate.barIndex <= item.maxIndex + SIGNAL_CALLOUT_BAR_WINDOW)
+    if (!cluster) {
+      clusters.push({ minIndex: candidate.barIndex, maxIndex: candidate.barIndex, candidates: [candidate] })
+      return
+    }
+    cluster.minIndex = Math.min(cluster.minIndex, candidate.barIndex)
+    cluster.maxIndex = Math.max(cluster.maxIndex, candidate.barIndex)
+    cluster.candidates.push(candidate)
+  })
+
+  const laneCounts = new Map<string, number>()
+  return clusters.map(cluster => {
+    const ranked = [...cluster.candidates].sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+    const anchor = ranked[0]
+    const dedupedItems: SignalCalloutItem[] = []
+    const seenItems = new Set<string>()
+    ranked.forEach(candidate => {
+      const key = `${candidate.item.freq}:${candidate.item.label}:${candidate.item.dateLabel}:${candidate.item.alignedDateLabel}:${candidate.item.sourceLabel}`
+      if (seenItems.has(key)) return
+      seenItems.add(key)
+      dedupedItems.push(candidate.item)
+    })
+    const side = anchor.item.side
+    const laneKey = `${Math.floor(anchor.barIndex / Math.max(1, SIGNAL_CALLOUT_BAR_WINDOW + 1))}:${side}`
+    const lane = laneCounts.get(laneKey) ?? 0
+    laneCounts.set(laneKey, lane + 1)
+    return {
+      timestamp: anchor.alignedTimestamp,
+      price: anchor.price,
+      label: dedupedItems.length > 1 ? '多周期共振' : (dedupedItems[0]?.label ?? '信号'),
+      side,
+      color: anchor.item.color,
+      isCustom: ranked.some(candidate => candidate.custom),
+      freq: anchor.item.freq,
+      dateLabel: anchor.item.alignedDateLabel || anchor.item.dateLabel || readableDate(new Date(anchor.alignedTimestamp)),
+      signalDateLabel: anchor.item.dateLabel,
+      scope: anchor.item.scope,
+      lane,
+      sourceLabel: anchor.item.sourceLabel,
+      details: uniqueCompact(ranked.map(candidate => candidate.item.details)).slice(0, 2).join(' · '),
+      items: dedupedItems,
+      itemCount: dedupedItems.length,
+    } satisfies SignalChartCallout
+  })
+}
+
+export function signalEvidenceCalloutsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark', chartTimezone?: string): SignalChartCallout[] {
+  if (data.length === 0 || signals.length === 0) return []
+  const candidates = displaySignalsForChart(data, signals, currentFreq)
+    .map(signal => {
+      const timestamp = signalTimestamp(signal)
+      if (timestamp === undefined) return null
+      const bar = nearestChartBarForTimestamp(data, timestamp)
+      const alignedTimestamp = bar?.timestamp ?? timestamp
+      const price = signalOverlayPrice(signal, bar)
+      if (price === undefined) return null
+      const barIndex = data.findIndex(item => item.timestamp === alignedTimestamp)
+      if (barIndex < 0) return null
+      return {
+        signal,
+        timestamp,
+        alignedTimestamp,
+        price,
+        barIndex,
+        priority: signalOverlayPriority(signal) + signalScopePriority(signal, currentFreq),
+        custom: isCustomUserSignal(signal),
+        item: {
+          ...signalCalloutItem(signal, currentFreq, backgroundMode),
+          dateLabel: readableDate(new Date(timestamp), chartTimezone),
+          alignedDateLabel: alignedTimestamp !== timestamp ? readableDate(new Date(alignedTimestamp), chartTimezone) : undefined,
+        },
+      } satisfies SignalCalloutCandidate
+    })
+    .filter((item): item is SignalCalloutCandidate => item !== null)
+    .sort((left, right) => {
+      if (left.barIndex !== right.barIndex) return left.barIndex - right.barIndex
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return left.timestamp - right.timestamp
+    })
+
+  return signalCalloutsFromCandidates(candidates)
+}
+
+function displayVolumeSignalsForChart(data: KLineData[], signals: StrategySignal[], currentFreq?: string): StrategySignal[] {
+  if (data.length === 0 || signals.length === 0) return []
+  const cutoff = data[Math.max(0, data.length - CHART_SIGNAL_LOOKBACK_BARS)]?.timestamp ?? data[0].timestamp
+  const valid = signals
+    .map(signal => ({ signal, timestamp: signalTimestamp(signal), priority: signalOverlayPriority(signal) }))
+    .filter((item): item is { signal: StrategySignal; timestamp: number; priority: number } =>
+      item.timestamp !== undefined &&
+      item.timestamp >= cutoff &&
+      isVolumeSignal(item.signal) &&
+      signalScopeLabel(item.signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期',
+    )
+  const bestByTimestamp = new Map<number, { signal: StrategySignal; timestamp: number; priority: number }>()
+  valid.forEach(item => {
+    const existing = bestByTimestamp.get(item.timestamp)
+    if (!existing || item.priority > existing.priority) bestByTimestamp.set(item.timestamp, item)
+  })
+  return Array.from(bestByTimestamp.values())
+    .sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+    .slice(0, MAX_VOLUME_SIGNAL_OVERLAYS)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .map(item => item.signal)
+}
+
+function displaySignalsForEvidence(signals: StrategySignal[]): StrategySignal[] {
+  if (signals.length === 0) return []
+  const ranked = signals
+    .map(signal => ({ signal, timestamp: signalTimestamp(signal) ?? 0, priority: signalOverlayPriority(signal) }))
+    .sort((left, right) => {
+      const customDelta = Number(isCustomUserSignal(right.signal)) - Number(isCustomUserSignal(left.signal))
+      if (customDelta !== 0) return customDelta
+      if (right.priority !== left.priority) return right.priority - left.priority
+      return right.timestamp - left.timestamp
+    })
+  const output: StrategySignal[] = []
+  const seen = new Set<string>()
+  ranked.forEach(({ signal, timestamp }) => {
+    if (output.length >= MAX_EVIDENCE_SIGNAL_ROWS) return
+    const key = `${timestamp}:${signal.type ?? ''}:${signal.freq ?? ''}:${signal.source ?? ''}`
+    if (seen.has(key)) return
+    seen.add(key)
+    output.push(signal)
+  })
+  return output
+}
+
+function createSignalOverlays(
+  chart: Chart,
+  callouts: SignalChartCallout[],
+  selectedCalloutId?: string,
+  onSelectCallout?: (calloutId: string) => void,
+  backgroundMode: ShellBackgroundMode = 'dark',
+) {
+  chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
+  callouts.forEach(callout => {
+    chart.createOverlay({
+      name: SIGNAL_OVERLAY_NAME,
+      groupId: SIGNAL_OVERLAY_GROUP,
+      lock: false,
+      points: [{ timestamp: callout.timestamp, value: callout.price }],
+      extendData: {
+        ...callout,
+        selected: Boolean(callout.calloutId && callout.calloutId === selectedCalloutId),
+        backgroundMode,
+      } satisfies SignalOverlayData,
+      onClick: (event: OverlayEvent) => {
+        const id = compactText(recordValue(event.overlay.extendData).calloutId)
+        if (id) onSelectCallout?.(id)
+        return true
+      },
+    })
+  })
+}
+
+function createVolumeSignalOverlays(chart: Chart, data: KLineData[], signals: StrategySignal[], currentFreq?: string, backgroundMode: ShellBackgroundMode = 'dark') {
+  chart.removeOverlay({ groupId: VOLUME_SIGNAL_OVERLAY_GROUP })
+  const dataByTimestamp = new Map(data.map(item => [item.timestamp, item]))
+  displayVolumeSignalsForChart(data, signals, currentFreq).forEach(signal => {
+    const timestamp = signalTimestamp(signal)
+    if (!timestamp) return
+    const volumeValue = numberValue(dataByTimestamp.get(timestamp)?.volume)
+    if (volumeValue === undefined) return
+    const label = shortSignalLabel(signal.type ?? signal.signal_type)
+    const side = signalSideForOverlay(signal)
+    chart.createOverlay(
+      {
+        name: VOLUME_SIGNAL_OVERLAY_NAME,
+        groupId: VOLUME_SIGNAL_OVERLAY_GROUP,
+        lock: true,
+        points: [{ timestamp, value: volumeValue }],
+        extendData: {
+          label,
+          side,
+          color: signalOverlayColor(side, backgroundMode),
+          freq: displayFreqLabel(signal.freq),
+          sourceLabel: signalSourceLabel(signal),
+          details: signal.details,
+          backgroundMode,
+        } satisfies SignalOverlayData,
+      },
+      VOLUME_PANE_ID,
+    )
+  })
+}
+
+function createLevelOverlays(chart: Chart, data: KLineData[], keyLevels: StrategyKeyLevel[], backgroundMode: ShellBackgroundMode = 'dark') {
+  chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
+  const tokens = chartColorTokens(backgroundMode)
+  const timestamp = data[data.length - 1]?.timestamp
+  if (!timestamp) return
+  const close = latestClose(data)
+  const visibleLevels: StrategyKeyLevel[] = []
+  keyLevels
+    .map(level => ({ level, value: numberValue(level.value) }))
+    .filter((item): item is { level: StrategyKeyLevel; value: number } => item.value !== undefined)
+    .filter(item => {
+      const name = compactText(item.level.name)
+      return !isMovingAverageLevelName(name)
+    })
+    .sort((left, right) => {
+      if (close === undefined) return 0
+      return Math.abs(left.value - close) - Math.abs(right.value - close)
+    })
+    .forEach(item => {
+      const tooClose = visibleLevels.some(existing => {
+        const existingValue = numberValue(existing.value)
+        if (existingValue === undefined) return false
+        return Math.abs(existingValue - item.value) / Math.max(Math.abs(item.value), 0.000001) < 0.006
+      })
+      if (!tooClose && visibleLevels.length < MAX_CHART_LEVEL_OVERLAYS) visibleLevels.push(item.level)
+    })
+  visibleLevels.forEach(level => {
+    const value = numberValue(level.value)
+    if (value === undefined) return
+    chart.createOverlay({
+      name: 'simpleTag',
+      groupId: LEVEL_OVERLAY_GROUP,
+      lock: true,
+      points: [{ timestamp, value }],
+      extendData: [level.name, value.toFixed(2)].filter(Boolean).join(' '),
+      styles: {
+        line: { color: tokens.semanticInfo, size: 1, style: 'dashed', dashedValue: [4, 5] },
+        text: {
+          color: terminalTheme.white,
+          backgroundColor: tokens.semanticInfo,
+          size: 9,
+        },
+      },
+    })
+  })
+}
+
+function createTrendlineOverlays(
+  chart: Chart,
+  trendlines: StrategyTrendline[],
+  backgroundMode: ShellBackgroundMode = 'dark',
+  locale: LongclawLocale = 'zh-CN',
+) {
+  chart.removeOverlay({ groupId: TRENDLINE_OVERLAY_GROUP })
+  trendlines.slice(0, 8).forEach(line => {
+    const startTime = numberValue(line.start_time)
+    const endTime = numberValue(line.projection_time ?? line.end_time)
+    const startPrice = numberValue(line.start_price)
+    const endPrice = numberValue(line.projected_price ?? line.end_price)
+    if (!startTime || !endTime || startPrice === undefined || endPrice === undefined) return
+    chart.createOverlay({
+      name: TRENDLINE_OVERLAY_NAME,
+      groupId: TRENDLINE_OVERLAY_GROUP,
+      lock: true,
+      points: [
+        { timestamp: startTime, value: startPrice },
+        { timestamp: endTime, value: endPrice },
+      ],
+      extendData: {
+        ...line,
+        label: trendlineDisplayLabel(line, locale),
+        backgroundMode,
+      },
+    })
+  })
+}
+
+function createDivergenceOverlays(chart: Chart, divergences: MacdDivergenceSignal[], backgroundMode: ShellBackgroundMode = 'dark') {
+  chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
+  const tokens = chartColorTokens(backgroundMode)
+  divergences.slice(-MAX_CHART_DIVERGENCE_OVERLAYS).forEach(signal => {
+    const bearish = signal.type === 'bearish'
+    const color = bearish ? tokens.semanticDanger : tokens.semanticSuccess
+    const label = bearish ? '顶背离' : '底背离'
+    const side = bearish ? 'top' : 'bottom'
+    chart.createOverlay(
+      {
+        name: DIVERGENCE_OVERLAY_NAME,
+        groupId: DIVERGENCE_OVERLAY_GROUP,
+        lock: true,
+        points: [
+          { timestamp: signal.previousTimestamp, value: signal.previousMacdValue },
+          { timestamp: signal.timestamp, value: signal.macdValue },
+        ],
+        extendData: {
+          label: signal.metric === 'histogram' ? '柱背离' : 'DIF背离',
+          side,
+          color,
+          compact: true,
+        } satisfies DivergenceOverlayData,
+      },
+      MACD_PANE_ID,
+    )
+  })
+}
+
+function initialTargetFrom(
+  shell: WorkbenchShell | null,
+  dashboard: StrategyDashboard,
+): ChartTarget {
+  const shellTarget = shell?.default_target
+  void dashboard
+  if (!shellTarget?.label) {
+    return {
+      label: '上证指数',
+      kind: 'index',
+      freq: DEFAULT_TERMINAL_FREQ,
+    }
+  }
+  return {
+    label: shellTarget.label,
+    kind: shellTarget.kind ?? 'index',
+    freq: DEFAULT_TERMINAL_FREQ,
+  }
+}
+
+function availableFreqs(symbolData: WorkbenchSymbolData | null): string[] {
+  const freqs = symbolData?.target?.available_freqs
+  return Array.isArray(freqs) && freqs.length > 0 ? freqs : DEFAULT_AVAILABLE_FREQS
+}
+
+export function terminalListTargetFreq(value: unknown, fallback?: string): string {
+  const normalized = normalizeSignalFreq(compactText(value))
+  if (normalized) return normalized
+  const fallbackFreq = normalizeSignalFreq(compactText(fallback))
+  if (fallbackFreq) return fallbackFreq
+  return DEFAULT_TERMINAL_FREQ
+}
+
+export function symbolDataCacheKey(target: { label?: string; kind?: string; freq?: string }): string {
+  const label = compactText(target.label).trim().toUpperCase()
+  const kind = compactText(target.kind, 'auto').trim().toLowerCase()
+  const freq = normalizeSignalFreq(compactText(target.freq).trim()) || DEFAULT_TERMINAL_FREQ
+  return `${kind}|${label}|${freq}`
+}
+
+function formatNumber(value: unknown, digits = 2): string {
+  const number = numberValue(value)
+  if (number === undefined) return 'N/A'
+  return number.toFixed(digits)
+}
+
+function formatAStockVolume(value: unknown): string {
+  const shares = numberValue(value)
+  if (shares === undefined) return 'N/A'
+  const wanHands = shares / 1_000_000
+  if (Math.abs(wanHands) >= 10000) return `${(wanHands / 10000).toFixed(2)}亿手`
+  return `${wanHands.toFixed(2)}万手`
+}
+
+function formatTurnoverAmount(value: unknown): string {
+  const amount = numberValue(value)
+  if (amount === undefined || amount <= 0) return 'N/A'
+  if (Math.abs(amount) >= 100_000_000) return `${(amount / 100_000_000).toFixed(2)}亿`
+  if (Math.abs(amount) >= 10_000) return `${(amount / 10_000).toFixed(2)}万`
+  return amount.toFixed(0)
+}
+
+function formatPercent(value: unknown): string {
+  const number =
+    typeof value === 'string'
+      ? numberValue(value.replace('%', '').replace('+', '').trim())
+      : numberValue(value)
+  if (number === undefined) return 'N/A'
+  return `${number > 0 ? '+' : ''}${number.toFixed(2)}%`
+}
+
+function latestPeriodChangePct(data: KLineData[]): number | undefined {
+  const latest = data[data.length - 1]
+  const previous = data[data.length - 2]
+  if (!latest || !previous || previous.close === 0) return undefined
+  return ((latest.close - previous.close) / previous.close) * 100
+}
+
+function compactMarketTimeLabel(value: unknown): string {
+  const text = compactText(value)
+  if (!text) return ''
+  return text
+    .replace('T', ' ')
+    .replace(/\.\d+$/, '')
+    .replace(/:\d{2}$/, '')
+}
+
+function timeframeSnapshotStatusLabel(status: TimeframeMarketSnapshotStatus, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  if (status === 'ready') return zh ? '已更新' : 'Updated'
+  if (status === 'stale') return zh ? '数据待更新' : 'Needs update'
+  if (status === 'loading') return zh ? '读取中' : 'Reading'
+  if (status === 'error') return zh ? '失败' : 'Error'
+  return zh ? '本地无数据' : 'No local data'
+}
+
+function timeframeSnapshotBadgeTone(status: TimeframeMarketSnapshotStatus): 'success' | 'warning' | 'running' | 'error' | 'open' {
+  if (status === 'ready') return 'success'
+  if (status === 'stale' || status === 'empty') return 'warning'
+  if (status === 'loading') return 'running'
+  if (status === 'error') return 'error'
+  return 'open'
+}
+
+function timeframeSnapshotQualityLabel(quality: TimeframeMarketSnapshotQuality, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  if (quality === 'waiting_source') return zh ? '等待更新' : 'Waiting'
+  if (quality === 'provisional_close') return zh ? '临时收盘' : 'Provisional close'
+  if (quality === 'partial_period') return zh ? '周期未结束' : 'Open period'
+  return zh ? '已收盘' : 'Closed'
+}
+
+function timeframeSnapshotQualityTone(quality: TimeframeMarketSnapshotQuality): 'success' | 'warning' | 'running' | 'open' {
+  if (quality === 'official') return 'success'
+  if (quality === 'waiting_source') return 'running'
+  if (quality === 'provisional_close' || quality === 'partial_period') return 'warning'
+  return 'open'
+}
+
+function marketSnapshotQuality(
+  meta: Record<string, unknown>,
+  summary: Record<string, unknown>,
+  status: TimeframeMarketSnapshotStatus,
+): TimeframeMarketSnapshotQuality {
+  const statusText = [
+    meta.quality,
+    meta.quality_status,
+    meta.data_quality,
+    meta.time_semantics,
+    meta.close_status,
+    meta.bar_status,
+    meta.cache_status,
+    meta.load_status,
+    summary.quality,
+    summary.quality_status,
+    summary.data_quality,
+    summary.time_semantics,
+    summary.close_status,
+  ].map(value => compactText(value).toLowerCase()).join(' ')
+  if (
+    status === 'loading' ||
+    status === 'empty' ||
+    statusText.includes('waiting_for_source') ||
+    statusText.includes('source_blocked') ||
+    statusText.includes('not_ready')
+  ) {
+    return 'waiting_source'
+  }
+  if (
+    booleanValue(meta.is_provisional) ||
+    booleanValue(meta.provisional_close) ||
+    booleanValue(summary.is_provisional) ||
+    booleanValue(summary.provisional_close) ||
+    statusText.includes('provisional') ||
+    statusText.includes('temporary') ||
+    statusText.includes('临时')
+  ) {
+    return 'provisional_close'
+  }
+  if (
+    booleanValue(meta.is_partial_period) ||
+    booleanValue(meta.partial_period) ||
+    booleanValue(meta.latest_bar_partial) ||
+    meta.period_complete === false ||
+    statusText.includes('partial_period') ||
+    statusText.includes('partial')
+  ) {
+    return 'partial_period'
+  }
+  return 'official'
+}
+
+function loadingTimeframeSnapshot(freq: string, locale: LongclawLocale): TimeframeMarketSnapshot {
+  const quality: TimeframeMarketSnapshotQuality = 'waiting_source'
+  return {
+    freq: normalizeSignalFreq(freq) || freq,
+    label: displayFreqLabel(freq),
+    status: 'loading',
+    quality,
+    qualityLabel: timeframeSnapshotQualityLabel(quality, locale),
+    latestPrice: 'N/A',
+    periodChange: 'N/A',
+    volume: 'N/A',
+    amount: 'N/A',
+    bars: '0',
+    signal: '',
+    statusText: locale === 'zh-CN' ? '等待读取本地缓存' : 'Waiting to read local cache',
+  }
+}
+
+export function errorTimeframeSnapshot(freq: string, message: string, locale: LongclawLocale): TimeframeMarketSnapshot {
+  return {
+    ...loadingTimeframeSnapshot(freq, locale),
+    status: 'error',
+    statusText: /timeout|timed out/i.test(message)
+      ? (locale === 'zh-CN' ? '本地读取超时，可点击该周期重试' : 'Local read timed out; select this period to retry')
+      : (locale === 'zh-CN' ? '本地行情暂未读出，可点击该周期重试' : 'Local data could not be read; select this period to retry'),
+  }
+}
+
+export function marketSnapshotFromSymbolData(
+  symbolData: WorkbenchSymbolData | null,
+  freq: string,
+  locale: LongclawLocale = 'zh-CN',
+): TimeframeMarketSnapshot {
+  const normalizedFreq = normalizeSignalFreq(symbolData?.target?.effective_freq ?? symbolData?.target?.requested_freq ?? freq) || freq
+  const chart = recordValue(symbolData?.chart)
+  const meta = recordValue(chart.meta)
+  const summary = recordValue(symbolData?.summary)
+  const data = toKLineData(chart)
+  const latest = data[data.length - 1]
+  const statusFromMeta = compactText(meta.cache_status).toLowerCase()
+  const loadStatus = compactText(meta.load_status).toLowerCase()
+  const isStale = booleanValue(meta.is_stale) || statusFromMeta === 'stale'
+  const status: TimeframeMarketSnapshotStatus = data.length > 0
+    ? (isStale ? 'stale' : 'ready')
+    : ['triggered', 'running', 'pending'].includes(loadStatus)
+      ? 'loading'
+      : 'empty'
+  const quality = marketSnapshotQuality(meta, summary, status)
+  const latestPrice = latest?.close
+  const latestVolumeValue = latest?.volume
+  const latestAmountValue = latest?.turnover
+  const periodChange = latestPeriodChangePct(data)
+  const periodSignal = signalsFromSymbolData(symbolData)
+    .filter(item => normalizeSignalFreq(item.freq) === normalizedFreq)
+    .sort((a, b) => (signalTimestamp(b) ?? 0) - (signalTimestamp(a) ?? 0))[0]
+  const summarySignal = compactText(summary.latest_signal)
+  const mismatchedSummaryPeriod = (normalizedFreq !== 'daily' && /日线/.test(summarySignal))
+    || (normalizedFreq !== 'weekly' && /周线/.test(summarySignal))
+    || (normalizedFreq !== 'monthly' && /月线/.test(summarySignal))
+  const signal = (
+    compactText(recordValue(summary.current_timeframe_ma).summary) ||
+    compactText(periodSignal?.type ?? periodSignal?.signal_type) ||
+    (mismatchedSummaryPeriod ? '' : summarySignal)
+  )
+  const cacheNotice = status === 'empty' || status === 'loading'
+    ? chartCacheNotReadyMessage(symbolData, locale)
+    : ''
+  const statusText = [
+    cacheNotice,
+    compactMarketTimeLabel(meta.latest_bar_time) || compactMarketTimeLabel(meta.data_as_of),
+    status === 'stale' ? (locale === 'zh-CN' ? '本周期尚无更新数据' : 'No newer local data for this period') : '',
+  ].filter(Boolean).join(' · ')
+
+  return {
+    freq: normalizedFreq,
+    label: displayFreqLabel(normalizedFreq),
+    status,
+    quality,
+    qualityLabel: status === 'stale' ? (locale === 'zh-CN' ? '历史缓存' : 'Historical cache') : timeframeSnapshotQualityLabel(quality, locale),
+    latestPrice: formatNumber(latestPrice),
+    periodChange: formatPercent(periodChange),
+    volume: formatAStockVolume(latestVolumeValue),
+    amount: formatTurnoverAmount(latestAmountValue),
+    bars: countText(numberValue(meta.bars) ?? data.length),
+    signal,
+    statusText,
+  }
+}
+
+function maAcceptanceMetricChips(acceptance: MaAcceptanceSummary): string[] {
+  const primary = acceptance.primary
+  const periodLabel = acceptance.periods.length > 0
+    ? acceptance.periods.map(period => `MA${period}`).join('/')
+    : shortMaAcceptanceLabel(acceptance)
+  return [
+    periodLabel,
+    numberValue(primary.value) !== undefined ? `均线 ${formatNumber(primary.value)}` : '',
+    numberValue(primary.touch_distance_pct) !== undefined ? `触线 ${formatPercent(primary.touch_distance_pct)}` : '',
+    numberValue(primary.low_distance_pct) !== undefined ? `低点 ${formatPercent(primary.low_distance_pct)}` : '',
+    numberValue(primary.distance_pct) !== undefined ? `现价 ${formatPercent(primary.distance_pct)}` : '',
+  ].filter(Boolean)
+}
+
+function percentTone(value: string): React.CSSProperties {
+  if (value.startsWith('+')) return { color: tradingDeskTheme.market.up }
+  if (value.startsWith('-')) return { color: tradingDeskTheme.market.down }
+  return { color: terminalTheme.muted }
+}
+
+export function compactPercentTextStyle(value: string, minWidth = 46, maxWidth = 76): React.CSSProperties {
+  return {
+    ...percentTone(value),
+    minWidth,
+    maxWidth,
+    textAlign: 'right',
+    fontFamily: fontStacks.mono,
+    fontVariantNumeric: 'tabular-nums',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  }
+}
+
+function watchlistPercentCellStyle(value: string): React.CSSProperties {
+  return {
+    ...watchlistCellStyle,
+    ...compactPercentTextStyle(value, 44, 68),
+    paddingLeft: 2,
+    paddingRight: 2,
+  }
+}
+
+function inlinePercentValueStyle(value: string, minWidth = 46, maxWidth = 76): React.CSSProperties {
+  return {
+    ...monoTextStyle,
+    ...compactPercentTextStyle(value, minWidth, maxWidth),
+    flex: '0 0 auto',
+  }
+}
+
+function percentBadgeStyle(value: string, minWidth = 46, maxWidth = 76): React.CSSProperties {
+  return {
+    ...miniNeutralSignalBadgeStyle,
+    ...compactPercentTextStyle(value, minWidth, maxWidth),
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  }
+}
+
+function formatConfidence(value: unknown): string {
+  const number = numberValue(value)
+  if (number === undefined) return compactText(value, 'N/A')
+  const percent = number <= 1 ? number * 100 : number
+  return `${percent.toFixed(0)}%`
+}
+
+function strategyKpiLabel(row: Record<string, unknown>): string {
+  const key = compactText(row.kpi_id) || compactText(row.label)
+  const labels: Record<string, string> = {
+    signals_total: '信号总数',
+    signals_evaluated: '已验证信号',
+    signals_pending: '待验证信号',
+    pool_size: '观察池',
+    candidate_count: '买入候选',
+    warning_count: '风险预警',
+    win_rate: '历史胜率',
+    avg_return_t5: 'T+5均值',
+  }
+  return labels[key] || compactText(row.label) || key || 'KPI'
+}
+
+function sourceConfidenceLabel(row: Record<string, unknown>): string {
+  const key = compactText(row.source_id) || compactText(row.label) || compactText(row.name) || compactText(row.source)
+  const labels: Record<string, string> = {
+    board: '行业板块',
+    concept: '概念板块',
+    market_pool: '观察池',
+    quote: '行情快照',
+    signal: '信号池',
+  }
+  return labels[key] || compactText(row.label) || compactText(row.name) || compactText(row.source) || key || 'Source'
+}
+
+function decisionSourceSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
+  if (decision.sourceKeys.length === 0) return locale === 'zh-CN' ? '暂无明确线索' : 'No explicit source'
+  return decision.sourceKeys.slice(0, 4).map(source => decisionSourceLabel(source, locale)).join(' / ')
+}
+
+function decisionConfirmedSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
+  const passed = decision.promotionPath
+    .filter(step => step.status === 'passed' && step.key !== 'source' && step.key !== 'risk_clear')
+    .map(step => decisionGateLabel(step.key, locale))
+  if (passed.length > 0) return passed.join(' / ')
+  return decision.stage === 'strategy_candidate'
+    ? (locale === 'zh-CN' ? '只是线索，还不是买点' : 'Clue only, not an entry')
+    : (locale === 'zh-CN' ? '等待买点确认' : 'Waiting for entry confirmation')
+}
+
+function decisionMissingSummary(decision: WatchlistDecision, locale: LongclawLocale): string {
+  if (decision.primaryBlocker) return decision.primaryBlocker
+  if (decision.stage === 'risk_first') return locale === 'zh-CN' ? '现在先别看' : 'Skip this now'
+  if (decision.missingGates.length === 0) return locale === 'zh-CN' ? '买点路径已走通' : 'Entry path complete'
+  return decision.missingGates.map(key => decisionGateLabel(key, locale)).join(' / ')
+}
+
+function technicalSignalGroupItems(row: WatchlistRow, side: 'left' | 'right' | 'sell' | 'context'): Record<string, unknown>[] {
+  const groups = recordValue(row.raw.technical_signal_groups)
+  const items = groups[side]
+  return Array.isArray(items) ? items.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0) : []
+}
+
+function technicalSignalSummary(row: WatchlistRow, side: 'left' | 'right', locale: LongclawLocale): string {
+  const items = technicalSignalGroupItems(row, side)
+  if (items.length > 0) {
+    return items
+      .slice(0, 4)
+      .map(item => {
+        const family = compactText(item.family)
+        const date = compactText(item.event_date)
+        return [
+          compactText(item.freq),
+          compactText(item.label),
+          family && !['technical', 'hard_technical'].includes(family) ? family : '',
+          date ? date.slice(5) : '',
+        ].filter(Boolean).join(' ')
+      })
+      .filter(Boolean)
+      .join(' / ')
+  }
+  const explicitKey = side === 'left' ? 'left_signal_reasons' : 'right_signal_reasons'
+  const explicit = Array.isArray(row.raw[explicitKey])
+    ? row.raw[explicitKey].map(item => compactText(item)).filter(Boolean)
+    : []
+  if (explicit.length > 0) return explicit.slice(0, 4).join(' / ')
+  return locale === 'zh-CN' ? '暂无' : 'None'
+}
+
+function timeframeSideLabel(side: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    left: ['左', 'Left'],
+    right: ['右', 'Right'],
+    mixed: ['左右都有', 'Mixed'],
+    none: ['缺', 'Missing'],
+  }
+  const label = labels[side] ?? labels.none
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function timeframeSignalItemLabel(item: Record<string, unknown>): string {
+  return [compactText(item.freq), compactText(item.label)].filter(Boolean).join(' ')
+}
+
+function timeframeSignalSteps(row: WatchlistRow, locale: LongclawLocale): Array<{ key: string; label: string; status: DecisionGateStatus; detail: string }> {
+  const groups = recordValue(row.raw.timeframe_signal_sides)
+  const defs: Array<[string, string, string]> = [
+    ['upper', locale === 'zh-CN' ? '日/周' : 'D/W', 'upper_context'],
+    ['trade', '30m', 'trigger_30m'],
+    ['execution', '5m/15m', 'right_side'],
+  ]
+  return defs.map(([key, fallbackLabel, gate]) => {
+    if (publishedPoolRole(row.raw) && ['trigger_30m', 'right_side'].includes(gate)) {
+      return { key, label: key === 'trade' ? '30m提示' : '5m/15m图表', status: 'context', detail: locale === 'zh-CN' ? '仅供参考，不改变名单' : 'Context only; does not change pool membership' }
+    }
+    const record = recordValue(groups[key])
+    const side = compactText(record.side, 'none')
+    const left = Array.isArray(record.left) ? record.left.map(item => recordValue(item)) : []
+    const right = Array.isArray(record.right) ? record.right.map(item => recordValue(item)) : []
+    const preferred = right.length > 0 ? right : left
+    const detail = preferred.slice(0, 2).map(timeframeSignalItemLabel).filter(Boolean).join(' / ')
+    const blocked = row.decision.missingGates.includes(gate as DecisionGateKey)
+    const status: DecisionGateStatus = side === 'none' || blocked ? 'waiting' : 'passed'
+    return {
+      key,
+      label: compactText(record.label) || fallbackLabel,
+      status,
+      detail: [timeframeSideLabel(side, locale), detail].filter(Boolean).join(' · '),
+    }
+  })
+}
+
+function timeframeSignalSideSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  return timeframeSignalSteps(row, locale)
+    .map(step => `${step.label}:${step.detail || decisionGateStatusLabel(step.status, locale)}`)
+    .filter(Boolean)
+    .join(' / ')
+}
+
+function technicalTimeframeSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const tokens = rawFreqTokens(row.raw)
+  const order: Array<[RegExp, string]> = [
+    [/^(weekly|1w|w|周线)$/i, locale === 'zh-CN' ? '周' : 'W'],
+    [/^(daily|1d|d|日线)$/i, locale === 'zh-CN' ? '日' : 'D'],
+    [/^(30m|30min|30分钟|f30)$/i, '30m'],
+    [/^(15m|15min|15分钟|f15)$/i, '15m'],
+    [/^(5m|5min|5分钟|f5)$/i, '5m'],
+  ]
+  const labels = order
+    .filter(([pattern]) => tokens.some(token => pattern.test(token)))
+    .map(([, label]) => label)
+  return labels.length > 0 ? labels.join(' / ') : (locale === 'zh-CN' ? '暂无周期' : 'No timeframe')
+}
+
+function mainlineSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const chain = recordValue(row.raw.chain_context)
+  const evidence = recordValue(chain.evidence)
+  const name =
+    compactText(chain.board_or_concept) ||
+    compactText(row.raw.board_or_concept) ||
+    compactText(evidence.board_or_concept)
+  const phase = compactText(row.raw.chain_phase) || compactText(chain.phase) || compactText(evidence.phase)
+  const level = compactText(row.raw.theme_alignment_level)
+  const bonus = numberValue(row.raw.theme_rank_bonus)
+  if (!name && !phase && !level) return locale === 'zh-CN' ? '主线未加分' : 'No theme boost'
+  const phaseLabel = phase || level
+  const bonusText = bonus === undefined || bonus === 0 ? '' : `${bonus > 0 ? '+' : ''}${formatNumber(bonus, 1)}`
+  return [name, phaseLabel, bonusText].filter(Boolean).join(' · ')
+}
+
+function rowChainTextValues(row: WatchlistRow): string[] {
+  const chain = recordValue(row.raw.chain_position)
+  const context = recordValue(row.raw.chain_context)
+  const evidence = recordValue(context.evidence)
+  const mapping = recordValue(row.raw.mapping_chain)
+  return uniqueCompact([
+    chain.chain,
+    chain.node,
+    chain.role,
+    chain.board_or_concept,
+    context.chain_name,
+    context.node_name,
+    context.board_or_concept,
+    evidence.chain_name,
+    evidence.node_name,
+    evidence.board_or_concept,
+    mapping.chain_name,
+    mapping.node_name,
+  ])
+}
+
+function chainBriefForWatchlist(row: WatchlistRow): string {
+  const values = rowChainTextValues(row)
+  if (values.length === 0) return ''
+  if (values.length === 1) return values[0]
+  return values.slice(0, 2).join(' · ')
+}
+
+function stockTradeRoleForRow(row: WatchlistRow): StockTradeRoleKey | '' {
+  const published = publishedPoolRole(row.raw)
+  if (published) return published
+  const setupMode = compactText(row.raw.setup_mode)
+  if (['left_attack', 'right_attack', 'watch', 'risk_first'].includes(setupMode)) {
+    return setupMode as StockTradeRoleKey
+  }
+  if (row.decision.opportunitySide === 'risk' || row.decision.stage === 'risk_first') return 'risk_first'
+  const tradeStage = compactText(row.raw.trade_stage)
+  const poolType = compactText(row.raw.pool_type)
+  if (poolType === 'focus' || ['left_attack', 'attack_entry', 'confirmed_entry'].includes(tradeStage)) {
+    return tradeStage === 'left_attack' ? 'left_attack' : 'right_attack'
+  }
+  if (poolType === 'watch' || ['watch_pool', 'dip_watch', 'probe_candidate'].includes(tradeStage)) return 'watch'
+  if (poolType === 'risk' || tradeStage === 'skip_now') return 'risk_first'
+  return 'clue'
+}
+
+function tradeIdentityLabelForRow(row: WatchlistRow, locale: LongclawLocale): string {
+  if (publishedPoolRole(row.raw) === 'entry_review') return locale === 'zh-CN' ? '买点待复核' : 'Entry review'
+  const explicit = compactText(row.raw.setup_mode_label) || compactText(row.raw.trade_role_label) || compactText(row.raw.trade_identity_label)
+  if (explicit) return explicit
+  const role = stockTradeRoleForRow(row)
+  return role ? tradeRoleLabel(role, locale) : (row.decision.opportunityLabel || opportunitySideLabel(row.decision.opportunitySide, locale))
+}
+
+function sectorPolicyLabelForRow(row: WatchlistRow): string {
+  const label = compactText(row.raw.sector_policy_label)
+  if (!label) return ''
+  const market = compactText(row.raw.broad_market_label)
+  return market && label === '防守放宽' ? `${label}/${market}` : label
+}
+
+type StockDisplayBadge = {
+  label: string
+  tone: string
+}
+
+type ClassifiedStockHardSignal = StockDisplayBadge & {
+  priority: number
+}
+
+const HARD_SIGNAL_BADGE_KINDS = new Set([
+  'buy_point',
+  'sell_point',
+  'buy_signal',
+  'sell_signal',
+  'entry_signal',
+  'breakout',
+  'new_high',
+  'new_high_200',
+  'ma_climb',
+  'gap_volume_price',
+  'gap_volume',
+  'volume_price',
+  'strong_gap',
+])
+
+function normalizeHardSignalTone(tone: string, kind: string, label: string): string {
+  if (tone === 'risk' && !/(卖点|[一二三]卖|顶背)/u.test(label)) return 'neutral'
+  if (tone) return tone
+  if (kind.includes('sell') || /(卖点|[一二三]卖|顶背)/u.test(label)) return 'risk'
+  if (kind.includes('breakout') || kind.includes('high') || kind.includes('gap') || kind.includes('volume')) return 'hot'
+  return 'buy'
+}
+
+function hardSignalFromDisplayBadge(item: unknown): ClassifiedStockHardSignal | null {
+  const badge = recordValue(item)
+  const label = compactText(badge.label)
+  const kind = compactText(badge.kind).toLowerCase()
+  if (!label || !HARD_SIGNAL_BADGE_KINDS.has(kind)) return null
+  if (/风险/u.test(label) || (/缩量/u.test(label) && !/(强|缺口|量价)/u.test(label))) return null
+  return {
+    label,
+    tone: normalizeHardSignalTone(compactText(badge.tone), kind, label),
+    priority: numberValue(badge.priority) ?? 50,
+  }
+}
+
+function hardSignalFromLegacyText(label: string, tone: string, priority: number): ClassifiedStockHardSignal | null {
+  const clean = compactText(label).replace(/回踩承接/g, '承接')
+  if (!clean || /风险|主线|交易角色|普通缩量/u.test(clean)) return null
+  if (/缩量/u.test(clean) && !/(强|缺口|量价)/u.test(clean)) return null
+  return { label: clean, tone, priority }
+}
+
+function legacyHardSignalBadges(raw: Record<string, unknown>): ClassifiedStockHardSignal[] {
+  const buySellFrameBadges = [
+    ...(Array.isArray(raw.buy_timeframes)
+      ? raw.buy_timeframes.map(item => hardSignalFromLegacyText(`${compactText(recordValue(item).badge) || compactText(recordValue(item).freq)}买点`, 'buy', 95))
+      : []),
+    ...(Array.isArray(raw.sell_timeframes)
+      ? raw.sell_timeframes.map(item => hardSignalFromLegacyText(`${compactText(recordValue(item).badge) || compactText(recordValue(item).freq)}卖点`, 'risk', 94))
+      : []),
+  ]
+  const groups = recordValue(raw.technical_signal_groups)
+  const groupBadges = ['left', 'right', 'sell'].flatMap(key => {
+    const rows = groups[key]
+    if (!Array.isArray(rows)) return []
+    return rows.map(item => {
+      const record = recordValue(item)
+      const label = [record.freq, record.label].map(value => compactText(value)).filter(Boolean).join(' ')
+      const tone = key === 'sell' || /(卖点|[一二三]卖|顶背)/u.test(label) ? 'risk' : 'buy'
+      return hardSignalFromLegacyText(label, tone, key === 'sell' ? 88 : 90)
+    })
+  })
+  const technical = recordValue(raw.technical_evidence)
+  const maClimb = recordValue(technical.ma_climb)
+  const maClimbLabel = compactText(maClimb.label) || compactText(maClimb.summary)
+  const breakout = compactText(raw.display_breakout) || compactText(raw.breakout_label) || compactText(raw.breakout_summary)
+  return [
+    ...buySellFrameBadges,
+    ...groupBadges,
+    hardSignalFromLegacyText(maClimbLabel, 'buy', 80),
+    breakout ? hardSignalFromLegacyText(/200/.test(breakout) ? '200日新高' : breakout, 'hot', 85) : null,
+  ].filter((item): item is ClassifiedStockHardSignal => Boolean(item))
+}
+
+function stockHardSignals(raw: Record<string, unknown>): ClassifiedStockHardSignal[] {
+  const seen = new Set<string>()
+  const displayBadges = Array.isArray(raw.display_badges)
+    ? raw.display_badges.map(hardSignalFromDisplayBadge)
+    : []
+  const source = displayBadges.some(Boolean) ? displayBadges : legacyHardSignalBadges(raw)
+  const ordered = source
+    .filter((item): item is ClassifiedStockHardSignal => Boolean(item))
+    .sort((left, right) => right.priority - left.priority)
+    .filter(item => {
+      if (seen.has(item.label)) return false
+      seen.add(item.label)
+      return true
+    })
+  const selected: ClassifiedStockHardSignal[] = []
+  const add = (item: ClassifiedStockHardSignal | undefined) => {
+    if (item && selected.length < 3 && !selected.includes(item)) selected.push(item)
+  }
+  add(ordered.find(item => item.tone === 'risk' && /(卖|顶背|跌破|死叉)/u.test(item.label)))
+  add(ordered.find(item => item.tone === 'buy' && /(买|底背|趋势)/u.test(item.label) && !/攀爬/u.test(item.label)))
+  add(ordered.find(item => /攀爬/u.test(item.label)))
+  for (const item of ordered) {
+    add(item)
+    if (selected.length >= 3) break
+  }
+  return selected
+}
+
+export function stockHardSignalBadgeLabels(raw: Record<string, unknown>): string[] {
+  return stockHardSignals(raw).map(item => item.label)
+}
+
+function stockHardSignalBadges(row: WatchlistRow): StockDisplayBadge[] {
+  return stockHardSignals(row.raw).map(item => ({ label: item.label, tone: item.tone }))
+}
+
+export function sectorTransitionStockAnnotation(
+  raw: Record<string, unknown>,
+  locale: LongclawLocale,
+): { badgeLabel: string; tone: string; summary: string; nextGate: string } | null {
+  const state = compactText(raw.turn_state)
+  if (!state || compactText(raw.source) !== 'sector_transition') return null
+  const labels: Record<string, [string, string]> = {
+    panic_release: ['刚释放', 'Early release'],
+    repairing: ['修复中', 'Repairing'],
+    confirmed_intraday: ['盘中确认', 'Intraday confirmed'],
+    stable_turn: ['稳定转折', 'Stable turn'],
+  }
+  const pair = labels[state]
+  if (!pair) return null
+  const tone = state === 'stable_turn' ? 'hot' : state === 'confirmed_intraday' ? 'buy' : 'watch'
+  return {
+    badgeLabel: `${locale === 'zh-CN' ? '板块' : 'Sector'}·${locale === 'zh-CN' ? pair[0] : pair[1]}`,
+    tone,
+    summary: compactText(raw.sector_transition_annotation),
+    nextGate: compactText(raw.sector_transition_next_gate),
+  }
+}
+
+function stockDisplayBadges(row: WatchlistRow, locale: LongclawLocale): StockDisplayBadge[] {
+  const transition = sectorTransitionStockAnnotation(row.raw, locale)
+  return [
+    ...(transition ? [{ label: transition.badgeLabel, tone: transition.tone }] : []),
+    ...stockHardSignalBadges(row),
+  ]
+}
+
+function stockDisplaySummaryLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const transition = sectorTransitionStockAnnotation(row.raw, locale)
+  return [
+    transition?.summary,
+    compactText(row.raw.display_summary),
+  ].filter(Boolean).map(value => traderDisplayText(value || '', locale)).join(locale === 'zh-CN' ? '；' : '; ')
+}
+
+function stockDisplayAction(row: WatchlistRow, locale: LongclawLocale): string {
+  return compactText(row.raw.display_action) || decisionActionLabel(row.decision, locale)
+}
+
+export function traderDisplayText(value: string, locale: LongclawLocale): string {
+  if (locale !== 'zh-CN') return value
+  if (/RuntimeError|ConnectionError|ineligible_sources|sector_transition_disabled|\bdisabled\b/i.test(value)) return '部分数据暂不可用'
+  return value
+    .replace(/stock_daily/g, '日线更新')
+    .replace(/board_cons/g, '板块数据')
+    .replace(/fullmarket_spot_snapshot/g, '市场报价')
+    .replace(/stock_minute/g, '股票分钟数据')
+    .replace(/index_minute/g, '指数分钟数据')
+    .replace(/terminal_manual_clues/g, '临时线索')
+    .replace(/terminal_stock_pool/g, '股票池')
+    .replace(/terminal_pool/g, '股票池')
+    .replace(/terminal_technical_signals/g, '技术信号')
+    .replace(/quote_snapshots/g, '行情快照')
+    .replace(/quote_lane/g, '行情快照')
+    .replace(/workbench_lane/g, '机会池')
+    .replace(/provider_health/g, '行情通道')
+    .replace(/security_chain_memberships/g, '产业链归属')
+    .replace(/chain_heat_snapshots/g, '产业链热度')
+    .replace(/chain_heat/g, '产业链热度')
+    .replace(/chain_membership/g, '产业链归属')
+    .replace(/hot_rank_clues/g, '热度线索')
+    .replace(/technical_trigger/g, '技术信号')
+    .replace(/current_timeframe_ma/g, '当前周期均线')
+    .replace(/index_timeframe_signal/g, '指数周期信号')
+    .replace(/\bHISTOGRAM\b/gi, 'MACD柱')
+    .replace(/entry_ready/g, '买点条件已具备')
+    .replace(/entry_waiting_30m_confirm/g, '等待30m确认')
+    .replace(/buy_review/g, '买点复核')
+    .replace(/risk_off/g, '产业链转弱')
+    .replace(/context_only/g, '仅作背景参考')
+    .replace(/weak_related/g, '弱关联')
+    .replace(/\btheme\b/gi, '相关主题')
+    .replace(/\bcore\b/gi, '核心')
+    .replace(/\baccelerating\b/gi, '加速')
+    .replace(/\bforming\b/gi, '形成中')
+    .replace(/\bmature\b/gi, '成熟')
+    .replace(/\bWATCH\b/gi, '等待确认')
+    .replace(/\bunconfirmed\b/gi, '待确认')
+    .replace(/\bconfirmed\b/gi, '已确认')
+    .replace(/\bconflict\b/gi, '信号分歧')
+    .replace(/\bdegraded\b/gi, '部分数据不可用')
+    .replace(/\bstale\b/gi, '数据待更新')
+    .replace(/\bfresh\b/gi, '数据已更新')
+    .replace(/Signals web2 is configured as standby; web1 served native strategy endpoints\./gi, '主行情正常，备用通道待命。')
+    .replace(/signals-web2/gi, '备用行情服务')
+    .replace(/\bstandby\b/gi, '备用通道')
+    .replace(/Signals\s*策略简报/gi, '盘后策略简报')
+    .replace(/Signals shell/gi, '机会池')
+    .replace(/Signals strategy snapshot/gi, '行情快照')
+    .replace(/\b(\d+)\s+buy candidates?\b/gi, '$1 个买点候选')
+    .replace(/\b(\d+)\s+sell warnings?\b/gi, '$1 个卖出预警')
+    .replace(/\bindex_report\b/gi, '指数信号')
+    .replace(/\bBLOCKED\b/gi, '待恢复')
+    .replace(/偏增量/g, '盘后更新中')
+    .replace(/\bconf\s+([01](?:\.\d+)?)\b/gi, (_, raw: string) => `置信度 ${Math.round(Number(raw) * 100)}%`)
+    .replace(/\b(?:source_collection|producer|collection)\b/gi, '')
+    .replace(/setup_mode/g, '交易角色')
+    .replace(/\bMongo\b/g, '日线库')
+    .replace(/\bcache\b/gi, '行情')
+    .replace(/网络源/g, '行情通道')
+    .replace(/缓存/g, '行情')
+    .replace(/图形盘面依据/g, '图形')
+    .replace(/图形证据/g, '图形')
+    .replace(/证据来源/g, '盘面依据')
+    .replace(/证据/g, '盘面依据')
+    .replace(/来源/g, '线索')
+    .replace(/\s*->\s*/g, ' · ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function traderReadLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const role = stockTradeRoleForRow(row)
+  const missing = compactText(row.raw.missing_condition)
+  const setup = compactText(row.raw.setup_explanation)
+  const sectorReason = compactText(row.raw.sector_policy_reason)
+  const withSector = (text: string) => [sectorReason, text].filter(Boolean).map(value => traderDisplayText(value, locale)).join(locale === 'zh-CN' ? '；' : '; ')
+  const displaySummary = compactText(row.raw.display_summary)
+  if (displaySummary) return withSector(displaySummary)
+  const explicit = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
+  if (explicit) return withSector(explicit)
+  if (role === 'left_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '低吸进攻：左侧买点叠加关键均线，复核位置和失效条件。' : 'Left attack: review level and invalidation.'))
+  if (role === 'right_attack') return withSector(setup || missing || (locale === 'zh-CN' ? '右侧进攻：执行周期买点和均线确认，复核下单节奏。' : 'Right attack: review execution timing.'))
+  if (role === 'watch') return withSector(setup || missing || (locale === 'zh-CN' ? '盯盘观察：买点还缺确认。' : 'Watch: entry still needs confirmation.'))
+  if (role === 'clue') return withSector(setup || missing || (locale === 'zh-CN' ? '线索池：只有线索，还不是买点。' : 'Clue only, not an entry.'))
+  if (role === 'risk_first') return traderDisplayText(locale === 'zh-CN' ? '暂不参与：不在机会池，非持仓不作为风险动作推送。' : 'Skip now; not an opportunity task.', locale)
+  return withSector(setup || missing || row.rankReason || row.explanation || watchlistRowSignalLine(row, locale))
+}
+
+function stockContextLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const breakout = compactText(row.raw.display_breakout)
+  const evidence = traderEvidenceSummary(row, locale)
+  const invalidates = compactText(row.decision.invalidatesWhen || row.invalidatesWhen)
+  return [breakout, evidence, invalidates ? `${locale === 'zh-CN' ? '失效' : 'Invalid'} ${invalidates}` : '']
+    .filter(Boolean)
+    .map(value => traderDisplayText(value, locale))
+    .join(' · ')
+}
+
+function traderEvidenceSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const explicit = compactText(row.raw.evidence_summary)
+  if (explicit) {
+    return traderDisplayText([
+      sectorPolicyLabelForRow(row) ? `${locale === 'zh-CN' ? '板块' : 'Sector'} ${sectorPolicyLabelForRow(row)}` : '',
+      explicit,
+    ].filter(Boolean).join(' · '), locale)
+  }
+  const chain = chainBriefForWatchlist(row)
+  const cycle = timeframeSignalSideSummary(row, locale)
+  const source = Array.isArray(row.raw.source_collections)
+    ? row.raw.source_collections.map(item => compactText(item)).filter(Boolean).slice(0, 2).join('/')
+    : compactText(row.raw.source_collection || row.raw.source)
+  return traderDisplayText([
+    sectorPolicyLabelForRow(row) ? `${locale === 'zh-CN' ? '板块' : 'Sector'} ${sectorPolicyLabelForRow(row)}` : '',
+    chain ? `${locale === 'zh-CN' ? '链' : 'Chain'} ${chain}` : '',
+    cycle ? `${locale === 'zh-CN' ? '技术' : 'Tech'} ${cycle}` : '',
+    source ? `${locale === 'zh-CN' ? '线索' : 'Source'} ${source}` : '',
+  ].filter(Boolean).join(' · '), locale)
+}
+
+function traderPositionSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  const chain = chainBriefForWatchlist(row)
+  const stage = compactText(row.raw.stage_label) || decisionStageLabel(row.decision.stage, locale)
+  const theme = mainlineSummary(row, locale)
+  return [chain, stage, theme].filter(Boolean).join(' · ')
+}
+
+function traderCanActSummary(row: WatchlistRow, locale: LongclawLocale): string {
+  if (publishedPoolRole(row.raw) === 'entry_review') return locale === 'zh-CN' ? '复核日线、周线位置、均线与失效条件；盘中信号仅作参考。' : 'Review daily/weekly levels, averages, and invalidation; intraday signals are context only.'
+  const role = stockTradeRoleForRow(row)
+  if (role === 'risk_first') return locale === 'zh-CN' ? '不在机会池；除非它是持仓，否则不需要风险动作。' : 'Not in opportunity pool; no risk action unless held.'
+  if (row.decision.stage === 'entry_ready') return locale === 'zh-CN' ? '可以进入买点复核，但必须带止损和仓位约束。' : 'Reviewable entry with stop and sizing constraints.'
+  if (row.decision.stage === 'strategy_candidate') return locale === 'zh-CN' ? '不能动，只是线索。' : 'No action; clue only.'
+  return locale === 'zh-CN' ? '先盯盘，等30m承接和5m/15m下单确认。' : 'Watch first; wait for 30m and 5m/15m confirmation.'
+}
+
+export type StrategyTradeActionPlan = {
+  action: string
+  tone: 'open' | 'running' | 'warning' | 'success'
+  reason: string
+  next: string
+  postmarket: string
+}
+
+export function strategyTradeActionPlanFromState(
+  input: {
+    targetKind?: string
+    decisionStage?: string
+    tradeRole?: string
+    identity?: string
+    confirmation?: string
+    invalidation?: string
+    evidence?: string
+    hasEvidence?: boolean
+  },
+  locale: LongclawLocale = 'zh-CN',
+): StrategyTradeActionPlan {
+  const zh = locale === 'zh-CN'
+  const targetKind = compactText(input.targetKind).toLowerCase()
+  const stage = compactText(input.decisionStage)
+  const role = compactText(input.tradeRole)
+  const identity = compactText(input.identity)
+  const confirmation = compactText(input.confirmation)
+  const invalidation = compactText(input.invalidation)
+  const hasEvidence = input.hasEvidence ?? Boolean(compactText(input.evidence) || confirmation || invalidation)
+  const isIndex = targetKind.includes('index') || targetKind.includes('指数')
+
+  if (stage === 'risk_first' || role === 'risk_first') {
+    return {
+      action: zh ? '忽略' : 'Skip',
+      tone: 'warning',
+      reason: identity || (zh ? '暂不参与' : 'Skip-now'),
+      next: zh ? '非持仓不处理；等重新转入线索池。' : 'Do nothing unless held; wait for a clue reset.',
+      postmarket: zh ? '盘后只复核风险因子，不进买点样本。' : 'Review risk factors only; keep it out of entry samples.',
+    }
+  }
+  if (stage === 'entry_ready' || role === 'left_attack' || role === 'right_attack') {
+    return {
+      action: zh ? '看' : 'Review',
+      tone: 'success',
+      reason: identity || (zh ? '买点池' : 'Entry pool'),
+      next: confirmation || (zh ? '复核位置、仓位和失效条件。' : 'Review level, sizing, and invalidation.'),
+      postmarket: zh ? '盘后回测同类买点的 T+5/T+10 和最大回撤。' : 'Backtest similar entries for T+5/T+10 and max drawdown.',
+    }
+  }
+  if (stage === 'watch_preheat' || role === 'watch') {
+    return {
+      action: zh ? '等' : 'Wait',
+      tone: 'running',
+      reason: identity || (zh ? '盯盘池' : 'Watch pool'),
+      next: confirmation || (zh ? '等30m承接和5m/15m下单确认。' : 'Wait for 30m support and 5m/15m execution confirmation.'),
+      postmarket: zh ? '盘后并入同主题批量回测，验证胜率和回撤。' : 'Add to same-theme batch backtest for win rate and drawdown.',
+    }
+  }
+  if (stage === 'strategy_candidate' || role === 'clue') {
+    return {
+      action: zh ? '等' : 'Wait',
+      tone: 'open',
+      reason: identity || (zh ? '线索池' : 'Clue pool'),
+      next: confirmation || (zh ? '先等线索延续、承接和执行周期买点。' : 'Wait for source persistence, support, and execution trigger.'),
+      postmarket: zh ? '盘后作为候选样本做批量回测，不直接交易。' : 'Use it as a postmarket batch-backtest sample, not a direct trade.',
+    }
+  }
+  if (isIndex) {
+    return {
+      action: zh ? '看大盘' : 'Read market',
+      tone: 'open',
+      reason: identity || (zh ? '背景锚点' : 'Market anchor'),
+      next: confirmation || (zh ? '看30m方向、日线位置和主线承接。' : 'Read 30m direction, daily position, and theme follow-through.'),
+      postmarket: zh ? '盘后复核指数环境对策略胜率的影响。' : 'Review how the index regime affected strategy hit rate.',
+    }
+  }
+  if (!hasEvidence) {
+    return {
+      action: zh ? '忽略' : 'Skip',
+      tone: 'warning',
+      reason: identity || (zh ? '不在机会池' : 'No pool evidence'),
+      next: zh ? '不占用盘中注意力，等重新入池。' : 'Do not spend intraday attention until it re-enters a pool.',
+      postmarket: zh ? '不用回测，除非重新出现线索或技术信号。' : 'No backtest unless a source or technical signal returns.',
+    }
+  }
+  return {
+    action: zh ? '等' : 'Wait',
+    tone: 'running',
+    reason: identity || (zh ? '池外观察' : 'Off-pool watch'),
+    next: confirmation || (zh ? '等入池线索、30m承接和5m/15m下单确认。' : 'Wait for pool source, 30m support, and 5m/15m confirmation.'),
+    postmarket: zh ? '盘后只做观察样本，不直接执行。' : 'Keep as an observation sample after close; no direct action.',
+  }
+}
+
+function stockRowsForTradeRole(
+  rows: WatchlistRow[],
+  activeTab: WatchlistTabKey,
+  activeRole: TradeRoleKey,
+  suppressClimax: boolean,
+): WatchlistRow[] {
+  if (!STOCK_WATCHLIST_TABS.includes(activeTab)) return rows
+  return rows.filter(row => {
+    const role = stockTradeRoleForRow(row)
+    if (activeRole !== 'all') return role === activeRole
+    if (suppressClimax && role === 'risk_first') return false
+    return true
+  })
+}
+
+function tradeRoleCountsForGroups(groups: {
+  buy_candidates: WatchlistRow[]
+  focus_stocks: WatchlistRow[]
+  risk_stocks: WatchlistRow[]
+  watch_stocks: WatchlistRow[]
+}): Record<StockTradeRoleKey, number> {
+  const counts = Object.fromEntries(STOCK_TRADE_ROLE_KEYS.map(key => [key, 0])) as Record<StockTradeRoleKey, number>
+  ;[...groups.buy_candidates, ...groups.watch_stocks, ...groups.focus_stocks].forEach(row => {
+    const role = stockTradeRoleForRow(row)
+    if (role) counts[role] += 1
+  })
+  return counts
+}
+
+function preferredWatchlistTabForTradeRole(
+  role: TradeRoleKey,
+  currentTab: WatchlistTabKey,
+  groups: {
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+): WatchlistTabKey {
+  if (role === 'all') return currentTab
+  const preferredTabs: Array<keyof typeof groups> =
+    role === 'risk_first'
+      ? ['risk_stocks']
+      : role === 'watch'
+        ? ['watch_stocks', 'focus_stocks', 'buy_candidates']
+        : role === 'clue'
+          ? ['buy_candidates', 'watch_stocks', 'focus_stocks']
+          : ['focus_stocks', 'watch_stocks', 'buy_candidates']
+  return preferredTabs.find(tab => groups[tab].some((row: WatchlistRow) => stockTradeRoleForRow(row) === role)) ?? preferredTabs[0]
+}
+
+function decisionConfirmationSummary(decision: WatchlistDecision, row: WatchlistRow, locale: LongclawLocale): string {
+  if (decision.primaryBlocker) return decision.primaryBlocker
+  if (decision.missingGates.length > 0) {
+    return `${locale === 'zh-CN' ? '还差' : 'Missing'} ${decision.missingGates.map(key => decisionGateLabel(key, locale)).join(' / ')}`
+  }
+  const right = technicalSignalSummary(row, 'right', locale)
+  if (right && right !== (locale === 'zh-CN' ? '暂无' : 'None')) {
+    return `${locale === 'zh-CN' ? '买点已出' : 'Entry ready'} ${right}`
+  }
+  return `${locale === 'zh-CN' ? '买点已出' : 'Entry ready'} ${timeframeSignalSideSummary(row, locale)}`
+}
+
+function watchlistRowSignalLine(row: WatchlistRow, locale: LongclawLocale): string {
+  const traderRead = compactText(row.raw.trader_read) || compactText(row.raw.ai_trade_summary)
+  if (traderRead) return traderRead
+  const entryLogic = compactText(row.raw.entry_logic_summary)
+  if (entryLogic) return entryLogic
+  const setup = compactText(row.raw.setup_explanation)
+  if (setup) return setup
+  const side = row.decision.opportunitySide === 'right' ? 'right' : 'left'
+  const summary = technicalSignalSummary(row, side, locale)
+  if (summary && summary !== (locale === 'zh-CN' ? '暂无' : 'None')) return summary
+  const opposite = technicalSignalSummary(row, side === 'right' ? 'left' : 'right', locale)
+  return opposite && opposite !== (locale === 'zh-CN' ? '暂无' : 'None') ? opposite : row.signal || row.rankReason || row.explanation
+}
+
+function watchlistSignalDetailLine(row: WatchlistRow): string {
+  const currentTimeframeMa = recordValue(row.raw.current_timeframe_ma)
+  const detail = [
+    row.raw.signal_detail,
+    currentTimeframeMa.summary,
+    currentTimeframeMa.details,
+    row.raw.explanation,
+    row.raw.reason,
+  ].map(meaningfulSignalText).find(value => value && value !== row.signal)
+  return detail || ''
+}
+
+function sourceConfidenceAlias(source: string): string[] {
+  const normalized = source.toLowerCase()
+  if (normalized.includes('technical') || normalized === 'signals' || normalized.includes('signal')) return ['signal']
+  if (normalized.includes('strategy') || normalized.includes('market_pool') || normalized.includes('active_pool')) return ['market_pool']
+  if (normalized.includes('quote')) return ['quote']
+  if (normalized.includes('chain') || normalized.includes('board')) return ['board', 'concept']
+  if (normalized.includes('concept')) return ['concept']
+  return [normalized]
+}
+
+function decisionConfidenceSummary(decision: WatchlistDecision, sourceConfidence: Record<string, unknown>[], locale: LongclawLocale): string {
+  if (sourceConfidence.length === 0) return locale === 'zh-CN' ? '线索强度待确认' : 'No source confidence'
+  const sourceAliases = new Set(decision.sourceKeys.flatMap(sourceConfidenceAlias))
+  const matched = sourceConfidence.filter(row => {
+    const key = compactText(row.source_id) || compactText(row.label) || compactText(row.name) || compactText(row.source)
+    return sourceAliases.has(key) || sourceAliases.has(key.toLowerCase())
+  })
+  const rows = matched.length > 0 ? matched : sourceConfidence.slice(0, 2)
+  const weakest = rows.reduce<Record<string, unknown> | null>((current, row) => {
+    if (!current) return row
+    const currentValue = numberValue(current.confidence ?? current.score) ?? 1
+    const rowValue = numberValue(row.confidence ?? row.score) ?? 1
+    return rowValue < currentValue ? row : current
+  }, null)
+  if (!weakest) return locale === 'zh-CN' ? '线索强度待确认' : 'No source confidence'
+  const confidence = numberValue(weakest.confidence ?? weakest.score)
+  const label = sourceConfidenceLabel(weakest)
+  const status = compactText(weakest.status) || compactText(weakest.freshness)
+  const score = confidence === undefined ? '' : formatConfidence(confidence)
+  if (confidence !== undefined && confidence < 0.8) {
+    return locale === 'zh-CN'
+      ? `${label} 置信度偏低 ${score}${status ? ` · ${status}` : ''}`
+      : `${label} confidence is low ${score}${status ? ` · ${status}` : ''}`
+  }
+  return locale === 'zh-CN'
+    ? `${label} 可用 ${score}${status ? ` · ${status}` : ''}`
+    : `${label} available ${score}${status ? ` · ${status}` : ''}`
+}
+
+function traderTaskFromWatchlist(row: WatchlistRow, locale: LongclawLocale): TraderDecisionTask {
+  const action = decisionActionLabel(row.decision, locale)
+  return {
+    id: `${row.decision.stage}:${row.code || row.label || row.name}`,
+    stage: row.decision.stage,
+    title: `${decisionStageLabel(row.decision.stage, locale)} · ${row.name}`,
+    action,
+    summary: [row.reason, row.rankReason, row.traceSummary].filter(Boolean).join(' · '),
+    invalidatesWhen: row.decision.invalidatesWhen,
+    row,
+    raw: row.raw,
+  }
+}
+
+function traderTaskFromRaw(row: Record<string, unknown>, index: number, locale: LongclawLocale): TraderDecisionTask {
+  const stage = rawDecisionStage(row)
+  const title = compactText(row.title) || compactText(row.name) || compactText(row.symbol) || compactText(row.decision_id) || `Task ${index + 1}`
+  const action = compactText(row.action_label) || compactText(row.recommended_action) || compactText(row.action) || decisionActionFallback(stage, rawMissingGates(row, stage), locale)
+  return {
+    id: compactText(row.decision_id) || `${stage}:${compactText(row.symbol) || title}:${index}`,
+    stage,
+    title,
+    action,
+    summary: [compactText(row.summary), compactText(row.trigger_reason), compactText(row.reason), compactText(row.recommended_action)]
+      .filter(Boolean)
+      .join(' · '),
+    invalidatesWhen: compactText(row.invalidates_when),
+    raw: row,
+  }
+}
+
+function buildTraderDecisionQueue(
+  groups: {
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+  decisionRows: Record<string, unknown>[],
+  sellRows: Record<string, unknown>[],
+  locale: LongclawLocale,
+): TraderDecisionTask[] {
+  void sellRows
+  const output: TraderDecisionTask[] = []
+  const seen = new Set<string>()
+  const add = (task: TraderDecisionTask) => {
+    const symbol = compactText(task.raw.symbol) || compactText(task.raw.code) || task.row?.code || task.title
+    const key = `${task.stage}:${symbol}`.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    output.push(task)
+  }
+  groups.focus_stocks.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  groups.watch_stocks.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  groups.buy_candidates.slice(0, 5).forEach(row => add(traderTaskFromWatchlist(row, locale)))
+  decisionRows.slice(0, 8).forEach((row, index) => add(traderTaskFromRaw(row, index, locale)))
+  return output.slice(0, 14)
+}
+
+export function activeDecisionRowFromGroups(
+  groups: {
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+  target: ChartTarget,
+  cursorRow?: WatchlistRow,
+): WatchlistRow | null {
+  const rows = [
+    ...groups.focus_stocks,
+    ...groups.watch_stocks,
+    ...groups.buy_candidates,
+  ]
+  const activeRow = rows.find(row => watchlistRowIsActive(row, target))
+  if (activeRow) return activeRow
+  if (cursorRow && watchlistRowIsActive(cursorRow, target) && cursorRow.kind === 'stock' && stockTradeRoleForRow(cursorRow) !== 'risk_first') return cursorRow
+  return null
+}
+
+function dateTimeParts(value: Date, timeZone?: string): Record<string, string> {
+  const options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }
+  if (timeZone) options.timeZone = timeZone
+  return Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', options)
+      .formatToParts(value)
+      .map(part => [part.type, part.value]),
+  )
+}
+
+function readableDate(value?: Date | null, timeZone?: string): string {
+  if (!value) return ''
+  const parts = dateTimeParts(value, timeZone)
+  if (!parts.year || !parts.month || !parts.day) return ''
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+function readableTime(value?: Date | null, locale: LongclawLocale = 'zh-CN', timeZone?: string): string {
+  if (!value) return ''
+  const options: Intl.DateTimeFormatOptions = {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }
+  if (timeZone) options.timeZone = timeZone
+  return value.toLocaleTimeString(locale === 'zh-CN' ? 'zh-CN' : 'en-US', options)
+}
+
+function readableDateTime(value?: Date | null, locale: LongclawLocale = 'zh-CN', timeZone?: string): string {
+  if (!value) return ''
+  return [readableDate(value, timeZone), readableTime(value, locale, timeZone)].filter(Boolean).join(' ')
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  const element = target instanceof HTMLElement ? target : null
+  if (!element) return false
+  return element.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)
+}
+
+function rowsFromCluster(value: unknown): Record<string, unknown>[] {
+  const record = recordValue(value)
+  const industryTop = recordValue(record.industry).top ?? record.industry_top
+  const conceptTop = recordValue(record.concept).top ?? record.concept_top
+  return [
+    ...(Array.isArray(industryTop)
+      ? industryTop.map(item => ({ ...recordValue(item), kind: 'industry', cluster_kind: 'industry' }))
+      : []),
+    ...(Array.isArray(conceptTop)
+      ? conceptTop.map(item => ({ ...recordValue(item), kind: 'concept', cluster_kind: 'concept' }))
+      : []),
+  ].map(item => recordValue(item))
+}
+
+function normalizeMetricRows(value: unknown, labelKey: string, valueKey: string): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+  const record = recordValue(value)
+  if (Object.keys(record).length === 0) return []
+  for (const nestedKey of ['items', 'rows', 'sources']) {
+    const nested = record[nestedKey]
+    if (Array.isArray(nested) && nested.length > 0) {
+      return nested.map((item, index) => {
+        const row = recordValue(item)
+        return {
+          [labelKey]:
+            compactText(row[labelKey]) ||
+            compactText(row.source_id) ||
+            compactText(row.kpi_id) ||
+            compactText(row.name) ||
+            compactText(row.source) ||
+            `${nestedKey}_${index + 1}`,
+          [valueKey]: row[valueKey] ?? row.score ?? row.value,
+          ...row,
+        }
+      })
+    }
+  }
+  return Object.entries(record)
+    .filter(([key]) => !['items', 'rows', 'sources'].includes(key))
+    .map(([key, raw]) => {
+      const row = recordValue(raw)
+      return Object.keys(row).length > 0
+        ? { [labelKey]: key, ...row }
+        : { [labelKey]: key, [valueKey]: raw }
+    })
+}
+
+function syncLaneRows(value: unknown): Record<string, unknown>[] {
+  const record = recordValue(value)
+  return Object.entries(record).map(([lane, raw]) => ({
+    lane,
+    ...recordValue(raw),
+  }))
+}
+
+function chartMarketTimezone(symbolData: WorkbenchSymbolData | null, shell: WorkbenchShell | null): string {
+  const meta = recordValue(symbolData?.chart?.meta)
+  return (
+    compactText(symbolData?.target?.market_timezone) ||
+    compactText(meta.market_timezone) ||
+    compactText(shell?.session?.market_timezone) ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    'Asia/Shanghai'
+  )
+}
+
+export function chartKindLabel(kind: string, locale: LongclawLocale): string {
+  const labels: Record<string, string> = { index: '指数', stock: '股票', etf: 'ETF', sector: '板块', board: '板块' }
+  return locale === 'zh-CN' ? (labels[kind.toLowerCase()] || '图表') : kind.toUpperCase()
+}
+
+export function chartFrequencyLabel(freq: string, locale: LongclawLocale): string {
+  const labels: Record<string, string> = { daily: '日线', weekly: '周线', monthly: '月线', '1d': '日线', '1w': '周线', '1mo': '月线' }
+  return locale === 'zh-CN' ? (labels[freq.toLowerCase()] || freq) : freq
+}
+
+function chartLineageLabel(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
+  const meta = recordValue(symbolData?.chart?.meta)
+  if (Object.keys(meta).length === 0) return ''
+  const source = compactText(meta.source)
+  const collection = compactText(meta.collection)
+  const cacheStatus = compactText(meta.cache_status)
+  const latest = compactText(meta.latest_bar_time) || compactText(meta.data_as_of) || compactText(meta.as_of)
+  const semantics = compactText(meta.time_semantics)
+  const type = compactText(meta.display_name) || (compactText(meta.chart_type) === 'heat_ohlc'
+    ? (locale === 'zh-CN' ? '热度K线/涨跌幅OHLC' : 'Heat OHLC')
+    : '')
+  return [
+    type,
+    source ? `${locale === 'zh-CN' ? '线索' : 'Source'} ${source}` : '',
+    collection && collection !== source ? `${locale === 'zh-CN' ? '集合' : 'Collection'} ${collection}` : '',
+    cacheStatus ? `${locale === 'zh-CN' ? '行情' : 'Cache'} ${cacheStatus}` : '',
+    latest ? `${locale === 'zh-CN' ? '最新' : 'Latest'} ${latest}` : '',
+    semantics ? `${locale === 'zh-CN' ? '时间' : 'Time'} ${semantics}` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+function chartFormulaLabel(symbolData: WorkbenchSymbolData | null, locale: LongclawLocale): string {
+  const meta = recordValue(symbolData?.chart?.meta)
+  const formula = recordValue(meta.ohlc_formula)
+  if (Object.keys(formula).length === 0) return ''
+  return locale === 'zh-CN'
+    ? `公式 O=${compactText(formula.open)} H=${compactText(formula.high)} L=${compactText(formula.low)} C=${compactText(formula.close)}`
+    : `Formula O=${compactText(formula.open)} H=${compactText(formula.high)} L=${compactText(formula.low)} C=${compactText(formula.close)}`
+}
+
+export function formatCodeName(code: string, name: string): string {
+  if (!code) return name
+  if (!name || name.toUpperCase() === code.toUpperCase()) return code
+  return `${code} ${name}`
+}
+
+export function stockIdentityDisplay(row: Record<string, unknown>): string {
+  const code = compactText(row.symbol) ||
+    compactText(row.code) ||
+    compactText(row.raw_code) ||
+    compactText(row.ts_code) ||
+    compactText(row.ticker)
+  const name = compactText(row.name) ||
+    compactText(row.stock_name) ||
+    compactText(row.display_name) ||
+    compactText(row.label)
+  return formatCodeName(code, name)
+}
+
+function labelForTarget(row: Record<string, unknown>): string {
+  return stockIdentityDisplay(row) || (
+    stringValue(row.label) ??
+    stringValue(row.name) ??
+    stringValue(row.symbol) ??
+    stringValue(row.code) ??
+    ''
+  )
+}
+
+function targetMatchesSearchValue(row: Record<string, unknown>, value: string): boolean {
+  const normalized = value.toLowerCase()
+  const candidates = [
+    labelForTarget(row),
+    compactText(row.symbol),
+    compactText(row.code),
+    compactText(row.name),
+  ].filter(Boolean)
+  return candidates.some(candidate => candidate === value || candidate.toLowerCase() === normalized)
+}
+
+export function looksLikeIndexValue(value: string): boolean {
+  const normalized = value.trim().toLowerCase().replace(/[\s._-]+/g, '')
+  return (
+    value.trim().endsWith('指') ||
+    value.includes('指数') ||
+    ['300', '500', '1000', '000300', '000905', '000852', '399001', '399006'].includes(normalized) ||
+    /^s[hz](000|399)\d{3}$/.test(normalized) ||
+    ['创业板指', '沪深300', '深证成指', '上证指数', '中证500', '中证1000'].includes(value.trim())
+  )
+}
+
+function kindForTarget(row: Record<string, unknown>, fallback = 'auto'): string {
+  return stringValue(row.kind) ?? (stringValue(row.symbol) ? 'stock' : fallback)
+}
+
+function normalizeReturnKey(value: string): string {
+  return value.toLowerCase().replace(/[\s_\-./]/g, '')
+}
+
+function readRangeReturn(row: Record<string, unknown>, column: WatchlistRangeColumn): unknown {
+  const candidates = [row.range_returns, row.period_returns, row.interval_returns, row.carrier_range_returns]
+  for (const candidate of candidates) {
+    const record = recordValue(candidate)
+    if (Object.keys(record).length > 0) {
+      const normalizedEntries = new Map(
+        Object.entries(record).map(([key, value]) => [normalizeReturnKey(key), value]),
+      )
+      for (const alias of [column.key, ...(column.aliases ?? [])]) {
+        const value = normalizedEntries.get(normalizeReturnKey(alias))
+        if (value !== undefined) return value
+      }
+    }
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        const record = recordValue(item)
+        const key = compactText(record.key) || compactText(record.period) || compactText(record.interval) || compactText(record.label)
+        if (!key) continue
+        const matched = [column.key, ...(column.aliases ?? [])].some(alias => normalizeReturnKey(alias) === normalizeReturnKey(key))
+        if (matched) return record.return_pct ?? record.change_pct ?? record.gain_pct ?? record.value
+      }
+    }
+  }
+  return undefined
+}
+
+export function missingRangeReturnLabel(row: Record<string, unknown>, targetKind: string): string {
+  if (targetKind !== 'stock' && targetKind !== 'index') return 'N/A'
+  const status = compactText(row.range_return_status).toLowerCase()
+  if (status === 'lazy') return '待计算'
+  if (status === 'spot_only') return '现货'
+  if (status === 'partial_history' || status.startsWith('range_returns_incomplete')) return '历史不足'
+  if (status.includes('kline_empty') || status.includes('kline_missing') || status === 'missing') return '缺K'
+  if (status === 'error' || status.includes('failed') || status.includes('error')) return '计算失败'
+  return 'N/A'
+}
+
+function readTimeframeBadgeItems(value: unknown, side: WatchlistSignalBadge['side']): WatchlistSignalBadge[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => {
+      const record = recordValue(item)
+      const label = compactText(record.badge) || compactText(record.freq)
+      const itemSide = compactText(record.side) === 'sell' ? 'sell' : compactText(record.side) === 'buy' ? 'buy' : side
+      return label ? { label, side: itemSide } : null
+    })
+    .filter((item): item is WatchlistSignalBadge => Boolean(item))
+}
+
+function timeframeSignalBadges(row: Record<string, unknown>): WatchlistSignalBadge[] {
+  const sellBadges = readTimeframeBadgeItems(row.sell_timeframes, 'sell')
+  const buyBadges = readTimeframeBadgeItems(row.buy_timeframes, 'buy')
+  const seen = new Set<string>()
+  return [...sellBadges, ...buyBadges].filter(item => {
+    const key = `${item.side}:${item.label}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function timeframeBadges(row: Record<string, unknown>): string[] {
+  return timeframeSignalBadges(row).map(item => item.label)
+}
+
+export function signalForWatchlist(row: Record<string, unknown>, kind: string): string {
+  const currentTimeframeMa = recordValue(row.current_timeframe_ma)
+  const explicitSignal = [
+    row.latest_signal,
+    row.signal_detail,
+    currentTimeframeMa.summary,
+    currentTimeframeMa.label,
+  ].map(meaningfulSignalText).find(Boolean)
+  if (explicitSignal) return explicitSignal
+  const stackedSignals = [
+    meaningfulSignalText(row.daily_latest_signal),
+    meaningfulSignalText(row.f30_latest_signal),
+    meaningfulSignalText(row.f15_latest_signal),
+  ].filter(Boolean)
+  if (stackedSignals.length > 0) return stackedSignals.slice(0, 2).join('/')
+  const evidenceSignal = compactText(recordValue(row.signal_evidence).signal_type)
+  if (evidenceSignal) return evidenceSignal
+  const badges = timeframeSignalBadges(row)
+  if (badges.length > 0) return badges.map(item => signalBadgeDisplayLabel(item, 'zh-CN')).join('/')
+  if (kind === 'industry' || kind === 'concept') {
+    return (
+      meaningfulSignalText(row.latest_signal) ||
+      meaningfulSignalText(row.leader) ||
+      compactText(recordValue(row.carrier).name) ||
+      compactText(row.source)
+    )
+  }
+  return (
+    meaningfulSignalText(row.latest_signal) ||
+    meaningfulSignalText(row.signal) ||
+    compactText(row.reason) ||
+    compactText(row.direction)
+  )
+}
+
+function latestValueForWatchlist(row: Record<string, unknown>): string {
+  const value =
+    row.latest_price ??
+    row.last_price ??
+    row.price ??
+    row.close ??
+    row.latest ??
+    row.current_price ??
+    row.value
+  const carrierValue = row.carrier_latest_price
+  if (numberValue(value) === undefined && numberValue(carrierValue) !== undefined) {
+    return `承接 ${formatNumber(carrierValue)}`
+  }
+  return numberValue(value) !== undefined ? formatNumber(value) : compactText(value, 'N/A')
+}
+
+function dayChangeForWatchlist(row: Record<string, unknown>): string {
+  const value = firstNumberValue(
+    row.day_change_pct ??
+      row.daily_change_pct ??
+      row.today_change_pct,
+    row.gain_pct,
+    row.change_pct,
+  )
+  if (value !== undefined) return formatPercent(value)
+  const quoteStatus = compactText(row.quote_status)
+  if (quoteStatus === 'stale' || quoteStatus === 'missing') {
+    return compactText(row.quote_status_label) || (quoteStatus === 'stale' ? '行情陈旧' : '无行情')
+  }
+  return 'N/A'
+}
+
+function codeForWatchlist(row: Record<string, unknown>): string {
+  return (
+    compactText(row.symbol) ||
+    compactText(row.code) ||
+    compactText(row.ts_code) ||
+    compactText(row.ticker) ||
+    compactText(row.label)
+  )
+}
+
+function nameForWatchlist(row: Record<string, unknown>): string {
+  return (
+    compactText(row.name) ||
+    compactText(row.stock_name) ||
+    compactText(row.display_name) ||
+    compactText(row.label) ||
+    codeForWatchlist(row) ||
+    'N/A'
+  )
+}
+
+function labelForWatchlist(row: Record<string, unknown>): string {
+  return compactText(row.label) || compactText(row.symbol) || compactText(row.code) || nameForWatchlist(row)
+}
+
+function watchlistTypeLabel(kind: string): string {
+  if (kind === 'index') return '指数'
+  if (kind === 'industry') return '行业'
+  if (kind === 'concept') return '概念'
+  return '股票'
+}
+
+function watchlistDedupeKey(row: Record<string, unknown>, kind: string): string {
+  const identity = codeForWatchlist(row) || labelForWatchlist(row) || nameForWatchlist(row)
+  return `${kind}:${identity.toLowerCase()}`
+}
+
+function toWatchlistRow(
+  row: Record<string, unknown>,
+  fallbackKind: string,
+  index: number,
+  rangeColumns: WatchlistRangeColumn[],
+  stageHint?: WatchlistTabKey,
+): WatchlistRow | null {
+  const kind = kindForTarget(row, fallbackKind)
+  const label = labelForWatchlist(row)
+  const name = nameForWatchlist(row)
+  if (!label && !name) return null
+  const code = codeForWatchlist(row)
+  const dayChange = dayChangeForWatchlist(row)
+  const targetKind = compactText(row.target_kind) || kind
+  const rangeValues = rangeColumns.map(column => {
+    const explicit = readRangeReturn(row, column)
+    if (explicit !== undefined) return formatPercent(explicit)
+    return missingRangeReturnLabel(row, targetKind)
+  })
+  const targetLabel = compactText(row.target_label) || label
+  const signalBadges = timeframeSignalBadges(row)
+  const laneStatus = recordValue(row.lane_status)
+  return {
+    id: `${watchlistDedupeKey(row, kind)}:${index}`,
+    kind,
+    label,
+    name,
+    code,
+    typeLabel: compactText(row.display_type_label) || watchlistTypeLabel(kind),
+    latest: latestValueForWatchlist(row),
+    dayChange,
+    rangeValues,
+    signal: signalForWatchlist(row, kind),
+    signalBadges,
+    tags: tagsForWatchlist(row, kind),
+    lane: compactText(row.lane),
+    freshness: compactText(row.freshness) || compactText(laneStatus.freshness) || compactText(laneStatus.status),
+    traderAction: compactText(row.trader_action) || compactText(row.action_status),
+    rankLabel: rankLabelForWatchlist(row),
+    rankReason: rankReasonForWatchlist(row),
+    invalidatesWhen: compactText(row.invalidates_when),
+    explanation: compactText(row.explanation),
+    traceSummary: compactText(row.trace_summary),
+    targetKind,
+    targetLabel,
+    targetFreq: terminalListTargetFreq(row.target_freq),
+    decision: createWatchlistDecision(row, stageHint),
+    raw: row,
+  }
+}
+
+function buildRowsForGroup(
+  rows: Record<string, unknown>[],
+  fallbackKind: string,
+  rangeColumns: WatchlistRangeColumn[],
+  stageHint?: WatchlistTabKey,
+): WatchlistRow[] {
+  const seen = new Set<string>()
+  const output: WatchlistRow[] = []
+  rows.forEach((row, index) => {
+    const kind = kindForTarget(row, fallbackKind)
+    const key = watchlistDedupeKey(row, kind)
+    if (seen.has(key)) return
+    seen.add(key)
+    const item = toWatchlistRow(row, kind, index, rangeColumns, stageHint)
+    if (item) output.push(item)
+  })
+  return output
+}
+
+function buildWatchlistRows({
+  watchlist,
+  indices,
+  buyRows,
+  sellRows,
+  decisionRows,
+  clusterRows,
+  rangeColumns,
+}: {
+  watchlist: Record<string, unknown>[]
+  indices: Record<string, unknown>[]
+  buyRows: Record<string, unknown>[]
+  sellRows: Record<string, unknown>[]
+  decisionRows: Record<string, unknown>[]
+  clusterRows: Record<string, unknown>[]
+  rangeColumns: WatchlistRangeColumn[]
+}): WatchlistRow[] {
+  const sources: Array<{ rows: Record<string, unknown>[]; kind: string }> = [
+    { rows: watchlist.map(row => ({ ...row, kind: kindForTarget(row, 'auto') })), kind: 'auto' },
+    { rows: indices.map(row => ({ ...row, kind: 'index' })), kind: 'index' },
+    { rows: buyRows.map(row => ({ ...row, kind: kindForTarget(row, 'stock') })), kind: 'stock' },
+    { rows: sellRows.map(row => ({ ...row, kind: kindForTarget(row, 'stock') })), kind: 'stock' },
+    { rows: decisionRows.map(row => ({ ...row, kind: kindForTarget(row, 'stock') })), kind: 'stock' },
+    { rows: clusterRows, kind: 'industry' },
+  ]
+  const seen = new Set<string>()
+  const output: WatchlistRow[] = []
+  sources.forEach(source => {
+    source.rows.forEach((row, index) => {
+      const kind = kindForTarget(row, source.kind)
+      const key = watchlistDedupeKey(row, kind)
+      if (seen.has(key)) return
+      seen.add(key)
+      const item = toWatchlistRow(row, kind, output.length + index, rangeColumns)
+      if (item) output.push(item)
+    })
+  })
+  return output
+}
+
+function watchlistRangeColumnsFromShell(shell: WorkbenchShell | null): WatchlistRangeColumn[] {
+  const rawColumns = Array.isArray(shell?.watchlist_range_columns) ? shell.watchlist_range_columns : []
+  const columns = rawColumns
+    .map(column => {
+      const record = recordValue(column)
+      const key = compactText(record.key)
+      if (!key) return null
+      return {
+        key,
+        label: compactText(record.label, key),
+        aliases: Array.isArray(record.aliases)
+          ? record.aliases.map(alias => compactText(alias)).filter(Boolean)
+          : [],
+      } satisfies WatchlistRangeColumn
+    })
+    .filter((column): column is WatchlistRangeColumn => Boolean(column))
+  return columns.length > 0 ? columns : WATCHLIST_RANGE_COLUMNS
+}
+
+function watchlistRowIsActive(row: WatchlistRow, target: ChartTarget): boolean {
+  if ((row.targetKind || row.kind) !== target.kind) return false
+  return row.targetLabel === target.label || row.label === target.label || row.code === target.label || row.name === target.label
+}
+
+function rowIsManualClue(row: WatchlistRow): boolean {
+  return Boolean(row.raw.manual_clue || row.raw.deletable || compactText(row.raw.source_collection) === 'terminal_manual_clues')
+}
+
+function manualClueDeleteKeys(row: WatchlistRow): string[] {
+  const raw = row.raw
+  const candidates = [
+    row.id,
+    row.code,
+    row.label,
+    row.targetLabel,
+    compactText(raw.symbol),
+    compactText(raw.raw_code),
+    compactText(raw.code),
+    compactText(raw.target_label),
+  ]
+  const seen = new Set<string>()
+  return candidates
+    .map(value => compactText(value).trim().toLowerCase())
+    .filter(value => {
+      if (!value || seen.has(value)) return false
+      seen.add(value)
+      return true
+    })
+}
+
+function manualClueMatchesDeleteKeys(row: WatchlistRow, keys: Set<string>): boolean {
+  if (!rowIsManualClue(row) || keys.size === 0) return false
+  return manualClueDeleteKeys(row).some(key => keys.has(key))
+}
+
+export function shouldAddManualClueForSearch(_value: string, _isIndex: boolean): boolean {
+  return false
+}
+
+const candidateGroupOrder = ['upstream', 'leaders', 'weighted', 'elastic', 'downstream', 'source_leaders', 'constituents']
+
+function candidateGroupLabel(key: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    upstream: ['上游供给', 'Upstream'],
+    leaders: ['龙头梯队', 'Leaders'],
+    weighted: ['权重/链主', 'Weighted'],
+    elastic: ['弹性标的', 'Elastic'],
+    downstream: ['下游承接', 'Downstream'],
+    source_leaders: ['当日领涨', 'Top movers'],
+    constituents: ['成分候选', 'Constituents'],
+  }
+  const label = labels[key]
+  if (!label) return key
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function chainRelationToneStyle(key: string): React.CSSProperties {
+  if (key === 'upstream') {
+    return {
+      borderColor: tradingDeskTheme.chart.gold,
+      background: `${tradingDeskTheme.chart.gold}18`,
+      color: tradingDeskTheme.chart.gold,
+    }
+  }
+  if (key === 'downstream') {
+    return {
+      borderColor: tradingDeskTheme.chart.line,
+      background: `${tradingDeskTheme.chart.line}18`,
+      color: terminalTheme.infoText,
+    }
+  }
+  if (key === 'leaders' || key === 'weighted') {
+    return {
+      borderColor: terminalTheme.accent,
+      background: terminalTheme.accentSoft,
+      color: terminalTheme.accentText,
+    }
+  }
+  return {}
+}
+
+function candidateGroupsFromSymbolData(symbolData: WorkbenchSymbolData | null): Record<string, Record<string, unknown>[]> {
+  const raw = recordValue(symbolData?.candidate_groups)
+  const groups: Record<string, Record<string, unknown>[]> = {}
+  candidateGroupOrder.forEach(key => {
+    const value = raw[key]
+    groups[key] = Array.isArray(value) ? value.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0) : []
+  })
+  return groups
+}
+
+function candidateGroupsFromRow(row: WatchlistRow | Record<string, unknown> | null | undefined): Record<string, Record<string, unknown>[]> {
+  const raw = 'raw' in recordValue(row) ? recordValue(recordValue(row).raw) : recordValue(row)
+  const groups = recordValue(raw.candidate_groups)
+  const output: Record<string, Record<string, unknown>[]> = {}
+  candidateGroupOrder.forEach(key => {
+    const value = groups[key]
+    output[key] = Array.isArray(value) ? value.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0) : []
+  })
+  if (candidateGroupOrder.every(key => output[key].length === 0)) {
+    const preview = Array.isArray(raw.focus_stocks_preview) ? raw.focus_stocks_preview : []
+    output.constituents = preview.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+  }
+  return output
+}
+
+function chainRowKey(row: WatchlistRow): string {
+  return [
+    compactText(row.raw.chain_key) || compactText(row.raw.chain_id) || row.label,
+    compactText(row.raw.node_key) || compactText(row.raw.node_id) || row.name,
+  ].filter(Boolean).join(':')
+}
+
+function chainContextFromSymbolSummary(symbolData: WorkbenchSymbolData | null): Record<string, unknown> {
+  const summary = recordValue(symbolData?.summary)
+  const mapping = recordValue(summary.mapping_chain)
+  if (Object.keys(mapping).length > 0) return mapping
+  const explicit = recordValue(summary.chain_context)
+  if (Object.keys(explicit).length > 0) return explicit
+  const position = recordValue(summary.chain_position)
+  if (Object.keys(position).length === 0) return {}
+  const chainName = compactText(position.chain) || compactText(position.chain_name)
+  const nodeName = compactText(position.node) || compactText(position.node_name) || compactText(position.role)
+  return {
+    ...position,
+    chain_name: chainName,
+    node_name: nodeName,
+    phase: compactText(position.phase),
+    mapping_status: compactText(position.source) || 'security_chain_memberships',
+    mapping_chain: {
+      chain_name: chainName,
+      node_name: nodeName,
+      layer: compactText(position.layer),
+      stage: compactText(position.stage),
+      confidence: position.confidence,
+      exposure_score: position.exposure_score,
+      source_note: position.source_note,
+    },
+  }
+}
+
+function candidateStockLabel(row: Record<string, unknown>): string {
+  return (
+    compactText(row.symbol) ||
+    compactText(row.code) ||
+    compactText(row.raw_code) ||
+    compactText(row.label) ||
+    compactText(row.name)
+  )
+}
+
+function candidateTargetFromRow(row: Record<string, unknown>, freq = DEFAULT_TERMINAL_FREQ): ChartTarget | null {
+  const label = candidateStockLabel(row)
+  if (!label) return null
+  return { label, kind: kindForTarget(row, 'stock'), freq }
+}
+
+function effectiveChartTarget(effectiveTarget: WorkbenchTarget | undefined, fallback: ChartTarget): ChartTarget | null {
+  if (!effectiveTarget) return null
+  const effectiveKind = compactText(effectiveTarget.kind, fallback.kind)
+  const keepsLogicalLabel = ['index', 'industry', 'concept'].includes(effectiveKind)
+  return {
+    label: keepsLogicalLabel
+      ? compactText(effectiveTarget.label, fallback.label)
+      : compactText(effectiveTarget.symbol) || compactText(effectiveTarget.label) || fallback.label,
+    kind: effectiveKind,
+    freq: compactText(effectiveTarget.effective_freq, fallback.freq),
+  }
+}
+
+function uniqueChartTargets(targets: ChartTarget[]): ChartTarget[] {
+  const seen = new Set<string>()
+  return targets.filter(target => {
+    const key = symbolDataCacheKey(target)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function uniqueCandidateRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const output: Record<string, unknown>[] = []
+  rows.forEach((row, index) => {
+    const key = (candidateStockLabel(row) || `${compactText(row.name)}-${index}`).toUpperCase()
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    output.push(row)
+  })
+  return output
+}
+
+export function sectorTargetRowsForContext(row: unknown): Record<string, unknown>[] {
+  const groups = candidateGroupsFromRow(row as WatchlistRow | Record<string, unknown> | null | undefined)
+  const groupedRows = candidateGroupOrder.flatMap(key => groups[key] ?? [])
+  const raw = 'raw' in recordValue(row) ? recordValue(recordValue(row).raw) : recordValue(row)
+  const previewRows = Array.isArray(raw.focus_stocks_preview)
+    ? raw.focus_stocks_preview.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  return uniqueCandidateRows(previewRows.length > 0 ? previewRows : groupedRows)
+}
+
+export function sectorTargetCountForContext(row: unknown): number {
+  return sectorTargetRowsForContext(row).length
+}
+
+function chartModeFromTarget(target: ChartTarget, symbolData: WorkbenchSymbolData | null): ChartModeKey {
+  const meta = recordValue(symbolData?.chart?.meta)
+  const explicitMode = compactText(meta.chart_mode)
+  if (explicitMode === 'chain_heat') return 'chain_heat'
+  if (explicitMode === 'board_heat' || meta.is_price_kline === false) return 'board_heat'
+  if (target.kind === 'stock' || compactText(symbolData?.target?.kind) === 'stock') return 'stock_price'
+  if (target.kind === 'index' || compactText(symbolData?.target?.kind) === 'index') return 'index_price'
+  return 'chain_heat'
+}
+
+function chartModeLabel(mode: ChartModeKey, locale: LongclawLocale): string {
+  const labels: Record<ChartModeKey, [string, string]> = {
+    chain_heat: ['产业链热度', 'Chain heat'],
+    board_heat: ['概念/行业热度', 'Board heat'],
+    index_price: ['指数K线', 'Index K-line'],
+    stock_price: ['个股K线', 'Stock K-line'],
+  }
+  const label = labels[mode]
+  return localizedPair(label, locale, compactText(mode, locale === 'zh-CN' ? '图表' : 'Chart'))
+}
+
+function chartModePurpose(mode: ChartModeKey, locale: LongclawLocale): string {
+  const labels: Record<ChartModeKey, [string, string]> = {
+    chain_heat: ['产业链/概念热度重采样 OHLC，不是单只股票价格。', 'Resampled chain/concept heat OHLC, not a single-stock price chart.'],
+    board_heat: ['行业/概念涨跌幅重采样 OHLC，用来观察板块节奏。', 'Resampled board/concept change OHLC for board rhythm.'],
+    index_price: ['真实指数 OHLCV，用来判断大盘方向和关键位。', 'Real index OHLCV for market direction and key levels.'],
+    stock_price: ['真实个股 OHLCV，用来复核买卖点和技术联动。', 'Real stock OHLCV for entry/exit and technical linkage checks.'],
+  }
+  const label = labels[mode]
+  return localizedPair(label, locale, locale === 'zh-CN' ? '等待图表背景。' : 'Waiting for chart context.')
+}
+
+function hiddenReasonLabel(reason: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    board_heat_chart_has_no_direct_custom_signal: ['板块热度图没有直接个股信号，下方展示关联标的入口。', 'Board heat has no direct stock signal; related stocks are listed below.'],
+    industry_chart_has_no_direct_custom_signal: ['行业图没有直接个股信号，下方展示关联标的入口。', 'Industry chart has no direct stock signal; related stocks are listed below.'],
+    concept_has_no_direct_custom_signal: ['概念未映射到直接信号，只展示候选和关联标的。', 'Concept has no direct signal; candidates are listed only.'],
+    index_has_no_direct_custom_signal: ['指数没有直接个股信号，需回到关联标的确认。', 'Index has no direct stock signal; confirm with related stocks.'],
+    no_custom_signal_records: ['没有自定义信号记录。', 'No custom signal records.'],
+    custom_signals_on_other_freq: ['信号在其它周期，当前周期不直接确认。', 'Signals exist on other timeframes.'],
+    custom_signals_not_in_loaded_chart_range: ['信号不在当前图窗范围内。', 'Signals are outside the visible chart range.'],
+  }
+  const label = labels[reason]
+  return label ? (locale === 'zh-CN' ? label[0] : label[1]) : humanizeTokenLocale(locale, reason)
+}
+
+function riskFlagLabel(flag: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    diverging: ['热度背离', 'Diverging'],
+    risk_off: ['链风险', 'Risk off'],
+    cooling: ['降温', 'Cooling'],
+    mapping_confidence_low: ['映射置信度低', 'Low mapping confidence'],
+    data_stale: ['数据滞后', 'Data stale'],
+    freq_fallback: ['周期降级', 'Frequency fallback'],
+    breadth_weak: ['广度偏弱', 'Weak breadth'],
+    K线未预热: ['K线未预热', 'K-line not preheated'],
+    仅成分股证据: ['仅成分股带动', 'Constituent only'],
+  }
+  const label = labels[flag]
+  return label ? (locale === 'zh-CN' ? label[0] : label[1]) : humanizeTokenLocale(locale, flag)
+}
+
+function AiFactorStrategySignalStrip({
+  locale,
+  signals,
+  onOpenRecord,
+}: {
+  locale: LongclawLocale
+  signals: AiFactorStrategySignal[]
+  onOpenRecord: StrategyChartTerminalProps['onOpenRecord']
+}) {
+  if (signals.length === 0) return null
+  return (
+    <div style={aiFactorStrategyStripStyle}>
+      {signals.slice(0, 3).map(signal => (
+        <button
+          key={signal.id}
+          type="button"
+          style={aiFactorStrategyCardStyle}
+          onClick={() => {
+            onOpenRecord(
+              locale === 'zh-CN' ? `AI因子策略观察 ${signal.title}` : `AI factor observation ${signal.title}`,
+              signal as unknown as Record<string, unknown>,
+            )
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={aiFactorStrategyTitleStyle}>{signal.title}</div>
+            <div style={mutedLineStyle}>
+              {[signal.industryAttribution, signal.strategyRole].filter(Boolean).join(' · ')}
+            </div>
+            <div style={mutedTwoLineStyle}>{signal.thesis}</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+            <span style={aiFactorSignalBadgeStyle}>{locale === 'zh-CN' ? '策略观察' : 'Strategy'}</span>
+            <span style={monoTextStyle}>{signal.factorId}</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function StrategyChartTerminal({
+  locale,
+  dashboard,
+  signalsWebBaseUrl,
+  aiFactorStrategySignals = [],
+  backgroundMode = 'dark',
+  onRefreshSignals,
+  onOpenRecord,
+}: StrategyChartTerminalProps) {
+  const baseUrl =
+    trimTrailingSlash(signalsWebBaseUrl) ||
+    urlFromDashboard(dashboard)
+  const chartContainerRef = useRef<HTMLDivElement | null>(null)
+  const chartRef = useRef<Chart | null>(null)
+  const resizeObserverRef = useRef<ResizeObserver | null>(null)
+  const resizeFrameRef = useRef<number | null>(null)
+  const activeRequestRef = useRef(0)
+  const shellRefreshInFlightRef = useRef(false)
+  const shellLoadedRef = useRef(false)
+  const seenSectorTransitionEventIdsRef = useRef<Set<string>>(new Set())
+  const silentSymbolRefreshInFlightRef = useRef(false)
+  const manualSymbolLoadingRef = useRef(false)
+  const manualSymbolAbortRef = useRef<AbortController | null>(null)
+  const timeframeSnapshotKeyRef = useRef('')
+  const dashboardRef = useRef(dashboard)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const lastChartUpdateSilentRef = useRef(false)
+  const symbolDataCacheRef = useRef<Map<string, SymbolDataCacheEntry>>(new Map())
+  const prefetchSymbolKeysRef = useRef<Set<string>>(new Set())
+  const autoCollapsedForFocusRef = useRef(false)
+  const activeChartTokens = chartColorTokens(backgroundMode)
+  const [shell, setShell] = useState<WorkbenchShell | null>(null)
+  const [cacheStatusOverride, setCacheStatusOverride] = useState<StrategyDashboard['cache_status'] | null>(null)
+  const [target, setTarget] = useState<ChartTarget>(() => initialTargetFrom(null, dashboard))
+  const [symbolData, setSymbolData] = useState<WorkbenchSymbolData | null>(null)
+  const snapshotSeedRef = useRef<WorkbenchSymbolData | null>(null)
+  const [searchDraft, setSearchDraft] = useState(target.label)
+  const [loading, setLoading] = useState(false)
+  const [booting, setBooting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [bootAttempt, setBootAttempt] = useState(0)
+  const [activeWatchlistTab, setActiveWatchlistTab] = useState<WatchlistTabKey>('sector_boards')
+  const watchlistTabChosenRef = useRef(false)
+  const coreWatchlistSelectedRef = useRef(false)
+  const selectWatchlistTab = useCallback((tab: WatchlistTabKey) => {
+    watchlistTabChosenRef.current = true
+    setActiveWatchlistTab(tab)
+  }, [])
+  const [activeTradeRole, setActiveTradeRole] = useState<TradeRoleKey>('all')
+  const [suppressClimax, setSuppressClimax] = useState(false)
+  const [selectedRangeKey, setSelectedRangeKey] = useState('')
+  const [expandedChainKeys, setExpandedChainKeys] = useState<Set<string>>(() => new Set())
+  const [listCursorIndex, setListCursorIndex] = useState(0)
+  const [selectedChainContext, setSelectedChainContext] = useState<Record<string, unknown> | null>(null)
+  const [pendingListUpdate, setPendingListUpdate] = useState(false)
+  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [selectedChartCalloutId, setSelectedChartCalloutId] = useState('')
+  const [optimisticDeletedManualClueKeys, setOptimisticDeletedManualClueKeys] = useState<Set<string>>(() => new Set())
+  const [aiRanking, setAiRanking] = useState<AiRankingResult | null>(null)
+  const [aiReviewsByKey, setAiReviewsByKey] = useState<Record<string, AiCandidateReview>>({})
+  const [aiRankingStatus, setAiRankingStatus] = useState<StrategyAiTaskStatus>('idle')
+  const [aiReviewStatus, setAiReviewStatus] = useState<StrategyAiTaskStatus>('idle')
+  const [aiError, setAiError] = useState('')
+  const lastAiRankingHashRef = useRef('')
+  const [timeframeSnapshots, setTimeframeSnapshots] = useState<Record<string, TimeframeMarketSnapshot>>({})
+  const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1600 : window.innerWidth))
+  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 1000 : window.innerHeight))
+  const [topDiagnosticsExpanded, setTopDiagnosticsExpanded] = useState(false)
+
+  const klineData = useMemo(() => toKLineData(symbolData?.chart), [symbolData])
+  const signals = useMemo(() => signalsFromSymbolData(symbolData), [symbolData])
+  const referenceChartSignals = useMemo(() => referenceSignalsForIndexChart(symbolData), [symbolData])
+  const currentFreq = symbolData?.target?.effective_freq ?? target.freq
+  const chartTimezone = useMemo(() => chartMarketTimezone(symbolData, shell), [shell, symbolData])
+  const activeTargetKind = compactText(symbolData?.target?.kind, target.kind)
+  const timeframeSnapshotSymbol = activeTargetKind === 'stock'
+    ? compactText(symbolData?.target?.symbol) || target.label
+    : ''
+  const aiFactorChartSignals = useMemo(
+    () => aiFactorStrategySignalsForChart(aiFactorStrategySignals, klineData, currentFreq, symbolData, target),
+    [aiFactorStrategySignals, currentFreq, klineData, symbolData, target],
+  )
+  const baseChartSignals = useMemo(
+    () => [...signals, ...referenceChartSignals, ...aiFactorChartSignals],
+    [aiFactorChartSignals, referenceChartSignals, signals],
+  )
+  const maAcceptance = useMemo(
+    () => maAcceptanceFromSymbolData(symbolData) ?? maAcceptanceFromSignals(baseChartSignals),
+    [baseChartSignals, symbolData],
+  )
+  const chartSignals = useMemo(
+    () => {
+      const dailyMaSignal = dailyMaAcceptanceSignalForChart(klineData, maAcceptance, currentFreq)
+      return dailyMaSignal ? [...baseChartSignals, dailyMaSignal] : baseChartSignals
+    },
+    [baseChartSignals, currentFreq, klineData, maAcceptance],
+  )
+  const chartCallouts = useMemo(
+    () => withSignalCalloutIds(signalEvidenceCalloutsForChart(klineData, chartSignals, currentFreq, backgroundMode, chartTimezone)),
+    [backgroundMode, chartSignals, chartTimezone, currentFreq, klineData],
+  )
+  const selectedChartCallout = useMemo(
+    () => chartCallouts.find(callout => callout.calloutId === selectedChartCalloutId) ?? chartCallouts[0] ?? null,
+    [chartCallouts, selectedChartCalloutId],
+  )
+  const selectChartCallout = useCallback((calloutId: string) => {
+    if (!calloutId) return
+    setSelectedChartCalloutId(calloutId)
+    setRightCollapsed(false)
+    recordObservationEvent('strategy.chart-callout.select', { callout_id: calloutId, target })
+  }, [target])
+  useEffect(() => {
+    if (chartCallouts.length === 0) {
+      if (selectedChartCalloutId) setSelectedChartCalloutId('')
+      return
+    }
+    if (!selectedChartCalloutId || !chartCallouts.some(callout => callout.calloutId === selectedChartCalloutId)) {
+      setSelectedChartCalloutId(chartCallouts[0]?.calloutId ?? '')
+    }
+  }, [chartCallouts, selectedChartCalloutId])
+  const visibleCustomSignals = useMemo(() => signals.filter(isCustomUserSignal), [signals])
+  const customSignalCount = useMemo(
+    () => numberValue(symbolData?.custom_signal_count) ?? visibleCustomSignals.length,
+    [symbolData?.custom_signal_count, visibleCustomSignals.length],
+  )
+  const availableCustomSignalFreqOptions = useMemo(
+    () => (Array.isArray(symbolData?.available_custom_signal_freqs) ? symbolData.available_custom_signal_freqs : [])
+      .map(freq => ({
+        raw: freq,
+        value: normalizeSignalFreq(freq) || freq,
+        label: displayFreqLabel(freq),
+      }))
+      .filter(item => Boolean(item.label)),
+    [symbolData?.available_custom_signal_freqs],
+  )
+  const hiddenReasons = useMemo(
+    () => (Array.isArray(symbolData?.hidden_reasons) ? symbolData.hidden_reasons : []),
+    [symbolData?.hidden_reasons],
+  )
+  const relatedCustomSignals = useMemo(
+    () => (Array.isArray(symbolData?.related_custom_signals) ? symbolData.related_custom_signals : []),
+    [symbolData?.related_custom_signals],
+  )
+  const chartVisibleSignals = useMemo(() => displaySignalsForChart(klineData, chartSignals, currentFreq), [chartSignals, currentFreq, klineData])
+  const evidenceSignals = useMemo(() => displaySignalsForEvidence(chartSignals), [chartSignals])
+  const maAcceptanceChips = useMemo(
+    () => (maAcceptance ? maAcceptanceMetricChips(maAcceptance) : []),
+    [maAcceptance],
+  )
+  const currentVisibleSignals = useMemo(
+    () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '本周期'),
+    [chartVisibleSignals, currentFreq],
+  )
+  const higherTimeframeSignals = useMemo(
+    () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '上级周期'),
+    [chartVisibleSignals, currentFreq],
+  )
+  const lowerTimeframeSignals = useMemo(
+    () => chartVisibleSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '下级周期'),
+    [chartVisibleSignals, currentFreq],
+  )
+  const evidenceCustomSignals = useMemo(() => evidenceSignals.filter(isCustomUserSignal), [evidenceSignals])
+  const otherEvidenceSignals = useMemo(
+    () => evidenceSignals.filter(signal => signalScopeLabel(signal as unknown as Record<string, unknown>, normalizeSignalFreq(currentFreq)) === '其它周期' && !isCustomUserSignal(signal)),
+    [currentFreq, evidenceSignals],
+  )
+  const keyLevels = useMemo(() => keyLevelsFromSymbolData(symbolData), [symbolData])
+  const chartTrendlines = useMemo(() => trendlinesFromSymbolData(symbolData), [symbolData])
+  const targetFreqs = useMemo(() => availableFreqs(symbolData), [symbolData])
+  const liveRefresh = shouldUseLiveRefresh(shell?.session)
+  const sectorTransitionRadar = useMemo(() => sectorTransitionRadarFromShell(shell), [shell])
+  const effectiveCacheStatus = useMemo(
+    () => normalizeCacheStatus(cacheStatusOverride ?? dashboard.cache_status),
+    [cacheStatusOverride, dashboard.cache_status],
+  )
+  const connectorAlerts = useMemo(
+    () =>
+      dashboard.connector_health.filter(item => {
+        const status = String(item.status ?? '').toLowerCase()
+        return status && !['available', 'connected', 'open', 'ready', 'success'].includes(status)
+      }).length,
+    [dashboard.connector_health],
+  )
+
+  const dailyBrief = dailyBriefForShell(dashboard.daily_brief, shell?.daily_brief, shell?.pool_meta)
+  const dailyBriefBullets = Array.isArray(dailyBrief.bullets) ? dailyBrief.bullets : []
+  const decisionRows = (Array.isArray(shell?.decision_queue) && shell.decision_queue.length > 0
+    ? shell.decision_queue
+    : dashboard.decision_queue) as Array<Record<string, unknown>>
+  const shellStrategyKpis = normalizeMetricRows(shell?.strategy_kpis, 'kpi_id', 'value')
+  const dashboardStrategyKpis = normalizeMetricRows(dashboard.strategy_kpis, 'kpi_id', 'value')
+  const strategyKpis = shellStrategyKpis.length > 0 ? shellStrategyKpis : dashboardStrategyKpis
+  const shellSourceConfidence = normalizeMetricRows(shell?.source_confidence, 'source_id', 'confidence')
+  const dashboardSourceConfidence = normalizeMetricRows(dashboard.source_confidence, 'source_id', 'confidence')
+  const sourceConfidence = shellSourceConfidence.length > 0 ? shellSourceConfidence : dashboardSourceConfidence
+  const laneRows = useMemo(() => syncLaneRows(shell?.sync_lanes), [shell?.sync_lanes])
+  const dataIssueRows = useMemo(
+    () =>
+      [...laneRows, ...sourceConfidence].filter(row => {
+        const status = compactText(row.status).toLowerCase()
+        const freshness = compactText(row.freshness).toLowerCase()
+        const confidence = numberValue(row.confidence ?? row.score)
+        return (
+          ['stale', 'unavailable', 'degraded', 'error', 'failed', 'missing'].some(token =>
+            status.includes(token) || freshness.includes(token),
+          ) ||
+          compactText(row.reason) ||
+          (confidence !== undefined && confidence < 0.8)
+        )
+      }),
+    [laneRows, sourceConfidence],
+  )
+  const shellBuyCandidates = Array.isArray(shell?.buy_candidates) ? shell.buy_candidates : []
+  const buyRows = shell
+    ? shellBuyCandidates
+    : dashboard.buy_candidates as Array<Record<string, unknown>>
+  const targetCandidateRows = Array.isArray(symbolData?.candidate_stocks) ? symbolData.candidate_stocks : []
+  const referenceCandidateSignalRows = useMemo(
+    () => targetCandidateRows
+      .filter(row => timeframeSignalBadges(row).length > 0 || (Array.isArray(row.reference_signals) && row.reference_signals.length > 0))
+      .slice(0, 5),
+    [targetCandidateRows],
+  )
+  const targetCandidateGroups = useMemo(() => candidateGroupsFromSymbolData(symbolData), [symbolData])
+  const sellRows = dashboard.sell_warnings as Array<Record<string, unknown>>
+  const indexTargets = shell?.indices ?? []
+  const clusterRows = rowsFromCluster(shell?.cluster_summary)
+  const shellWatchlist = Array.isArray(shell?.watchlist) ? shell.watchlist : []
+  const watchlistRangeColumns = useMemo(() => watchlistRangeColumnsFromShell(shell), [shell])
+  const selectedRangeColumn = useMemo(() => {
+    const preferredKey = selectedRangeKey || watchlistRangeColumns[0]?.key || ''
+    return watchlistRangeColumns.find(column => column.key === preferredKey) ?? watchlistRangeColumns[0]
+  }, [selectedRangeKey, watchlistRangeColumns])
+  const visibleRangeColumns = useMemo(
+    () => (selectedRangeColumn ? [selectedRangeColumn] : []),
+    [selectedRangeColumn],
+  )
+  const groupedWatchlistRows = useMemo(() => {
+    const groups = shell?.watchlist_groups ?? {}
+    const macroRows = Array.isArray(groups.macro_indices) && groups.macro_indices.length > 0
+      ? groups.macro_indices
+      : indexTargets
+    const macroRowGroup = (row: Record<string, unknown>) => compactText(recordValue(row).macro_group)
+    const macroRowKind = (row: Record<string, unknown>) => compactText(recordValue(row).target_kind) || kindForTarget(recordValue(row), 'index')
+    const majorRows = Array.isArray(groups.major_indices)
+      ? groups.major_indices
+      : macroRows.filter(row => {
+        const group = macroRowGroup(row)
+        return group === 'major_indices' || (!group && macroRowKind(row) !== 'stock')
+      })
+    const industryEtfRows = Array.isArray(groups.industry_etfs)
+      ? groups.industry_etfs
+      : macroRows.filter(row => {
+        const group = macroRowGroup(row)
+        return group === 'industry_etfs' || (!group && macroRowKind(row) === 'stock')
+      })
+    const allEtfRows = Array.isArray(groups.all_etfs) ? groups.all_etfs : []
+    const sectorRows = Array.isArray(groups.sector_boards) && groups.sector_boards.length > 0
+      ? groups.sector_boards
+      : clusterRows
+    const candidateRows = Array.isArray(groups.buy_candidates) ? groups.buy_candidates : []
+    const focusRows = Array.isArray(groups.focus_stocks) ? groups.focus_stocks : []
+    const riskRows = Array.isArray(groups.risk_stocks) ? groups.risk_stocks : []
+    const watchRows = Array.isArray(groups.watch_stocks) ? groups.watch_stocks : []
+    const legacyRows = buildWatchlistRows({
+      watchlist: shellWatchlist,
+      indices: indexTargets,
+      buyRows,
+      sellRows,
+      decisionRows,
+      clusterRows,
+      rangeColumns: visibleRangeColumns,
+    })
+    return {
+      major_indices: buildRowsForGroup(majorRows, 'index', visibleRangeColumns, 'major_indices'),
+      industry_etfs: buildRowsForGroup(industryEtfRows, 'stock', visibleRangeColumns, 'industry_etfs'),
+      all_etfs: buildRowsForGroup(allEtfRows, 'stock', visibleRangeColumns, 'all_etfs'),
+      macro_indices: buildRowsForGroup(macroRows, 'index', visibleRangeColumns, 'macro_indices'),
+      sector_boards: buildRowsForGroup(sectorRows, 'industry', visibleRangeColumns, 'sector_boards'),
+      buy_candidates: buildRowsForGroup(candidateRows, 'stock', visibleRangeColumns, 'buy_candidates'),
+      focus_stocks: buildRowsForGroup(focusRows, 'stock', visibleRangeColumns, 'focus_stocks'),
+      risk_stocks: buildRowsForGroup(riskRows, 'stock', visibleRangeColumns, 'risk_stocks'),
+      watch_stocks: buildRowsForGroup(watchRows, 'stock', visibleRangeColumns, 'watch_stocks'),
+      legacy: legacyRows,
+    }
+  }, [buyRows, clusterRows, decisionRows, indexTargets, sellRows, shell?.watchlist_groups, shellWatchlist, visibleRangeColumns])
+  const visibleGroupedWatchlistRows = useMemo(() => {
+    if (optimisticDeletedManualClueKeys.size === 0) return groupedWatchlistRows
+    return {
+      major_indices: groupedWatchlistRows.major_indices,
+      industry_etfs: groupedWatchlistRows.industry_etfs,
+      all_etfs: groupedWatchlistRows.all_etfs,
+      macro_indices: groupedWatchlistRows.macro_indices,
+      sector_boards: groupedWatchlistRows.sector_boards,
+      buy_candidates: groupedWatchlistRows.buy_candidates.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      focus_stocks: groupedWatchlistRows.focus_stocks.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      risk_stocks: groupedWatchlistRows.risk_stocks.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      watch_stocks: groupedWatchlistRows.watch_stocks.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+      legacy: groupedWatchlistRows.legacy.filter(row => !manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys)),
+    }
+  }, [groupedWatchlistRows, optimisticDeletedManualClueKeys])
+  const allStockWatchlistRows = useMemo(
+    () => [
+      ...visibleGroupedWatchlistRows.buy_candidates,
+      ...visibleGroupedWatchlistRows.watch_stocks,
+      ...visibleGroupedWatchlistRows.focus_stocks,
+    ],
+    [visibleGroupedWatchlistRows],
+  )
+  const aiCandidateInputs = useMemo(
+    () => allStockWatchlistRows.slice(0, 32).map((row, index) => aiCandidateInput(row, index)),
+    [allStockWatchlistRows],
+  )
+  const aiCandidateHash = useMemo(() => compactHash(aiCandidateInputs), [aiCandidateInputs])
+  const aiFocusRows = useMemo(
+    () => aiFocusRowsFromRanking(allStockWatchlistRows, aiRanking),
+    [aiRanking, allStockWatchlistRows],
+  )
+  const displayWatchlistGroups = useMemo(
+    () => ({
+      ...visibleGroupedWatchlistRows,
+      ai_focus: aiFocusRows,
+    }),
+    [aiFocusRows, visibleGroupedWatchlistRows],
+  )
+
+  useEffect(() => {
+    if (optimisticDeletedManualClueKeys.size === 0) return
+    const stillPresent = [
+      ...groupedWatchlistRows.buy_candidates,
+      ...groupedWatchlistRows.focus_stocks,
+      ...groupedWatchlistRows.risk_stocks,
+      ...groupedWatchlistRows.watch_stocks,
+      ...groupedWatchlistRows.legacy,
+    ].some(row => manualClueMatchesDeleteKeys(row, optimisticDeletedManualClueKeys))
+    if (!stillPresent) {
+      setOptimisticDeletedManualClueKeys(new Set())
+    }
+  }, [groupedWatchlistRows, optimisticDeletedManualClueKeys])
+
+  const activeWatchlistBaseRows = displayWatchlistGroups[activeWatchlistTab]
+  const activeWatchlistRows = useMemo(
+    () => stockRowsForTradeRole(activeWatchlistBaseRows, activeWatchlistTab, activeTradeRole, suppressClimax),
+    [activeTradeRole, activeWatchlistBaseRows, activeWatchlistTab, suppressClimax],
+  )
+  const tradeRoleCounts = useMemo(
+    () => tradeRoleCountsForGroups(visibleGroupedWatchlistRows),
+    [visibleGroupedWatchlistRows],
+  )
+  const activateTradeRole = useCallback(
+    (role: TradeRoleKey) => {
+      watchlistTabChosenRef.current = true
+      setActiveTradeRole(role)
+      if (role !== 'all') {
+        selectWatchlistTab(preferredWatchlistTabForTradeRole(role, activeWatchlistTab, visibleGroupedWatchlistRows))
+      }
+      setListCursorIndex(0)
+    },
+    [activeWatchlistTab, selectWatchlistTab, visibleGroupedWatchlistRows],
+  )
+  const cursorRow = activeWatchlistRows[Math.min(Math.max(listCursorIndex, 0), Math.max(0, activeWatchlistRows.length - 1))]
+  const activeDecisionRow = useMemo(
+    () => activeDecisionRowFromGroups(displayWatchlistGroups, target, cursorRow),
+    [cursorRow, displayWatchlistGroups, target],
+  )
+  const activeAiReview = useMemo(
+    () => aiReviewForRow(activeDecisionRow, aiReviewsByKey),
+    [activeDecisionRow, aiReviewsByKey],
+  )
+  const focusGroupMeta = recordValue(recordValue(shell?.watchlist_groups_meta).focus_stocks)
+  const activeWatchlistEmptyText = watchlistGroupIsLoading(recordValue(shell?.watchlist_groups_meta), activeWatchlistTab)
+    ? (locale === 'zh-CN' ? '正在读取本地数据，正式名单已可查看。' : 'Reading local data; the published list is already available.')
+    : activeWatchlistTab === 'focus_stocks'
+    ? (traderFacingEmptyReason(focusGroupMeta.empty_reason, locale)
+      ? `${locale === 'zh-CN' ? '买点池为空' : 'Entry pool empty'}: ${traderFacingEmptyReason(focusGroupMeta.empty_reason, locale)}`
+      : (locale === 'zh-CN' ? '买点池为空，先看盯盘池。' : 'Entry pool empty. Check the watch pool.'))
+    : activeWatchlistTab === 'risk_stocks'
+      ? (locale === 'zh-CN' ? '暂无暂不参与标的。' : 'No skip-now names.')
+    : activeWatchlistTab === 'all_etfs'
+      ? (locale === 'zh-CN' ? '全量ETF分析还未返回，等待行情刷新。' : 'All-ETF analysis is not available yet; waiting for the Signals strategy snapshot.')
+    : activeWatchlistTab === 'watch_stocks'
+        ? (locale === 'zh-CN' ? '暂无盯盘标的。' : 'No watch-pool names.')
+    : activeWatchlistTab === 'buy_candidates'
+      ? (traderFacingEmptyReason(recordValue(recordValue(shell?.watchlist_groups_meta).buy_candidates).empty_reason, locale)
+        || (locale === 'zh-CN' ? '暂无线索。' : 'No clues.'))
+      : (locale === 'zh-CN' ? '暂无可用盘面依据，等待机会池刷新。' : 'No evidence yet; waiting for opportunity pools.')
+  const visibleWatchlistEmptyText = activeWatchlistRows.length === 0 && activeWatchlistBaseRows.length > 0
+    ? (locale === 'zh-CN'
+        ? `当前交易角色「${tradeRoleLabel(activeTradeRole, locale)}」下没有标的。`
+        : `No names for ${tradeRoleLabel(activeTradeRole, locale)}.`)
+    : activeWatchlistEmptyText
+  const latestSignal = symbolData
+    ? compactText(symbolData.summary?.latest_signal)
+    : compactText(dashboard.chart_context?.latest_signal ?? '')
+  const summaryTitle =
+    compactText(symbolData?.summary?.title) ||
+    compactText(symbolData?.target?.label) ||
+    target.label
+  const summarySubtitle =
+    compactText(symbolData?.summary?.subtitle) ||
+    compactText(symbolData?.target?.symbol) ||
+    compactText(symbolData?.target?.kind, target.kind)
+  const otherCustomSignalFreqOptions = useMemo(
+    () => availableCustomSignalFreqOptions.filter(item => item.value && item.value !== normalizeSignalFreq(currentFreq)),
+    [availableCustomSignalFreqOptions, currentFreq],
+  )
+  const layoutMode = terminalLayoutMode(viewportWidth)
+  const compactTopDiagnostics = layoutMode !== 'cinema' || viewportHeight <= 900
+  const showTopDiagnosticsDetail = !compactTopDiagnostics || topDiagnosticsExpanded
+  const chartLineage = useMemo(() => chartLineageLabel(symbolData, locale), [locale, symbolData])
+  const chartFormula = useMemo(() => chartFormulaLabel(symbolData, locale), [locale, symbolData])
+  const chartMeta = recordValue(symbolData?.chart?.meta)
+  const displayVolumeInWanHands = chartMeta.is_price_kline !== false
+  const chartDisplayData = useMemo(
+    () => toWanHandChartData(klineData, displayVolumeInWanHands),
+    [displayVolumeInWanHands, klineData],
+  )
+  const activeChartMode = chartModeFromTarget(target, symbolData)
+  const targetKindForMa = activeTargetKind
+  const symbolChainContext = useMemo(() => chainContextFromSymbolSummary(symbolData), [symbolData])
+  const chainContext = selectedChainContext ?? symbolChainContext
+  const primaryValueLabel = chartMeta.is_price_kline === false
+    ? (locale === 'zh-CN' ? '热度收盘' : 'Heat close')
+    : (locale === 'zh-CN' ? '最新价' : 'Last')
+  const summaryVolume = firstNumberValue(
+    symbolData?.summary?.day_volume,
+    symbolData?.summary?.daily_volume,
+    symbolData?.summary?.latest_daily_volume,
+  )
+  const summaryAmount = firstNumberValue(
+    symbolData?.summary?.day_amount,
+    symbolData?.summary?.daily_amount,
+    symbolData?.summary?.latest_daily_amount,
+  )
+  const latestVolumeLabel = formatAStockVolume(summaryVolume ?? latestVolume(klineData))
+  const latestAmountLabel = formatTurnoverAmount(summaryAmount ?? latestAmount(klineData))
+  const volumeLabel = summaryVolume !== undefined
+    ? (locale === 'zh-CN' ? '当日成交量' : 'Daily volume')
+    : (locale === 'zh-CN' ? '成交量' : 'Volume')
+  const amountLabel = summaryAmount !== undefined
+    ? (locale === 'zh-CN' ? '当日成交额' : 'Daily amount')
+    : (locale === 'zh-CN' ? '成交额' : 'Amount')
+  const latestTradingValueLine =
+    latestVolumeLabel !== 'N/A' || latestAmountLabel !== 'N/A'
+      ? [
+          latestVolumeLabel !== 'N/A' ? `${volumeLabel} ${latestVolumeLabel}` : '',
+          latestAmountLabel !== 'N/A' ? `${amountLabel} ${latestAmountLabel}` : '',
+        ].filter(Boolean).join(' · ')
+      : ''
+  const updatedTimeLabel =
+    compactText(shell?.session?.data_as_of) ||
+    (lastUpdated ? readableTime(lastUpdated, locale, chartTimezone) : '')
+  const activeMaPeriods = useMemo(() => maPeriodsForChart(currentFreq, targetKindForMa), [currentFreq, targetKindForMa])
+  const divergences = useMemo(() => macdDivergences(klineData, currentFreq), [currentFreq, klineData])
+  const chartKeyLevels = useMemo(
+    () => mergeKeyLevels(keyLevels, derivedMaKeyLevels(klineData, currentFreq, targetKindForMa)),
+    [currentFreq, keyLevels, klineData, targetKindForMa],
+  )
+  const requestedFreq = symbolData?.target?.requested_freq
+  const effectiveFreq = symbolData?.target?.effective_freq
+  const freqFallbackNotice =
+    requestedFreq && effectiveFreq && requestedFreq !== effectiveFreq
+      ? (locale === 'zh-CN'
+          ? `${requestedFreq} 暂不可用，已使用 ${effectiveFreq}。`
+          : `${requestedFreq} is unavailable; using ${effectiveFreq}.`)
+      : null
+  const chartCacheNotice = useMemo(
+    () => chartCacheNotReadyMessage(symbolData, locale),
+    [locale, symbolData],
+  )
+  const chartLoadStatus = compactText(chartMeta.load_status)
+  const chartLoadRetrySeconds = numberValue(chartMeta.load_retry_after_seconds) ?? numberValue(chartMeta.load_eta_seconds)
+  const timeframeSnapshotRows = useMemo(
+    () => TIMEFRAME_SNAPSHOT_OPTIONS.map(option => {
+      const key = normalizeSignalFreq(option.value) || option.value
+      return timeframeSnapshots[key] ?? loadingTimeframeSnapshot(option.value, locale)
+    }),
+    [locale, timeframeSnapshots],
+  )
+  const visibleBoardPrefetchTargets = useMemo(
+    () => activeWatchlistTab === 'sector_boards'
+      ? uniqueChartTargets(
+          activeWatchlistRows
+            .slice(0, 4)
+            .flatMap(row => sectorTargetRowsForContext(row.raw))
+            .map(row => candidateTargetFromRow(row))
+            .filter((item): item is ChartTarget => Boolean(item)),
+        ).slice(0, RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT)
+      : [],
+    [activeWatchlistRows, activeWatchlistTab],
+  )
+  const rightPanelPrefetchTargets = useMemo(
+    () => uniqueChartTargets([
+      ...sectorTargetRowsForContext(chainContext)
+        .map(row => candidateTargetFromRow(row))
+        .filter((item): item is ChartTarget => Boolean(item)),
+      ...visibleBoardPrefetchTargets,
+    ]).slice(0, RIGHT_PANEL_SYMBOL_PREFETCH_LIMIT),
+    [chainContext, visibleBoardPrefetchTargets],
+  )
+  const rightPanelPrefetchKey = useMemo(
+    () => rightPanelPrefetchTargets.map(symbolDataCacheKey).join(','),
+    [rightPanelPrefetchTargets],
+  )
+
+  const rememberSymbolData = useCallback((requestTarget: ChartTarget, nextSymbolData: WorkbenchSymbolData, cachedAt = Date.now()) => {
+    const cache = symbolDataCacheRef.current
+    const entry: SymbolDataCacheEntry = { data: nextSymbolData, cachedAt }
+    cache.set(symbolDataCacheKey(requestTarget), entry)
+    const effectiveTarget = effectiveChartTarget(nextSymbolData.target, requestTarget)
+    if (effectiveTarget) cache.set(symbolDataCacheKey(effectiveTarget), entry)
+    while (cache.size > 80) {
+      const oldestKey = cache.keys().next().value
+      if (!oldestKey) break
+      cache.delete(oldestKey)
+    }
+  }, [])
+
+  const applySymbolData = useCallback((
+    nextSymbolData: WorkbenchSymbolData,
+    requestTarget: ChartTarget,
+    options: { silent?: boolean; cachedAt?: number } = {},
+  ) => {
+    lastChartUpdateSilentRef.current = Boolean(options.silent)
+    setSymbolData(nextSymbolData)
+    setBooting(false)
+    setBootAttempt(0)
+    setLastUpdated(new Date(options.cachedAt ?? Date.now()))
+    const effectiveTarget = nextSymbolData.target
+    if (effectiveTarget) {
+      const requested = compactText(effectiveTarget.requested_freq, requestTarget.freq)
+      const effective = compactText(effectiveTarget.effective_freq, requestTarget.freq)
+      if (requested && effective && requested !== effective) {
+        recordObservationEvent('strategy.freq.fallback', {
+          requested_freq: requested,
+          effective_freq: effective,
+          target: requestTarget.label,
+          kind: requestTarget.kind,
+          silent: Boolean(options.silent),
+          level: 'warning',
+        })
+      }
+      const nextEffectiveTarget = effectiveChartTarget(effectiveTarget, requestTarget)
+      if (nextEffectiveTarget) {
+        setTarget(previous => (
+          nextEffectiveTarget.label === previous.label
+            && nextEffectiveTarget.kind === previous.kind
+            && nextEffectiveTarget.freq === previous.freq
+            ? previous
+            : nextEffectiveTarget
+        ))
+      }
+    }
+  }, [])
+
+  const prefetchSymbolData = useCallback(async (
+    nextTarget: ChartTarget,
+    options: { signal?: AbortSignal; reason?: string } = {},
+  ) => {
+    if (!baseUrl) return
+    const cacheKey = symbolDataCacheKey(nextTarget)
+    const cached = symbolDataCacheRef.current.get(cacheKey)
+    const now = Date.now()
+    if (cached && now - cached.cachedAt <= SYMBOL_DATA_CACHE_TTL_MS) return
+    if (prefetchSymbolKeysRef.current.has(cacheKey)) return
+    prefetchSymbolKeysRef.current.add(cacheKey)
+    try {
+      const nextSymbolData = await fetchJson<WorkbenchSymbolData>(
+        baseUrl,
+        `/api/workbench/symbol/${encodeURIComponent(nextTarget.label)}?${new URLSearchParams({
+          kind: nextTarget.kind || 'auto',
+          freq: nextTarget.freq || DEFAULT_TERMINAL_FREQ,
+        }).toString()}`,
+        options.signal,
+        'strategy.symbol-prefetch',
+        options.reason ?? 'right-panel-prefetch',
+        { timeoutMs: RIGHT_PANEL_SYMBOL_PREFETCH_TIMEOUT_MS },
+      )
+      rememberSymbolData(nextTarget, nextSymbolData)
+    } catch {
+      if (options.signal?.aborted) return
+    } finally {
+      prefetchSymbolKeysRef.current.delete(cacheKey)
+    }
+  }, [baseUrl, rememberSymbolData])
+
+  useEffect(() => {
+    if (!baseUrl || rightPanelPrefetchTargets.length === 0 || loading || booting || !symbolData) return
+    const controller = new AbortController()
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const nextTarget of rightPanelPrefetchTargets) {
+          if (cancelled || controller.signal.aborted) return
+          await prefetchSymbolData(nextTarget, { signal: controller.signal, reason: 'visible-right-panel' })
+          await new Promise(resolve => window.setTimeout(resolve, 80))
+        }
+      })()
+    }, RIGHT_PANEL_SYMBOL_PREFETCH_DELAY_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [baseUrl, booting, loading, prefetchSymbolData, rightPanelPrefetchKey, rightPanelPrefetchTargets, symbolData])
+
+  const loadShell = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!baseUrl) return null
+      if (shellRefreshInFlightRef.current) return null
+      shellRefreshInFlightRef.current = true
+      try {
+        const nextShell = await fetchJson<WorkbenchShell>(
+          baseUrl,
+          '/api/workbench/shell',
+          signal,
+          'strategy.shell',
+          undefined,
+          { timeoutMs: SHELL_REQUEST_TIMEOUT_MS },
+        )
+        const seenSectorTransitionEventIds = seenSectorTransitionEventIdsRef.current
+        if (
+          shellLoadedRef.current
+          && sectorTransitionHasNewUnreadEvents(seenSectorTransitionEventIds, nextShell)
+        ) {
+          setPendingListUpdate(true)
+        }
+        const nextRadar = sectorTransitionRadarFromShell(nextShell)
+        for (const eventId of nextRadar?.unreadEventIds ?? []) {
+          seenSectorTransitionEventIds.add(eventId)
+        }
+        if (!coreWatchlistSelectedRef.current && nextShell.cache?.status === 'local_core_ready') {
+          coreWatchlistSelectedRef.current = true
+          setActiveWatchlistTab(previous => initialCoreWatchlistTab(nextShell, previous, watchlistTabChosenRef.current))
+        }
+        shellLoadedRef.current = true
+        setShell(nextShell)
+        if (isControlledReadModelReady(nextShell.session)) {
+          setBooting(false)
+          setBootAttempt(0)
+        }
+        return nextShell
+      } finally {
+        shellRefreshInFlightRef.current = false
+      }
+    },
+    [baseUrl],
+  )
+
+  const loadCacheStatus = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!baseUrl) return null
+      const nextStatus = await fetchJson<StrategyDashboard['cache_status']>(
+        baseUrl,
+        '/api/pack/cache-status',
+        signal,
+        'strategy.cache-status',
+        undefined,
+        { timeoutMs: 12_000 },
+      )
+      const normalized = normalizeCacheStatus(nextStatus)
+      setCacheStatusOverride(normalized)
+      return normalized
+    },
+    [baseUrl],
+  )
+
+  const loadSymbol = useCallback(
+    async (nextTarget: ChartTarget, options: { signal?: AbortSignal; silent?: boolean } = {}) => {
+      if (!baseUrl) return
+      if (options.silent && (silentSymbolRefreshInFlightRef.current || manualSymbolLoadingRef.current)) return
+      if (options.silent) silentSymbolRefreshInFlightRef.current = true
+      const requestId = activeRequestRef.current + 1
+      activeRequestRef.current = requestId
+      if (!options.silent) {
+        manualSymbolLoadingRef.current = true
+        setLoading(true)
+      }
+      setError(null)
+      const cacheKey = symbolDataCacheKey(nextTarget)
+      const cached = symbolDataCacheRef.current.get(cacheKey)
+      const cacheAgeMs = cached ? Date.now() - cached.cachedAt : Number.POSITIVE_INFINITY
+      const hasFreshCache = Boolean(cached && cacheAgeMs <= SYMBOL_DATA_CACHE_TTL_MS)
+      if (!options.silent && cached && hasFreshCache) {
+        applySymbolData(cached.data, nextTarget, { cachedAt: cached.cachedAt })
+        manualSymbolLoadingRef.current = false
+        setLoading(false)
+        recordObservationEvent('strategy.symbol.cache-hit', {
+          target: nextTarget.label,
+          kind: nextTarget.kind,
+          freq: nextTarget.freq,
+          age_ms: Math.round(cacheAgeMs),
+        })
+        return
+      }
+      try {
+        const nextSymbolData = await fetchJson<WorkbenchSymbolData>(
+          baseUrl,
+          `/api/workbench/symbol/${encodeURIComponent(nextTarget.label)}?${new URLSearchParams({
+            kind: nextTarget.kind || 'auto',
+            freq: nextTarget.freq || DEFAULT_TERMINAL_FREQ,
+          }).toString()}`,
+          options.signal,
+          'strategy.symbol',
+          options.silent ? 'background-refresh' : 'load-symbol',
+        )
+        if (requestId !== activeRequestRef.current) return
+        rememberSymbolData(nextTarget, nextSymbolData)
+        applySymbolData(nextSymbolData, nextTarget, { silent: options.silent })
+      } catch (rawError) {
+        if (options.signal?.aborted) return
+        if (cached && hasFreshCache) return
+        const apiError = rawError as ApiError
+        if (apiError.status === 503) {
+          const session = recordValue(apiError.payload?.session) as WorkbenchSession
+          setShell(previous => ({ ...(previous ?? {}), session }))
+          setBooting(true)
+          setBootAttempt(previous => previous + 1)
+          setError(apiError.message)
+          return
+        }
+        setBooting(false)
+        setError(apiError.message || (locale === 'zh-CN' ? '图表数据加载失败。' : 'Failed to load Signals chart data.'))
+      } finally {
+        if (options.silent) silentSymbolRefreshInFlightRef.current = false
+        if (!options.silent && requestId === activeRequestRef.current) manualSymbolLoadingRef.current = false
+        if (requestId === activeRequestRef.current) setLoading(false)
+      }
+    },
+    [applySymbolData, baseUrl, locale, rememberSymbolData],
+  )
+
+  useEffect(() => { snapshotSeedRef.current = symbolData }, [symbolData])
+
+  useEffect(() => {
+    if (!baseUrl || !timeframeSnapshotSymbol) {
+      timeframeSnapshotKeyRef.current = ''
+      setTimeframeSnapshots({})
+      return
+    }
+    if (loading || booting) return
+    const requestKey = timeframeSnapshotSymbol.trim().toUpperCase()
+    timeframeSnapshotKeyRef.current = requestKey
+    const controller = new AbortController()
+    const currentSnapshotFreq = normalizeSignalFreq(currentFreq) || DEFAULT_TERMINAL_FREQ
+    const seed = snapshotSeedRef.current
+    setTimeframeSnapshots(Object.fromEntries(
+      TIMEFRAME_SNAPSHOT_OPTIONS.map(option => {
+        const key = normalizeSignalFreq(option.value) || option.value
+        const cached = symbolDataCacheRef.current.get(symbolDataCacheKey({ label: timeframeSnapshotSymbol, kind: 'stock', freq: key }))?.data
+        return [
+          key,
+          key === currentSnapshotFreq && seed
+            ? marketSnapshotFromSymbolData(seed, key, locale)
+            : cached ? marketSnapshotFromSymbolData(cached, key, locale) : loadingTimeframeSnapshot(option.value, locale),
+        ]
+      }),
+    ))
+
+    const pendingFreqs = TIMEFRAME_SNAPSHOT_OPTIONS
+      .map(option => normalizeSignalFreq(option.value) || option.value)
+      .filter(freq => freq !== currentSnapshotFreq)
+      .sort((a, b) => (['daily', 'weekly'].includes(a) ? 0 : 1) - (['daily', 'weekly'].includes(b) ? 0 : 1))
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        for (const freq of pendingFreqs) {
+          if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+          try {
+            const nextData = await fetchJson<WorkbenchSymbolData>(
+              baseUrl,
+              `/api/workbench/symbol/${encodeURIComponent(timeframeSnapshotSymbol)}?${new URLSearchParams({
+                kind: 'stock',
+                freq,
+              }).toString()}`,
+              controller.signal,
+              'strategy.timeframe-market',
+              'load-snapshot',
+              { timeoutMs: SYMBOL_REQUEST_TIMEOUT_MS },
+            )
+            if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+            rememberSymbolData({ label: timeframeSnapshotSymbol, kind: 'stock', freq }, nextData)
+            setTimeframeSnapshots(previous => ({
+              ...previous,
+              [freq]: marketSnapshotFromSymbolData(nextData, freq, locale),
+            }))
+          } catch (rawError) {
+            if (controller.signal.aborted || timeframeSnapshotKeyRef.current !== requestKey) return
+            const apiError = rawError as ApiError
+            setTimeframeSnapshots(previous => ({
+              ...previous,
+              [freq]: errorTimeframeSnapshot(freq, apiError.message, locale),
+            }))
+          }
+          await new Promise(resolve => window.setTimeout(resolve, 120))
+        }
+      })()
+    }, TIMEFRAME_SNAPSHOT_DELAY_MS)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [baseUrl, booting, currentFreq, loading, locale, rememberSymbolData, timeframeSnapshotSymbol])
+
+  useEffect(() => {
+    if (!symbolData || !timeframeSnapshotSymbol) return
+    const freq = normalizeSignalFreq(currentFreq) || currentFreq
+    setTimeframeSnapshots(previous => {
+      if (Object.keys(previous).length === 0) return previous
+      return {
+        ...previous,
+        [freq]: marketSnapshotFromSymbolData(symbolData, freq, locale),
+      }
+    })
+  }, [currentFreq, locale, symbolData, timeframeSnapshotSymbol])
+
+  useEffect(() => {
+    dashboardRef.current = dashboard
+  }, [dashboard])
+
+  useEffect(() => {
+    const onResize = () => {
+      setViewportWidth(window.innerWidth)
+      setViewportHeight(window.innerHeight)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  useEffect(() => {
+    if (layoutMode === 'focus' && !autoCollapsedForFocusRef.current) {
+      autoCollapsedForFocusRef.current = true
+      setRightCollapsed(true)
+      return
+    }
+    if (layoutMode !== 'focus') {
+      autoCollapsedForFocusRef.current = false
+    }
+  }, [layoutMode])
+
+  useEffect(() => {
+    if (compactTopDiagnostics) setTopDiagnosticsExpanded(false)
+  }, [compactTopDiagnostics])
+
+  useEffect(() => {
+    setSearchDraft(target.label)
+  }, [target.label])
+
+  useEffect(() => {
+    if (watchlistRangeColumns.length === 0) return
+    if (!selectedRangeKey || !watchlistRangeColumns.some(column => column.key === selectedRangeKey)) {
+      const ytd = watchlistRangeColumns.find(column => column.key === 'ytd')
+      setSelectedRangeKey((ytd ?? watchlistRangeColumns[0]).key)
+    }
+  }, [selectedRangeKey, watchlistRangeColumns])
+
+  useEffect(() => {
+    setListCursorIndex(previous => Math.min(Math.max(previous, 0), Math.max(0, activeWatchlistRows.length - 1)))
+  }, [activeWatchlistRows.length])
+
+  useEffect(() => {
+    if (!baseUrl) return
+    const controller = new AbortController()
+    setShell(null)
+    setCacheStatusOverride(null)
+    setSymbolData(null)
+    setError(null)
+    setBooting(false)
+    setLoading(true)
+    void (async () => {
+      const fallbackTarget = initialTargetFrom(null, dashboardRef.current)
+      recordObservationEvent('strategy.init-target', {
+        target: fallbackTarget,
+        reason: 'fast-static-initial-target',
+      })
+      setTarget(fallbackTarget)
+      setSearchDraft(fallbackTarget.label)
+      void loadCacheStatus(controller.signal).catch(() => undefined)
+      void loadShell(controller.signal).catch(() => undefined)
+      const symbolOutcome = await Promise.allSettled([loadSymbol(fallbackTarget, { signal: controller.signal })])
+      if (controller.signal.aborted) return
+      const symbolResult = symbolOutcome[0]
+      if (symbolResult?.status === 'rejected') {
+        const apiError = symbolResult.reason as ApiError
+        setError(apiError.message || (locale === 'zh-CN' ? '交易台初始化失败。' : 'Failed to initialize Signals terminal.'))
+      }
+      setLoading(false)
+    })()
+    return () => controller.abort()
+  }, [baseUrl, loadCacheStatus, loadShell, loadSymbol, locale])
+
+  useEffect(() => {
+    if (!baseUrl) return
+    const controllers = new Set<AbortController>()
+    const shellRefreshMs = shellNeedsWarmRefresh(shell) ? 10_000 : (liveRefresh ? 60_000 : 120_000)
+    const refreshShell = () => {
+      const controller = new AbortController()
+      controllers.add(controller)
+      void loadShell(controller.signal).catch(() => undefined)
+        .finally(() => {
+          controllers.delete(controller)
+        })
+    }
+    const shellTimer = window.setInterval(refreshShell, shellRefreshMs)
+    return () => {
+      window.clearInterval(shellTimer)
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
+    }
+  }, [baseUrl, liveRefresh, loadShell, shell])
+
+  useEffect(() => {
+    if (!baseUrl) return
+    const controllers = new Set<AbortController>()
+    const refreshMs = Math.max(10_000, Math.min(cacheRefreshSeconds(effectiveCacheStatus) * 1000, 60_000))
+    const refreshCacheStatus = () => {
+      const controller = new AbortController()
+      controllers.add(controller)
+      void loadCacheStatus(controller.signal).catch(() => undefined)
+        .finally(() => {
+          controllers.delete(controller)
+        })
+    }
+    const timer = window.setInterval(refreshCacheStatus, refreshMs)
+    return () => {
+      window.clearInterval(timer)
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
+    }
+  }, [baseUrl, effectiveCacheStatus, loadCacheStatus])
+
+  useEffect(() => {
+    if (!baseUrl || !target.label) return
+    const controllers = new Set<AbortController>()
+    const symbolRefreshMs = liveRefresh ? 15_000 : 60_000
+    const refreshSymbol = () => {
+      if (manualSymbolLoadingRef.current) return
+      const controller = new AbortController()
+      controllers.add(controller)
+      void loadSymbol(target, { signal: controller.signal, silent: true })
+        .finally(() => {
+          controllers.delete(controller)
+        })
+    }
+    const symbolTimer = window.setInterval(refreshSymbol, symbolRefreshMs)
+    return () => {
+      window.clearInterval(symbolTimer)
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
+    }
+  }, [baseUrl, liveRefresh, loadSymbol, target.label, target.kind, target.freq])
+
+  useEffect(() => {
+    if (!baseUrl || !booting || !target.label) return
+    const controller = new AbortController()
+    const delay = Math.min(8_000, 1_200 * Math.max(bootAttempt, 1))
+    const timer = window.setTimeout(() => {
+      void loadShell(controller.signal).catch(() => undefined)
+      void loadSymbol(target, { signal: controller.signal, silent: true })
+    }, delay)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [baseUrl, bootAttempt, booting, loadShell, loadSymbol, target])
+
+  useEffect(() => {
+    if (!baseUrl || !target.label) return
+    if (!['triggered', 'running', 'pending', 'ready', 'failed'].includes(chartLoadStatus)) return
+    const retrySeconds = Math.max(3, Math.min(30, Math.round(chartLoadRetrySeconds ?? 10)))
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      void loadSymbol(target, { signal: controller.signal, silent: true })
+    }, retrySeconds * 1000)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timer)
+    }
+  }, [baseUrl, chartLoadRetrySeconds, chartLoadStatus, loadSymbol, target])
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return
+    ensureSignalOverlay()
+    ensureVolumeSignalOverlay()
+    ensureDivergenceOverlay()
+    ensureTrendlineOverlay()
+    ensureVolumeIndicator()
+    ensureMacdZeroIndicator()
+    const chart = init(chartContainerRef.current, {
+      locale: locale === 'zh-CN' ? 'zh-CN' : 'en-US',
+      timezone: 'Asia/Shanghai',
+      styles: backgroundMode === 'light' ? 'light' : 'dark',
+    })
+    if (!chart) return
+    chartContainerRef.current.style.backgroundColor = chartColorTokens(backgroundMode).chartPanel
+    chart.setStyles(chartStyles(backgroundMode))
+    chartRef.current = chart
+    chart.setBarSpace(chartBarSpaceForMode(layoutMode))
+    chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
+    createChartIndicators(chart, target.freq, target.kind, backgroundMode)
+    resizeObserverRef.current = new ResizeObserver(() => {
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current)
+      }
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = null
+        chart.resize()
+      })
+    })
+    resizeObserverRef.current.observe(chartContainerRef.current)
+    return () => {
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current)
+        resizeFrameRef.current = null
+      }
+      resizeObserverRef.current?.disconnect()
+      resizeObserverRef.current = null
+      chartRef.current = null
+      dispose(chart)
+    }
+  }, [backgroundMode, baseUrl, locale])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    chart.setBarSpace(chartBarSpaceForMode(layoutMode))
+    chart.setOffsetRightDistance(chartRightOffsetForMode(layoutMode))
+    chart.resize()
+  }, [layoutMode])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    chart.setTimezone(chartTimezone)
+  }, [chartTimezone])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    applyMovingAverageIndicator(chart, currentFreq, targetKindForMa, backgroundMode)
+  }, [backgroundMode, currentFreq, targetKindForMa])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    chart.setStyles(chartStyles(backgroundMode))
+    chart.setLocale(locale === 'zh-CN' ? 'zh-CN' : 'en-US')
+  }, [backgroundMode, locale])
+
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    chart.removeOverlay({ groupId: SIGNAL_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: VOLUME_SIGNAL_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: LEVEL_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: DIVERGENCE_OVERLAY_GROUP })
+    chart.removeOverlay({ groupId: TRENDLINE_OVERLAY_GROUP })
+    if (chartDisplayData.length === 0) {
+      chart.clearData()
+      return
+    }
+    chart.applyNewData(chartDisplayData)
+    createSignalOverlays(chart, chartCallouts, selectedChartCallout?.calloutId, selectChartCallout, backgroundMode)
+    createVolumeSignalOverlays(chart, chartDisplayData, chartSignals, currentFreq, backgroundMode)
+    createLevelOverlays(chart, chartDisplayData, chartKeyLevels, backgroundMode)
+    createTrendlineOverlays(chart, chartTrendlines, backgroundMode, locale)
+    createDivergenceOverlays(chart, divergences, backgroundMode)
+    if (!lastChartUpdateSilentRef.current) {
+      chart.scrollToRealTime()
+    }
+    chart.resize()
+  }, [backgroundMode, chartCallouts, chartDisplayData, chartKeyLevels, chartSignals, chartTrendlines, currentFreq, divergences, locale, selectChartCallout, selectedChartCallout?.calloutId])
+
+  const selectTarget = useCallback(
+    (next: ChartTarget, source = 'strategy.target.select') => {
+      const targetChanged = compactText(next.label) !== compactText(target.label)
+        || compactText(next.kind) !== compactText(target.kind)
+      recordObservationEvent(source, {
+        previous: target,
+        next,
+      })
+      if (!['industry', 'concept'].includes(compactText(next.kind).toLowerCase())) {
+        setSelectedChainContext(null)
+      }
+      if (targetChanged) {
+        setSymbolData(null)
+        setSelectedChartCalloutId('')
+        setTimeframeSnapshots({})
+      }
+      manualSymbolAbortRef.current?.abort()
+      const controller = new AbortController()
+      manualSymbolAbortRef.current = controller
+      setTarget(next)
+      setSearchDraft(next.label)
+      void loadSymbol(next, { signal: controller.signal })
+    },
+    [loadSymbol, target],
+  )
+
+  const selectCandidateTarget = useCallback(
+    (row: Record<string, unknown>, source = 'strategy.chain-drawer.stock-click') => {
+      const nextTarget = candidateTargetFromRow(row)
+      if (!nextTarget) return
+      selectTarget(nextTarget, source)
+    },
+    [selectTarget],
+  )
+
+  const prefetchCandidateTarget = useCallback(
+    (row: Record<string, unknown>) => {
+      const nextTarget = candidateTargetFromRow(row)
+      if (nextTarget) void prefetchSymbolData(nextTarget, { reason: 'right-panel-hover' })
+    },
+    [prefetchSymbolData],
+  )
+
+  const activateWatchlistRow = useCallback(
+    (row: WatchlistRow, source = 'strategy.watchlist.click') => {
+      const rowIndex = activeWatchlistRows.findIndex(item => item.id === row.id)
+      if (rowIndex >= 0) setListCursorIndex(rowIndex)
+      if (activeWatchlistTab === 'sector_boards') {
+        const key = chainRowKey(row)
+        setSelectedChainContext(row.raw)
+        setExpandedChainKeys(previous => {
+          const next = new Set(previous)
+          const isActive = watchlistRowIsActive(row, target)
+          if (isActive && next.has(key)) {
+            next.delete(key)
+          } else {
+            next.add(key)
+          }
+          return next
+        })
+        if (watchlistRowIsActive(row, target) && expandedChainKeys.has(key)) return
+      }
+      selectTarget(
+        {
+          label: row.targetLabel || row.label,
+          kind: row.targetKind || row.kind,
+          freq: DEFAULT_TERMINAL_FREQ,
+        },
+        source,
+      )
+    },
+    [activeWatchlistRows, activeWatchlistTab, expandedChainKeys, selectTarget, target],
+  )
+
+  const addManualClueFromSearch = useCallback(
+    async (value: string, freq: string) => {
+      if (!baseUrl) return
+      try {
+        await fetchJson<Record<string, unknown>>(
+          baseUrl,
+          '/api/workbench/manual-clues',
+          undefined,
+          'strategy.manual-clue',
+          'add',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: value, freq }),
+          },
+        )
+        setOptimisticDeletedManualClueKeys(previous => previous.size > 0 ? new Set() : previous)
+        selectWatchlistTab('buy_candidates')
+        setActiveTradeRole('all')
+        void loadShell().catch(() => undefined)
+      } catch (rawError) {
+        const apiError = rawError as ApiError
+        setError(apiError.message || (locale === 'zh-CN' ? '临时线索加入失败。' : 'Failed to add temporary clue.'))
+      }
+    },
+    [baseUrl, loadShell, locale, selectWatchlistTab],
+  )
+
+  const deleteManualClue = useCallback(
+    async (row: WatchlistRow) => {
+      if (!baseUrl) return
+      const symbol = row.code || row.targetLabel || row.label
+      if (!symbol) return
+      const deleteKeys = manualClueDeleteKeys(row)
+      if (deleteKeys.length > 0) {
+        setOptimisticDeletedManualClueKeys(previous => {
+          const next = new Set(previous)
+          deleteKeys.forEach(key => next.add(key))
+          return next
+        })
+      }
+      try {
+        await fetchJson<Record<string, unknown>>(
+          baseUrl,
+          `/api/workbench/manual-clues/${encodeURIComponent(symbol)}?confirm=true`,
+          undefined,
+          'strategy.manual-clue',
+          'delete',
+          { method: 'DELETE' },
+        )
+      } catch (rawError) {
+        if (deleteKeys.length > 0) {
+          setOptimisticDeletedManualClueKeys(previous => {
+            const next = new Set(previous)
+            deleteKeys.forEach(key => next.delete(key))
+            return next
+          })
+        }
+        const apiError = rawError as ApiError
+        setError(apiError.message || (locale === 'zh-CN' ? '临时线索删除失败。' : 'Failed to remove temporary clue.'))
+      }
+    },
+    [baseUrl, locale],
+  )
+
+  const submitSearch = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const value = searchDraft.trim()
+      if (!value) return
+      const isIndex = indexTargets.some(row => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value)
+      const shouldAddManualClue = shouldAddManualClueForSearch(value, isIndex)
+      selectTarget(
+        { label: value, kind: isIndex ? 'index' : 'auto', freq: DEFAULT_TERMINAL_FREQ },
+        'strategy.search.submit',
+      )
+      if (shouldAddManualClue) {
+        void addManualClueFromSearch(value, DEFAULT_TERMINAL_FREQ)
+      }
+    },
+    [addManualClueFromSearch, indexTargets, searchDraft, selectTarget],
+  )
+
+  const refreshNow = useCallback(() => {
+    if (!target.label) return
+    recordObservationEvent('strategy.refresh.click', { target })
+    void (async () => {
+      await onRefreshSignals?.()
+      void loadCacheStatus().catch(() => undefined)
+      void loadShell().catch(() => undefined)
+      void loadSymbol(target)
+    })()
+  }, [loadCacheStatus, loadShell, loadSymbol, onRefreshSignals, target])
+
+  const runAiRanking = useCallback(async () => {
+    if (aiCandidateInputs.length === 0) {
+      setAiError(locale === 'zh-CN' ? '候选池为空，无法刷新因子观察。' : 'No candidates to rank.')
+      return
+    }
+    if (!window.strategyAI?.rankCandidates) {
+      setAiError(locale === 'zh-CN' ? '当前 agent 通道不可用。' : 'Agent channel is unavailable.')
+      setAiRankingStatus('failed')
+      return
+    }
+    setAiRankingStatus('running')
+    setAiError('')
+    try {
+      const response = await window.strategyAI.rankCandidates({
+        task: 'rank_candidates',
+        candidate_pool: aiCandidateInputs,
+        current_target: {
+          label: target.label,
+          kind: target.kind,
+          freq: currentFreq,
+          summary_title: summaryTitle,
+          summary_subtitle: summarySubtitle,
+        },
+        market_session: shell?.session ?? null,
+        source_confidence: sourceConfidence.slice(0, 8),
+        cache_status: effectiveCacheStatus,
+        guardrails: [
+          '只基于输入盘面依据判断',
+          '不能自动下单',
+          '盘面依据不足必须明说',
+        ],
+      })
+      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? '因子观察刷新失败。' : 'Factor watch refresh failed.'))
+      const ranking = normalizeAiRanking(response.output ?? {}, response.run)
+      setAiRanking(ranking)
+      setAiReviewsByKey(previous => {
+        const next = { ...previous }
+        ranking.selected.forEach(review => {
+          const match = allStockWatchlistRows.find(row => rowMatchesAiReview(row, review))
+          if (match) next[rowAiKey(match)] = review
+        })
+        return next
+      })
+      lastAiRankingHashRef.current = aiCandidateHash
+      setAiRankingStatus('success')
+      selectWatchlistTab('ai_focus')
+      setListCursorIndex(0)
+      recordObservationEvent('strategy.ai.rank.success', {
+        selected_count: ranking.selected.length,
+        candidate_count: aiCandidateInputs.length,
+        input_hash: aiCandidateHash,
+        run_id: response.run?.run_id,
+      })
+    } catch (rawError) {
+      const message = rawError instanceof Error ? rawError.message : String(rawError)
+      setAiError(message)
+      setAiRankingStatus('failed')
+      recordObservationEvent('strategy.ai.rank.failed', {
+        candidate_count: aiCandidateInputs.length,
+        input_hash: aiCandidateHash,
+        error: message,
+        level: 'error',
+      })
+    }
+  }, [
+    aiCandidateHash,
+    aiCandidateInputs,
+    allStockWatchlistRows,
+    currentFreq,
+    effectiveCacheStatus,
+    locale,
+    selectWatchlistTab,
+    shell?.session,
+    sourceConfidence,
+    summarySubtitle,
+    summaryTitle,
+    target,
+  ])
+
+  const runAiReview = useCallback(async (row: WatchlistRow | null) => {
+    if (!row) return
+    if (!window.strategyAI?.reviewCandidate) {
+      setAiError(locale === 'zh-CN' ? '当前 agent 通道不可用。' : 'Agent channel is unavailable.')
+      setAiReviewStatus('failed')
+      return
+    }
+    setAiReviewStatus('running')
+    setAiError('')
+    try {
+      const response = await window.strategyAI.reviewCandidate({
+        task: 'review_candidate',
+        candidate: aiCandidateInput(row, 0),
+        ai_ranking_summary: aiRanking?.summary ?? '',
+        current_target: {
+          label: target.label,
+          kind: target.kind,
+          freq: currentFreq,
+          summary_title: summaryTitle,
+          latest_signal: latestSignal,
+        },
+        chart_evidence: {
+          visible_signals: chartVisibleSignals.slice(0, 12),
+          key_levels: chartKeyLevels.slice(0, 8),
+          divergences: divergences.slice(0, 6),
+        },
+        source_confidence: sourceConfidence.slice(0, 8),
+        guardrails: [
+          '只给复核结论和等待条件',
+          '不能自动下单',
+          '没有盘面依据就返回盘面依据不足',
+        ],
+      })
+      if (!response.ok) throw new Error(response.error || (locale === 'zh-CN' ? '因子复核失败。' : 'Factor review failed.'))
+      const review = normalizeAiReview(response.output ?? {}, response.run)
+      if (!review) throw new Error(locale === 'zh-CN' ? '因子复核没有返回有效标的。' : 'Factor review returned no valid symbol.')
+      setAiReviewsByKey(previous => ({ ...previous, [rowAiKey(row)]: review }))
+      setAiReviewStatus('success')
+      recordObservationEvent('strategy.ai.review.success', {
+        symbol: row.code || row.targetLabel || row.name,
+        run_id: response.run?.run_id,
+      })
+    } catch (rawError) {
+      const message = rawError instanceof Error ? rawError.message : String(rawError)
+      setAiError(message)
+      setAiReviewStatus('failed')
+      recordObservationEvent('strategy.ai.review.failed', {
+        symbol: row.code || row.targetLabel || row.name,
+        error: message,
+        level: 'error',
+      })
+    }
+  }, [
+    aiRanking?.summary,
+    chartKeyLevels,
+    chartVisibleSignals,
+    currentFreq,
+    divergences,
+    latestSignal,
+    locale,
+    sourceConfidence,
+    summaryTitle,
+    target,
+  ])
+
+  const handleTradeCommand = useCallback(
+    (command: TradeCommandKey) => {
+      if (command === 'left_attack') {
+        setSuppressClimax(false)
+        activateTradeRole('left_attack')
+        return
+      }
+      if (command === 'right_attack') {
+        setSuppressClimax(false)
+        activateTradeRole('right_attack')
+        return
+      }
+      if (command === 'explain_current') {
+        if (activeDecisionRow) {
+          onOpenRecord(locale === 'zh-CN' ? `${activeDecisionRow.name} 入池解释` : `${activeDecisionRow.name} pool rationale`, {
+            ...activeDecisionRow.raw,
+            trader_read: traderReadLine(activeDecisionRow, locale),
+            evidence_summary: traderEvidenceSummary(activeDecisionRow, locale),
+          })
+        }
+        return
+      }
+      if (command === 'ma_confirmation') {
+        setSuppressClimax(false)
+        activateTradeRole('watch')
+        return
+      }
+      setSuppressClimax(false)
+      activateTradeRole('watch')
+    },
+    [activateTradeRole, activeDecisionRow, locale, onOpenRecord],
+  )
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || isEditableKeyboardTarget(event.target)) return
+      if (event.key === '[') {
+        event.preventDefault()
+        setLeftCollapsed(previous => !previous)
+        return
+      }
+      if (event.key === ']') {
+        event.preventDefault()
+        setRightCollapsed(previous => !previous)
+        return
+      }
+      if (event.key === 'Escape') {
+        setLeftCollapsed(false)
+        setRightCollapsed(false)
+        return
+      }
+      if (event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        const enteringFocus = !(leftCollapsed && rightCollapsed)
+        setLeftCollapsed(enteringFocus)
+        setRightCollapsed(enteringFocus)
+        return
+      }
+      if (event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        refreshNow()
+        return
+      }
+      if (event.key === '/') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+      if (event.key.toLowerCase() === 'j') {
+        event.preventDefault()
+        setListCursorIndex(previous => Math.min(previous + 1, Math.max(0, activeWatchlistRows.length - 1)))
+        return
+      }
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setListCursorIndex(previous => Math.max(previous - 1, 0))
+        return
+      }
+      if (event.key === 'Enter' && cursorRow) {
+        event.preventDefault()
+        activateWatchlistRow(cursorRow, 'strategy.keyboard.row-enter')
+        return
+      }
+      if (event.key === ' ' && cursorRow && activeWatchlistTab === 'sector_boards') {
+        event.preventDefault()
+        const key = chainRowKey(cursorRow)
+        setSelectedChainContext(cursorRow.raw)
+        setExpandedChainKeys(previous => {
+          const next = new Set(previous)
+          if (next.has(key)) next.delete(key)
+          else next.add(key)
+          return next
+        })
+        return
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        const index = WATCHLIST_TAB_KEYS.indexOf(activeWatchlistTab)
+        const delta = event.shiftKey ? -1 : 1
+        const next = WATCHLIST_TAB_KEYS[(index + delta + WATCHLIST_TAB_KEYS.length) % WATCHLIST_TAB_KEYS.length]
+        selectWatchlistTab(next)
+        setListCursorIndex(0)
+        return
+      }
+      const freqIndex = Number(event.key) - 1
+      const nextFreq = FREQ_OPTIONS[freqIndex]
+      if (nextFreq && targetFreqs.includes(nextFreq.value)) {
+        event.preventDefault()
+        selectTarget({ ...target, freq: nextFreq.value }, 'strategy.keyboard.freq')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeWatchlistRows.length, activeWatchlistTab, activateWatchlistRow, cursorRow, leftCollapsed, refreshNow, rightCollapsed, selectTarget, selectWatchlistTab, target, targetFreqs])
+
+  if (!baseUrl) {
+    return (
+      <div style={terminalRootStyle}>
+        <div style={warningDarkStyle}>
+          {locale === 'zh-CN'
+            ? '信号实时入口未配置，当前显示降级摘要。'
+            : 'Signals live endpoint is not configured. Showing a degraded summary.'}
+        </div>
+        <CacheMonitorStrip
+          locale={locale}
+          cacheStatus={effectiveCacheStatus}
+          mode={layoutMode}
+          compact={!showTopDiagnosticsDetail}
+          onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
+        />
+        <div style={fallbackGridStyle}>
+          <Panel
+            title={locale === 'zh-CN' ? 'Daily brief' : 'Daily brief'}
+            meta={traderDisplayText(compactText(dailyBrief.market_bias), locale)}
+          >
+            <div style={compactListStyle}>
+              <div style={dataRowStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                  <div style={rowTitleStyle}>
+                    {traderDisplayText(compactText(dailyBrief.headline, locale === 'zh-CN' ? '暂无摘要标题' : 'No brief headline'), locale)}
+                  </div>
+                  <div style={mutedTextStyle}>
+                    {traderDisplayText(compactText(dailyBrief.summary, locale === 'zh-CN' ? '暂无策略摘要。' : 'No strategy summary yet.'), locale)}
+                  </div>
+                </div>
+              </div>
+              {dailyBriefBullets.slice(0, 3).map((item, index) => (
+                <div key={`${item}-${index}`} style={dataRowStyle}>
+                  <div style={mutedTextStyle}>{traderDisplayText(item, locale)}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? '买入候选' : 'Buy candidates'}
+            rows={dashboard.buy_candidates as Array<Record<string, unknown>>}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `买入 ${String(item.symbol ?? '候选')}`
+                  : `Buy ${String(item.symbol ?? 'candidate')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? '卖出预警' : 'Sell warnings'}
+            rows={dashboard.sell_warnings as Array<Record<string, unknown>>}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `卖出 ${String(item.symbol ?? '预警')}`
+                  : `Sell ${String(item.symbol ?? 'warning')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? '交易员待办' : 'Trader queue'}
+            rows={decisionRows.map(item => ({
+              ...item,
+              name: compactText(item.title) || compactText(item.symbol) || compactText(item.decision_id),
+            }))}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `决策 ${String(item.symbol ?? item.decision_id ?? 'queue')}`
+                  : `Decision ${String(item.symbol ?? item.decision_id ?? 'queue')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? '策略看盘依据' : 'Strategy evidence'}
+            rows={strategyKpis.map(item => ({
+              ...item,
+              name: compactText(item.label) || compactText(item.kpi_id),
+              summary: [
+                compactText(item.value),
+                compactText(item.unit),
+                compactText(item.status),
+              ].filter(Boolean).join(' '),
+            }))}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `KPI ${String(item.label ?? item.kpi_id ?? 'strategy')}`
+                  : `KPI ${String(item.label ?? item.kpi_id ?? 'strategy')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? '数据源状态' : 'Data source status'}
+            rows={sourceConfidence.map(item => ({
+              ...item,
+              connector_id: compactText(item.source_id) || compactText(item.label),
+              name: compactText(item.label) || compactText(item.source_id),
+              summary: [
+                formatConfidence(item.confidence),
+                compactText(item.status),
+                compactText(item.summary),
+              ].filter(Boolean).join(' · '),
+            }))}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `线索 ${String(item.label ?? item.source_id ?? 'source')}`
+                  : `Source ${String(item.label ?? item.source_id ?? 'source')}`,
+                item,
+              )
+            }
+          />
+          <FallbackList
+            locale={locale}
+            title={locale === 'zh-CN' ? '数据通道' : 'Connectors'}
+            rows={dashboard.connector_health as Array<Record<string, unknown>>}
+            onOpen={item =>
+              onOpenRecord(
+                locale === 'zh-CN'
+                  ? `数据通道 ${humanizeTokenLocale(locale, String(item.connector_id ?? 'record'))}`
+                  : `Connector ${String(item.connector_id ?? 'record')}`,
+                item,
+              )
+            }
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={terminalRootStyle}>
+      <div style={terminalTopBarStyle(layoutMode)}>
+        <form style={searchFormStyle(layoutMode)} onSubmit={submitSearch}>
+          <input
+            ref={searchInputRef}
+            aria-label={locale === 'zh-CN' ? '搜索标的' : 'Search symbol'}
+            style={searchInputStyle}
+            value={searchDraft}
+            placeholder={locale === 'zh-CN' ? '输入指数 / 行业 / 股票代码或名称…' : 'Index, sector, ticker, or name…'}
+            onChange={event => setSearchDraft(event.target.value)}
+          />
+          <button type="submit" style={terminalButtonStyle(false)}>
+            {locale === 'zh-CN' ? '切换' : 'Switch'}
+          </button>
+        </form>
+        <div style={topBarButtonGroupStyle(layoutMode)}>
+          {FREQ_OPTIONS.map((freq, index) => {
+            const active = currentFreq === freq.value
+            const disabled = !targetFreqs.includes(freq.value)
+            return (
+              <button
+                key={freq.value}
+                type="button"
+                aria-label={`${locale === 'zh-CN' ? '切换周期' : 'Switch frequency'} ${freq.label}`}
+                title={`${freq.label} (${index + 1})`}
+                style={terminalButtonStyle(active, disabled)}
+                disabled={disabled}
+                onClick={() => selectTarget({ ...target, freq: freq.value }, 'strategy.freq.click')}
+              >
+                {freq.label}
+              </button>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          aria-label={locale === 'zh-CN' ? '刷新交易台' : 'Refresh trading desk'}
+          title={locale === 'zh-CN' ? '刷新交易台 (R)' : 'Refresh trading desk (R)'}
+          style={{ ...terminalButtonStyle(false, loading), marginLeft: 'auto' }}
+          disabled={loading}
+          onClick={refreshNow}
+        >
+          {loading ? (locale === 'zh-CN' ? '刷新中' : 'Refreshing') : (locale === 'zh-CN' ? '刷新' : 'Refresh')}
+        </button>
+      </div>
+
+      <CacheMonitorStrip
+        locale={locale}
+        cacheStatus={effectiveCacheStatus}
+        mode={layoutMode}
+        compact={!showTopDiagnosticsDetail}
+        onToggleCompact={() => setTopDiagnosticsExpanded(previous => !previous)}
+      />
+      <RuntimeStatusNotice session={shell?.session} locale={locale} notices={shell?.notices}
+        error={error} frequencyNotice={freqFallbackNotice} chartNotice={chartCacheNotice}
+        cacheStatus={effectiveCacheStatus} poolMeta={recordValue(shell?.pool_meta)}
+        diagnostics={{ chart: { subtitle: summarySubtitle, timezone: chartTimezone, lineage: chartLineage, formula: chartFormula, meta: chartMeta },
+          connectorAlerts, dataIssueRows, radar: sectorTransitionRadar?.freshness }} />
+      {hasPublishedDailyBrief(dailyBrief) ? (
+        <div style={noticeDarkStyle}>
+          {[
+            traderDisplayText(compactText(dailyBrief.headline), locale),
+            traderDisplayText(compactText(dailyBrief.summary), locale),
+            traderDisplayText(compactText(dailyBrief.market_bias), locale),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </div>
+      ) : null}
+      <AiFactorStrategySignalStrip
+        locale={locale}
+        signals={aiFactorStrategySignals}
+        onOpenRecord={onOpenRecord}
+      />
+
+      <div style={terminalGridLayoutStyle(leftCollapsed, rightCollapsed, layoutMode)}>
+        {leftCollapsed ? (
+          <div style={collapsedSideStyle}>
+            <button
+              type="button"
+              aria-label={locale === 'zh-CN' ? '展开观察台' : 'Expand watchlist'}
+              title={locale === 'zh-CN' ? '展开观察台 ([)' : 'Expand watchlist ([)'}
+              style={verticalCollapseButtonStyle}
+              onClick={() => setLeftCollapsed(false)}
+            >
+              {locale === 'zh-CN' ? '主观察' : 'Watchlist'}
+            </button>
+          </div>
+        ) : (
+        <div style={terminalSideStyle}>
+          <Panel
+            title={locale === 'zh-CN' ? '交易员第二屏' : 'Trader second screen'}
+            meta={marketLabel(shell?.session, locale)}
+            actions={(
+              <button
+                type="button"
+                aria-label={locale === 'zh-CN' ? '收起观察台' : 'Collapse watchlist'}
+                title={locale === 'zh-CN' ? '收起观察台 ([)' : 'Collapse watchlist ([)'}
+                style={panelActionButtonStyle}
+                onClick={() => setLeftCollapsed(true)}
+              >
+                {locale === 'zh-CN' ? '收起' : 'Collapse'}
+              </button>
+            )}
+          >
+            <WatchlistTabbedTable
+              locale={locale}
+              activeTab={activeWatchlistTab}
+              onTabChange={selectWatchlistTab}
+              activeTradeRole={activeTradeRole}
+              onTradeRoleChange={activateTradeRole}
+              suppressClimax={suppressClimax}
+              roleCounts={tradeRoleCounts}
+              groupMeta={recordValue(shell?.watchlist_groups_meta)}
+              groups={displayWatchlistGroups}
+              rows={activeWatchlistRows}
+              target={target}
+              rangeColumns={visibleRangeColumns}
+              allRangeColumns={watchlistRangeColumns}
+              selectedRangeKey={selectedRangeColumn?.key ?? ''}
+              onRangeChange={setSelectedRangeKey}
+              emptyText={visibleWatchlistEmptyText}
+              sectorTransitionRadar={sectorTransitionRadar}
+              pendingListUpdate={pendingListUpdate}
+              onAcknowledgeListUpdate={() => setPendingListUpdate(false)}
+              cursorRowId={cursorRow?.id ?? ''}
+              expandedChainKeys={expandedChainKeys}
+              onSelect={row => activateWatchlistRow(row)}
+              onCandidateSelect={row => selectCandidateTarget(row)}
+              onDeleteManualClue={deleteManualClue}
+            />
+          </Panel>
+          {shell?.supplementary_clues?.length ? (
+            <details style={{ ...terminalPanelStyle, padding: 10 }}>
+              <summary style={{ cursor: 'pointer' }}>{locale === 'zh-CN' ? '补充观察（不计入正式名单）' : 'Additional observations (outside published pool)'} {shell.supplementary_clues.length}</summary>
+              <div style={compactListStyle}>
+                {shell.supplementary_clues.map(row => (
+                  <button key={compactText(row.symbol)} type="button" style={dataRowStyle}
+                    onClick={() => selectTarget({ label: compactText(row.symbol), kind: 'stock', freq: target.freq }, 'strategy.supplementary.click')}>
+                    {compactText(row.symbol)} {compactText(row.name)} · {traderDisplayText(compactText(row.latest_signal) || compactText(row.reason), locale)}
+                  </button>
+                ))}
+              </div>
+            </details>
+          ) : null}
+        </div>
+        )}
+
+        <div style={chartStageStyle}>
+          <div style={chartHeaderStyle}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+              <div style={eyebrowDarkStyle}>
+                {chartKindLabel(compactText(symbolData?.target?.kind, target.kind), locale)}
+              </div>
+              <div style={chartTitleStyle(layoutMode)}>{summaryTitle}</div>
+              <div style={chartSubtitleStyle}>
+                {[compactText(symbolData?.target?.symbol), chartFrequencyLabel(currentFreq, locale), latestSignal ? traderDisplayText(latestSignal, locale) : ''].filter(Boolean).join(' · ')}
+              </div>
+              <div style={chartModeSummaryStyle}>
+                <span style={chartModeCurrentStyle}>{chartModeLabel(activeChartMode, locale)}</span>
+              </div>
+              {latestTradingValueLine ? (
+                <div style={chartTradingValueLineStyle}>{latestTradingValueLine}</div>
+              ) : null}
+              <div style={indicatorLegendStyle}>
+                {activeMaPeriods.map((period, index) => (
+                  <span key={`ma-${period}`} style={indicatorLegendItemStyle}>
+                    <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.ma[index % activeChartTokens.ma.length] }} />
+                    {chartMeta.is_price_kline === false ? `热度MA${period}` : `MA${period}`}
+                  </span>
+                ))}
+                <span style={indicatorLegendItemStyle}>
+                  <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.volumeUp }} />
+                  {chartMeta.is_price_kline === false ? '热度量能' : 'VOL(万手)'}
+                </span>
+                {[activeChartTokens.macdDif, activeChartTokens.macdDea].map((color, index) => (
+                  <span key={`macd-${index}`} style={indicatorLegendItemStyle}>
+                    <span style={{ ...indicatorLegendSwatchStyle, background: color }} />
+                    {chartMeta.is_price_kline === false ? (index === 0 ? '热动DIF' : '热动DEA') : (index === 0 ? 'DIF' : 'DEA')}
+                  </span>
+                ))}
+                <span style={indicatorLegendItemStyle}>
+                  <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.macdZero }} />
+                  {chartMeta.is_price_kline === false ? '热度动量0' : 'MACD 0'}
+                </span>
+                <span style={indicatorLegendItemStyle}>
+                  <span style={{ ...indicatorLegendSwatchStyle, background: activeChartTokens.semanticDanger }} />
+                  {locale === 'zh-CN' ? `背离 ${divergences.length}` : `Divergence ${divergences.length}`}
+                </span>
+              </div>
+            </div>
+            <div style={chartHeaderRightStyle(layoutMode)}>
+              <div style={headerMetricsStyle(layoutMode)}>
+                {[
+                  [primaryValueLabel, formatNumber(symbolData?.summary?.latest_price ?? latestClose(klineData))],
+                  [locale === 'zh-CN' ? '信号' : 'Signal', latestSignal ? traderDisplayText(latestSignal, locale) : (locale === 'zh-CN' ? '暂无' : 'N/A')],
+                  [locale === 'zh-CN' ? '涨幅' : 'Change', formatPercent(symbolData?.summary?.gain_pct)],
+                ].map(([label, value]) => (
+                  <div key={label} style={headerMetricStyle}>
+                    <div style={eyebrowDarkStyle}>{label}</div>
+                    <div style={{
+                      ...headerMetricValueStyle,
+                      ...(label === (locale === 'zh-CN' ? '涨幅' : 'Change') ? compactPercentTextStyle(value, 44, 64) : {}),
+                    }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  <span style={statusBadgeStyle(isControlledReadModelReady(shell?.session) ? 'open' : booting ? 'warning' : loading ? 'running' : 'open')}>
+                    {isControlledReadModelReady(shell?.session)
+                      ? marketLabel(shell?.session, locale)
+                      : booting
+                      ? (locale === 'zh-CN' ? '启动中' : 'Booting')
+                      : loading
+                        ? (locale === 'zh-CN' ? '刷新中' : 'Refreshing')
+                        : marketLabel(shell?.session, locale)}
+                  </span>
+                </div>
+                <div style={mutedTextStyle}>
+                  {updatedTimeLabel
+                    ? `${locale === 'zh-CN' ? '更新' : 'Updated'} ${updatedTimeLabel}`
+                    : (locale === 'zh-CN' ? '等待数据' : 'Waiting for data')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={chartCanvasShellStyleForMode(backgroundMode)}>
+            <div ref={chartContainerRef} style={chartCanvasStyleForMode(backgroundMode)} />
+            {klineData.length === 0 ? (
+              <div style={chartOverlayMessageStyleForMode(backgroundMode)}>
+                {loading || booting
+                  ? (chartMeta.is_price_kline === false
+                    ? (locale === 'zh-CN' ? '正在等待板块热度K线。' : 'Waiting for Signals heat candles.')
+                    : (locale === 'zh-CN' ? '正在等待K线和买卖点。' : 'Waiting for Signals to provide candles and signals.'))
+                  : chartCacheNotice || (chartMeta.is_price_kline === false
+                    ? (locale === 'zh-CN' ? '板块热度数据尚未就绪。' : 'Heat cache is not ready; not silently replacing with a representative stock.')
+                    : (locale === 'zh-CN' ? '当前标的暂无可用K线。' : 'No OHLCV is available for this target.'))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {rightCollapsed ? (
+          <div style={collapsedSideStyle}>
+            <button
+              type="button"
+              aria-label={locale === 'zh-CN' ? '展开策略解析' : 'Expand strategy analysis'}
+              title={locale === 'zh-CN' ? '展开策略解析 (])' : 'Expand strategy analysis (])'}
+              style={verticalCollapseButtonStyle}
+              onClick={() => setRightCollapsed(false)}
+            >
+              {locale === 'zh-CN' ? '策略解析' : 'Analysis'}
+            </button>
+          </div>
+        ) : (
+        <div style={terminalSideStyle}>
+          <ChartCalloutDetailsPanel
+            locale={locale}
+            callouts={chartCallouts}
+            selectedCallout={selectedChartCallout}
+            chartTimezone={chartTimezone}
+            onSelect={selectChartCallout}
+          />
+
+          <ChainContextRail
+            locale={locale}
+            context={chainContext}
+            symbolData={symbolData}
+            onSelect={row => selectCandidateTarget(row, 'strategy.chain-context.stock-click')}
+            onPrefetch={prefetchCandidateTarget}
+          />
+
+          {timeframeSnapshotSymbol ? (
+            <TimeframeMarketPanel
+              locale={locale}
+              rows={timeframeSnapshotRows}
+              currentFreq={currentFreq}
+              onSelectFreq={freq => selectTarget({ ...target, freq }, 'strategy.timeframe-market.click')}
+            />
+          ) : null}
+
+          <StrategyDecisionPanel
+            locale={locale}
+            row={activeDecisionRow}
+            target={target}
+            symbolData={symbolData}
+            sourceConfidence={sourceConfidence}
+            keyLevels={chartKeyLevels}
+            signals={chartVisibleSignals}
+            divergences={divergences}
+          />
+
+          <AiTradeReviewPanel
+            locale={locale}
+            row={activeDecisionRow}
+            review={activeAiReview}
+            status={aiReviewStatus}
+            error={aiError}
+            onReview={runAiReview}
+          />
+
+          <Panel
+            title={locale === 'zh-CN' ? '交易看盘依据' : 'Trade evidence'}
+            meta={customSignalCount > 0 ? `${customSignalCount}自定义` : String(signals.length + chartKeyLevels.length + divergences.length)}
+          >
+            {signals.length === 0 && chartCallouts.length === 0 && !maAcceptance && chartKeyLevels.length === 0 && divergences.length === 0 && targetCandidateRows.length === 0 && relatedCustomSignals.length === 0 ? (
+              <div style={emptyStateDarkStyle}>
+                {locale === 'zh-CN' ? '当前标的暂无自定义信号、背离或关键均线位。' : 'No custom signals, divergences, or key levels.'}
+              </div>
+            ) : (
+                <div style={compactListStyle}>
+                {maAcceptance ? (
+                  <div style={{ ...signalBlockStyle, borderTop: 0, paddingTop: 0 }}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '关键均线承接' : 'Key MA acceptance'}</span>
+                      <span>{shortMaAcceptanceLabel(maAcceptance)}</span>
+                    </div>
+                    <div
+                      style={{
+                        ...signalRowStyle,
+                        border: `1px solid ${tradingDeskTheme.chart.orange}`,
+                        background: 'rgba(245, 158, 11, 0.10)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <span style={statusBadgeStyle('success')}>{maAcceptance.summary || shortMaAcceptanceLabel(maAcceptance)}</span>
+                          {maAcceptance.freq ? <span style={monoTextStyle}>{displayFreqLabel(maAcceptance.freq)}</span> : null}
+                          {maAcceptance.event_dt ? <span style={monoTextStyle}>{maAcceptance.event_dt}</span> : null}
+                        </div>
+                        <div style={signalBadgeRowStyle}>
+                          {maAcceptanceChips.slice(0, 5).map(chip => (
+                            <span key={`ma-acceptance-${chip}`} style={miniSignalBadgeStyle}>{chip}</span>
+                          ))}
+                        </div>
+                        {maAcceptance.detail ? (
+                          <div style={mutedTwoLineStyle}>{maAcceptance.detail}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {referenceCandidateSignalRows.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '参考个股周期买卖点' : 'Reference stock timeframes'}</span>
+                      <span>{referenceCandidateSignalRows.length}</span>
+                    </div>
+                    {referenceCandidateSignalRows.map((candidate, index) => {
+                      const label = candidateStockLabel(candidate)
+                      const displayLabel = stockIdentityDisplay(candidate) || label
+                      const badges = timeframeSignalBadges(candidate)
+                      const referenceSignals = Array.isArray(candidate.reference_signals) ? candidate.reference_signals : []
+                      return (
+                        <button
+                          key={`${label || 'candidate'}-${index}`}
+                          type="button"
+                          style={targetButtonStyle}
+                          onClick={() => {
+                            if (label) selectTarget({ label, kind: 'stock', freq: target.freq }, 'strategy.reference-candidate-signal.click')
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={rowTitleStyle}>{displayLabel || 'N/A'}</div>
+                              <div style={mutedLineStyle}>
+                                {[displayLabel, compactText(candidate.relation), compactText(candidate.latest_signal)].filter(Boolean).join(' · ')}
+                              </div>
+                            </div>
+                            <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.reference_signal_count) || referenceSignals.length || badges.length}</span>
+                          </div>
+                          <div style={signalBadgeRowStyle}>
+                            {badges.slice(0, 6).map(badge => (
+                              <span
+                                key={`${label || index}-${badge.side}-${badge.label}`}
+                                style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                              >
+                                {signalBadgeDisplayLabel(badge, locale)}
+                              </span>
+                            ))}
+                          </div>
+                          {referenceSignals.length > 0 ? (
+                            <div style={mutedTwoLineStyle}>
+                              {referenceSignals
+                                .slice(0, 3)
+                                .map(signal => {
+                                  const item = recordValue(signal)
+                                  return [displayFreqLabel(compactText(item.freq)), compactText(item.signal_type) || compactText(item.type), compactText(item.date_str)].filter(Boolean).join(' ')
+                                })
+                                .filter(Boolean)
+                                .join(' · ')}
+                            </div>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+                <div style={signalBlockStyle}>
+                  <div style={candidateGroupHeaderStyle}>
+                    <span>{locale === 'zh-CN' ? '本周期信号' : 'Current timeframe'}</span>
+                    <span>{currentVisibleSignals.length}</span>
+                  </div>
+                {currentVisibleSignals.length > 0 ? currentVisibleSignals.map((signal, index) => (
+                  <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? signal.signal_type ?? 'custom'}`} style={signalRowStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                        {signalSourceLabel(signal) ? (
+                          <span style={isCustomUserSignal(signal) ? customSignalBadgeStyle : miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal)}</span>
+                        ) : null}
+                        <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>{traderDisplayText(signal.type || signal.signal_type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
+                        <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
+                        <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
+                      </div>
+                      <div style={mutedLineStyle}>
+                        {[signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                      {signal.details ? (
+                        <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                )) : (
+                  <div style={mutedTextStyle}>
+                    {hiddenReasons.length > 0
+                      ? hiddenReasons.map(reason => hiddenReasonLabel(reason, locale)).join(' · ')
+                      : evidenceCustomSignals.length > 0
+                        ? (locale === 'zh-CN' ? '当前图窗口未显示自定义信号，可切换到下方可用周期。' : 'Custom signals exist outside this visible chart window or timeframe.')
+                        : (locale === 'zh-CN' ? '当前周期没有可见自定义信号。' : 'No visible custom signal on this timeframe.')}
+                  </div>
+                )}
+                </div>
+                {higherTimeframeSignals.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '上级周期背景' : 'Higher timeframe context'}</span>
+                      <span>{higherTimeframeSignals.length}</span>
+                    </div>
+                    {higherTimeframeSignals.map((signal, index) => (
+                      <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'higher'}`} style={signalRowStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal) || '上级'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{traderDisplayText(signal.type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
+                            <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
+                            <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
+                          </div>
+                          <div style={mutedLineStyle}>
+                            {[signal.date_str, signal.chart_aligned ? '锚定K线' : '', signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {signal.details ? (
+                            <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {lowerTimeframeSignals.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '下级周期确认' : 'Lower timeframe confirmation'}</span>
+                      <span>{lowerTimeframeSignals.length}</span>
+                    </div>
+                    {lowerTimeframeSignals.map((signal, index) => (
+                      <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'lower'}`} style={signalRowStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal) || '下级'}</span>
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{traderDisplayText(signal.type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
+                            <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
+                            <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
+                          </div>
+                          <div style={mutedLineStyle}>
+                            {[signal.date_str, signal.chart_aligned ? '锚定当前K线' : '', signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {signal.details ? (
+                            <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {otherCustomSignalFreqOptions.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '其它周期可用' : 'Other timeframes'}</span>
+                      <span>{otherCustomSignalFreqOptions.map(item => item.label).join(' / ')}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {otherCustomSignalFreqOptions.map(item => (
+                        <button
+                          key={`${item.raw}-${item.value}`}
+                          type="button"
+                          style={panelActionButtonStyle}
+                          onClick={() => selectTarget({ ...target, freq: item.value }, 'strategy.custom-signal.freq-click')}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {relatedCustomSignals.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '关联标的信号' : 'Related signals'}</span>
+                      <span>{relatedCustomSignals.length}</span>
+                    </div>
+                    {relatedCustomSignals.slice(0, 5).map((signal, index) => (
+                      <button
+                        key={`${signal.symbol ?? 'related'}-${signal.date_str ?? index}-${signal.type ?? signal.signal_type ?? ''}`}
+                        type="button"
+                        style={targetButtonStyle}
+                        onClick={() => {
+                          if (signal.symbol) selectTarget({ label: signal.symbol, kind: 'stock', freq: normalizeSignalFreq(signal.freq) || target.freq }, 'strategy.related-custom-signal.click')
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={rowTitleStyle}>{compactText(signal.name, compactText(signal.symbol, 'Signal'))}</div>
+                          <span style={customSignalBadgeStyle}>{signalSourceLabel(signal) || (locale === 'zh-CN' ? '关联' : 'Related')} {displayFreqLabel(signal.freq)}</span>
+                        </div>
+                        <div style={mutedTwoLineStyle}>
+                          {[signal.type || signal.signal_type, signal.relation, signal.date_str, signal.details].filter(Boolean).join(' · ')}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {otherEvidenceSignals.length > 0 ? (
+                  <div style={signalBlockStyle}>
+                    <div style={candidateGroupHeaderStyle}>
+                      <span>{locale === 'zh-CN' ? '系统信号' : 'System signals'}</span>
+                      <span>{otherEvidenceSignals.length}</span>
+                    </div>
+                    {otherEvidenceSignals.map((signal, index) => (
+                      <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? 'signal'}`} style={signalRowStyle}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {signalSourceLabel(signal) ? (
+                              <span style={miniNeutralSignalBadgeStyle}>{signalSourceLabel(signal)}</span>
+                            ) : null}
+                            <span style={statusBadgeStyle(signalTone(signal.type))}>{traderDisplayText(signal.type || (locale === 'zh-CN' ? '信号' : 'Signal'), locale)}</span>
+                            <span style={monoTextStyle}>{formatNumber(signal.price)}</span>
+                          </div>
+                          <div style={mutedLineStyle}>
+                            {[displayFreqLabel(signal.freq), signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </div>
+                          {signal.details ? (
+                            <div style={mutedTwoLineStyle}>{traderDisplayText(signal.details, locale)}</div>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {divergences.slice(-3).reverse().map(divergence => (
+                  <div key={divergence.id} style={dataRowStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={rowTitleStyle}>{divergence.type === 'bearish' ? '顶背离' : '底背离'}</div>
+                      <div style={mutedLineStyle}>{divergence.metric.toUpperCase()} · {formatConfidence(divergence.confidence)}</div>
+                    </div>
+                    <div style={monoTextStyle}>{formatNumber(divergence.price)}</div>
+                  </div>
+                ))}
+                {chartKeyLevels.slice(0, 6).map(level => (
+                  <div key={`${level.name ?? 'level'}-${level.value ?? ''}`} style={dataRowStyle}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                      <div style={rowTitleStyle}>{level.name || 'Level'}</div>
+                      <div style={mutedLineStyle}>
+                        {[level.position, level.direction, level.role, level.distance_pct !== undefined ? formatPercent(level.distance_pct) : '']
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    </div>
+                    <div style={monoTextStyle}>{formatNumber(level.value)}</div>
+                  </div>
+                ))}
+                {targetCandidateRows.length > 0 ? (
+                  <TargetRows
+                    locale={locale}
+                    groups={targetCandidateGroups}
+                    rows={targetCandidateRows}
+                    emptyText=""
+                    onSelect={row => {
+                      const label = labelForTarget(row)
+                      if (label) selectTarget({ label, kind: kindForTarget(row, 'stock'), freq: target.freq }, 'strategy.representative.click')
+                    }}
+                  />
+                ) : null}
+              </div>
+            )}
+          </Panel>
+
+
+        </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Panel({
+  title,
+  meta,
+  actions,
+  children,
+}: {
+  title: string
+  meta?: string
+  actions?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div style={terminalPanelStyle}>
+      <div style={panelHeaderStyle}>
+        <div style={panelTitleStyle}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {meta ? <div style={mutedTextStyle}>{meta}</div> : null}
+          {actions}
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function TimeframeMarketPanel({
+  locale,
+  rows,
+  currentFreq,
+  onSelectFreq,
+}: {
+  locale: LongclawLocale
+  rows: TimeframeMarketSnapshot[]
+  currentFreq: string
+  onSelectFreq: (freq: string) => void
+}) {
+  const readyRows = rows.filter(row => row.status === 'ready' || row.status === 'stale').length
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '各周期本地数据' : 'Local data by period'}
+      meta={`${readyRows}/${rows.length} ${locale === 'zh-CN' ? '可查看' : 'available'}`}
+    >
+      <div style={compactListStyle}>
+        {rows.map(row => {
+          const active = normalizeSignalFreq(row.freq) === normalizeSignalFreq(currentFreq)
+          return (
+            <button
+              key={`timeframe-market-${row.freq}`}
+              type="button"
+              style={timeframeMarketRowStyle(active)}
+              onClick={() => onSelectFreq(row.freq)}
+            >
+              <div style={timeframeMarketTopLineStyle}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: '1 0 auto' }}>
+                  <span style={{ ...miniNeutralSignalBadgeStyle, flex: '0 0 auto' }}>{row.label}</span>
+                  <span style={{ ...rowTitleStyle, flexShrink: 0, overflow: 'visible', textOverflow: 'clip' }}>{row.latestPrice}</span>
+                  <span style={inlinePercentValueStyle(row.periodChange)}>{row.periodChange}</span>
+                </div>
+                <span style={statusBadgeStyle(['error', 'empty', 'loading'].includes(row.status) ? timeframeSnapshotBadgeTone(row.status) : timeframeSnapshotQualityTone(row.quality))}>
+                  {['error', 'empty', 'loading'].includes(row.status) ? timeframeSnapshotStatusLabel(row.status, locale) : row.qualityLabel}
+                </span>
+              </div>
+              <div style={timeframeMarketMetricStyle}>
+                <span style={{ ...monoTextStyle, display: 'flex', justifyContent: 'space-between', gap: 6, whiteSpace: 'nowrap' }}><span>{locale === 'zh-CN' ? '成交量' : 'VOL'}</span><span>{row.volume}</span></span>
+                <span style={{ ...monoTextStyle, display: 'flex', justifyContent: 'space-between', gap: 6, whiteSpace: 'nowrap' }}><span>{locale === 'zh-CN' ? '成交额' : 'AMT'}</span><span>{row.amount}</span></span>
+              </div>
+              {[row.signal, row.statusText].filter(Boolean).length > 0 ? (
+                <div style={timeframeMarketSublineStyle}>
+                  {[traderDisplayText(row.signal, locale), traderDisplayText(row.statusText, locale)].filter(Boolean).join(' · ')}
+                </div>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+}
+
+function ChartCalloutDetailsPanel({
+  locale,
+  callouts,
+  selectedCallout,
+  chartTimezone,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  callouts: SignalChartCallout[]
+  selectedCallout: SignalChartCallout | null
+  chartTimezone?: string
+  onSelect: (calloutId: string) => void
+}) {
+  if (callouts.length === 0) return null
+  const activeCallout = selectedCallout ?? callouts[0] ?? null
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '图中信号' : 'Chart signals'}
+      meta={activeCallout?.calloutId ?? String(callouts.length)}
+    >
+      <div style={compactListStyle}>
+        <div style={chartCalloutSelectorStyle}>
+          {callouts.slice(0, 6).map(callout => {
+            const active = callout.calloutId === activeCallout?.calloutId
+            const badge = signalCalloutBadgeSummary(callout.items, callout.itemCount, callout.label, callout.freq, callout.calloutId)
+            const shortTitle = badge.title.replace(`${callout.calloutId ?? ''} `, '')
+            const freqLine = badge.subtitle || uniqueCompact(callout.items.map(item => item.freq)).slice(0, 3).join('/')
+            const subline = uniqueCompact([callout.dateLabel, freqLine]).join(' · ')
+            return (
+              <button
+                key={`${callout.calloutId}-${callout.timestamp}-${callout.price}`}
+                type="button"
+                style={chartCalloutButtonStyle(active, callout.color)}
+                title={[badge.title, callout.dateLabel, subline, formatNumber(callout.price)].filter(Boolean).join(' · ')}
+                onClick={() => onSelect(callout.calloutId ?? '')}
+              >
+                <div style={chartCalloutButtonTitleStyle}>
+                  <span style={chartCalloutIdBadgeStyle(callout.color)}>{callout.calloutId}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shortTitle}</span>
+                </div>
+                {subline ? <div style={chartCalloutButtonSubStyle}>{subline}</div> : null}
+              </button>
+            )
+          })}
+        </div>
+        {activeCallout ? (
+          <div style={chartCalloutDetailStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+              <div style={rowTitleStyle}>
+                {signalCalloutBadgeSummary(activeCallout.items, activeCallout.itemCount, activeCallout.label, activeCallout.freq, activeCallout.calloutId).title}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {activeCallout.dateLabel ? <span style={chartCalloutDateBadgeStyle}>{activeCallout.dateLabel}</span> : null}
+                <div style={monoTextStyle}>{formatNumber(activeCallout.price)}</div>
+              </div>
+            </div>
+            <div
+              style={mutedLineStyle}
+              title={[activeCallout.scope, activeCallout.sourceLabel].filter(Boolean).join(' · ')}
+            >
+              {[
+                readableDateTime(new Date(activeCallout.timestamp), locale, chartTimezone),
+                activeCallout.signalDateLabel && activeCallout.signalDateLabel !== activeCallout.dateLabel
+                  ? `${locale === 'zh-CN' ? '信号日' : 'signal'} ${activeCallout.signalDateLabel}`
+                  : '',
+              ].filter(Boolean).join(' · ')}
+            </div>
+            {activeCallout.items.map((item, index) => {
+              const itemAnchorLine = item.alignedDateLabel && item.alignedDateLabel !== item.dateLabel
+                ? `${locale === 'zh-CN' ? '锚定K线' : 'anchored'} ${item.alignedDateLabel}`
+                : ''
+              return (
+                <div key={`${activeCallout.calloutId}-${item.freq}-${item.label}-${item.dateLabel ?? index}`} style={chartCalloutItemStyle(item.color || activeCallout.color)}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                    <span style={item.side === 'sell' ? miniSellSignalBadgeStyle : item.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}>
+                      {item.freq || '--'}
+                    </span>
+                    <span style={rowTitleStyle}>{item.label}</span>
+                    {item.dateLabel ? <span style={chartCalloutDateBadgeStyle}>{item.dateLabel}</span> : null}
+                  </div>
+                  {itemAnchorLine ? (
+                    <div style={mutedLineStyle} title={[item.scope, item.sourceLabel].filter(Boolean).join(' · ')}>
+                      {itemAnchorLine}
+                    </div>
+                  ) : null}
+                  {item.details ? <div style={mutedTwoLineStyle}>{traderDisplayText(item.details, locale)}</div> : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+      </div>
+    </Panel>
+  )
+}
+
+function tradeMapItemsFromShell(
+  shell: WorkbenchShell | null,
+  groups: {
+    sector_boards: WatchlistRow[]
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  },
+): { items: TradeMapItem[]; headline: string; asOf: string; mode: string } {
+  const raw = recordValue(shell?.trade_map)
+  const rawItems = Array.isArray(raw.items) ? raw.items.map(item => recordValue(item)) : []
+  const items = rawItems
+    .map(item => {
+      const role = compactText(item.role)
+      if (!isStockTradeRoleKey(role)) return null
+      if (!(['left_attack', 'right_attack', 'watch', 'clue'] as StockTradeRoleKey[]).includes(role)) return null
+      return {
+        role,
+        label: compactText(item.label) || tradeRoleLabel(role, 'zh-CN'),
+        name: compactText(item.name),
+        summary: compactText(item.summary),
+        phase: compactText(item.phase),
+        asOf: compactText(item.as_of),
+        definition: compactText(item.definition),
+        source: compactText(item.source),
+      } satisfies TradeMapItem
+    })
+    .filter((item): item is TradeMapItem => Boolean(item && item.name))
+  if (items.length > 0) {
+    return {
+      items,
+      headline: compactText(raw.headline),
+      asOf: compactText(raw.as_of) || compactText(shell?.session?.data_as_of),
+      mode: compactText(raw.day_change_mode),
+    }
+  }
+  const derived: TradeMapItem[] = []
+  const stockRows = [...groups.focus_stocks, ...groups.watch_stocks, ...groups.buy_candidates]
+  ;(['left_attack', 'right_attack', 'watch', 'clue'] as StockTradeRoleKey[]).forEach(role => {
+    if (derived.some(item => item.role === role)) return
+    const row = stockRows.find(item => stockTradeRoleForRow(item) === role)
+    if (!row) return
+    derived.push({
+      role,
+      label: tradeRoleLabel(role, 'zh-CN'),
+      name: row.name,
+      summary: traderReadLine(row, 'zh-CN'),
+      asOf: compactText(row.raw.day_change_as_of),
+      definition: role === 'left_attack'
+        ? '左侧买点叠加关键均线'
+        : role === 'right_attack'
+          ? '执行周期买点叠加均线确认'
+          : role === 'watch'
+            ? '买点还缺确认'
+            : '只有线索，还不是买点',
+      source: '交易角色',
+    })
+  })
+  return {
+    items: derived.slice(0, 6),
+    headline: '',
+    asOf: compactText(shell?.session?.data_as_of),
+    mode: '',
+  }
+}
+
+function TradeMapStrip({
+  locale,
+  shell,
+  groups,
+  activeRole,
+  onRoleSelect,
+  onCommand,
+  compact = false,
+  onToggleCompact,
+}: {
+  locale: LongclawLocale
+  shell: WorkbenchShell | null
+  groups: {
+    sector_boards: WatchlistRow[]
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+  }
+  activeRole: TradeRoleKey
+  onRoleSelect: (role: TradeRoleKey) => void
+  onCommand: (command: TradeCommandKey) => void
+  compact?: boolean
+  onToggleCompact?: () => void
+}) {
+  const tradeMap = tradeMapItemsFromShell(shell, groups)
+  const rawAlerts = Array.isArray(shell?.ai_alerts) ? shell.ai_alerts.map(item => recordValue(item)) : []
+  const alerts = rawAlerts.filter(alert => {
+    const record = recordValue(alert)
+    const text = compactText(record.text)
+    if (!text) return false
+    return !/(过热|高潮|风险复核|风险提示|卖点|减仓|止盈)/.test(text)
+  })
+  const mapLine = tradeMap.headline || tradeMap.items
+    .map(item => `${item.label}: ${item.name}${item.summary ? `，${item.summary}` : ''}`)
+    .join(' | ')
+  if (!mapLine && alerts.length === 0) return null
+  const toggleLabel = compact
+    ? (locale === 'zh-CN' ? '展开' : 'Expand')
+    : (locale === 'zh-CN' ? '收起' : 'Collapse')
+  if (compact) {
+    return (
+      <div style={tradeMapStripStyle}>
+        <div style={tradeMapHeaderStyle}>
+          <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '买点模式' : 'Setup mode'}</div>
+          <div style={tradeMapCompactRailStyle} title={mapLine}>
+            {tradeMap.items.slice(0, 4).map(item => (
+              <button
+                key={`${item.role}-${item.name}`}
+                type="button"
+                style={tradeMapChipStyle(item.role, activeRole === item.role)}
+                title={`${item.name} · ${item.summary || ''}`}
+                onClick={() => onRoleSelect(item.role)}
+              >
+                {`${item.label}: ${item.name}`}
+              </button>
+            ))}
+          </div>
+          {onToggleCompact ? (
+            <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+              {toggleLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={tradeMapStripStyle}>
+      <div style={tradeMapHeaderStyle}>
+        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '买点模式 · 点击筛选' : 'Setup mode · click to filter'}</div>
+        <div style={tradeMapMetaStyle}>
+          {[
+            tradeMap.asOf ? `${locale === 'zh-CN' ? '有效交易日' : 'valid day'} ${tradeMap.asOf}` : '',
+            compactText(shell?.session?.data_as_of) ? `as_of ${compactText(shell?.session?.data_as_of)}` : '',
+            tradeMap.mode ? (tradeMap.mode === 'daily_close' ? (locale === 'zh-CN' ? '休市日复用收盘' : 'closed-day close') : tradeMap.mode) : '',
+          ].filter(Boolean).join(' · ')}
+        </div>
+        {onToggleCompact ? (
+          <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+            {toggleLabel}
+          </button>
+        ) : null}
+      </div>
+      <div style={tradeMapRailStyle}>
+        {tradeMap.items.map(item => {
+          const title = [
+            `${item.name} · ${item.summary}`,
+            item.definition ? `${locale === 'zh-CN' ? '定义' : 'Definition'}: ${item.definition}` : '',
+            item.source ? `${locale === 'zh-CN' ? '线索' : 'Source'}: ${item.source}` : '',
+            locale === 'zh-CN' ? '点击后筛选左侧列表' : 'Click to filter the left list',
+          ].filter(Boolean).join('\n')
+          return (
+          <button
+            key={`${item.role}-${item.name}`}
+            type="button"
+            style={tradeMapChipStyle(item.role, activeRole === item.role)}
+            title={title}
+            onClick={() => onRoleSelect(item.role)}
+          >
+            {`${item.label}: ${item.name}${item.summary ? `，${item.summary}` : ''}`}
+          </button>
+          )
+        })}
+      </div>
+      <div style={tradeMapDefinitionStyle}>
+        {locale === 'zh-CN'
+          ? '口径：低吸/右侧按交易角色归类；风险池只表示暂不参与，不作为非持仓风险动作推送。'
+          : 'Definitions come from trade roles. Risk rows mean skip-now, not a non-held risk action.'}
+      </div>
+      {alerts.length > 0 ? (
+        <div style={aiAlertStripStyle}>
+          {alerts.map((alert, index) => {
+            const record = recordValue(alert)
+            const text = compactText(record.text)
+            if (!text) return null
+            return (
+              <button
+                key={`${text}-${index}`}
+                type="button"
+                style={aiAlertChipStyle(compactText(record.level))}
+                title={`${text}${compactText(record.command) ? `\n${compactText(record.command)}` : ''}`}
+                onClick={() => onCommand(commandKeyForLabel(compactText(record.command) || text))}
+              >
+                {text}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function commandKeyForLabel(label: string): TradeCommandKey {
+  if (label.includes('低吸')) return 'left_attack'
+  if (label.includes('右侧')) return 'right_attack'
+  if (label.includes('为什么入池') || label.includes('解释')) return 'explain_current'
+  if (label.includes('均线') || label.includes('确认')) return 'ma_confirmation'
+  return 'rhythm_mismatch'
+}
+
+function strategyAiStatusLabel(status: StrategyAiTaskStatus, locale: LongclawLocale): string {
+  if (status === 'running') return locale === 'zh-CN' ? '因子刷新中' : 'Factor running'
+  if (status === 'success') return locale === 'zh-CN' ? '因子已生成' : 'Factor ready'
+  if (status === 'failed') return locale === 'zh-CN' ? '因子失败' : 'Factor failed'
+  return locale === 'zh-CN' ? '待运行' : 'Idle'
+}
+
+function strategyAiStatusTone(status: StrategyAiTaskStatus): string {
+  if (status === 'running') return 'running'
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'failed'
+  return 'info'
+}
+
+function strategyAiRunLine(run?: StrategyAiRun): string {
+  if (!run) return ''
+  return [
+    compactText(run.provider),
+    compactText(run.model),
+    compactText(run.input_hash) ? `hash ${compactText(run.input_hash)}` : '',
+    run.latency_ms !== undefined ? `${Math.round(run.latency_ms)}ms` : '',
+  ].filter(Boolean).join(' · ')
+}
+
+function aiVerdictLabel(verdict: StrategyAiVerdict, locale: LongclawLocale): string {
+  const labels: Record<StrategyAiVerdict, [string, string]> = {
+    focus: ['重点盯', 'Focus'],
+    wait: ['等条件', 'Wait'],
+    avoid: ['不追', 'Avoid'],
+    remove: ['移出', 'Remove'],
+  }
+  const label = labels[verdict]
+  return localizedPair(label, locale, compactText(verdict, locale === 'zh-CN' ? '等条件' : 'Wait'))
+}
+
+function aiVerdictTone(verdict: StrategyAiVerdict): string {
+  if (verdict === 'focus') return 'success'
+  if (verdict === 'wait') return 'warning'
+  return 'failed'
+}
+
+function AiStrategyStatusStrip({
+  locale,
+  ranking,
+  status,
+  error,
+  candidateCount,
+  inputHash,
+  rows,
+  compact = false,
+  onRun,
+  onOpenAiFocus,
+  onToggleCompact,
+}: {
+  locale: LongclawLocale
+  ranking: AiRankingResult | null
+  status: StrategyAiTaskStatus
+  error: string
+  candidateCount: number
+  inputHash: string
+  rows: WatchlistRow[]
+  compact?: boolean
+  onRun: () => void
+  onOpenAiFocus: () => void
+  onToggleCompact?: () => void
+}) {
+  const selected = ranking?.selected ?? []
+  const disabled = status === 'running' || candidateCount === 0
+  const headline = ranking?.summary || (
+    candidateCount > 0
+      ? (locale === 'zh-CN' ? '用已批准因子对候选池做降噪排序。' : 'Rank the Signals pool with approved factors.')
+      : (locale === 'zh-CN' ? '候选池为空，等待行情刷新。' : 'No candidates yet.')
+  )
+  const toggleLabel = compact
+    ? (locale === 'zh-CN' ? '展开' : 'Expand')
+    : (locale === 'zh-CN' ? '收起' : 'Collapse')
+  const runLabel = status === 'running'
+    ? (locale === 'zh-CN' ? '筛选中' : 'Running')
+    : ranking
+      ? (locale === 'zh-CN' ? '重新刷新' : 'Refresh')
+      : (locale === 'zh-CN' ? '刷新因子观察' : 'Refresh factors')
+  return (
+    <div style={tradeMapStripStyle}>
+      <div style={tradeMapHeaderStyle}>
+        <div style={tradeMapTitleStyle}>{locale === 'zh-CN' ? '今日因子观察' : 'Factor watch today'}</div>
+        <div style={tradeMapMetaStyle}>
+          {[
+            `${locale === 'zh-CN' ? '候选' : 'candidates'} ${candidateCount}`,
+            strategyAiStatusLabel(status, locale),
+            strategyAiRunLine(ranking?.run),
+            inputHash ? `input ${inputHash}` : '',
+          ].filter(Boolean).join(' · ')}
+        </div>
+        <button type="button" style={topStripToggleStyle} disabled={disabled} onClick={onRun}>
+          {runLabel}
+        </button>
+        {onToggleCompact ? (
+          <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+            {toggleLabel}
+          </button>
+        ) : null}
+      </div>
+      {compact ? (
+        <div style={tradeMapCompactRailStyle} title={headline}>
+          <span style={statusBadgeStyle(strategyAiStatusTone(status))}>{strategyAiStatusLabel(status, locale)}</span>
+          {rows.slice(0, 4).map(row => (
+            <button key={row.id} type="button" style={commandChipStyle} onClick={onOpenAiFocus}>
+              {row.rankLabel} {row.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div style={tradeMapDefinitionStyle}>{headline}</div>
+          <div style={tradeMapRailStyle}>
+            {selected.length > 0 ? selected.slice(0, 8).map(review => (
+              <button
+                key={`${review.symbol}-${review.rank ?? review.name}`}
+                type="button"
+                style={commandChipStyle}
+                title={[
+                  review.why_watch,
+                  review.wait_for.length ? `${locale === 'zh-CN' ? '等待' : 'Wait'} ${review.wait_for.join(' / ')}` : '',
+                  review.risk_flags.length ? `${locale === 'zh-CN' ? '风险' : 'Risk'} ${review.risk_flags.join(' / ')}` : '',
+                ].filter(Boolean).join('\n')}
+                onClick={onOpenAiFocus}
+              >
+                {review.rank ? `#${review.rank} ` : ''}{review.name || review.symbol} · {aiVerdictLabel(review.verdict, locale)}
+              </button>
+            )) : (
+              <span style={mutedTextStyle}>
+                {status === 'running'
+                  ? (locale === 'zh-CN' ? 'agent 正在读取候选池。' : 'Agent is reading the pool.')
+                  : (locale === 'zh-CN' ? '还没有已批准因子观察结果。' : 'No approved factor watch results yet.')}
+              </span>
+            )}
+          </div>
+          {error ? <div style={errorDarkStyle}>{error}</div> : null}
+        </>
+      )}
+    </div>
+  )
+}
+
+function AiTradeReviewPanel({
+  locale,
+  row,
+  review,
+  status,
+  error,
+  onReview,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow | null
+  review: AiCandidateReview | null
+  status: StrategyAiTaskStatus
+  error: string
+  onReview: (row: WatchlistRow | null) => void
+}) {
+  const disabled = !row || status === 'running'
+  const meta = review
+    ? strategyAiRunLine(review.run) || strategyAiStatusLabel(status, locale)
+    : row
+      ? (locale === 'zh-CN' ? '当前标的未复核' : 'Not reviewed')
+      : (locale === 'zh-CN' ? '先选一个标的' : 'Select a name')
+  const sections = review
+    ? [
+        [locale === 'zh-CN' ? '为什么盯' : 'Why watch', review.why_watch],
+        [locale === 'zh-CN' ? '等待条件' : 'Wait for', review.wait_for.join(' / ')],
+        [locale === 'zh-CN' ? '风险' : 'Risk', review.risk_flags.join(' / ')],
+        [locale === 'zh-CN' ? '不能做' : 'Do not', review.dont_do],
+        [locale === 'zh-CN' ? '失效条件' : 'Invalidation', review.invalidation],
+      ].filter((item): item is [string, string] => Boolean(item[1]))
+    : []
+  return (
+    <div style={commandBarShellStyle}>
+      <div style={candidateGroupHeaderStyle}>
+        <span>{locale === 'zh-CN' ? '因子交易复核台' : 'Factor trade review'}</span>
+        <span>{meta}</span>
+      </div>
+      <div style={aiReviewBodyStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'space-between', minWidth: 0 }}>
+          <span style={statusBadgeStyle(review ? aiVerdictTone(review.verdict) : strategyAiStatusTone(status))}>
+            {review ? aiVerdictLabel(review.verdict, locale) : strategyAiStatusLabel(status, locale)}
+          </span>
+          <button type="button" style={panelActionButtonStyle} disabled={disabled} onClick={() => onReview(row)}>
+            {status === 'running'
+              ? (locale === 'zh-CN' ? '复核中' : 'Reviewing')
+              : (locale === 'zh-CN' ? '复核当前标的' : 'Review current')}
+          </button>
+        </div>
+        {review ? (
+          <>
+            <div style={aiReviewConclusionStyle}>
+              {review.next_action || review.why_watch || aiVerdictLabel(review.verdict, locale)}
+            </div>
+            {sections.map(([label, text]) => (
+              <div key={label} style={aiReviewSectionStyle}>
+                <div style={aiReviewLabelStyle}>{label}</div>
+                <div style={aiReviewTextStyle}>{text}</div>
+              </div>
+            ))}
+            {review.run ? <div style={aiRunMetaStyle}>{strategyAiRunLine(review.run)}</div> : null}
+          </>
+        ) : (
+          <div style={emptyStateDarkStyle}>
+            {row
+              ? (locale === 'zh-CN' ? `${row.name} 只有规则判断，尚未经过复核。` : `${row.name} has Signals context but no review yet.`)
+              : (locale === 'zh-CN' ? '左侧选中候选标的后再复核。' : 'Pick a candidate first.')}
+          </div>
+        )}
+        {error && status === 'failed' ? <div style={errorDarkStyle}>{error}</div> : null}
+      </div>
+    </div>
+  )
+}
+
+function EmbeddedCommandBar({
+  locale,
+  row,
+  suggestions,
+  activeRole,
+  suppressClimax,
+  onCommand,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow | null
+  suggestions: string[]
+  activeRole: TradeRoleKey
+  suppressClimax: boolean
+  onCommand: (command: TradeCommandKey) => void
+}) {
+  const defaults = locale === 'zh-CN'
+    ? ['只看低吸进攻', '只看右侧进攻', '解释这只票为什么入池', '哪些还缺均线确认', '哪些票不符合我当前节奏']
+    : ['Show left attack', 'Show right attack', 'Explain why this is in the pool', 'Missing MA confirmation', 'Names off my rhythm']
+  const labels = uniqueCompact([...(suggestions.length > 0 ? suggestions : defaults), ...defaults]).slice(0, 5)
+  return (
+    <div style={commandBarShellStyle}>
+      <div style={candidateGroupHeaderStyle}>
+        <span>{locale === 'zh-CN' ? 'Command Bar' : 'Command Bar'}</span>
+        <span>{[
+          activeRole !== 'all' ? tradeRoleLabel(activeRole, locale) : '',
+          suppressClimax ? (locale === 'zh-CN' ? '仅看机会池' : 'opportunity pool only') : '',
+        ].filter(Boolean).join(' · ') || (row ? row.name : (locale === 'zh-CN' ? '交易指令' : 'trade commands'))}</span>
+      </div>
+      <div style={commandBarRailStyle}>
+        {labels.map(label => (
+          <button
+            key={label}
+            type="button"
+            style={commandChipStyle}
+            title={label}
+            onClick={() => onCommand(commandKeyForLabel(label))}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CacheMonitorCell({
+  title,
+  value,
+  progress,
+  status,
+  detail,
+  subdetail,
+  statusLabel,
+}: {
+  title: string
+  value: string
+  progress: number | null
+  status?: unknown
+  detail: string
+  subdetail: string
+  statusLabel: string
+}) {
+  const color = cacheProgressColor(progress ?? 0, status)
+  const clampedProgress = progress === null ? 0 : Math.max(0, Math.min(100, progress))
+  return (
+    <div style={cacheMonitorCellStyle}>
+      <div style={cacheMonitorHeaderStyle}>
+        <div style={cacheMonitorToplineStyle}>
+          <span style={cacheStatusDotStyle(color)} />
+          <div style={cacheMonitorTitleStyle}>{title}</div>
+        </div>
+        <span style={cacheStatusChipStyle(color)} title={statusLabel}>{statusLabel}</span>
+      </div>
+      <div style={{ ...cacheMonitorValueStyle, color }}>{value}</div>
+      {progress === null ? <div style={mutedTextStyle} aria-label="数据完整度未确认">—</div> : <div style={cacheProgressTrackStyle}>
+        <div style={cacheProgressFillStyle(clampedProgress, color)} />
+      </div>}
+      <div style={cacheMonitorDetailStrongStyle} title={detail}>{detail}</div>
+      <div style={cacheMonitorMetaStyle} title={subdetail}>{subdetail}</div>
+    </div>
+  )
+}
+
+export function PoolAuthorityStrip({ locale, meta, tradeDate }: { locale: LongclawLocale; meta: Record<string, unknown>; tradeDate?: string }) {
+  if (Object.keys(meta).length === 0) return null
+  const date = compactText(meta.base_trade_date)
+  const healthy = compactText(meta.status) === 'healthy' && Boolean(tradeDate && date === tradeDate)
+  const text = locale === 'zh-CN'
+    ? `${healthy ? '策略名单已更新' : '策略名单尚未更新'}${date ? ` · 当前为${date}名单` : ' · 名单日期未确认'}`
+    : `${healthy ? 'Strategy list updated' : 'Strategy list awaiting update'}${date ? ` · dated ${date}` : ' · date unknown'}`
+  return <div style={healthy ? noticeDarkStyle : warningDarkStyle}>{text}</div>
+}
+
+export function hasPublishedDailyBrief(brief: StrategyDashboard['daily_brief']): boolean {
+  const source = compactText(recordValue(brief.metadata).source)
+  if (['agent-os-fallback', 'signals-cache-status'].includes(source)) return false
+  return Boolean(compactText(brief.headline) || compactText(brief.summary))
+}
+
+export function dailyBriefForShell(fallback: StrategyDashboard['daily_brief'], input: unknown, poolInput: unknown): StrategyDashboard['daily_brief'] {
+  const brief = recordValue(input)
+  const pool = recordValue(poolInput)
+  if (brief.current_authority !== true || brief.source !== 'terminal_stock_pool' || pool.status !== 'healthy'
+    || pool.today_updated !== true || !compactText(brief.generation_id) || brief.generation_id !== pool.generation_id
+    || brief.as_of !== pool.base_trade_date || !compactText(brief.summary)) return fallback
+  return { ...fallback, as_of: compactText(brief.as_of), headline: compactText(brief.title), summary: compactText(brief.summary),
+    bullets: Array.isArray(brief.next_actions) ? brief.next_actions.map(item => compactText(item)).filter(Boolean) : [],
+    market_bias: compactText(brief.market_line), risk_note: Array.isArray(brief.risk_notes) ? brief.risk_notes.map(item => compactText(item)).filter(Boolean).join(' · ') : '',
+    metadata: { source: 'terminal_stock_pool', generation_id: brief.generation_id, revision: brief.revision } }
+}
+
+export function dailyLocalReconciliation(cacheStatus: StrategyDashboard['cache_status']): Record<string, unknown> | null {
+  const row = recordValue(recordValue(cacheStatus).daily_reconciliation ?? recordValue(cacheStatus.mongo_stock_cache.summary).daily_reconciliation)
+  const required = numberValue(row.required_daily)
+  const native = numberValue(row.native_confirmed)
+  const snapshot = numberValue(row.snapshot_confirmed)
+  const missing = numberValue(row.missing_required)
+  const members = numberValue(row.scope_members)
+  const noTrade = numberValue(row.source_reported_no_trade)
+  if (row.schema !== 'daily-local-reconciliation-v1' || row.trade_date !== cacheStatus.trade_date || !compactText(row.scope_id)
+    || row.scope_verified !== true || row.coverage_evidence_kind !== 'historical_native_only'
+    || !Object.keys(recordValue(row.source_proof)).length || required === undefined || required <= 0
+    || native === undefined || snapshot === undefined || missing === undefined || members === undefined || noTrade === undefined
+    || [required, native, snapshot, missing, members, noTrade].some(value => !Number.isInteger(value) || value < 0)
+    || native + missing !== required || snapshot > missing || members !== required + noTrade) return null
+  const inventory = recordValue(row.stock_inventory)
+  const inventoryCounts = [inventory.total, inventory.native, inventory.close_snapshot, inventory.unverified].map(numberValue)
+  if (inventoryCounts.some(value => value === undefined || !Number.isInteger(value) || value < 0)
+    || inventoryCounts[1]! + inventoryCounts[2]! + inventoryCounts[3]! !== inventoryCounts[0] || numberValue(row.etf_inventory) === undefined) return null
+  return row
+}
+
+export function CacheMonitorStrip({
+  locale,
+  cacheStatus,
+  mode,
+  compact = false,
+  onToggleCompact,
+}: {
+  locale: LongclawLocale
+  cacheStatus: StrategyDashboard['cache_status']
+  mode: TerminalLayoutMode
+  compact?: boolean
+  onToggleCompact?: () => void
+}) {
+  cacheStatus = normalizeCacheStatus(cacheStatus)
+  const liveSummary = recordValue(cacheStatus.live_low_latency.summary)
+  const postSummary = recordValue(cacheStatus.postmarket_backfill.summary)
+  const postRun = recordValue(cacheStatus.postmarket_backfill.run)
+  const tasks = cacheStatus.postmarket_backfill.tasks.map(item => recordValue(item))
+  const blockers = cacheStatus.blockers.map(item => recordValue(item))
+  const providerHealth = (Array.isArray(cacheStatus.provider_health) ? cacheStatus.provider_health : []).map(item => recordValue(item))
+
+  const liveModules = cacheStatus.live_low_latency.modules.map(item => recordValue(item))
+  const moduleOk = liveModules.filter(cacheModuleOk).length
+  const liveOkFromSummary = numberValue(liveSummary.ok_modules)
+  const liveTotalFromSummary = numberValue(liveSummary.total_modules)
+  const liveOk = liveOkFromSummary !== undefined && liveOkFromSummary >= 0 ? liveOkFromSummary : moduleOk
+  const liveTotal = liveTotalFromSummary !== undefined && liveTotalFromSummary > 0 ? liveTotalFromSummary : liveModules.length
+  const livePct = liveTotal ? (liveOk / liveTotal) * 100 : 0
+  const liveStatus = liveCacheStrictStatus(cacheStatus)
+  const liveNotReady = numberValue(liveSummary.minute_not_ready) ?? 0
+  const liveProblemModules = cacheProblemModules(liveSummary, liveModules)
+  const quoteModule = liveModules.find(item => compactText(item.module) === 'quote_snapshots')
+  const quoteResult = recordValue(quoteModule?.result)
+  const quoteLive = numberValue(quoteResult.live)
+  const quoteCount = numberValue(quoteResult.count)
+  const quoteMissing = numberValue(quoteResult.missing_current) ?? numberValue(quoteResult.errors) ?? 0
+  const quoteNetwork = numberValue(quoteResult.network_quotes)
+  const quoteReused = numberValue(quoteResult.cache_reused)
+  const quoteOrigins = quoteNetwork !== undefined && quoteReused !== undefined
+    ? (locale === 'zh-CN' ? ` · 网络 ${countText(quoteNetwork)} · 本地复用 ${countText(quoteReused)}` : ` · network ${countText(quoteNetwork)} · cached ${countText(quoteReused)}`)
+    : ''
+  const quoteLine = quoteCount !== undefined && quoteLive !== undefined
+    ? `${locale === 'zh-CN' ? '报价' : 'quotes'} ${countText(quoteLive)}/${countText(quoteCount)}${quoteOrigins}`
+    : ''
+  const liveSamples = Array.isArray(liveSummary.minute_not_ready_samples)
+    ? liveSummary.minute_not_ready_samples.map(item => recordValue(item)).slice(0, 2)
+    : []
+  const liveSampleText = liveSamples
+    .map(item => `${compactText(item.symbol)} ${compactText(item.freq)}`)
+    .filter(Boolean)
+    .join(' · ')
+  const liveValue = quoteCount !== undefined && quoteLive !== undefined ? `${countText(quoteLive)}/${countText(quoteCount)}` : liveTotal ? `${countText(liveOk)}/${countText(liveTotal)}` : (locale === 'zh-CN' ? '待确认' : 'UNKNOWN')
+  const liveStatusLabel = !cacheStatus.available
+    ? 'OFF'
+    : liveStatus === 'ok'
+      ? 'OK'
+      : liveNotReady > 0
+        ? (locale === 'zh-CN' ? `缺K ${countText(liveNotReady)}` : `${countText(liveNotReady)} bars missing`)
+        : quoteMissing > 0
+          ? (locale === 'zh-CN' ? `缺报价 ${countText(quoteMissing)}` : `${countText(quoteMissing)} quotes missing`)
+          : 'PARTIAL'
+  const liveDetail = locale === 'zh-CN'
+    ? `${countText(liveSummary.selected_symbols)} 只交易池 · ${liveNotReady > 0 ? `${countText(liveNotReady)} 只分钟未就绪` : '分钟已就绪'}`
+    : `${countText(liveSummary.selected_symbols)} pool symbols · ${liveNotReady > 0 ? `${countText(liveNotReady)} minute bars missing` : 'minute bars ready'}`
+  const liveProblemLabel = liveProblemModules && liveProblemModules !== 'quote_snapshots'
+    ? (liveNotReady > 0
+      ? (locale === 'zh-CN' ? `阻塞 ${liveProblemModules}` : `blocked ${liveProblemModules}`)
+      : (locale === 'zh-CN' ? `待刷新 ${liveProblemModules}` : `refresh pending ${liveProblemModules}`))
+    : ''
+  const liveSubdetail = locale === 'zh-CN'
+    ? [
+        `${countText(liveOk)}/${countText(liveTotal)} 模块可用`,
+        quoteLine,
+        liveProblemLabel,
+        liveSampleText ? `缺 ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} 只轮换跳过`,
+      ].filter(Boolean).join(' · ')
+    : [
+        `${countText(liveOk)}/${countText(liveTotal)} modules usable`,
+        quoteLine,
+        liveProblemLabel,
+        liveSampleText ? `missing ${liveSampleText}` : `${countText(liveSummary.skipped_symbols)} rotated out`,
+      ].filter(Boolean).join(' · ')
+
+  const stockDaily = postmarketDailyTaskSummary(tasks, locale)
+  const boardTask = firstRecord(tasks, 'module', 'board_cons')
+  const boardSummary = recordValue(boardTask.result_summary)
+  const boardCursor = recordValue(boardTask.cursor)
+  const boardShardTasks = tasks.filter(item => compactText(item.module) === 'board_cons')
+  const boardShardTotal = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).total_groups) ?? 0), 0)
+  const boardShardDone = boardShardTasks.filter(item => compactText(item.status) === 'ok').length
+  const boardShardProcessed = boardShardTasks.reduce((sum, item) => sum + (numberValue(recordValue(item.result_summary).processed) ?? 0), 0)
+  const postPct = percentValue(postSummary.critical_progress_pct ?? postSummary.progress_pct)
+  const postRawStatus = compactText(postRun.status, compactText(postSummary.status, 'pending'))
+  const postStatus = compactText(postSummary.critical_status, postRawStatus)
+  const recoveryState = compactText(recordValue(cacheStatus).recovery_state)
+    || compactText(postSummary.recovery_state)
+    || compactText(postRun.recovery_state)
+  const cacheCriticalBlocker = recordValue(recordValue(cacheStatus).critical_blocker)
+  const criticalBlocker = Object.keys(cacheCriticalBlocker).length > 0
+    ? cacheCriticalBlocker
+    : Object.keys(recordValue(postSummary.critical_blocker)).length > 0
+      ? recordValue(postSummary.critical_blocker)
+      : recordValue(postRun.critical_blocker)
+  const recoveryLabel = recoveryStateLabel(recoveryState, locale)
+  const sourceBlocked = ['waiting_for_source', 'source_blocked', 'partial/source_blocked'].includes(recoveryState)
+  const dailyAcceptancePending = stockDaily.taskCount > 0 && !stockDaily.fullyUsable
+  const postCellStatus = sourceBlocked ? 'degraded' : dailyAcceptancePending && postStatus === 'ok' ? 'partial' : postStatus
+  const postStatusLabel = recoveryLabel || (dailyAcceptancePending && postStatus === 'ok'
+    ? (locale === 'zh-CN' ? '待验收' : 'UNVERIFIED') : cacheStatusLabel(postStatus, 'pending', locale))
+  const postEta = compactDuration(postSummary.eta_seconds, locale)
+  const optionalStatusCounts = recordValue(postSummary.optional_status_counts)
+  const optionalTotal = numberValue(postSummary.optional_task_count) ?? 0
+  const optionalDone = numberValue(postSummary.optional_completed) ?? 0
+  const optionalRunning = numberValue(optionalStatusCounts.running) ?? 0
+  const optionalPending = numberValue(optionalStatusCounts.pending) ?? 0
+  const optionalTailLine = optionalTotal
+    ? (locale === 'zh-CN'
+      ? `HK后台 ${countText(optionalDone)}/${countText(optionalTotal)} · 运行 ${countText(optionalRunning)} · 待 ${countText(optionalPending)}`
+      : `HK tail ${countText(optionalDone)}/${countText(optionalTotal)} · running ${countText(optionalRunning)} · pending ${countText(optionalPending)}`)
+    : ''
+  const stockDailyLine = stockDaily.taskCount > 0 ? stockDaily.detail : (locale === 'zh-CN' ? '日线任务待加载' : 'daily tasks not loaded')
+  const boardCursorLine = boardShardTasks.length
+    ? `${countText(boardShardDone)}/${countText(boardShardTasks.length)} shard · ${countText(boardShardProcessed)}/${countText(boardShardTotal)}`
+    : `${countText(boardSummary.next_cursor ?? boardCursor.next_cursor)}/${countText(boardSummary.total_groups ?? boardCursor.total_groups)}`
+  const blockerDetail = `${compactText(criticalBlocker.provider, 'eastmoney')} · ${compactText(criticalBlocker.endpoint, compactText(criticalBlocker.module, 'fullmarket_spot_snapshot'))}`
+  const postDetail = sourceBlocked && Object.keys(criticalBlocker).length > 0
+    ? blockerDetail
+    : postCellStatus === 'ok' && postRawStatus === 'running' && optionalTailLine
+    ? (locale === 'zh-CN'
+      ? `主链完成 · ${optionalTailLine}`
+      : `critical path done · ${optionalTailLine}`)
+    : (locale === 'zh-CN'
+      ? `阶段 ${compactText(postRun.phase, '等待')} · ${postEta || 'ETA 计算中'}`
+      : `phase ${compactText(postRun.phase, 'pending')} · ${postEta || 'ETA pending'}`)
+  const postSubdetail = locale === 'zh-CN'
+    ? `日线 ${stockDailyLine} · 板块 ${boardCursorLine}${optionalTailLine ? ` · ${optionalTailLine}` : ''}`
+    : `daily ${stockDailyLine} · boards ${boardCursorLine}${optionalTailLine ? ` · ${optionalTailLine}` : ''}`
+
+  const mongoCoverage = mongoCoverageState(cacheStatus, locale)
+  const mongoStatus = mongoCoverage.status
+  const local = dailyLocalReconciliation(cacheStatus)
+  const localInventory = recordValue(local?.stock_inventory)
+  const outsideLocal = recordValue(local?.outside_local_scope)
+  const localMissing = numberValue(local?.missing_required)
+  const localCovered = numberValue(local?.native_confirmed) ?? 0
+  const localRequired = numberValue(local?.required_daily) ?? 0
+
+  const sourceSummary = sourceMonitorSummary(providerHealth, blockers, locale, cacheStatus.available)
+  const sinaQuoteVerified = cacheStatus.available && providerHealth.some(item => compactText(item.provider) === 'sina'
+    && compactText(item.endpoint) === 'quote_batch' && providerCurrentStatus(item) === 'ok')
+  const displaySourceStatus = sinaQuoteVerified && sourceSummary.status !== 'ok' ? 'partial' : sourceSummary.status
+  const monitorPostStatus = local ? localMissing === 0 ? 'ok' : 'partial' : postCellStatus
+  const monitorMongoStatus = local ? 'ok' : mongoStatus
+  const refreshSeconds = cacheRefreshSeconds(cacheStatus)
+  const updatedAt = compactClock(cacheStatus.updated_at, locale)
+  const monitorStatus = displaySourceStatus === 'error' || displaySourceStatus === 'degraded' || liveStatus === 'degraded' || monitorMongoStatus === 'degraded' || monitorPostStatus === 'degraded'
+    ? 'degraded'
+    : displaySourceStatus === 'partial' || liveStatus === 'partial' || monitorMongoStatus === 'partial' || monitorPostStatus === 'partial'
+      ? 'partial'
+      : 'ok'
+  const monitorColor = monitorStatus === 'ok' ? palette.success : monitorStatus === 'partial' ? tradingDeskTheme.colors.auroraGold : palette.error
+  const toggleLabel = compact
+    ? (locale === 'zh-CN' ? '展开' : 'Expand')
+    : (locale === 'zh-CN' ? '收起' : 'Collapse')
+
+  if (compact) {
+    const summaryLine = locale === 'zh-CN'
+      ? (!cacheStatus.available ? '行情暂未就绪，等待读取已存数据' : local ? `关注报价 ${liveValue} · 沪深本地范围 ${countText(localCovered)}/${countText(localRequired)} · 在线来源${sourceSummary.statusLabel}` : `关注列表行情 ${liveValue} · 历史任务 ${Math.round(postPct)}% · ${mongoCoverage.detail} · 来源${sourceSummary.statusLabel}`)
+      : `live ${liveStatusLabel} · post ${postStatusLabel} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
+    return (
+      <div style={cacheMonitorStripStyle}>
+        <div style={cacheMonitorToolbarStyle}>
+          <div style={cacheMonitorToolbarTitleStyle}>
+            <span style={cacheStatusDotStyle(monitorColor)} />
+            {locale === 'zh-CN' ? '行情更新' : 'Signals cache monitor'}
+          </div>
+          <div style={cacheMonitorToolbarMetaStyle} title={summaryLine}>{summaryLine}</div>
+          {onToggleCompact ? (
+            <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+              {toggleLabel}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={cacheMonitorStripStyle}>
+      <div style={cacheMonitorToolbarStyle}>
+        <div style={cacheMonitorToolbarTitleStyle}>
+          <span style={cacheStatusDotStyle(monitorColor)} />
+          {locale === 'zh-CN' ? '行情更新' : 'Signals cache monitor'}
+        </div>
+        <div style={cacheMonitorToolbarMetaStyle}>
+          {locale === 'zh-CN'
+            ? `交易日 ${cacheStatus.trade_date || '-'} · 北京时间 ${updatedAt || '-'} · 自动刷新 ${refreshSeconds}秒`
+            : `trade ${cacheStatus.trade_date || '-'} · updated ${updatedAt || '-'} · refresh ${refreshSeconds}s`}
+        </div>
+        {onToggleCompact ? (
+          <button type="button" style={topStripToggleStyle} onClick={onToggleCompact}>
+            {toggleLabel}
+          </button>
+        ) : null}
+      </div>
+      <div style={cacheMonitorGridStyle(mode)}>
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? '关注列表行情' : 'Intraday live'}
+          value={liveValue}
+          progress={quoteCount !== undefined && quoteLive !== undefined ? (quoteCount > 0 ? (quoteLive / quoteCount) * 100 : null) : liveTotal ? livePct : null}
+          status={liveStatus}
+          statusLabel={locale === 'zh-CN' ? (!cacheStatus.available ? '不可用' : liveStatus === 'ok' ? '可查看' : '部分可用') : liveStatusLabel}
+          detail={locale === 'zh-CN' ? (quoteCount !== undefined && quoteLive !== undefined ? '关注列表中可查看的报价' : liveTotal ? '可用数据类别数' : '数据可用情况待确认') : liveDetail}
+          subdetail={locale === 'zh-CN' ? [quoteNetwork !== undefined ? `本次获取 ${countText(quoteNetwork)} 只` : '', quoteReused !== undefined ? `读取已存 ${countText(quoteReused)} 只` : '', quoteMissing > 0 ? `${countText(quoteMissing)} 只未更新` : '', liveNotReady > 0 ? `${countText(liveNotReady)} 只缺少分钟数据` : ''].filter(Boolean).join(' · ') : liveSubdetail}
+        />
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? (local ? '本地日线核验' : '历史任务进度') : 'Local daily verification'}
+          value={local ? `${countText(localCovered)}/${countText(localRequired)}` : `${locale === 'zh-CN' ? '处理' : 'tasks'} ${Math.round(postPct)}%`}
+          progress={local ? (localCovered / localRequired) * 100 : postPct}
+          status={local ? localMissing === 0 ? 'ok' : 'partial' : postCellStatus}
+          statusLabel={local ? localMissing === 0 ? '已核验' : '有缺口' : locale === 'zh-CN' && sourceBlocked ? '部分未更新' : postStatusLabel}
+          detail={local ? `${compactText(local.scope_label)} ${countText(local.scope_members)}只 · ${compactText(local.trade_date)}` : locale === 'zh-CN' ? (sourceBlocked ? '来源暂未恢复' : stockDaily.fullyUsable ? '日线收盘数据已核验' : '历史任务处理进度，不代表当前库存完整度') : postDetail}
+          subdetail={local ? `原生日线 ${countText(local.native_confirmed)} · 数据源标记未交易 ${countText(local.source_reported_no_trade)} · 缺口 ${countText(local.missing_required)}${numberValue(local.snapshot_confirmed) ? `（另有${countText(local.snapshot_confirmed)}只快照，未计入原生覆盖）` : ''}` : locale === 'zh-CN' ? `${stockDaily.processed === undefined ? '处理数量未知' : `本次已处理 ${countText(stockDaily.processed)}`} · ${stockDaily.fullyUsable ? '本次日线核验通过' : '本次日线核验未完成'}` : postSubdetail}
+        />
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? '已存日线' : 'Mongo coverage'}
+          value={local ? `${countText(localInventory.total)}只` : locale === 'zh-CN' ? (mongoCoverage.dailyToday === undefined ? '未知' : `${countText(mongoCoverage.dailyToday)}只`) : mongoCoverage.progress === null ? '—' : `${Math.round(mongoCoverage.progress)}%`}
+          progress={local ? null : mongoCoverage.progress}
+          status={local ? numberValue(localInventory.unverified) ? 'partial' : 'ok' : mongoStatus}
+          statusLabel={local ? '按来源分类' : mongoCoverage.statusLabel}
+          detail={local ? `原生日线 ${countText(localInventory.native)} · 收盘快照 ${countText(localInventory.close_snapshot)}` : mongoCoverage.detail}
+          subdetail={local ? `另有ETF ${countText(local.etf_inventory)} · 范围外股票 ${countText(outsideLocal.total)}；全A股覆盖率未核定` : locale === 'zh-CN' ? mongoCoverage.subdetail.split(' · 分钟')[0] : mongoCoverage.subdetail}
+        />
+        <CacheMonitorCell
+          title={locale === 'zh-CN' ? '数据来源' : 'Sources'}
+          value={locale === 'zh-CN' ? (!cacheStatus.available ? '暂不可用' : sinaQuoteVerified ? '备用报价可用' : sourceSummary.status === 'ok' ? '连接正常' : sourceSummary.status === 'partial' ? '等待复验' : '在线更新受阻') : sourceSummary.value}
+          progress={local ? null : sourceSummary.progress}
+          status={displaySourceStatus}
+          statusLabel={locale === 'zh-CN' ? (sourceSummary.status === 'ok' ? '已验证' : sinaQuoteVerified ? '部分在线可用' : sourceSummary.status === 'partial' ? '待确认' : '部分未更新') : sourceSummary.statusLabel}
+          detail={locale === 'zh-CN' ? (!cacheStatus.available ? '行情暂时无法读取' : sinaQuoteVerified ? (sourceBlocked ? '新浪报价已验证 · 东方财富仍受阻' : '新浪报价已验证；其他接口状态独立') : sourceSummary.status === 'ok' ? '近期请求已返回有效数据' : sourceSummary.status === 'partial' ? '来源状态尚未确认' : '部分来源暂时无法更新') : sourceSummary.detail}
+          subdetail={locale === 'zh-CN' ? (!cacheStatus.available ? '数据可用范围尚待确认' : local ? `当前使用 ${compactText(local.trade_date)} 本地行情` : sourceSummary.status === 'partial' ? '验证已过期或尚未完成，不代表连接已中断' : '已存行情仍可查看') : sourceSummary.subdetail}
+        />
+      </div>
+      {local ? <details style={{ ...mutedTextStyle, padding: '4px 8px' }}>
+        <summary style={{ cursor: 'pointer' }}>历史后台任务记录 · {Math.round(postPct)}%</summary>
+        <div>{compactText(postRun.trade_date) || cacheStatus.trade_date} · {postDetail} · {postSubdetail}</div>
+        <div>这是线上任务的历史记录；当前已存数据的可用范围以上方本地核验为准。</div>
+      </details> : null}
+    </div>
+  )
+}
+
+function watchlistStockTabLabel(tab: WatchlistTabKey, locale: LongclawLocale): string {
+  const labels: Partial<Record<WatchlistTabKey, [string, string]>> = {
+    ai_focus: ['因子观察', 'Factor watch'],
+    focus_stocks: ['买点池', 'Entry pool'],
+    risk_stocks: ['暂不参与', 'Skip now'],
+    watch_stocks: ['盯盘池', 'Watch pool'],
+    buy_candidates: ['线索池', 'Clue pool'],
+  }
+  const label = labels[tab]
+  return label ? (locale === 'zh-CN' ? label[0] : label[1]) : tab
+}
+
+const STOCK_POOL_COUNT_KEYS: Partial<Record<WatchlistTabKey, [string, string]>> = {
+  focus_stocks: ['focus_selected', 'focus'],
+  risk_stocks: ['risk_selected', 'risk'],
+  watch_stocks: ['watch_selected', 'watch'],
+  buy_candidates: ['clue_selected', 'clue'],
+}
+
+function watchlistPoolCountText(
+  tab: WatchlistTabKey,
+  visibleCount: number,
+  groupMeta: Record<string, unknown>,
+): string {
+  const keys = STOCK_POOL_COUNT_KEYS[tab]
+  if (!keys) return countText(visibleCount)
+  const meta = recordValue(groupMeta[tab])
+  const poolCounts = recordValue(meta.pool_counts)
+  const selected = numberValue(poolCounts[keys[0]]) ?? numberValue(meta.count) ?? visibleCount
+  const total = numberValue(poolCounts[keys[1]])
+  if (tab === 'focus_stocks' && (numberValue(meta.manual_attack_count) ?? 0) > 0) {
+    return total !== undefined && total > selected
+      ? `${countText(selected)} / ${countText(total)}`
+      : countText(selected)
+  }
+  if (total === undefined || total <= selected) return countText(visibleCount)
+  if (Math.round(selected) === visibleCount) {
+    return `${countText(selected)} / ${countText(total)}`
+  }
+  return `${countText(visibleCount)} / ${countText(selected)} / ${countText(total)}`
+}
+
+export function watchlistGroupCountLabel(tab: WatchlistTabKey, visibleCount: number, groupMeta: Record<string, unknown>, locale: LongclawLocale = 'zh-CN'): string {
+  if (watchlistGroupIsLoading(groupMeta, tab)) return locale === 'zh-CN' ? '读取中' : 'Loading'
+  const meta = recordValue(groupMeta[tab])
+  if (meta.status === 'unavailable') return locale === 'zh-CN' ? '未就绪' : 'Unavailable'
+  if (tab === 'all_etfs') {
+    const reviewCount = numberValue(meta.review_count) ?? visibleCount
+    const totalCount = numberValue(meta.count)
+    return totalCount !== undefined && totalCount > reviewCount
+      ? `${countText(reviewCount)} / ${countText(totalCount)}` : countText(visibleCount)
+  }
+  return watchlistPoolCountText(tab, visibleCount, groupMeta)
+}
+
+function watchlistPanelMeta(tab: WatchlistTabKey, locale: LongclawLocale): string {
+  const zh = locale === 'zh-CN'
+  const meta: Record<WatchlistTabKey, [string, string, string, string, string, string]> = {
+    ai_focus: ['因子观察', '降噪排序后逐票复核', '最新涨跌=已存报价', 'Factor watch', 'ranked candidates for single-name review', 'Day=realtime quote'],
+    major_indices: ['大盘指数', '市场方向和风险偏好锚点', '最新涨跌=指数快照', 'Major indices', 'broad-market direction and risk appetite', 'Day=latest index change'],
+    industry_etfs: ['行业ETF', '主题强弱和跨市场风险偏好', '最新涨跌=已存报价', 'Industry ETFs', 'theme strength and cross-market risk appetite', 'Day=realtime quote'],
+    all_etfs: ['全量ETF', '全市场ETF按成交额/涨跌幅/资产类别复核', '最新涨跌=ETF现货快照', 'All ETFs', 'all-market ETF review by turnover, move, and asset class', 'Day=ETF spot quote'],
+    macro_indices: ['宏观方向', '指数关键位和环境判断', '最新涨跌=指数快照', 'Macro direction', 'index key levels and regime read', 'Day=latest index change'],
+    sector_boards: ['板块异动', '先看板块强度，再看链主与弹性', '涨幅=当日板块', 'Chain heat', 'source board -> leader confirmation -> elastic follow-through', 'Change=source board/concept'],
+    focus_stocks: ['买点池', '日/周买点待复核；30m仅提示', '最新涨跌=已存报价', 'Entry pool', 'daily/weekly entry review; 30m is display only', 'Day=realtime quote'],
+    risk_stocks: ['暂不参与', '只作剔除依据，非持仓不推风险动作', '最新涨跌=已存报价', 'Skip now', 'exclusion only; no non-held risk action', 'Day=realtime quote'],
+    watch_stocks: ['盯盘池', '等待下一次收盘融合确认；盘中不换池', '最新涨跌=已存报价', 'Watch pool', 'wait for next-close fusion; intraday data does not move pools', 'Day=realtime quote'],
+    buy_candidates: ['线索池', '有线索但还不是硬买点', '最新涨跌=已存报价', 'Clue pool', 'sourced clue, not a hard entry yet', 'Day=realtime quote'],
+  }
+  const item = meta[tab]
+  if (!item) {
+    return zh
+      ? `盘面 ${watchlistStockTabLabel(tab, locale)} · 读法 先分池再逐票复核 · 最新涨跌=已存报价 · 自选区间=历史收益`
+      : `Evidence ${watchlistStockTabLabel(tab, locale)} · Read pool first, then review names · Day=realtime quote · Range=historical return`
+  }
+  return zh
+    ? `盘面 ${item[0]} · 读法 ${item[1]} · ${item[2]} · 自选区间=历史收益`
+    : `Evidence ${item[3]} · Read ${item[4]} · ${item[5]} · Range=historical return`
+}
+
+function traderFacingEmptyReason(value: unknown, locale: LongclawLocale): string {
+  const text = compactText(value)
+  if (!text) return ''
+  if (/signals shell/i.test(text) || text.includes('Signals shell')) {
+    return locale === 'zh-CN'
+      ? '机会池还在刷新，先看大盘和已有图表。'
+      : 'Opportunity pools are refreshing; read the market and cached charts first.'
+  }
+  return text
+}
+
+function sectorTransitionStateText(item: SectorTransitionRadarItem, locale: LongclawLocale): string {
+  const fromStage = sectorTransitionStage(item.fromState)
+  const toStage = sectorTransitionStage(item.toState || item.turnState)
+  const from = fromStage ? sectorTransitionStageLabel(fromStage, locale) : item.fromState
+  const to = toStage
+    ? sectorTransitionStageLabel(toStage, locale)
+    : (item.toState || item.turnState || item.flowState)
+  if (from && to && from !== to) return `${from}→${to}`
+  return to || from || (locale === 'zh-CN' ? '观察' : 'Watch')
+}
+
+function sectorTransitionSentinelRow(value: string): Record<string, unknown> {
+  const match = value.trim().match(/^((?:SH|SZ|BJ)\.\d{6}|\d{6})(?:\s+(.+))?$/i)
+  if (!match) return { label: value, name: value, target_kind: 'stock' }
+  return {
+    symbol: match[1].toUpperCase(),
+    name: match[2] ?? '',
+    target_kind: 'stock',
+  }
+}
+
+export function SectorTransitionRadarPanel({
+  locale,
+  radar,
+  pendingUpdate,
+  onSelectSentinel,
+}: {
+  locale: LongclawLocale
+  radar: SectorTransitionRadarView
+  pendingUpdate: boolean
+  onSelectSentinel?: (sentinel: string) => void
+}) {
+  if (['disabled', 'not_enabled'].includes(radar.freshness.status.toLowerCase())
+    || radar.freshness.blockers.includes('sector_transition_disabled')) {
+    return <section style={{ ...sectorTransitionShellStyle, display: 'flex', alignItems: 'baseline', gap: 8 }} aria-label={locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}>
+      <div style={mutedTextStyle}>{locale === 'zh-CN' ? '板块转折雷达尚未启用' : 'Sector transition radar is not enabled'}</div>
+    </section>
+  }
+  const cards = (radar.states.length > 0 ? radar.states : radar.events).slice(0, 4)
+  const globalBlocker = radar.freshness.blockers[0] ?? ''
+  const freshnessLabel = sectorTransitionFreshnessLabel(radar.freshness.status, locale)
+  const asOf = radar.freshness.asOf || radar.asOf
+  return (
+    <section
+      style={sectorTransitionShellStyle}
+      aria-label={locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}
+    >
+      <div style={sectorTransitionHeaderStyle}>
+        <div style={sectorTransitionTitleStyle}>
+          {locale === 'zh-CN' ? '板块转折雷达' : 'Sector transition radar'}
+          {pendingUpdate ? ` · ${locale === 'zh-CN' ? '有新事件' : 'new event'}` : ''}
+        </div>
+        <div style={sectorTransitionHeaderMetaStyle}>
+          {[freshnessLabel, asOf].filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      <div style={sectorTransitionRailStyle}>
+        {SECTOR_TRANSITION_STAGES.map(stage => (
+          <div key={stage} style={sectorTransitionRailCellStyle(stage)}>
+            <div style={sectorTransitionCountStyle}>{countText(radar.counts[stage])}</div>
+            <div style={sectorTransitionStageLabelStyle}>{sectorTransitionStageLabel(stage, locale)}</div>
+          </div>
+        ))}
+      </div>
+      {cards.length > 0 ? (
+        <div style={sectorTransitionCardListStyle}>
+          {cards.map(item => {
+            const stage = sectorTransitionStage(item.toState || item.turnState)
+            const evidence = item.evidence.slice(0, 2).join(' · ') || item.weakerIf
+            const blocker = item.blockers[0] || globalBlocker
+            const nextCheck = item.nextChecks[0]
+            const firstSentinel = item.sentinels[0]
+            return (
+              <article key={item.id} style={sectorTransitionCardStyle(stage)}>
+                <div style={sectorTransitionCardHeaderStyle}>
+                  <div
+                    style={sectorTransitionCardTitleStyle}
+                    title={[item.sectorKind, item.sectorName, item.observedAt].filter(Boolean).join(' · ')}
+                  >
+                    {item.sectorName}
+                  </div>
+                  <div style={sectorTransitionStateChipStyle}>{sectorTransitionStateText(item, locale)}</div>
+                </div>
+                {evidence ? <div style={sectorTransitionEvidenceStyle}>{traderDisplayText(evidence, locale)}</div> : null}
+                {firstSentinel && onSelectSentinel ? (
+                  <button
+                    type="button"
+                    style={sectorTransitionSentinelButtonStyle}
+                    title={locale === 'zh-CN' ? `打开 ${firstSentinel} 图表` : `Open ${firstSentinel} chart`}
+                    onClick={() => onSelectSentinel(firstSentinel)}
+                  >
+                    {locale === 'zh-CN' ? '哨兵' : 'Sentinels'} · {item.sentinels.slice(0, 3).join(' / ')}
+                  </button>
+                ) : (
+                  <div style={sectorTransitionDetailStyle}>
+                    {locale === 'zh-CN' ? '哨兵' : 'Sentinels'} · {item.sentinels.slice(0, 3).join(' / ') || '—'}
+                  </div>
+                )}
+                <div style={blocker ? sectorTransitionBlockerStyle : sectorTransitionDetailStyle}>
+                  {locale === 'zh-CN' ? '阻碍' : 'Blocker'} · {blocker ? traderDisplayText(blocker, locale) : '—'}
+                </div>
+                <div style={sectorTransitionDetailStyle}>
+                  {locale === 'zh-CN' ? '下一确认' : 'Next check'} · {nextCheck ? traderDisplayText(nextCheck, locale) : '—'}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : null}
+      <div style={sectorTransitionFreshnessStyle}>
+        <span>{freshnessLabel}</span>
+        <span title={globalBlocker}>
+          {globalBlocker
+            ? `${locale === 'zh-CN' ? '全局阻碍' : 'Global blocker'} · ${traderDisplayText(globalBlocker, locale)}`
+            : (locale === 'zh-CN' ? '等待状态升级' : 'Waiting for state upgrade')}
+        </span>
+      </div>
+    </section>
+  )
+}
+
+function WatchlistTabbedTable({
+  locale,
+  activeTab,
+  onTabChange,
+  activeTradeRole,
+  onTradeRoleChange,
+  suppressClimax,
+  roleCounts,
+  groupMeta,
+  groups,
+  rows,
+  target,
+  rangeColumns,
+  allRangeColumns,
+  selectedRangeKey,
+  onRangeChange,
+  emptyText,
+  sectorTransitionRadar,
+  pendingListUpdate,
+  onAcknowledgeListUpdate,
+  cursorRowId,
+  expandedChainKeys,
+  onSelect,
+  onCandidateSelect,
+  onDeleteManualClue,
+}: {
+  locale: LongclawLocale
+  activeTab: WatchlistTabKey
+  onTabChange: (tab: WatchlistTabKey) => void
+  activeTradeRole: TradeRoleKey
+  onTradeRoleChange: (role: TradeRoleKey) => void
+  suppressClimax: boolean
+  roleCounts: Record<StockTradeRoleKey, number>
+  groupMeta: Record<string, unknown>
+  groups: {
+    ai_focus: WatchlistRow[]
+    major_indices: WatchlistRow[]
+    industry_etfs: WatchlistRow[]
+    all_etfs: WatchlistRow[]
+    macro_indices: WatchlistRow[]
+    sector_boards: WatchlistRow[]
+    buy_candidates: WatchlistRow[]
+    focus_stocks: WatchlistRow[]
+    risk_stocks: WatchlistRow[]
+    watch_stocks: WatchlistRow[]
+    legacy: WatchlistRow[]
+  }
+  rows: WatchlistRow[]
+  target: ChartTarget
+  rangeColumns: WatchlistRangeColumn[]
+  allRangeColumns: WatchlistRangeColumn[]
+  selectedRangeKey: string
+  onRangeChange: (key: string) => void
+  emptyText: string
+  sectorTransitionRadar: SectorTransitionRadarView | null
+  pendingListUpdate: boolean
+  onAcknowledgeListUpdate: () => void
+  cursorRowId: string
+  expandedChainKeys: Set<string>
+  onSelect: (row: WatchlistRow) => void
+  onCandidateSelect: (row: Record<string, unknown>) => void
+  onDeleteManualClue: (row: WatchlistRow) => void
+}) {
+  const primaryTabs: Array<{ key: WatchlistTabKey; label: string; count: string }> = [
+    { key: 'major_indices', label: locale === 'zh-CN' ? '大盘指数' : 'Major', count: watchlistGroupCountLabel('major_indices', groups.major_indices.length, groupMeta, locale) },
+    { key: 'industry_etfs', label: locale === 'zh-CN' ? '行业ETF' : 'ETF', count: watchlistGroupCountLabel('industry_etfs', groups.industry_etfs.length, groupMeta, locale) },
+    { key: 'all_etfs', label: locale === 'zh-CN' ? '全量ETF' : 'All ETF', count: watchlistGroupCountLabel('all_etfs', groups.all_etfs.length, groupMeta, locale) },
+    { key: 'sector_boards', label: locale === 'zh-CN' ? '板块' : 'Boards', count: watchlistGroupCountLabel('sector_boards', groups.sector_boards.length, groupMeta, locale) },
+  ]
+  const panelMeta = watchlistPanelMeta(activeTab, locale)
+  const watchCount = groups.watch_stocks.length
+  const focusCount = groups.focus_stocks.length
+  const sourceCount = groups.buy_candidates.length
+  const watchCountText = watchlistPoolCountText('watch_stocks', watchCount, groupMeta)
+  const focusCountText = watchlistPoolCountText('focus_stocks', focusCount, groupMeta)
+  const sourceCountText = watchlistPoolCountText('buy_candidates', sourceCount, groupMeta)
+  const modeTitle = focusCount > 0
+    ? (locale === 'zh-CN' ? '买点池待复核' : 'Entry pool to review')
+    : watchCount > 0
+      ? (locale === 'zh-CN' ? '盯盘等买点' : 'Watch for entries')
+      : (locale === 'zh-CN' ? '先看线索池' : 'Start with clues')
+  const modeMeta = focusCount > 0
+    ? (locale === 'zh-CN' ? '复核日/周位置、均线和失效条件；30m仅提示' : 'Review daily/weekly level, MAs, and invalidation; 30m is display only')
+    : watchCount > 0
+      ? (locale === 'zh-CN' ? '等待下一次收盘融合确认；盘中周期不换池' : 'Wait for the next close; intraday timeframes do not change pools')
+      : (locale === 'zh-CN' ? '线索不是买点' : 'A clue is not an entry')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+      <div style={decisionOverviewStripStyle}>
+        <div style={decisionModeCellStyle}>
+          <div style={decisionModeTitleStyle}>{modeTitle}</div>
+          <div style={decisionModeMetaStyle}>{modeMeta}</div>
+        </div>
+        {[
+          [locale === 'zh-CN' ? '线索' : 'Clue', sourceCountText, terminalTheme.accentText],
+          [locale === 'zh-CN' ? '盯盘' : 'Watch', watchCountText, tradingDeskTheme.colors.auroraGold],
+          [locale === 'zh-CN' ? '买点' : 'Entry', focusCountText, tradingDeskTheme.market.up],
+        ].map(([label, value, color]) => (
+          <div key={String(label)} style={decisionMetricCellStyle}>
+            <div style={{ ...decisionMetricValueStyle, color: String(color) }}>{value}</div>
+            <div style={decisionMetricLabelStyle}>{label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={watchlistControlRowStyle}>
+        <div style={watchlistPrimaryTabsStyle}>
+          {primaryTabs.map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              style={tab.key === activeTab ? watchlistTabButtonActiveStyle : watchlistTabButtonStyle}
+              onClick={() => onTabChange(tab.key)}
+            >
+              {tab.label} {tab.count}
+            </button>
+          ))}
+        </div>
+        <label style={watchlistRangeSelectLabelStyle}>
+          <span>{locale === 'zh-CN' ? '区间' : 'Range'}</span>
+          <select
+            value={selectedRangeKey}
+            style={watchlistRangeSelectStyle}
+            onChange={event => onRangeChange(event.currentTarget.value)}
+          >
+            {allRangeColumns.map(column => (
+              <option key={column.key} value={column.key}>{watchlistRangeHeaderLabel(column)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div style={tradeRoleFilterStyle} title={locale === 'zh-CN' ? '按交易角色筛选：低吸进攻、右侧进攻、盯盘观察、线索池。' : 'Filter by setup mode: left attack, right attack, watch, clue.'}>
+        {TRADE_ROLE_FILTERS.map(role => {
+          const count = role.key === 'all'
+            ? groups.buy_candidates.length + groups.watch_stocks.length + groups.focus_stocks.length
+            : roleCounts[role.key as StockTradeRoleKey]
+          const active = role.key === activeTradeRole
+          return (
+            <button
+              key={role.key}
+              type="button"
+              style={tradeRoleButtonStyle(active, role.key)}
+              onClick={() => onTradeRoleChange(role.key)}
+              title={role.key === 'all' && suppressClimax ? (locale === 'zh-CN' ? '全部机会，不含暂不参与' : 'All opportunities, skip-now excluded') : tradeRoleLabel(role.key, locale)}
+            >
+              {tradeRoleLabel(role.key, locale)} {count}
+            </button>
+          )
+        })}
+      </div>
+      <div style={decisionFunnelShellStyle}>
+        <div style={candidateGroupHeaderStyle}>
+          <span>{locale === 'zh-CN' ? '机会递进' : 'Opportunity path'}</span>
+          <span>{sourceCount ? `${locale === 'zh-CN' ? '线索' : 'Clues'} ${sourceCount}` : (locale === 'zh-CN' ? '技术信号主导' : 'Technical signal led')}</span>
+        </div>
+        <div style={funnelRailStyle}>
+          {OPPORTUNITY_FUNNEL_TABS.map((tabKey, index) => (
+            <React.Fragment key={tabKey}>
+              {index > 0 ? <div style={funnelConnectorStyle}>/</div> : null}
+              <button
+                type="button"
+                style={funnelStepButtonStyle(activeTab === tabKey, tabKey === 'focus_stocks' ? 'entry_ready' : tabKey === 'watch_stocks' ? 'watch_preheat' : 'strategy_candidate')}
+                onClick={() => onTabChange(tabKey)}
+              >
+                <div style={funnelButtonTopStyle}>
+                  <span style={funnelButtonLabelStyle}>{watchlistStockTabLabel(tabKey, locale)}</span>
+                  <span style={funnelButtonCountStyle}>{watchlistPoolCountText(tabKey, groups[tabKey].length, groupMeta)}</span>
+                </div>
+                <div style={funnelButtonMetaStyle}>
+                  {tabKey === 'buy_candidates'
+                    ? (locale === 'zh-CN' ? '有线索，还不是买点' : 'Sourced clue, not an entry')
+                    : tabKey === 'watch_stocks'
+                      ? (locale === 'zh-CN' ? '日/周候选观察；盘中周期不换池' : 'Daily/weekly watch; intraday signals do not change pools')
+                      : (locale === 'zh-CN' ? '买点待复核；30m仅提示' : 'Entry review; 30m is display only')}
+                </div>
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      <div style={watchlistMetaStripStyle} title={panelMeta}>
+        {panelMeta}
+      </div>
+      {activeTab === 'sector_boards' && sectorTransitionRadar ? (
+        <SectorTransitionRadarPanel
+          locale={locale}
+          radar={sectorTransitionRadar}
+          pendingUpdate={pendingListUpdate}
+          onSelectSentinel={sentinel => onCandidateSelect(sectorTransitionSentinelRow(sentinel))}
+        />
+      ) : null}
+      {pendingListUpdate && activeTab === 'sector_boards' ? (
+        <button
+          type="button"
+          style={panelActionButtonStyle}
+          onClick={onAcknowledgeListUpdate}
+        >
+          {locale === 'zh-CN' ? '板块转折有新事件，停止扫盘后点击确认' : 'New sector transition event; confirm when ready'}
+        </button>
+      ) : null}
+      {activeTab === 'sector_boards' ? (
+        <ChainHeatVisualization
+          locale={locale}
+          rows={rows}
+          target={target}
+          onSelect={onSelect}
+        />
+      ) : null}
+      <WatchlistTable
+        locale={locale}
+        activeTab={activeTab}
+        rows={rows}
+        target={target}
+        rangeColumns={rangeColumns}
+        emptyText={emptyText}
+        cursorRowId={cursorRowId}
+        expandedChainKeys={expandedChainKeys}
+        onSelect={onSelect}
+        onCandidateSelect={onCandidateSelect}
+        onDeleteManualClue={onDeleteManualClue}
+      />
+    </div>
+  )
+}
+
+export function watchlistGridTemplate(activeTab: WatchlistTabKey, rangeColumnCount: number): string {
+  const stockDecisionTab = STOCK_WATCHLIST_TABS.includes(activeTab)
+  const aiFocusTab = activeTab === 'ai_focus'
+  const rangeColumnSize = stockDecisionTab ? 'minmax(58px, 0.56fr)' : 'minmax(44px, 0.44fr)'
+  const rangeColumns = rangeColumnCount > 0 ? ` repeat(${rangeColumnCount}, ${rangeColumnSize})` : ''
+  if (activeTab === 'sector_boards') {
+    return `minmax(86px, 1.12fr) minmax(42px, 0.44fr) minmax(46px, 0.48fr) minmax(56px, 0.54fr)${rangeColumns}`
+  }
+  if (stockDecisionTab) {
+    return `minmax(166px, 1.62fr) minmax(48px, 0.46fr) minmax(52px, 0.5fr)${rangeColumns}`
+  }
+  if (aiFocusTab) {
+    return `minmax(150px, 1.72fr) minmax(36px, 0.34fr) minmax(40px, 0.38fr) minmax(46px, 0.42fr)${rangeColumns}`
+  }
+  return `minmax(86px, 1.1fr) minmax(40px, 0.42fr) minmax(46px, 0.48fr) minmax(66px, 0.64fr)${rangeColumns}`
+}
+
+function watchlistRangeHeaderLabel(column: WatchlistRangeColumn): string {
+  if (column.key === 'ytd') {
+    const match = column.label.match(/^(\d{4})今年以来$/)
+    if (match?.[1]) return `${match[1]}年以来`
+  }
+  return column.label
+}
+
+function watchlistStockRangeHeaderLabel(column: WatchlistRangeColumn, locale: LongclawLocale): string {
+  const base = watchlistRangeHeaderLabel(column)
+  if (locale !== 'zh-CN') return column.key === 'ytd' ? 'YTD chg' : `${base} chg`
+  const dated = column.label.match(/(?:^|\()(\d{4})-(\d{2})-(\d{2})/)
+  if (dated) return `自${dated[2]}-${dated[3]}涨幅`
+  const ytd = base.match(/^(\d{4})年以来$/)
+  if (ytd?.[1]) return `自${ytd[1]}涨幅`
+  return `自${base.replace(/涨幅$/u, '')}涨幅`
+}
+
+function watchlistHeaders(activeTab: WatchlistTabKey, locale: LongclawLocale): [string, string, string, string] {
+  if (activeTab === 'ai_focus') {
+    return [
+      locale === 'zh-CN' ? '因子观察' : 'Factor watch',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
+      locale === 'zh-CN' ? '因子理由' : 'Factor reason',
+    ]
+  }
+  if (activeTab === 'sector_boards') {
+    return [
+      locale === 'zh-CN' ? '产业链' : 'Chain',
+      locale === 'zh-CN' ? '驱动涨幅' : 'Driver',
+      locale === 'zh-CN' ? '源行业/概念' : 'Source/concept',
+      locale === 'zh-CN' ? '确认/链主' : 'Confirm/core',
+    ]
+  }
+  if (activeTab === 'all_etfs') {
+    return [
+      locale === 'zh-CN' ? '全量ETF' : 'All ETF',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
+      locale === 'zh-CN' ? '分类/成交额' : 'Class/turnover',
+    ]
+  }
+  if (activeTab === 'focus_stocks') {
+    return [
+      locale === 'zh-CN' ? '买点' : 'Entry',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
+      locale === 'zh-CN' ? '动作' : 'Action',
+    ]
+  }
+  if (activeTab === 'risk_stocks') {
+    return [
+      locale === 'zh-CN' ? '提醒' : 'Reminder',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
+      locale === 'zh-CN' ? '动作' : 'Action',
+    ]
+  }
+  if (activeTab === 'watch_stocks') {
+    return [
+      locale === 'zh-CN' ? '盯盘' : 'Watch',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
+      locale === 'zh-CN' ? '还差' : 'Missing',
+    ]
+  }
+  if (activeTab === 'buy_candidates') {
+    return [
+      locale === 'zh-CN' ? '线索' : 'Clue',
+      locale === 'zh-CN' ? '最新价' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Chg',
+      locale === 'zh-CN' ? '背景' : 'Context',
+    ]
+  }
+  if (activeTab === 'major_indices') {
+    return [
+      locale === 'zh-CN' ? '大盘指数' : 'Major index',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
+      locale === 'zh-CN' ? '信号' : 'Signal',
+    ]
+  }
+  if (activeTab === 'industry_etfs') {
+    return [
+      locale === 'zh-CN' ? '行业ETF' : 'Industry ETF',
+      locale === 'zh-CN' ? '最新' : 'Last',
+      locale === 'zh-CN' ? '涨幅' : 'Day',
+      locale === 'zh-CN' ? '信号' : 'Signal',
+    ]
+  }
+  return [
+    locale === 'zh-CN' ? '指数' : 'Index',
+    locale === 'zh-CN' ? '最新' : 'Last',
+    locale === 'zh-CN' ? '涨幅' : 'Day',
+    locale === 'zh-CN' ? '信号' : 'Signal',
+  ]
+}
+
+function sectorLeaderForWatchlist(row: WatchlistRow): string {
+  const raw = row.raw
+  const reps = recordValue(raw.representatives)
+  const sourceLeader = recordValue(Array.isArray(reps.source_leader) ? reps.source_leader[0] : undefined)
+  return (
+    compactText(raw.leader) ||
+    compactText(raw.leader_name) ||
+    compactText(sourceLeader.name) ||
+    compactText(recordValue(raw.source_leader).name) ||
+    'N/A'
+  )
+}
+
+function sectorPrimaryDomainForWatchlist(row: WatchlistRow): string {
+  const sourceDriver = recordValue(row.raw.source_driver)
+  const primary = recordValue(row.raw.primary_domain)
+  const name = compactText(sourceDriver.name) || compactText(primary.name)
+  if (!name) return sectorLeaderForWatchlist(row)
+  const kind = compactText(sourceDriver.kind_label) || (
+    compactText(sourceDriver.kind) === 'concept' || compactText(primary.kind) === 'concept'
+      ? (row.raw.kind === 'concept' ? '概念' : '概念')
+      : compactText(sourceDriver.kind) === 'industry' || compactText(primary.kind) === 'industry'
+        ? '行业'
+        : ''
+  )
+  const change = formatPercent(sourceDriver.change_pct ?? primary.change_pct)
+  const prefix = kind ? `[${kind}] ` : ''
+  return change !== 'N/A' ? `${prefix}${name} ${change}` : `${prefix}${name}`
+}
+
+function sectorConceptOverlayForWatchlist(row: WatchlistRow): string {
+  const overlays = Array.isArray(row.raw.source_concept_overlays) ? row.raw.source_concept_overlays : []
+  const labels = overlays
+    .map(item => {
+      const record = recordValue(item)
+      const name = compactText(record.name)
+      if (!name) return ''
+      const change = formatPercent(record.change_pct)
+      const matched = Array.isArray(record.matched_names)
+        ? record.matched_names.map(value => compactText(value)).filter(Boolean).slice(0, 2).join('/')
+        : ''
+      const body = change !== 'N/A' ? `[概念] ${name} ${change}` : `[概念] ${name}`
+      return matched ? `${body}(${matched})` : body
+    })
+    .filter(Boolean)
+    .slice(0, 2)
+  return labels.join(' / ')
+}
+
+function sectorConceptOverlayDetailForWatchlist(row: WatchlistRow): string {
+  const groups = Array.isArray(row.raw.source_event_concept_overlays) ? row.raw.source_event_concept_overlays : []
+  return groups
+    .map(item => {
+      const record = recordValue(item)
+      const source = recordValue(record.source)
+      const sourceName = compactText(source.name)
+      const concepts = Array.isArray(record.concepts)
+        ? record.concepts
+          .map(value => {
+            const concept = recordValue(value)
+            const name = compactText(concept.name)
+            if (!name) return ''
+            const change = formatPercent(concept.change_pct)
+            return change !== 'N/A' ? `${name} ${change}` : name
+          })
+          .filter(Boolean)
+          .slice(0, 3)
+          .join('/')
+        : ''
+      return sourceName && concepts ? `${sourceName}: ${concepts}` : ''
+    })
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('；')
+}
+
+function sectorThemeOverlayForWatchlist(row: WatchlistRow): string {
+  const overlays = Array.isArray(row.raw.source_theme_overlays) ? row.raw.source_theme_overlays : []
+  const labels = overlays
+    .map(item => {
+      const record = recordValue(item)
+      const name = compactText(record.name)
+      if (!name) return ''
+      const change = formatPercent(record.change_pct)
+      const matched = Array.isArray(record.matched_names)
+        ? record.matched_names.map(value => compactText(value)).filter(Boolean).slice(0, 2).join('/')
+        : ''
+      const body = change !== 'N/A' ? `[主题] ${name} ${change}` : `[主题] ${name}`
+      return matched ? `${body}(${matched})` : body
+    })
+    .filter(Boolean)
+    .slice(0, 1)
+  return labels.join(' / ')
+}
+
+function sectorThemeOverlayDetailForWatchlist(row: WatchlistRow): string {
+  const groups = Array.isArray(row.raw.source_event_theme_overlays) ? row.raw.source_event_theme_overlays : []
+  return groups
+    .map(item => {
+      const record = recordValue(item)
+      const source = recordValue(record.source)
+      const sourceName = compactText(source.name)
+      const themes = Array.isArray(record.themes)
+        ? record.themes
+          .map(value => {
+            const theme = recordValue(value)
+            const name = compactText(theme.name)
+            if (!name) return ''
+            const change = formatPercent(theme.change_pct)
+            return change !== 'N/A' ? `${name} ${change}` : name
+          })
+          .filter(Boolean)
+          .slice(0, 2)
+          .join('/')
+        : ''
+      return sourceName && themes ? `${sourceName}: ${themes}` : ''
+    })
+    .filter(Boolean)
+    .slice(0, 4)
+    .join('；')
+}
+
+function sectorSourceAndConceptForWatchlist(row: WatchlistRow): string {
+  return [
+    sectorPrimaryDomainForWatchlist(row),
+    sectorConceptOverlayForWatchlist(row),
+    sectorThemeOverlayForWatchlist(row),
+  ].filter(Boolean).join(' / ')
+}
+
+function sectorOverlayNamesForWatchlist(row: WatchlistRow, field: 'source_concept_overlays' | 'source_theme_overlays', limit = 2): string[] {
+  const overlays = Array.isArray(row.raw[field]) ? row.raw[field] : []
+  return overlays
+    .map(item => compactText(recordValue(item).name))
+    .filter(Boolean)
+    .slice(0, limit)
+}
+
+function sectorStatusForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const confirmation = recordValue(row.raw.chain_confirmation)
+  const label = compactText(confirmation.label)
+  if (label) return label
+  if (compactText(row.raw.domain) === 'theme_heat') return locale === 'zh-CN' ? '主题热度' : 'Theme heat'
+  return chainPhaseLabel(compactText(row.raw.phase), locale)
+}
+
+function sectorStatusToneForWatchlist(row: WatchlistRow): React.CSSProperties {
+  const status = compactText(recordValue(row.raw.chain_confirmation).status)
+  if (status === 'confirmed') return { color: tradingDeskTheme.market.up, borderColor: tradingDeskTheme.market.up }
+  if (status === 'theme_heat') return { color: tradingDeskTheme.colors.auroraGold, borderColor: tradingDeskTheme.colors.auroraGold }
+  if (status === 'elastic_rebound' || status === 'mixed') return { color: '#e0a83a', borderColor: '#8a6726' }
+  if (status === 'source_only') return { color: terminalTheme.accentText, borderColor: terminalTheme.accent }
+  if (status === 'not_confirmed' || status === 'weak') return { color: tradingDeskTheme.market.down, borderColor: tradingDeskTheme.market.down }
+  return chainPhaseTone(compactText(row.raw.phase))
+}
+
+function sectorTitleForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const sourceDriver = recordValue(row.raw.source_driver)
+  const nodeName = compactText(row.raw.node_name)
+  const chainName = compactText(row.raw.chain_name).replace(/产业链$/u, '')
+  const driverName = compactText(sourceDriver.name) || compactText(recordValue(row.raw.primary_domain).name)
+  const conceptNames = sectorOverlayNamesForWatchlist(row, 'source_concept_overlays', 2)
+  const themeNames = sectorOverlayNamesForWatchlist(row, 'source_theme_overlays', 1)
+  const base = compactText(row.raw.domain) === 'theme_heat'
+    ? (driverName || nodeName || row.name)
+    : (nodeName || row.name)
+  const context = [driverName, ...conceptNames, ...themeNames]
+    .filter((value, index, values) => value && values.indexOf(value) === index && value !== base)
+    .slice(0, 3)
+    .join('/')
+  if (base && context) return `${base} · ${context}`
+  if (base && chainName && chainName !== base && compactText(row.raw.domain) !== 'theme_heat') return `${base} · ${chainName}`
+  return base || row.name || (locale === 'zh-CN' ? '板块' : 'Sector')
+}
+
+function sectorSublineForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const status = sectorStatusForWatchlist(row, locale)
+  const source = sectorSourceAndConceptForWatchlist(row)
+  return [status, source].filter(Boolean).join(' · ')
+}
+
+function sectorActionLineForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const confirmation = recordValue(row.raw.chain_confirmation)
+  const status = compactText(confirmation.status)
+  const label = sectorStatusForWatchlist(row, locale)
+  if (locale !== 'zh-CN') return label
+  if (status === 'confirmed') return `${label}：链主/弹性跟随，复核扩散延续`
+  if (status === 'elastic_rebound') return `${label}：链主不强，先看弹性标的和三线扩散`
+  if (status === 'source_only') {
+    const source = sectorPrimaryDomainForWatchlist(row).replace(/^\[[^\]]+\]\s*/u, '')
+    return `${label}：${source || '源板块'}在涨，等链主确认后再当主线`
+  }
+  if (status === 'mixed') return `${label}：只看强分支，不当整链共振`
+  if (status === 'theme_heat') return '观察事件/风格扩散，不当成行业主线'
+  if (status === 'not_confirmed' || status === 'weak') return `${label}：不当产业链主线`
+  return label || row.traderAction
+}
+
+function chainChangeExplainForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const explicit = compactText(row.raw.change_explain)
+  if (explicit) return explicit
+  const primary = recordValue(row.raw.primary_domain)
+  const reference = recordValue(row.raw.reference_domain)
+  const confirmation = recordValue(row.raw.representative_confirmation)
+  const primaryName = compactText(primary.name)
+  const referenceName = compactText(reference.name)
+  const parts = [
+    primaryName
+      ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'} ${primaryName} ${formatPercent(primary.change_pct)}`
+      : '',
+    referenceName && referenceName !== primaryName
+      ? `${locale === 'zh-CN' ? '参考' : 'Reference'} ${referenceName} ${formatPercent(reference.change_pct)}`
+      : '',
+    compactText(confirmation.label),
+  ].filter(Boolean)
+  return parts.join(locale === 'zh-CN' ? '；' : '; ')
+}
+
+function sourceLabelForWatchlist(row: WatchlistRow): string {
+  const raw = row.raw
+  const metadata = recordValue(raw.metadata)
+  const aiFactorOverlay = recordValue(metadata.ai_factor_factory)
+  const collections = Array.isArray(raw.source_collections)
+    ? raw.source_collections.map(item => compactText(item)).filter(Boolean)
+    : []
+  const aiFactorSource =
+    compactText(metadata.source) === 'ai_factor_factory' || compactText(aiFactorOverlay.source) === 'ai_factor_factory'
+  return (
+    (aiFactorSource ? 'AI因子工厂' : '') ||
+    collections.slice(0, 2).join('+') ||
+    compactText(raw.source_collection) ||
+    compactText(raw.source) ||
+    compactText(metadata.source) ||
+    compactText(raw.heat_source) ||
+    ''
+  )
+}
+
+function sectorCarrierForWatchlist(row: WatchlistRow, locale: LongclawLocale): string {
+  const raw = row.raw
+  const confirmation = recordValue(raw.chain_confirmation)
+  const confirmationLabel = compactText(confirmation.label)
+  const reps = recordValue(raw.representatives)
+  const core = recordValue(Array.isArray(reps.core) ? reps.core[0] : undefined)
+  const elastic = recordValue(Array.isArray(reps.elastic) ? reps.elastic[0] : undefined)
+  const themeRow = compactText(raw.domain) === 'theme_heat'
+  const coreLabel = themeRow ? (locale === 'zh-CN' ? '热股' : 'Hot') : (locale === 'zh-CN' ? '链主' : 'Core')
+  const elasticLabel = locale === 'zh-CN' ? '弹性' : 'Elastic'
+  const carrier = recordValue(raw.carrier)
+  const target = recordValue(raw.target)
+  const coreName =
+    compactText(core.name) ||
+    compactText(carrier.name) ||
+    compactText(target.name) ||
+    compactText(raw.carrier_range_return_symbol) ||
+    compactText(raw.target_symbol)
+  const elasticName = compactText(elastic.name)
+  const carrierText = coreName && elasticName && elasticName !== coreName
+    ? `${coreLabel} ${coreName} / ${elasticLabel} ${elasticName}`
+    : coreName
+      ? `${coreLabel} ${coreName}`
+      : elasticName
+        ? `${elasticLabel} ${elasticName}`
+        : compactText(row.signal) || (locale === 'zh-CN' ? '待映射' : 'Unmapped')
+  return [confirmationLabel, carrierText].filter(Boolean).join(' · ')
+}
+
+function chainPhaseLabel(phase: string, locale: LongclawLocale): string {
+  const labels: Record<string, [string, string]> = {
+    accelerating: ['加速', 'Accel'],
+    warming: ['升温', 'Warm'],
+    consensus_climax: ['高潮', 'Climax'],
+    diverging: ['背离', 'Diverge'],
+    cooling: ['降温', 'Cool'],
+    risk_off: ['风险', 'Risk'],
+  }
+  const label = labels[phase]
+  if (!label) return phase || (locale === 'zh-CN' ? '观察' : 'Watch')
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function chainPhaseTone(phase: string): React.CSSProperties {
+  if (phase === 'accelerating') return { color: tradingDeskTheme.market.up, borderColor: tradingDeskTheme.market.up }
+  if (phase === 'warming') return { color: terminalTheme.accentText, borderColor: terminalTheme.accent }
+  if (phase === 'consensus_climax') return { color: tradingDeskTheme.colors.auroraGold, borderColor: tradingDeskTheme.colors.auroraGold }
+  if (phase === 'diverging') return { color: '#e0a83a', borderColor: '#8a6726' }
+  if (phase === 'cooling') return { color: '#7aa7ff', borderColor: '#35548c' }
+  if (phase === 'risk_off') return { color: tradingDeskTheme.market.down, borderColor: tradingDeskTheme.market.down }
+  return {}
+}
+
+function chainSignalLabel(value: unknown, locale: LongclawLocale): string {
+  const signal = compactText(value)
+  const labels: Record<string, [string, string]> = {
+    chain_acceleration: ['链加速', 'Chain accel'],
+    chain_warming: ['链升温', 'Chain warm'],
+    chain_divergence: ['热度背离', 'Divergence'],
+    chain_cooling: ['链降温', 'Cooling'],
+    chain_risk_off: ['链风险', 'Risk off'],
+  }
+  const label = labels[signal]
+  if (!label) return signal || (locale === 'zh-CN' ? '观察' : 'Watch')
+  return locale === 'zh-CN' ? label[0] : label[1]
+}
+
+function chainDomainLabels(row: WatchlistRow): string[] {
+  const domains = Array.isArray(row.raw.integrated_domains) ? row.raw.integrated_domains : []
+  return domains
+    .map(item => compactText(recordValue(item).name))
+    .filter(Boolean)
+    .slice(0, 3)
+}
+
+function chainNodeLabel(row: WatchlistRow): string {
+  return compactText(row.raw.node_name) || compactText(row.raw.stage) || compactText(row.raw.layer) || row.name
+}
+
+function chainStageLabel(row: WatchlistRow): string {
+  return compactText(row.raw.stage) || compactText(row.raw.layer) || compactText(row.raw.chain_name) || row.typeLabel
+}
+
+function chainVizBarColor(phase: string): string {
+  if (phase === 'risk_off') return tradingDeskTheme.market.down
+  if (phase === 'cooling') return '#3f7ee8'
+  if (phase === 'consensus_climax') return tradingDeskTheme.colors.auroraGold
+  if (phase === 'diverging') return '#d0902f'
+  if (phase === 'accelerating') return tradingDeskTheme.market.up
+  return terminalTheme.accent
+}
+
+function ChainHeatVisualization({
+  locale,
+  rows,
+  target,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  rows: WatchlistRow[]
+  target: ChartTarget
+  onSelect: (row: WatchlistRow) => void
+}) {
+  const chainRows = rows
+    .filter(row => compactText(row.raw.source) === 'chain_heat_snapshots' || compactText(row.raw.domain) === 'chain_heat')
+    .slice(0, 6)
+  if (chainRows.length === 0) return null
+  const maxHeat = Math.max(...chainRows.map(row => numberValue(row.raw.heat_score) ?? 0), 1)
+  return (
+    <div style={chainVizShellStyle}>
+      <div style={chainVizGridStyle}>
+	        {chainRows.map(row => {
+	          const phase = compactText(row.raw.phase)
+	          const heat = numberValue(row.raw.heat_score) ?? 0
+	          const width = `${Math.max(8, Math.min(100, (heat / maxHeat) * 100))}%`
+	          const active = watchlistRowIsActive(row, target)
+	          const domains = chainDomainLabels(row)
+	          const sectorTitle = sectorTitleForWatchlist(row, locale)
+	          const sectorStatus = sectorStatusForWatchlist(row, locale)
+	          const targetRows = sectorTargetRowsForContext(row)
+	          const targetPreview = targetRows
+	            .map(item => stockIdentityDisplay(item) || candidateStockLabel(item))
+	            .filter(Boolean)
+	            .slice(0, 3)
+	            .join(' / ')
+	          return (
+	            <button
+	              key={`chain-viz-${row.id}`}
+	              type="button"
+	              style={active ? chainVizNodeActiveStyle : chainVizNodeStyle}
+	              onClick={() => onSelect(row)}
+	              title={[
+	                sectorTitle,
+	                row.name !== sectorTitle ? row.name : '',
+	                sectorStatus,
+	                sectorSourceAndConceptForWatchlist(row),
+	                domains.join('/'),
+	              ].filter(Boolean).join(' · ')}
+	            >
+	              <div style={chainVizTopLineStyle}>
+	                <div style={chainVizTitleStyle}>{sectorTitle}</div>
+	                <div style={{ ...chainVizMetricStyle, ...compactPercentTextStyle(row.dayChange, 44, 68) }}>{row.dayChange}</div>
+	              </div>
+              <div style={chainVizBarTrackStyle}>
+                <div style={{ ...chainVizBarStyle, width, background: chainVizBarColor(phase) }} />
+              </div>
+              <div style={chainVizMapStyle}>
+                <span style={chainVizChipStyle}>{chainStageLabel(row)}</span>
+                <span style={chainVizConnectorStyle} />
+                <span style={chainVizNodePillStyle}>{chainNodeLabel(row)}</span>
+                <span style={chainVizConnectorStyle} />
+                <span style={chainVizDomainRailStyle}>
+                  {domains.map(domain => (
+                    <span key={`${row.id}-domain-${domain}`} style={chainVizChipStyle}>{domain}</span>
+                  ))}
+                </span>
+	              </div>
+	              <div style={chainVizMetaStyle}>
+	                <span style={{ ...chainVizChipStyle, ...sectorStatusToneForWatchlist(row) }}>{sectorStatus}</span>
+	                <span style={chainVizChipStyle}>{sectorPrimaryDomainForWatchlist(row)}</span>
+	                <span style={chainVizChipStyle}>5m {formatNumber(row.raw.momentum_5m)}</span>
+	                <span style={chainVizChipStyle}>15m {formatNumber(row.raw.momentum_15m)}</span>
+	                <span style={chainVizChipStyle}>30m {formatNumber(row.raw.momentum_30m)}</span>
+	              </div>
+	              {targetRows.length > 0 ? (
+	                <div style={chainVizTargetPreviewStyle}>
+	                  <span style={{ ...miniNeutralSignalBadgeStyle, flex: '0 0 auto' }}>
+	                    {locale === 'zh-CN' ? `标的 ${targetRows.length}` : `${targetRows.length} names`}
+	                  </span>
+	                  <span style={chainVizTargetNameStyle}>{targetPreview}</span>
+	                </div>
+	              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function WatchlistTable({
+  locale,
+  activeTab,
+  rows,
+  target,
+  rangeColumns,
+  emptyText,
+  cursorRowId,
+  expandedChainKeys,
+  onSelect,
+  onCandidateSelect,
+  onDeleteManualClue,
+}: {
+  locale: LongclawLocale
+  activeTab: WatchlistTabKey
+  rows: WatchlistRow[]
+  target: ChartTarget
+  rangeColumns: WatchlistRangeColumn[]
+  emptyText: string
+  cursorRowId: string
+  expandedChainKeys: Set<string>
+  onSelect: (row: WatchlistRow) => void
+  onCandidateSelect: (row: Record<string, unknown>) => void
+  onDeleteManualClue: (row: WatchlistRow) => void
+}) {
+  const [armedDeleteRowId, setArmedDeleteRowId] = useState('')
+  useEffect(() => {
+    if (!armedDeleteRowId) return
+    if (!rows.some(row => row.id === armedDeleteRowId)) {
+      setArmedDeleteRowId('')
+      return
+    }
+    const timer = window.setTimeout(() => setArmedDeleteRowId(''), 3200)
+    return () => window.clearTimeout(timer)
+  }, [armedDeleteRowId, rows])
+
+  const handleManualClueDeleteClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>, row: WatchlistRow) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (armedDeleteRowId === row.id) {
+        setArmedDeleteRowId('')
+        onDeleteManualClue(row)
+        return
+      }
+      setArmedDeleteRowId(row.id)
+    },
+    [armedDeleteRowId, onDeleteManualClue],
+  )
+
+  if (rows.length === 0) {
+    return <div style={emptyStateDarkStyle}>{emptyText}</div>
+  }
+  const headers = watchlistHeaders(activeTab, locale)
+  const gridTemplateColumns = watchlistGridTemplate(activeTab, rangeColumns.length)
+  const stockDecisionTab = STOCK_WATCHLIST_TABS.includes(activeTab)
+  const headerRowStyle = { ...watchlistGridRowStyle, gridTemplateColumns }
+  const buttonRowStyle = { ...watchlistButtonRowStyle, gridTemplateColumns }
+  const activeButtonRowStyle = { ...watchlistButtonActiveRowStyle, gridTemplateColumns }
+  return (
+    <div style={watchlistTableStyle}>
+      <div style={headerRowStyle}>
+        <div style={watchlistNameHeaderCellStyle}>{headers[0]}</div>
+        <div style={watchlistHeaderCellStyle}>{headers[1]}</div>
+        <div style={watchlistHeaderCellStyle}>{headers[2]}</div>
+        {!stockDecisionTab ? <div style={watchlistHeaderCellStyle}>{headers[3]}</div> : null}
+        {rangeColumns.map(column => (
+          <div key={column.key} style={watchlistHeaderCellStyle}>
+            {stockDecisionTab ? watchlistStockRangeHeaderLabel(column, locale) : watchlistRangeHeaderLabel(column)}
+          </div>
+        ))}
+      </div>
+      {rows.map(row => {
+        const active = watchlistRowIsActive(row, target)
+        const cursor = row.id === cursorRowId
+        const expanded = activeTab === 'sector_boards' && expandedChainKeys.has(chainRowKey(row))
+	        const firstMetric = activeTab === 'sector_boards' ? row.dayChange : row.latest
+	        const secondMetric = activeTab === 'sector_boards' ? sectorSourceAndConceptForWatchlist(row) : row.dayChange
+	        const rowSource = sourceLabelForWatchlist(row)
+	        const chainChangeExplain = activeTab === 'sector_boards' ? chainChangeExplainForWatchlist(row, locale) : ''
+	        const sectorTitle = activeTab === 'sector_boards' ? sectorTitleForWatchlist(row, locale) : row.name
+	        const sectorSubline = activeTab === 'sector_boards' ? sectorSublineForWatchlist(row, locale) : ''
+	        const tableActionLine = activeTab === 'sector_boards' ? sectorActionLineForWatchlist(row, locale) : row.traderAction
+	        const stockDecision = STOCK_WATCHLIST_TABS.includes(activeTab)
+        const actionLabel = stockDecision ? '' : decisionActionLabel(row.decision, locale)
+        const traderRead = stockDecision ? traderReadLine(row, locale) : ''
+        const evidenceLine = stockDecision ? traderEvidenceSummary(row, locale) : ''
+        const displayBadges = stockDecision ? stockDisplayBadges(row, locale) : []
+        const summaryLine = stockDecision ? stockDisplaySummaryLine(row, locale) : ''
+        const signalDetailLine = stockDecision ? '' : watchlistSignalDetailLine(row)
+        const manualClue = rowIsManualClue(row)
+        return (
+          <React.Fragment key={row.id}>
+            <div
+              role="button"
+              tabIndex={0}
+              style={{
+                ...(active ? activeButtonRowStyle : buttonRowStyle),
+                ...(stockDecision ? stockWatchlistButtonRowStyle : {}),
+                ...(stockDecision && active ? stockWatchlistButtonActiveRowExtraStyle : {}),
+                ...(cursor ? { boxShadow: `inset 3px 0 ${terminalTheme.accent}` } : {}),
+	              }}
+	              title={[
+	                sectorTitle,
+	                activeTab === 'sector_boards' && row.name !== sectorTitle ? `${locale === 'zh-CN' ? '原链路' : 'Raw chain'}: ${row.name}` : '',
+	                rowSource ? `${locale === 'zh-CN' ? '线索' : 'Source'}: ${traderDisplayText(rowSource, locale)}` : '',
+	                compactText(row.raw.quote_source) ? `${locale === 'zh-CN' ? '行情通道' : 'Quote'}: ${compactText(row.raw.quote_source)}` : '',
+	                compactText(row.raw.range_return_source) ? `${locale === 'zh-CN' ? '区间行情' : 'Range source'}: ${compactText(row.raw.range_return_source)}` : '',
+	                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '主驱动' : 'Driver'}: ${sectorPrimaryDomainForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && sectorConceptOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '概念叠加' : 'Concept overlay'}: ${sectorConceptOverlayForWatchlist(row)}` : '',
+	                activeTab === 'sector_boards' && sectorConceptOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源概念' : 'Source concepts'}: ${sectorConceptOverlayDetailForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' && sectorThemeOverlayForWatchlist(row) ? `${locale === 'zh-CN' ? '主题叠加' : 'Theme overlay'}: ${sectorThemeOverlayForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' && sectorThemeOverlayDetailForWatchlist(row) ? `${locale === 'zh-CN' ? '分源主题' : 'Source themes'}: ${sectorThemeOverlayDetailForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' && chainChangeExplain ? chainChangeExplain : '',
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '当日领涨' : 'Top mover'}: ${sectorLeaderForWatchlist(row)}` : '',
+                activeTab === 'sector_boards' ? `${locale === 'zh-CN' ? '链主/弹性' : 'Core/elastic'}: ${sectorCarrierForWatchlist(row, locale)}` : '',
+                !stockDecision && row.signal ? `${locale === 'zh-CN' ? '信号' : 'Signal'}: ${row.signal}` : '',
+                !stockDecision && signalDetailLine ? `${locale === 'zh-CN' ? '说明' : 'Detail'}: ${signalDetailLine}` : '',
+                !stockDecision && row.signalBadges.length > 0 ? `${locale === 'zh-CN' ? '周期' : 'Timeframes'}: ${row.signalBadges.map(badge => signalBadgeDisplayLabel(badge, locale)).join(' / ')}` : '',
+                stockDecision && traderRead ? `${locale === 'zh-CN' ? '读法' : 'Read'}: ${traderRead}` : '',
+                stockDecision && evidenceLine ? `${locale === 'zh-CN' ? '盘面依据' : 'Evidence'}: ${evidenceLine}` : '',
+                stockDecision && sectorTransitionStockAnnotation(row.raw, locale)?.nextGate
+                  ? `${locale === 'zh-CN' ? '板块下一关' : 'Sector next gate'}: ${sectorTransitionStockAnnotation(row.raw, locale)?.nextGate}`
+                  : '',
+                stockDecision && compactText(row.raw.sector_event_id)
+                  ? `${locale === 'zh-CN' ? '板块事件' : 'Sector event'}: ${compactText(row.raw.sector_event_id)}`
+                  : '',
+                row.rankReason ? `${locale === 'zh-CN' ? '排序' : 'Rank'}: ${traderDisplayText(row.rankReason, locale)}` : '',
+                row.traceSummary ? `${locale === 'zh-CN' ? '溯源' : 'Trace'}: ${traderDisplayText(row.traceSummary, locale)}` : '',
+                rangeColumns[0] ? `${rangeColumns[0].label}: ${row.rangeValues[0] ?? 'N/A'}` : '',
+              ].filter(Boolean).join(' · ')}
+              onClick={() => onSelect(row)}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelect(row)
+                }
+              }}
+	            >
+	              <div style={stockDecision ? stockWatchlistNameCellStyle : watchlistNameCellStyle}>
+                {stockDecision ? (
+                  <div style={stockWatchlistTitleRowStyle}>
+                    <div style={stockWatchlistNameTitleStyle}>{sectorTitle}</div>
+                    {(row.code || manualClue) ? (
+                      <div style={stockWatchlistMetaRowStyle}>
+                        {row.code ? (
+                          <div style={stockWatchlistTitleMetaStyle}>{row.code}</div>
+                        ) : null}
+                        {manualClue ? (
+                          <button
+                            type="button"
+                            aria-label={locale === 'zh-CN' ? `移除临时线索 ${row.name}` : `Remove temporary clue ${row.name}`}
+                            title={armedDeleteRowId === row.id
+                              ? (locale === 'zh-CN' ? '再次点击确认移除。只删除临时线索，不影响自动股票池。' : 'Click again to confirm removal. Automatic pool is untouched.')
+                              : (locale === 'zh-CN' ? '临时线索移除。需要二次确认。' : 'Remove temporary clue. Requires confirmation.')}
+                            style={manualClueInlineDeleteStyle(armedDeleteRowId === row.id)}
+                            onMouseDown={event => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                            }}
+                            onClick={event => handleManualClueDeleteClick(event, row)}
+                          >
+                            {armedDeleteRowId === row.id ? (locale === 'zh-CN' ? '确认' : 'Sure') : '×'}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+	                <div style={watchlistNameTitleRowStyle}>
+	                  <div style={watchlistNameStyle}>{sectorTitle}</div>
+	                </div>
+                )}
+	                {stockDecision ? (
+	                  <>
+	                    <div style={stockWatchlistBadgeRowStyle}>
+	                      {displayBadges.map(badge => (
+	                          <span key={`${row.id}-display-${badge.tone}-${badge.label}`} style={stockDisplayBadgeStyle(badge.tone)}>
+	                            {badge.label}
+	                          </span>
+	                        ))}
+	                    </div>
+	                    {summaryLine ? (
+	                      <div style={stockWatchlistSummaryStyle}>{summaryLine}</div>
+	                    ) : null}
+	                  </>
+                ) : (
+                  <>
+                    <div style={watchlistSubStyle}>
+                      {activeTab === 'sector_boards'
+                        ? sectorSubline
+                        : [row.typeLabel, row.code, ...row.tags.slice(0, 2)].filter(Boolean).join(' · ')}
+                    </div>
+	                    {row.explanation || tableActionLine || row.rankLabel || row.rankReason ? (
+	                      <div style={watchlistSubStyle}>
+	                        {[row.rankLabel, tableActionLine, chainChangeExplain || row.rankReason || row.explanation].filter(Boolean).join(' · ')}
+	                      </div>
+	                    ) : null}
+                  </>
+                )}
+              </div>
+              <div style={activeTab === 'sector_boards' ? watchlistPercentCellStyle(firstMetric) : watchlistCellStyle}>{firstMetric}</div>
+              <div style={activeTab === 'sector_boards' ? watchlistCellStyle : watchlistPercentCellStyle(secondMetric)}>{secondMetric}</div>
+              {!stockDecision ? (
+                <div style={activeTab === 'sector_boards' || activeTab === 'ai_focus' ? watchlistCellStyle : watchlistSignalCellStyle}>
+                  {activeTab === 'sector_boards' ? (
+                    sectorCarrierForWatchlist(row, locale)
+                  ) : activeTab === 'ai_focus' ? (
+                    <span style={mutedTwoLineStyle}>{row.rankReason || row.traderAction || actionLabel}</span>
+                  ) : (
+                    <span style={watchlistSignalStackStyle}>
+                      <span style={watchlistSignalMainStyle}>{row.signal || 'N/A'}</span>
+                      {signalDetailLine ? (
+                        <span style={watchlistSignalDetailStyle}>{signalDetailLine}</span>
+                      ) : null}
+                      {row.signalBadges.length > 0 ? (
+                        <span style={contextSignalBadgeRowStyle}>
+                          {row.signalBadges.slice(0, 4).map(badge => (
+                            <span
+                              key={`${row.id}-${badge.side}-${badge.label}`}
+                              style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                            >
+                              {signalBadgeDisplayLabel(badge, locale)}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
+                  )}
+                </div>
+              ) : null}
+              {row.rangeValues.map((value, index) => (
+                <div key={`${row.id}-range-${index}`} style={watchlistPercentCellStyle(value)}>
+                  {value}
+                </div>
+              ))}
+            </div>
+            {expanded ? (
+              <ChainTargetDrawer
+                locale={locale}
+                row={row}
+                onSelect={onCandidateSelect}
+              />
+            ) : null}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+function TradeActionStrip({
+  locale,
+  plan,
+}: {
+  locale: LongclawLocale
+  plan: StrategyTradeActionPlan
+}) {
+  return (
+    <div style={tradeActionStripStyle}>
+      <div style={tradeActionCellStyle}>
+        <div style={tradeActionLabelStyle}>{locale === 'zh-CN' ? '动作' : 'Action'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+          <span style={statusBadgeStyle(plan.tone)}>{plan.action}</span>
+          <span style={mutedLineStyle} title={plan.reason}>{plan.reason}</span>
+        </div>
+      </div>
+      <div style={tradeActionCellStyle}>
+        <div style={tradeActionLabelStyle}>{locale === 'zh-CN' ? '下一确认' : 'Next check'}</div>
+        <div style={mutedTwoLineStyle} title={plan.next}>{plan.next}</div>
+      </div>
+    </div>
+  )
+}
+
+export function StrategyDecisionPanel({
+  locale,
+  row,
+  target,
+  symbolData,
+  sourceConfidence,
+  keyLevels,
+  signals,
+  divergences,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow | null
+  target: ChartTarget
+  symbolData: WorkbenchSymbolData | null
+  sourceConfidence: Record<string, unknown>[]
+  keyLevels: StrategyKeyLevel[]
+  signals: StrategySignal[]
+  divergences: MacdDivergenceSignal[]
+}) {
+  if (!row) {
+    const summary = recordValue(symbolData?.summary)
+    const chain = recordValue(summary.chain_position)
+    const chainText = uniqueCompact([chain.chain, chain.node, chain.role, chain.board_or_concept]).slice(0, 2).join(' · ')
+    const identity = traderDisplayText(compactText(summary.setup_mode_label) || compactText(summary.trade_role_label) || (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch'), locale)
+    const read = traderDisplayText(compactText(summary.trader_read), locale) || (chainText
+      ? `${chainText}: ${locale === 'zh-CN' ? '当前不在机会池，先按图表位置观察，等重新进入盯盘池或买点池。' : 'outside the opportunity pool; wait for watch or entry state.'}`
+      : `${target.label} ${locale === 'zh-CN' ? '当前不在机会池，只显示图表和盘面背景。' : 'is outside the opportunity pool; chart and context only.'}`)
+    const evidence = traderDisplayText(compactText(summary.evidence_summary), locale) || [
+      chainText ? `${locale === 'zh-CN' ? '产业链' : 'Chain'} ${chainText}` : '',
+      compactText(summary.conclusion) ? `${locale === 'zh-CN' ? '图表' : 'Chart'} ${compactText(summary.conclusion)}` : '',
+    ].filter(Boolean).join(' · ')
+    const dayChange = formatPercent(summary.day_change_pct ?? summary.daily_change_pct ?? summary.gain_pct)
+    const position = chainText || compactText(summary.conclusion) || (locale === 'zh-CN' ? '池外观察' : 'Off-pool watch')
+    const targetIdentity = stockIdentityDisplay({
+      symbol: summary.symbol,
+      code: summary.code,
+      raw_code: summary.raw_code,
+      name: summary.name,
+      stock_name: summary.stock_name,
+      display_name: summary.display_name,
+      label: compactText(summary.title) || target.label,
+    }) || target.label
+    const isIndexTarget = target.kind.toLowerCase().includes('index') || target.kind.includes('指数')
+    const actionPlan = strategyTradeActionPlanFromState({
+      targetKind: target.kind,
+      identity,
+      confirmation: isIndexTarget ? '' : (locale === 'zh-CN' ? '还差入池线索、30m承接和5m/15m下单确认。' : 'Needs pool source, 30m support, and 5m/15m confirmation.'),
+      evidence,
+      hasEvidence: Boolean(evidence || chainText || compactText(summary.conclusion)),
+    }, locale)
+    const canActText = isIndexTarget
+      ? (locale === 'zh-CN' ? '只作市场环境判断，不作为单票买卖。' : 'Market context only, not a single-name entry.')
+      : actionPlan.action === (locale === 'zh-CN' ? '忽略' : 'Skip')
+        ? (locale === 'zh-CN' ? '不处理，等重新进入线索池或出现技术信号。' : 'No action; wait for a clue reset or technical signal.')
+        : (locale === 'zh-CN' ? '不能直接执行；没进入线索池/盯盘池/买点池前，只看图表盘面。' : 'No direct action; wait for clue, watch, or entry state.')
+    const invalidationText = isIndexTarget
+      ? (locale === 'zh-CN' ? '30m转弱、日线关键位跌破或主线继续退潮。' : '30m weakens, daily key level breaks, or themes keep fading.')
+      : (locale === 'zh-CN' ? '回踩破位、右侧不修复或主线继续退潮。' : 'Breakdown, no right-side repair, or theme continues fading.')
+    return (
+      <Panel
+        title={locale === 'zh-CN' ? '交易判断' : 'Trade read'}
+        meta={locale === 'zh-CN' ? '不在机会池' : 'outside pool'}
+        actions={<span style={statusBadgeStyle(actionPlan.tone)}>{actionPlan.action}</span>}
+      >
+        <div style={compactListStyle}>
+          <div style={decisionExplainHeroStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={rowTitleStyle}>{targetIdentity}</div>
+                <div style={mutedLineStyle}>{[compactText(summary.subtitle), identity, chainText].filter(Boolean).join(' · ')}</div>
+              </div>
+              <div style={inlinePercentValueStyle(dayChange)}>{dayChange}</div>
+            </div>
+            <div style={mutedTwoLineStyle}>{read}</div>
+          </div>
+          <TradeActionStrip locale={locale} plan={actionPlan} />
+          {[
+            [locale === 'zh-CN' ? '当前判断' : 'Current read', [identity, position].filter(Boolean).join(' · ')],
+            [locale === 'zh-CN' ? '执行结论' : 'Execution', canActText],
+            [locale === 'zh-CN' ? '等待确认' : 'Waiting for', actionPlan.next],
+            [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidationText],
+          ].map(([label, value]) => (
+            <div key={String(label)} style={decisionExplainRowStyle}>
+              <div style={decisionExplainLabelStyle}>{label}</div>
+              <div style={mutedTwoLineStyle} title={String(value)}>{value}</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    )
+  }
+  const decision = row.decision
+  const action = decisionActionLabel(decision, locale)
+  const invalidates = traderDisplayText(decision.invalidatesWhen || (locale === 'zh-CN' ? '触发条件失效或关键位被破坏' : 'Setup fails or key level breaks'), locale)
+  const opportunity = decision.opportunityLabel || opportunitySideLabel(decision.opportunitySide, locale)
+  const lineage = strategyLineageLabel(decision.strategyLineage, locale)
+  const leftSignals = technicalSignalSummary(row, 'left', locale)
+  const rightSignals = technicalSignalSummary(row, 'right', locale)
+  const timeframeSummary = technicalTimeframeSummary(row, locale)
+  const timeframeSteps = timeframeSignalSteps(row, locale)
+  const cycleDetail = timeframeSignalSideSummary(row, locale)
+  const themeDetail = mainlineSummary(row, locale)
+  const confirmationDetail = decisionConfirmationSummary(decision, row, locale)
+  const setupExplanation = traderDisplayText(compactText(row.raw.setup_explanation), locale)
+  const entryLogic = traderDisplayText(compactText(row.raw.entry_logic_summary), locale)
+  const noSignalText = locale === 'zh-CN' ? '暂无' : 'None'
+  const identityDetail = tradeIdentityLabelForRow(row, locale)
+  const positionDetail = traderDisplayText(traderPositionSummary(row, locale), locale)
+  const canActDetail = traderDisplayText(traderCanActSummary(row, locale), locale)
+  const evidenceDetail = traderDisplayText(traderEvidenceSummary(row, locale) || decisionSourceSummary(decision, locale), locale)
+  const traderRead = traderReadLine(row, locale)
+  const primaryLevels = keyLevels.slice(0, 3)
+  const primarySignals = signals.slice(-2).reverse()
+  const latestDivergence = divergences.slice(-1)[0]
+  const tradeRole = stockTradeRoleForRow(row)
+  const rowIdentity = formatCodeName(row.code, row.name)
+  const actionPlan = strategyTradeActionPlanFromState({
+    targetKind: row.targetKind,
+    decisionStage: row.decision.stage,
+    tradeRole,
+    identity: identityDetail,
+    confirmation: confirmationDetail,
+    invalidation: invalidates,
+    evidence: evidenceDetail,
+    hasEvidence: true,
+  }, locale)
+  const dataQuality = traderDisplayText(decisionConfidenceSummary(decision, sourceConfidence, locale), locale)
+  const showDataQuality = /(偏低|待确认|待更新|不可用|失败|滞后|分歧)/u.test(dataQuality)
+  return (
+    <Panel
+      title={locale === 'zh-CN' ? '交易判断' : 'Trade read'}
+      meta={opportunity}
+      actions={<span style={statusBadgeStyle(actionPlan.tone)}>{actionPlan.action}</span>}
+    >
+      <div style={compactListStyle}>
+        <div style={decisionExplainHeroStyle}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={rowTitleStyle}>{rowIdentity}</div>
+              <div style={mutedLineStyle}>{[opportunity, timeframeSummary, action].filter(Boolean).join(' · ')}</div>
+            </div>
+            <div style={inlinePercentValueStyle(row.dayChange)}>{row.dayChange}</div>
+          </div>
+          <div style={decisionPathStyle}>
+            {timeframeSteps.map(step => (
+              <div key={`${row.id}-${step.key}`} style={decisionPathStepStyle(step.status)} title={step.detail}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                  <span style={decisionGateDotStyle(step.status)} />
+                  <span style={{ ...rowTitleStyle, fontSize: 10 }}>{step.label}</span>
+                </div>
+                <div style={watchlistSubStyle}>
+                  {[decisionGateStatusLabel(step.status, locale), step.detail].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+            ))}
+          </div>
+          {traderRead ? (
+            <div style={mutedTwoLineStyle}>{traderRead}</div>
+          ) : null}
+        </div>
+        <TradeActionStrip locale={locale} plan={actionPlan} />
+        {[
+          [locale === 'zh-CN' ? '当前判断' : 'Current read', [identityDetail, lineage, positionDetail || setupExplanation || opportunity].filter(Boolean).join(' · ')],
+          [locale === 'zh-CN' ? '执行结论' : 'Execution', canActDetail || entryLogic || row.signal],
+          [locale === 'zh-CN' ? '等待确认' : 'Waiting for', confirmationDetail],
+          [locale === 'zh-CN' ? '失效条件' : 'Invalidates', invalidates],
+        ].map(([label, value]) => (
+          <div key={String(label)} style={decisionExplainRowStyle}>
+            <div style={decisionExplainLabelStyle}>{label}</div>
+            <div style={mutedTwoLineStyle} title={String(value)}>{value}</div>
+          </div>
+        ))}
+        {primaryLevels.length > 0 || primarySignals.length > 0 || latestDivergence ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '关键价位与信号' : 'Key levels and signals'}</span>
+              <span>{primaryLevels.length + primarySignals.length + (latestDivergence ? 1 : 0)}</span>
+            </div>
+            {primaryLevels.map(level => (
+              <div key={`${level.name ?? 'level'}-${level.value ?? ''}`} style={dataRowStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                  <div style={rowTitleStyle}>{level.name || (locale === 'zh-CN' ? '关键位' : 'Level')}</div>
+                  <div style={mutedLineStyle}>
+                    {[level.position, level.direction, level.role, level.distance_pct !== undefined ? formatPercent(level.distance_pct) : '']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                </div>
+                <div style={{ ...monoTextStyle, fontSize: 13, color: terminalTheme.textStrong }}>{formatNumber(level.value)}</div>
+              </div>
+            ))}
+            {primarySignals.map((signal, index) => (
+              <div key={`${signal.dt ?? signal.time ?? index}-${signal.type ?? signal.signal_type ?? 'signal'}`} style={dataRowStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <span style={statusBadgeStyle(signalTone(signal.type ?? signal.signal_type))}>
+                      {traderDisplayText(compactText(signal.type) || compactText(signal.signal_type) || (locale === 'zh-CN' ? '技术信号' : 'Signal'), locale)}
+                    </span>
+                    <span style={monoTextStyle}>{displayFreqLabel(signal.freq)}</span>
+                  </div>
+                  <div style={mutedLineStyle}>
+                    {[signal.date_str, traderDisplayText(compactText(signal.pool_status), locale), signal.confidence !== undefined ? `${locale === 'zh-CN' ? '置信度' : 'confidence'} ${formatConfidence(signal.confidence)}` : '']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                </div>
+                <div style={{ ...monoTextStyle, fontSize: 13, color: terminalTheme.textStrong }}>{formatNumber(signal.price)}</div>
+              </div>
+            ))}
+            {latestDivergence ? (
+              <div style={dataRowStyle}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 0 }}>
+                  <div style={rowTitleStyle}>{latestDivergence.type === 'bearish' ? '顶背离' : '底背离'}</div>
+                  <div style={mutedLineStyle}>{traderDisplayText(latestDivergence.metric.toUpperCase(), locale)} · {formatConfidence(latestDivergence.confidence)}</div>
+                </div>
+                <div style={{ ...monoTextStyle, fontSize: 13, color: terminalTheme.textStrong }}>{formatNumber(latestDivergence.price)}</div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {showDataQuality ? (
+          <div style={decisionExplainRowStyle}>
+            <div style={decisionExplainLabelStyle}>{locale === 'zh-CN' ? '数据质量' : 'Data quality'}</div>
+            <div style={mutedTwoLineStyle}>{dataQuality}</div>
+          </div>
+        ) : null}
+      </div>
+    </Panel>
+  )
+}
+
+function ChainTargetDrawer({
+  locale,
+  row,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  row: WatchlistRow
+  onSelect: (row: Record<string, unknown>) => void
+}) {
+  const groups = candidateGroupsFromRow(row)
+  const sections = candidateGroupOrder
+    .map(key => ({ key, label: candidateGroupLabel(key, locale), rows: groups[key] ?? [] }))
+    .filter(section => section.rows.length > 0)
+  const technical = recordValue(row.raw.technical_linkage)
+  const viewpoint = recordValue(row.raw.viewpoint_context)
+  const changeExplain = chainChangeExplainForWatchlist(row, locale)
+  const riskFlags = Array.isArray(row.raw.risk_flags) ? row.raw.risk_flags.map(item => compactText(item)).filter(Boolean) : []
+  if (sections.length === 0) {
+    return (
+      <div style={chainDrawerStyle}>
+        <div style={emptyStateDarkStyle}>
+          {locale === 'zh-CN' ? '暂无产业链标的，等待盘后图谱或成分股行情补齐。' : 'No chain targets yet.'}
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={chainDrawerStyle}>
+      <div style={candidateGroupHeaderStyle}>
+        <span>{locale === 'zh-CN' ? '产业链标的' : 'Chain targets'}</span>
+        <span>
+          {[
+            changeExplain,
+            compactText(technical.summary),
+            compactText(viewpoint.status),
+            riskFlags.length > 0 ? riskFlags.map(flag => riskFlagLabel(flag, locale)).join('/') : '',
+          ].filter(Boolean).join(' · ')}
+        </span>
+      </div>
+      {sections.map(section => (
+        <div key={`${row.id}-${section.key}`} style={chainDrawerGroupStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{section.label}</span>
+            <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>{section.rows.length}</span>
+          </div>
+          {section.rows.slice(0, 6).map((candidate, index) => {
+            const label = candidateStockLabel(candidate)
+            const displayLabel = stockIdentityDisplay(candidate) || label
+            const risk = Array.isArray(candidate.risk_flags) ? candidate.risk_flags.map(item => compactText(item)).filter(Boolean).slice(0, 2).join('/') : ''
+            const relation = compactText(candidate.chain_relation_type)
+            return (
+              <button
+                key={`${row.id}-${section.key}-${label || index}`}
+                type="button"
+                style={chainDrawerButtonStyle}
+                title={[
+                  compactText(candidate.name),
+                  label,
+                  compactText(candidate.chain_role) || compactText(candidate.relation),
+                  compactText(candidate.why_watch),
+                  risk,
+                ].filter(Boolean).join(' · ')}
+                onClick={() => onSelect(candidate)}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={rowTitleStyle}>{displayLabel || 'N/A'}</div>
+                  <div style={watchlistSubStyle}>
+                    {[displayLabel, relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier), compactText(candidate.chain_role) || compactText(candidate.relation)].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div style={inlinePercentValueStyle(formatPercent(candidate.day_change_pct))}>
+                  {formatPercent(candidate.day_change_pct)}
+                </div>
+                <div style={{ ...monoTextStyle, textAlign: 'right' }}>
+                  {compactText(candidate.latest_signal) || compactText(candidate.attention_score ? `关注 ${formatNumber(candidate.attention_score, 0)}` : '') || (risk ? riskFlagLabel(risk, locale) : '观察')}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ChainContextRail({
+  locale,
+  context,
+  symbolData,
+  onSelect,
+  onPrefetch,
+}: {
+  locale: LongclawLocale
+  context: Record<string, unknown>
+  symbolData: WorkbenchSymbolData | null
+  onSelect: (row: Record<string, unknown>) => void
+  onPrefetch?: (row: Record<string, unknown>) => void
+}) {
+  const source = Object.keys(context).length > 0 ? context : recordValue(symbolData?.summary?.mapping_chain)
+  const groups = candidateGroupsFromRow(source)
+  const previewRows = Array.isArray(source.focus_stocks_preview)
+    ? source.focus_stocks_preview.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const groupedCandidates = candidateGroupOrder.flatMap(key => groups[key] ?? [])
+  const candidates = previewRows.length > 0 ? uniqueCandidateRows(previewRows) : uniqueCandidateRows(groupedCandidates)
+  const candidateSections = candidateGroupOrder
+    .map(key => ({ key, label: candidateGroupLabel(key, locale), rows: uniqueCandidateRows(groups[key] ?? []) }))
+    .filter(section => section.rows.length > 0)
+  const dataTruth = recordValue(source.data_truth ?? symbolData?.data_truth)
+  const viewpoint = recordValue(source.viewpoint_context ?? symbolData?.viewpoint_context)
+  const technical = recordValue(source.technical_linkage)
+  const mapping = recordValue(source.mapping_chain ?? symbolData?.summary?.mapping_chain)
+  const activeDriver = recordValue(source.active_driver_concept)
+  const primaryChainDriver = recordValue(source.primary_chain_driver)
+  const driverCandidates = Array.isArray(source.concept_driver_candidates)
+    ? source.concept_driver_candidates.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const secondaryChains = Array.isArray(source.secondary_chain_positions)
+    ? source.secondary_chain_positions.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const viewpointItems = Array.isArray(viewpoint.items)
+    ? viewpoint.items.map(item => recordValue(item)).filter(item => Object.keys(item).length > 0)
+    : []
+  const technicalSummary = traderDisplayText(compactText(technical.summary), locale)
+  const hasTechnicalLinkage = Boolean(
+    technicalSummary
+    && !/等待.*技术信号|等待.*确认/u.test(technicalSummary)
+  )
+  const hasViewpoint = viewpointItems.length > 0
+  const risks = [
+    ...(Array.isArray(source.risk_flags) ? source.risk_flags : []),
+    ...(dataTruth.freq_fallback ? ['freq_fallback'] : []),
+    compactText(dataTruth.stale_reason) ? 'data_stale' : '',
+  ].map(item => compactText(item)).filter(Boolean)
+  const hasContext = Object.keys(source).length > 0 || candidates.length > 0
+  if (!hasContext) return null
+  const chainTitle = [compactText(source.chain_name), compactText(source.node_name), compactText(mapping.chain_name), compactText(mapping.node_name)]
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' · ') || compactText(symbolData?.summary?.title) || (locale === 'zh-CN' ? '产业链' : 'Chain')
+  const isSectorContext = compactText(source.source) === 'chain_heat_snapshots'
+    || compactText(source.domain) === 'chain_heat'
+    || compactText(source.domain) === 'theme_heat'
+    || candidates.length > 0
+  const panelTitle = isSectorContext
+    ? (locale === 'zh-CN' ? '板块标的' : 'Sector targets')
+    : (locale === 'zh-CN' ? '产业链背景' : 'Chain context')
+  const panelMeta = [
+    candidates.length > 0 ? `${candidates.length}` : '',
+    traderDisplayText(compactText(source.phase) || compactText(mapping.mapping_status), locale),
+  ].filter(Boolean).join(' · ')
+  return (
+    <Panel
+      title={panelTitle}
+      meta={panelMeta}
+    >
+      <div style={compactListStyle}>
+        <div style={chainContextHeroStyle}>
+          <div style={rowTitleStyle}>{chainTitle}</div>
+          <div style={mutedTwoLineStyle}>
+            {[
+              traderDisplayText(compactText(source.trading_signal || source.latest_signal), locale),
+              traderDisplayText(compactText(source.trader_action), locale),
+              traderDisplayText(compactText(source.invalidates_when), locale),
+            ].filter(Boolean).join(' · ')}
+          </div>
+          <div style={chartMetaRowStyle}>
+            {numberValue(source.heat_score) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>热度 {formatNumber(source.heat_score)}</span> : null}
+            {numberValue(source.change_pct) !== undefined ? <span style={percentBadgeStyle(formatPercent(source.change_pct))}>{formatPercent(source.change_pct)}</span> : null}
+            {numberValue(source.momentum_5m) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>5m {formatNumber(source.momentum_5m)}</span> : null}
+            {numberValue(source.momentum_15m) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>15m {formatNumber(source.momentum_15m)}</span> : null}
+            {numberValue(source.momentum_30m) !== undefined ? <span style={miniNeutralSignalBadgeStyle}>30m {formatNumber(source.momentum_30m)}</span> : null}
+          </div>
+        </div>
+        <div style={sectorTargetFocusStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{locale === 'zh-CN' ? '板块内标的' : 'Names in this sector'}</span>
+            <span>{candidates.length}</span>
+          </div>
+          {candidateSections.length > 0 ? (
+            <div style={sectorTargetGroupRailStyle}>
+              {candidateSections.map(section => (
+                <span key={`sector-target-pill-${section.key}`} style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>
+                  {section.label} {section.rows.length}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {candidateSections.length > 0 ? candidateSections.map(section => (
+            <div key={`chain-context-${section.key}`} style={compactListStyle}>
+              <div style={candidateGroupHeaderStyle}>
+                <span>{section.label}</span>
+                <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>{section.rows.length}</span>
+              </div>
+              {section.rows.slice(0, section.key === 'leaders' ? 3 : 4).map((candidate, index) => {
+                const displayLabel = stockIdentityDisplay(candidate) || candidateStockLabel(candidate)
+                const relation = compactText(candidate.chain_relation_type)
+                const score = compactText(candidate.attention_score)
+                  || compactText(candidate.weight_score)
+                  || compactText(candidate.elasticity_score)
+                  || compactText(candidate.trend_score)
+                return (
+                  <button
+                    key={`${section.key}-${candidateStockLabel(candidate) || index}-${index}`}
+                    type="button"
+                    style={chainLifecycleButtonStyle}
+                    onMouseEnter={() => onPrefetch?.(candidate)}
+                    onFocus={() => onPrefetch?.(candidate)}
+                    onClick={() => onSelect(candidate)}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+                      <div style={rowTitleStyle}>{displayLabel || 'N/A'}</div>
+                      <span style={{ ...miniNeutralSignalBadgeStyle, ...chainRelationToneStyle(section.key) }}>
+                        {relation ? candidateGroupLabel(relation, locale) : compactText(candidate.leader_tier) || '观察'}
+                      </span>
+                    </div>
+                    <div style={mutedTwoLineStyle}>
+                      {[
+                        compactText(candidate.chain_role) || compactText(candidate.relation),
+                        `涨幅 ${formatPercent(candidate.day_change_pct)}`,
+                        traderDisplayText(compactText(candidate.latest_signal), locale),
+                        score ? `关注 ${formatNumber(score, 0)}` : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )) : candidates.length > 0 ? candidates.slice(0, 8).map((candidate, index) => {
+            const score = compactText(candidate.attention_score) || compactText(candidate.score)
+            const displayLabel = stockIdentityDisplay(candidate) || candidateStockLabel(candidate)
+            return (
+              <button
+                key={`${candidateStockLabel(candidate) || index}-${index}`}
+                type="button"
+                style={targetButtonStyle}
+                onMouseEnter={() => onPrefetch?.(candidate)}
+                onFocus={() => onPrefetch?.(candidate)}
+                onClick={() => onSelect(candidate)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={rowTitleStyle}>{displayLabel || 'N/A'}</div>
+                  <span style={miniNeutralSignalBadgeStyle}>{compactText(candidate.leader_tier) || compactText(candidate.chain_role) || '观察'}</span>
+                </div>
+                <div style={mutedTwoLineStyle}>
+                  {[traderDisplayText(compactText(candidate.latest_signal), locale), `涨幅 ${formatPercent(candidate.day_change_pct)}`, score ? `关注 ${formatNumber(score, 0)}` : '', traderDisplayText(compactText(candidate.why_watch), locale)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </button>
+            )
+          }) : (
+            <div style={emptyStateDarkStyle}>{locale === 'zh-CN' ? '暂无标的分组。' : 'No target groups.'}</div>
+          )}
+        </div>
+        {(Object.keys(activeDriver).length > 0 || driverCandidates.length > 0) && (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '本次涨幅驱动' : 'Move driver'}</span>
+              <span style={percentBadgeStyle(formatPercent(activeDriver.change_pct))}>
+                {formatPercent(activeDriver.change_pct)}
+              </span>
+            </div>
+            <div style={mutedTwoLineStyle}>
+              {compactText(source.driver_summary) ||
+                [compactText(activeDriver.name), compactText(activeDriver.chain_name), compactText(activeDriver.node_name)]
+                  .filter(Boolean)
+                  .join(' · ')}
+            </div>
+            {Object.keys(primaryChainDriver).length > 0 && compactText(primaryChainDriver.name) !== compactText(activeDriver.name) && (
+              <div style={mutedLineStyle}>
+                {locale === 'zh-CN' ? '主链相关：' : 'Primary-chain related: '}
+                {[compactText(primaryChainDriver.name), formatPercent(primaryChainDriver.change_pct), compactText(primaryChainDriver.chain_name)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
+            <div style={chartMetaRowStyle}>
+              {driverCandidates.slice(0, 5).map((driver, index) => (
+                <span key={`${compactText(driver.name)}-${index}`} style={percentBadgeStyle(formatPercent(driver.change_pct), 52, 96)}>
+                  {[compactText(driver.name), formatPercent(driver.change_pct)].filter(Boolean).join(' ')}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {secondaryChains.length > 0 && (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '相关主题' : 'Related themes'}</span>
+              <span>{secondaryChains.length}</span>
+            </div>
+            {secondaryChains.slice(0, 5).map((item, index) => {
+              const chainChange = numberValue(item.change_pct)
+              const chainChangeText = chainChange === undefined ? '' : formatPercent(chainChange)
+              return (
+                <div key={`${compactText(item.chain_id)}-${compactText(item.node_id)}-${index}`} style={dataRowStyle}>
+                  <span style={miniNeutralSignalBadgeStyle}>
+                    {traderDisplayText(compactText(item.membership_type) || 'theme', locale)}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={mutedTwoLineStyle}>
+                      {[compactText(item.chain_name), compactText(item.node_name), chainChangeText].filter(Boolean).join(' · ')}
+                    </div>
+                    <div style={mutedLineStyle}>
+                      {Array.isArray(item.source_board_names)
+                        ? item.source_board_names.map(name => compactText(name)).filter(Boolean).slice(0, 4).join(' / ')
+                        : ''}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {hasTechnicalLinkage ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '技术联动' : 'Technical linkage'}</span>
+              <span>{traderDisplayText(compactText(technical.grade), locale)}</span>
+            </div>
+            <div style={mutedTwoLineStyle}>{technicalSummary}</div>
+          </div>
+        ) : null}
+        {hasViewpoint ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '市场观点' : 'Market views'}</span>
+              <span>{traderDisplayText(compactText(viewpoint.status), locale)}</span>
+            </div>
+            {viewpointItems.slice(0, 3).map((view, index) => (
+              <div key={`${compactText(view.author)}-${index}`} style={dataRowStyle}>
+                <span style={miniNeutralSignalBadgeStyle}>{compactText(view.author) || '观点'}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={mutedTwoLineStyle}>
+                    {traderDisplayText(compactText(view.summary) || compactText(view.candidate_policy), locale)}
+                  </div>
+                  <div style={mutedLineStyle}>{[compactText(view.as_of), compactText(view.source_title)].filter(Boolean).join(' · ')}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {risks.length > 0 ? (
+          <div style={signalBlockStyle}>
+            <div style={candidateGroupHeaderStyle}>
+              <span>{locale === 'zh-CN' ? '风险与数据质量' : 'Risk and data quality'}</span>
+              <span>{risks.length}</span>
+            </div>
+            <div style={chartMetaRowStyle}>
+              {[...new Set(risks)].slice(0, 6).map(flag => (
+                <span key={flag} style={miniSellSignalBadgeStyle}>{riskFlagLabel(flag, locale)}</span>
+              ))}
+            </div>
+            <div style={mutedTwoLineStyle}>
+              {[compactText(dataTruth.as_of), compactText(dataTruth.latest_bar_time), traderDisplayText(compactText(dataTruth.stale_reason), locale)]
+                .filter(Boolean)
+                .join(' · ')}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </Panel>
+  )
+}
+
+function TargetRows({
+  locale,
+  groups,
+  rows,
+  emptyText,
+  onSelect,
+}: {
+  locale: LongclawLocale
+  groups?: Record<string, Record<string, unknown>[]>
+  rows: Record<string, unknown>[]
+  emptyText: string
+  onSelect: (row: Record<string, unknown>) => void
+}) {
+  if (rows.length === 0) {
+    return <div style={emptyStateDarkStyle}>{emptyText}</div>
+  }
+  const sections = candidateGroupOrder
+    .map(key => ({
+      key,
+      label: candidateGroupLabel(key, locale),
+      rows: groups?.[key] ?? [],
+    }))
+    .filter(section => section.rows.length > 0)
+  const fallbackSections = sections.length > 0
+    ? sections
+    : [{ key: 'all', label: locale === 'zh-CN' ? '关注标的' : 'Watch', rows }]
+  return (
+    <div style={compactListStyle}>
+      {fallbackSections.map(section => (
+        <div key={section.key} style={compactListStyle}>
+          <div style={candidateGroupHeaderStyle}>
+            <span>{section.label}</span>
+            <span style={monoTextStyle}>{section.rows.length}</span>
+          </div>
+          {section.rows.slice(0, 8).map((row, index) => {
+            const label = labelForTarget(row)
+            const score = compactText(row.attention_score) || compactText(row.fused_total) || compactText(row.total_score) || compactText(row.score)
+            const signalBadges = timeframeSignalBadges(row)
+            return (
+              <button
+                key={`${section.key}-${label || 'target'}-${index}`}
+                type="button"
+                style={targetButtonStyle}
+                onClick={() => onSelect(row)}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                  <div style={rowTitleStyle}>
+                    {compactText(row.name) || label || 'N/A'}
+                  </div>
+                  <span style={miniNeutralSignalBadgeStyle}>
+                    {compactText(row.leader_tier) || compactText(row.representative_type) || '候选'}
+                  </span>
+                </div>
+                {signalBadges.length > 0 ? (
+                  <div style={signalBadgeRowStyle}>
+                    {signalBadges.slice(0, 5).map(badge => (
+                        <span
+                          key={`${section.key}-${label || index}-${badge.side}-${badge.label}`}
+                          style={badge.side === 'sell' ? miniSellSignalBadgeStyle : badge.side === 'buy' ? miniSignalBadgeStyle : miniNeutralSignalBadgeStyle}
+                        >
+                          {signalBadgeDisplayLabel(badge, locale)}
+                        </span>
+                      ))}
+                  </div>
+                ) : null}
+                <div style={mutedTwoLineStyle}>
+                  {[
+                    compactText(row.symbol) || compactText(row.code),
+                    compactText(row.chain_role) || compactText(row.relation),
+                    compactText(row.latest_signal),
+                    score ? `关注 ${score}` : '',
+                    compactText(row.why_watch),
+                    Array.isArray(row.risk_flags) ? row.risk_flags.map(item => compactText(item)).filter(Boolean).join('/') : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function FallbackList({
+  locale,
+  title,
+  rows,
+  onOpen,
+}: {
+  locale: LongclawLocale
+  title: string
+  rows: Record<string, unknown>[]
+  onOpen: (row: Record<string, unknown>) => void
+}) {
+  return (
+    <Panel title={title} meta={String(rows.length)}>
+      {rows.length === 0 ? (
+        <div style={emptyStateDarkStyle}>
+          {locale === 'zh-CN' ? '暂无数据。' : 'No data.'}
+        </div>
+      ) : (
+        <div style={compactListStyle}>
+          {rows.slice(0, 8).map((row, index) => (
+            <button
+              key={`${title}-${index}`}
+              type="button"
+              style={targetButtonStyle}
+              onClick={() => onOpen(row)}
+            >
+              <div style={rowTitleStyle}>
+                {compactText(row.name) ||
+                  compactText(row.symbol) ||
+                  humanizeTokenLocale(locale, compactText(row.connector_id)) ||
+                  'N/A'}
+              </div>
+              <div style={mutedTwoLineStyle}>
+                {[
+                  compactText(row.status)
+                    ? humanizeTokenLocale(locale, compactText(row.status))
+                    : '',
+                  compactText(row.direction),
+                  localizeSystemText(locale, compactText(row.summary)),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </Panel>
+  )
+}

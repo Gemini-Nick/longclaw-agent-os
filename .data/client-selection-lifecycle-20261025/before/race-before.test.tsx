@@ -1,0 +1,1958 @@
+import React, { act } from 'react'
+import { createRequire } from 'module'
+import { createRoot } from 'react-dom/client'
+import { describe, expect, it, vi } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { observedFetchJson, recordObservationEvent } from '/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/observation.js'
+
+vi.mock('/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/observation.js', () => ({ observedFetchJson: vi.fn(), recordObservationEvent: vi.fn() }))
+vi.mock('klinecharts', async importOriginal => {
+  const original = await importOriginal<any>()
+  return { ...original, ...original.default, init: vi.fn(() => null), registerOverlay: vi.fn(), registerIndicator: vi.fn(),
+    IndicatorSeries: { Volume: 'volume', Normal: 'normal', Price: 'price' }, TooltipShowRule: { Always: 'always', FollowCross: 'follow_cross', None: 'none' } }
+})
+
+import {
+  CacheMonitorStrip,
+  DataDetails,
+  RuntimeStatusNotice,
+  MaintenanceDiagnostics,
+  runtimeDataExplanation,
+  activeDecisionRowFromGroups,
+  StrategyChartTerminal,
+  StrategyDecisionPanel,
+  searchTargetKind,
+  PoolAuthorityStrip,
+  hasPublishedDailyBrief,
+  dailyBriefForShell,
+  dailyLocalReconciliation,
+  publishedPoolRole,
+  rawDecisionStage,
+  chartKindLabel,
+  chartFrequencyLabel,
+  ControlledSessionNotice,
+  compactPercentTextStyle,
+  dailyMaAcceptanceSignalForChart,
+  displaySignalsForChart,
+  isMovingAverageLevelName,
+  isControlledReadModelReady,
+  looksLikeIndexValue,
+  maAcceptanceFromSymbolData,
+  maPeriodsForChart,
+  marketSnapshotFromSymbolData,
+  marketLabel,
+  missingRangeReturnLabel,
+  mongoCoverageState,
+  postmarketDailyTaskSummary,
+  sectorTargetCountForContext,
+  sectorTargetRowsForContext,
+  SectorTransitionRadarPanel,
+  sectorTransitionHasNewUnreadEvents,
+  sectorTransitionRadarFromShell,
+  sectorTransitionStockAnnotation,
+  initialCoreWatchlistTab,
+  watchlistGroupCountLabel,
+  shellGroupCount,
+  shellNeedsWarmRefresh,
+  signalCalloutBadgeSummary,
+  signalEvidenceCalloutsForChart,
+  signalForWatchlist,
+  signalOverlayPriority,
+  signalsFromSymbolData,
+  shouldAddManualClueForSearch,
+  sourceMonitorSummary,
+  stockHardSignalBadgeLabels,
+  stockIdentityDisplay,
+  strategyTradeActionPlanFromState,
+  symbolDataCacheKey,
+  traderDisplayText,
+  TEST_CHART_FREQ_VALUES,
+  TEST_TIMEFRAME_SNAPSHOT_FREQ_VALUES,
+  terminalListTargetFreq,
+  timeframeBadgeDisplayLabel,
+  watchlistGridTemplate,
+  withSignalCalloutIds,
+  trendlinesFromSymbolData,
+} from './StrategyChartTerminal.before.tsx'
+
+describe('StrategyChartTerminal trader-facing text', () => {
+  it('converts internal states and source tokens into readable Chinese', () => {
+    expect(traderDisplayText(
+      'technical_trigger · security_chain_memberships · context_only · stale · conf 0.88 · index_report · BLOCKED',
+      'zh-CN',
+    )).toBe('技术信号 · 产业链归属 · 仅作背景参考 · 数据待更新 · 置信度 88% · 指数信号 · 待恢复')
+    expect(traderDisplayText(
+      'Signals shell 正在构建 · signals-web2 · standby',
+      'zh-CN',
+    )).toBe('机会池 正在构建 · 备用行情服务 · 备用通道')
+    expect(traderDisplayText(
+      'Signals 策略简报 · 0 buy candidates · 0 sell warnings',
+      'zh-CN',
+    )).toBe('盘后策略简报 · 0 个买点候选 · 0 个卖出预警')
+    expect(traderDisplayText(
+      'quote_lane · workbench_lane · chain_heat_snapshots · terminal_pool · current_timeframe_ma · index_timeframe_signal · HISTOGRAM',
+      'zh-CN',
+    )).toBe('行情快照 · 机会池 · 产业链热度 · 股票池 · 当前周期均线 · 指数周期信号 · MACD柱')
+  })
+})
+
+describe('StrategyChartTerminal search clues', () => {
+  it('never persists a manual clue from search navigation', () => {
+    expect(shouldAddManualClueForSearch('SZ.002759', false)).toBe(false)
+    expect(shouldAddManualClueForSearch('天际股份', false)).toBe(false)
+    expect(shouldAddManualClueForSearch('', false)).toBe(false)
+    expect(shouldAddManualClueForSearch('沪深300', true)).toBe(false)
+  })
+
+  it('does not confuse prefixed stock codes with indices', () => {
+    expect(looksLikeIndexValue('SZ.300394')).toBe(false)
+    expect(looksLikeIndexValue('SH.000300')).toBe(true)
+    expect(looksLikeIndexValue('沪深300')).toBe(true)
+  })
+})
+
+describe('StrategyChartTerminal default timeframe', () => {
+  it('uses daily when a row or search has no explicit timeframe', () => {
+    expect(terminalListTargetFreq(undefined)).toBe('daily')
+    expect(terminalListTargetFreq('', '')).toBe('daily')
+  })
+
+  it('still preserves an explicit timeframe when supplied', () => {
+    expect(terminalListTargetFreq('30m')).toBe('30min')
+    expect(terminalListTargetFreq('15分钟')).toBe('15min')
+  })
+})
+
+describe('StrategyChartTerminal watchlist range layout', () => {
+  it('uses compact responsive range columns for narrow and wide screens', () => {
+    expect(watchlistGridTemplate('all_etfs', 1)).toContain('minmax(44px, 0.44fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).toContain('minmax(166px, 1.62fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('minmax(108px, 1.32fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('minmax(150px, 1.72fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('minmax(46px, 0.42fr)')
+    expect(watchlistGridTemplate('focus_stocks', 1)).not.toContain('72px')
+    expect(watchlistGridTemplate('major_indices', 1)).not.toContain('64px')
+  })
+
+  it('keeps non-stock return columns compact', () => {
+    const tabs = [
+      'major_indices',
+      'industry_etfs',
+      'all_etfs',
+      'sector_boards',
+    ] as const
+    for (const tab of tabs) {
+      expect(watchlistGridTemplate(tab, 1)).toContain('minmax(44px, 0.44fr)')
+    }
+  })
+
+  it('gives stock decision tabs enough room for the selected range return', () => {
+    const tabs = [
+      'focus_stocks',
+      'risk_stocks',
+      'watch_stocks',
+      'buy_candidates',
+    ] as const
+    for (const tab of tabs) {
+      expect(watchlistGridTemplate(tab, 1)).toContain('minmax(58px, 0.56fr)')
+    }
+  })
+
+  it('keeps percent text tabular and bounded for 13-inch and 27-inch layouts', () => {
+    expect(compactPercentTextStyle('+123.45%')).toMatchObject({
+      minWidth: 46,
+      maxWidth: 76,
+      textAlign: 'right',
+      fontVariantNumeric: 'tabular-nums',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    })
+  })
+
+  it('labels ETF spot-only range returns without treating them as missing K lines', () => {
+    expect(missingRangeReturnLabel({ range_return_status: 'spot_only' }, 'stock')).toBe('现货')
+    expect(missingRangeReturnLabel({ range_return_status: 'range_returns_kline_empty' }, 'stock')).toBe('缺K')
+    expect(missingRangeReturnLabel({ range_return_status: 'range_returns_kline_empty' }, 'index')).toBe('缺K')
+  })
+})
+
+describe('StrategyChartTerminal symbol cache', () => {
+  it('normalizes symbol cache keys across freq aliases and casing', () => {
+    expect(symbolDataCacheKey({ label: ' sh.601398 ', kind: 'STOCK', freq: '日线' })).toBe('stock|SH.601398|daily')
+  })
+})
+
+describe('StrategyChartTerminal trendlines', () => {
+  it('normalizes backend trendline geometry for the chart overlay', () => {
+    const lines = trendlinesFromSymbolData({
+      chart: {
+        trendlines: [{
+          kind: 'resistance',
+          direction: 'descending',
+          start_time: 100,
+          projection_time: 200,
+          start_price: 140,
+          projected_price: 100,
+        }],
+      },
+    })
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatchObject({
+      kind: 'resistance',
+      direction: 'descending',
+      end_time: 200,
+      projected_price: 100,
+    })
+  })
+
+  it('flattens multi-timeframe trendlines and preserves their timeframe labels', () => {
+    const lines = trendlinesFromSymbolData({
+      chart: {
+        trendlines: [{
+          kind: 'resistance',
+          direction: 'descending',
+          start_time: 100,
+          projection_time: 200,
+          start_price: 140,
+          projected_price: 100,
+        }],
+        trendlines_by_timeframe: {
+          weekly: {
+            trendlines: [{
+              kind: 'resistance',
+              direction: 'descending',
+              start_time: 100,
+              projection_time: 200,
+              start_price: 140,
+              projected_price: 100,
+            }],
+          },
+          daily: {
+            trendlines: [{
+              kind: 'support',
+              direction: 'ascending',
+              start_time: 120,
+              projection_time: 220,
+              start_price: 80,
+              projected_price: 110,
+            }],
+          },
+        },
+      },
+    })
+
+    expect(lines).toHaveLength(2)
+    expect(lines.map(line => line.timeframe)).toEqual(['weekly', 'daily'])
+  })
+})
+
+describe('StrategyChartTerminal stock identity display', () => {
+  it('keeps stock code and name together for trader-facing labels', () => {
+    expect(stockIdentityDisplay({ symbol: 'SZ.300394', name: '天孚通信' })).toBe('SZ.300394 天孚通信')
+    expect(stockIdentityDisplay({ code: '002409', stock_name: '雅克科技' })).toBe('002409 雅克科技')
+  })
+})
+
+describe('StrategyChartTerminal stock hard-signal badges', () => {
+  it('uses structured display badges, sorted and capped, without falling back to role badges', () => {
+    const labels = stockHardSignalBadgeLabels({
+      display_badges: [
+        { kind: 'trade_role', label: '右侧进攻', priority: 120 },
+        { kind: 'risk', label: '风险', tone: 'risk', priority: 110 },
+        { kind: 'new_high', label: '200日新高', tone: 'hot', priority: 90 },
+        { kind: 'buy_point', label: '30m二买', tone: 'buy', priority: 100 },
+        { kind: 'ma_climb', label: '日线攀爬', tone: 'buy', priority: 80 },
+        { kind: 'gap_volume_price', label: '强缺口量价', tone: 'hot', priority: 70 },
+      ],
+    })
+
+    expect(labels).toEqual(['30m二买', '日线攀爬', '200日新高'])
+  })
+
+  it('reserves a climb slot when buy, sell, breakout, and climb coexist', () => {
+    const labels = stockHardSignalBadgeLabels({
+      display_badges: [
+        { kind: 'new_high', label: '200日新高', tone: 'hot', priority: 930 },
+        { kind: 'buy_point', label: '30m二买', tone: 'buy', priority: 970 },
+        { kind: 'sell_point', label: '5m一卖', tone: 'risk', priority: 1020 },
+        { kind: 'ma_climb', label: '周线攀爬', tone: 'buy', priority: 965 },
+      ],
+    })
+
+    expect(labels).toEqual(['5m一卖', '30m二买', '周线攀爬'])
+  })
+
+  it('uses narrow legacy fallback and ignores summary/source text and ordinary shrink', () => {
+    const labels = stockHardSignalBadgeLabels({
+      display_summary: '右侧进攻 主线加强 风险解除 200日新高',
+      evidence_summary: '普通缩量后观察',
+      source_tags: ['breakout_200d'],
+      buy_timeframes: [{ badge: '30m' }],
+      sell_timeframes: [{ badge: '日线' }],
+      technical_signal_groups: {
+        right: [{ freq: '15m', label: '三买' }],
+      },
+      technical_evidence: {
+        ma_climb: { label: '周线攀爬' },
+      },
+      display_breakout: '200日新高',
+    })
+
+    expect(labels).toEqual(['日线卖点', '30m买点', '周线攀爬'])
+    expect(labels.join(' ')).not.toContain('风险')
+    expect(labels.join(' ')).not.toContain('普通缩量')
+  })
+
+  it('allows an empty hard-signal row instead of falling back to role or risk labels', () => {
+    expect(stockHardSignalBadgeLabels({
+      display_badges: [
+        { kind: 'trade_role', label: '右侧进攻', priority: 100 },
+        { kind: 'risk', label: '风险', tone: 'risk', priority: 90 },
+        { kind: 'volume_price', label: '普通缩量', tone: 'neutral', priority: 80 },
+      ],
+      display_summary: '只保留这一行结论',
+    })).toEqual([])
+  })
+})
+
+describe('StrategyChartTerminal trader action plan', () => {
+  it('turns entry-ready names into review actions with post-close backtest guidance', () => {
+    const plan = strategyTradeActionPlanFromState({
+      decisionStage: 'entry_ready',
+      tradeRole: 'right_attack',
+      identity: '右侧进攻',
+      confirmation: '买点已出 30m 二买',
+    }, 'zh-CN')
+
+    expect(plan.action).toBe('看')
+    expect(plan.reason).toBe('右侧进攻')
+    expect(plan.postmarket).toContain('T+5/T+10')
+  })
+
+  it('does not spend intraday attention on off-pool names without evidence', () => {
+    const plan = strategyTradeActionPlanFromState({
+      targetKind: 'stock',
+      identity: '池外观察',
+      hasEvidence: false,
+    }, 'zh-CN')
+
+    expect(plan.action).toBe('忽略')
+    expect(plan.next).toContain('不占用盘中注意力')
+  })
+
+  it('treats indices as market context instead of single-name entries', () => {
+    const plan = strategyTradeActionPlanFromState({
+      targetKind: 'index',
+      identity: '背景锚点',
+    }, 'zh-CN')
+
+    expect(plan.action).toBe('看大盘')
+    expect(plan.postmarket).toContain('指数环境')
+  })
+})
+
+describe('StrategyChartTerminal shell refresh', () => {
+  it('keeps warming when the shell is missing, building, or empty', () => {
+    expect(shellNeedsWarmRefresh(null)).toBe(true)
+    expect(shellNeedsWarmRefresh({ cache: { status: 'building' }, watchlist_groups: {} } as any)).toBe(true)
+    expect(shellNeedsWarmRefresh({ watchlist_groups: { focus_stocks: [] } } as any)).toBe(true)
+  })
+
+  it('uses the normal refresh cadence once watchlist groups are populated', () => {
+    const shell = {
+      cache: { status: 'hit' },
+      watchlist_groups: {
+        major_indices: [{ label: '上证指数' }],
+        focus_stocks: [{ label: '张江高科' }],
+      },
+    } as any
+
+    expect(shellGroupCount(shell)).toBe(2)
+    expect(shellNeedsWarmRefresh(shell)).toBe(false)
+  })
+})
+
+describe('StrategyChartTerminal sector transition radar', () => {
+  it('marks a three-pool row with its sector state and the next individual gate', () => {
+    const annotation = sectorTransitionStockAnnotation({
+      source: 'sector_transition',
+      turn_state: 'stable_turn',
+      sector_transition_pool: 'watch',
+      sector_transition_eligibility: 'buy_review_pending_individual_gates',
+      sector_transition_annotation: '板块稳定转折，已具备买点复核的上游资格；个股仍在盯盘池，不能当成买点。',
+      sector_transition_next_gate: '等待个股买点、关键均线共振、位置和执行周期确认。',
+      sector_transition_promoted: false,
+    }, 'zh-CN')
+
+    expect(annotation).toEqual({
+      badgeLabel: '板块·稳定转折',
+      tone: 'hot',
+      summary: '板块稳定转折，已具备买点复核的上游资格；个股仍在盯盘池，不能当成买点。',
+      nextGate: '等待个股买点、关键均线共振、位置和执行周期确认。',
+    })
+  })
+
+  it('keeps legacy shell payloads backward compatible', () => {
+    expect(sectorTransitionRadarFromShell({
+      cache: { status: 'hit' },
+      watchlist_groups: { sector_boards: [] },
+    } as any)).toBeNull()
+  })
+
+  it('normalizes the canonical radar counts, state cards, freshness, and evidence', () => {
+    const radar = sectorTransitionRadarFromShell({
+      sector_transition_radar: {
+        as_of: '2026-07-29T14:35:00+08:00',
+        counts: {
+          pressure: 2,
+          release: 3,
+          repair: 4,
+          confirmed_intraday: 1,
+          stable: 2,
+          failed: 1,
+        },
+        unread_event_ids: ['evt-2'],
+        events: [
+          {
+            event_id: 'evt-2',
+            sector_id: 'digital-chip',
+            sector_name: '数字芯片设计',
+            from_state: 'pressure',
+            to_state: 'release',
+          },
+        ],
+        states: [
+          {
+            sector_id: 'digital-chip',
+            sector_name: '数字芯片设计',
+            sector_kind: 'concept',
+            turn_state: 'confirmed_intraday',
+            flow_state: 'active_acceptance',
+            sentinels: {
+              capacity_core: [{ symbol: 'SH.603986', name: '兆易创新' }],
+              high_beta: ['SZ.001309 德明利'],
+            },
+            sentinel_symbols: ['SH.688012'],
+            evidence: { summary: '板块宽度率先修复' },
+            metrics: {
+              breadth_ratio: 0.58,
+              change_pct: 0.5,
+              amount_share: 0.071,
+              relative_strength: 1.36,
+            },
+            blockers: ['半导体ETF尚未收复30m MA20'],
+            next_checks: [{ condition: '连续两根30m收盘确认' }],
+            weaker_if: ['跌破事件低点', '重新封死跌停'],
+          },
+        ],
+        freshness: {
+          status: 'fresh',
+          as_of: '2026-07-29T14:35:00+08:00',
+          blockers: ['设备与材料仍弱'],
+        },
+      },
+    } as any)
+
+    expect(radar?.counts).toEqual({
+      pressure: 2,
+      release: 3,
+      repair: 4,
+      intraday: 1,
+      stable: 2,
+      failed: 1,
+    })
+    expect(radar?.unreadEventIds).toEqual(['evt-2'])
+    expect(radar?.states[0]).toMatchObject({
+      sectorName: '数字芯片设计',
+      sectorKind: 'concept',
+      turnState: 'confirmed_intraday',
+      sentinels: ['SH.603986 兆易创新', 'SZ.001309 德明利', 'SH.688012'],
+      evidence: ['板块宽度率先修复', '宽度 58.0% · 涨幅 +0.50% · 成交占比 7.1% · 相对强弱 +1.36'],
+      blockers: ['半导体ETF尚未收复30m MA20'],
+      nextChecks: ['连续两根30m收盘确认'],
+      weakerIf: '跌破事件低点 / 重新封死跌停',
+    })
+    expect(radar?.freshness).toMatchObject({
+      status: 'fresh',
+      blockers: ['设备与材料仍弱'],
+    })
+    const markup = renderToStaticMarkup(
+      <SectorTransitionRadarPanel locale="zh-CN" radar={radar!} pendingUpdate onSelectSentinel={() => undefined} />,
+    )
+    expect(markup).toContain('板块转折雷达 · 有新事件')
+    expect(markup).toContain('数字芯片设计')
+    expect(markup).toContain('宽度 58.0%')
+    expect(markup).toContain('下一确认')
+    expect(markup).toContain('打开 SH.603986 兆易创新 图表')
+  })
+
+  it('marks pending only when a new unread event id appears', () => {
+    const sameEventShell = {
+      sector_transition_radar: {
+        unread_event_ids: ['evt-1'],
+        events: [{ event_id: 'evt-1', sector_name: '半导体', to_state: 'release' }],
+      },
+    } as any
+    const newEventShell = {
+      sector_transition_radar: {
+        unread_event_ids: ['evt-1', 'evt-2'],
+        events: [
+          { event_id: 'evt-1', sector_name: '半导体', to_state: 'release' },
+          { event_id: 'evt-2', sector_name: '保险', to_state: 'repair' },
+        ],
+      },
+    } as any
+
+    expect(sectorTransitionHasNewUnreadEvents(['evt-1'], sameEventShell)).toBe(false)
+    expect(sectorTransitionHasNewUnreadEvents(['evt-1'], newEventShell)).toBe(true)
+    expect(sectorTransitionHasNewUnreadEvents(['evt-1', 'evt-2'], newEventShell)).toBe(false)
+    expect(sectorTransitionHasNewUnreadEvents([], {
+      sector_transition_radar: {
+        unread_event_ids: [],
+        events: [{ event_id: 'evt-historical', sector_name: '银行', to_state: 'stable' }],
+      },
+    } as any)).toBe(false)
+  })
+})
+
+describe('StrategyChartTerminal source monitor', () => {
+  it('shows loaded provider records instead of zero when sources are healthy', () => {
+    const summary = sourceMonitorSummary([
+      { provider: 'eastmoney', endpoint: 'fullmarket_spot_snapshot', domain: 'market_data', status: 'ok', is_current_healthy: true, last_success_at: '2026-05-13T09:44:00' },
+      { provider: 'sina', endpoint: 'stock_minute', domain: 'minute', status: 'ok', is_current_healthy: true, last_success_at: '2026-05-13T09:43:00' },
+    ], [], 'zh-CN')
+
+    expect(summary.value).toBe('2')
+    expect(summary.statusLabel).toBe('正常')
+    expect(summary.detail).toBe('近15分钟验证通过')
+  })
+
+  it('marks provider health as not loaded when no source records arrive', () => {
+    const summary = sourceMonitorSummary([], [{ scope: 'postmarket_backfill' }], 'zh-CN')
+
+    expect(summary.value).toBe('0')
+    expect(summary.status).toBe('partial')
+    expect(summary.statusLabel).toBe('未加载')
+    expect(summary.detail).toBe('尚无来源验证记录')
+  })
+
+  it('shows the concrete provider endpoint when fullmarket is blocked', () => {
+    const summary = sourceMonitorSummary([
+      {
+        provider: 'eastmoney',
+        endpoint: 'fullmarket_spot_snapshot',
+        domain: 'market_data',
+        status: 'degraded',
+        last_error_type: 'SSLError',
+        updated_at: '2026-05-13T09:44:00',
+      },
+    ], [], 'zh-CN')
+
+    expect(summary.statusLabel).toBe('待恢复')
+    expect(summary.detail).toContain('来源暂未恢复')
+    expect(summary.subdetail).not.toContain('SSLError')
+    expect(summary.subdetail).not.toContain('eastmoney')
+  })
+
+  it('drops stale blocker state after the fullmarket provider recovers', () => {
+    const summary = sourceMonitorSummary([
+      {
+        provider: 'eastmoney',
+        endpoint: 'fullmarket_spot_snapshot',
+        domain: 'market_data',
+        status: 'ok',
+        is_current_healthy: true,
+        last_success_at: '2026-05-13T09:45:00',
+        last_error_type: 'old SSLError',
+        updated_at: '2026-05-13T09:45:00',
+      },
+    ], [{ scope: 'postmarket_backfill', module: 'fullmarket_spot_snapshot', status: 'degraded' }], 'zh-CN')
+
+    expect(summary.status).toBe('ok')
+    expect(summary.statusLabel).toBe('正常')
+    expect(summary.detail).toBe('近15分钟验证通过')
+  })
+})
+
+describe('StrategyChartTerminal mongo coverage', () => {
+  it('labels current-day catch-up as running while postmarket backfill is active', () => {
+    const summary = mongoCoverageState({
+      available: true,
+      mode: 'mongo',
+      updated_at: '2026-05-29T14:13:00',
+      trade_date: '2026-05-29',
+      daily_coverage_date: '2026-05-29',
+      live_low_latency: { modules: [], summary: {} },
+      postmarket_backfill: {
+        run: { status: 'running', recovery_state: 'postmarket_running' },
+        tasks: [],
+        summary: { critical_status: 'running' },
+      },
+      mongo_stock_cache: {
+        freqs: [
+          {
+            freq: '日线',
+            symbols: 5506,
+            today_symbols: 3244,
+            coverage_date: '2026-05-29',
+          },
+        ],
+        summary: {
+          daily_coverage_date: '2026-05-29',
+          daily_expected_universe_verified: true,
+          minute_universe_total: 72,
+          minute_universe_cached: 72,
+          minute_universe_pending: 0,
+          minute_universe_error: 0,
+        },
+      },
+      terminal_outputs: [],
+      provider_health: [],
+      blockers: [],
+    } as any, 'zh-CN')
+
+    expect(summary.status).toBe('running')
+    expect(summary.isCurrent).toBe(true)
+    expect(summary.compactLabel).toBe('日 2026-05-29 3,244/5,506 · 周 等待更新 · 月 等待更新')
+  })
+
+  it('labels old daily coverage as partial instead of ok', () => {
+    const summary = mongoCoverageState({
+      available: true,
+      mode: 'mongo',
+      updated_at: '2026-05-13T09:45:00',
+      trade_date: '2026-05-13',
+      daily_coverage_date: '2026-05-12',
+      live_low_latency: { modules: [], summary: {} },
+      postmarket_backfill: { run: null, tasks: [], summary: {} },
+      mongo_stock_cache: {
+        freqs: [
+          {
+            freq: '日线',
+            symbols: 5498,
+            today_symbols: 5498,
+            coverage_date: '2026-05-12',
+          },
+        ],
+        summary: {
+          daily_coverage_date: '2026-05-12',
+          daily_expected_universe_verified: true,
+          minute_universe_total: 0,
+        },
+      },
+      terminal_outputs: [],
+      provider_health: [],
+      blockers: [],
+    } as any, 'zh-CN')
+
+    expect(summary.status).toBe('partial')
+    expect(summary.isCurrent).toBe(false)
+    expect(summary.compactLabel).toBe('日 2026-05-12 5,498/5,498 · 周 等待更新 · 月 等待更新')
+    expect(summary.detail).toContain('旧行情可读')
+  })
+
+  it('summarizes derived weekly/monthly periods and provisional daily quality', () => {
+    const summary = mongoCoverageState({
+      available: true,
+      trade_date: '2026-05-15',
+      daily_coverage_date: '2026-05-15',
+      live_low_latency: { modules: [], summary: {} },
+      postmarket_backfill: { run: null, tasks: [], summary: {} },
+      mongo_stock_cache: {
+        freqs: [
+          { freq: '日线', symbols: 5506, today_symbols: 5506, coverage_date: '2026-05-15', quality: 'provisional_close' },
+          { freq: '周线', symbols: 5506, latest_dt: '2026-05-15', is_partial_period: false },
+          { freq: '月线', symbols: 5506, latest_dt: '2026-05-15', is_partial_period: true },
+        ],
+        summary: { daily_coverage_date: '2026-05-15', daily_expected_universe_verified: true },
+      },
+      terminal_outputs: [],
+      provider_health: [],
+      blockers: [],
+    } as any, 'zh-CN')
+
+    expect(summary.compactLabel).toBe(
+      '日 2026-05-15 5,506/5,506 · 周 已派生 · 月 周期未结束 · 临时收盘',
+    )
+  })
+})
+
+describe('StrategyChartTerminal sector target context', () => {
+  it('counts unique grouped sector targets for the right-side panel', () => {
+    const row = {
+      source: 'chain_heat_snapshots',
+      candidate_groups: {
+        leaders: [
+          { symbol: 'SZ.000002', name: '万科A', leader_tier: '龙头' },
+          { symbol: 'SH.601668', name: '中国建筑', leader_tier: '龙二' },
+        ],
+        weighted: [
+          { symbol: 'SZ.000002', name: '万科A', chain_role: '房地产开发链主' },
+        ],
+        elastic: [
+          { symbol: 'SH.600585', name: '海螺水泥', chain_role: '水泥弹性标的' },
+        ],
+      },
+    }
+
+    expect(sectorTargetCountForContext(row)).toBe(3)
+    expect(sectorTargetRowsForContext(row).map(item => item.name)).toEqual(['万科A', '中国建筑', '海螺水泥'])
+  })
+
+  it('falls back to focus stock previews when grouped candidates are missing', () => {
+    const row = {
+      focus_stocks_preview: [
+        { symbol: 'SH.601888', name: '中国中免' },
+        { symbol: 'SH.600185', name: '珠免集团' },
+      ],
+    }
+
+    expect(sectorTargetCountForContext(row)).toBe(2)
+  })
+})
+
+describe('StrategyChartTerminal timeframe market snapshots', () => {
+  it('keeps monthly out of chart switches while adding it to snapshot rows', () => {
+    expect(TEST_CHART_FREQ_VALUES).toEqual(['5min', '15min', '30min', 'daily', 'weekly'])
+    expect(TEST_TIMEFRAME_SNAPSHOT_FREQ_VALUES).toEqual(['5min', '15min', '30min', 'daily', 'weekly', 'monthly'])
+  })
+
+  it('formats latest price, period change, volume, and amount from chart bars', () => {
+    const snapshot = marketSnapshotFromSymbolData({
+      target: {
+        kind: 'stock',
+        symbol: 'SH.600000',
+        requested_freq: '30min',
+        effective_freq: '30min',
+      },
+      chart: {
+        meta: {
+          freq: '30min',
+          source: 'bars',
+          cache_status: 'ready',
+          data_as_of: '2026-05-29',
+          latest_bar_time: '2026-05-29T14:30:00',
+          bars: 2,
+        },
+        ohlcv: [
+          { time: 1_780_000_000, open: 10, high: 10.2, low: 9.9, close: 10, volume: 1_000_000, amount: 10_000_000 },
+          { time: 1_780_001_800, open: 10.2, high: 11.2, low: 10.1, close: 11, volume: 2_000_000, amount: 22_000_000 },
+        ],
+      },
+      summary: {
+        latest_price: 11.01,
+        latest_signal: 'MACD零上',
+      },
+    } as any, '30min', 'zh-CN')
+
+    expect(snapshot.status).toBe('ready')
+    expect(snapshot.latestPrice).toBe('11.00')
+    expect(snapshot.periodChange).toBe('+10.00%')
+    expect(snapshot.volume).toBe('2.00万手')
+    expect(snapshot.amount).toBe('2200.00万')
+    expect(snapshot.bars).toBe('2')
+    expect(snapshot.signal).toBe('MACD零上')
+  })
+
+  it('keeps not-ready minute periods visible as loading rows', () => {
+    const snapshot = marketSnapshotFromSymbolData({
+      target: {
+        kind: 'stock',
+        label: 'SH.600000',
+        symbol: 'SH.600000',
+        requested_freq: '5min',
+        effective_freq: '5min',
+        not_ready_reason: 'stock_minute_not_ready',
+      },
+      chart: {
+        meta: {
+          freq: '5min',
+          cache_status: 'not_ready',
+          load_status: 'running',
+          bars: 0,
+        },
+        ohlcv: [],
+      },
+      summary: {},
+    } as any, '5min', 'zh-CN')
+
+    expect(snapshot.status).toBe('loading')
+    expect(snapshot.latestPrice).toBe('N/A')
+    expect(snapshot.statusText).toContain('股票分钟行情未就绪')
+  })
+
+  it('supports monthly snapshot labels without requiring a top-level chart switch', () => {
+    const snapshot = marketSnapshotFromSymbolData({
+      target: {
+        kind: 'stock',
+        symbol: 'SH.600000',
+        requested_freq: 'monthly',
+        effective_freq: 'monthly',
+      },
+      chart: {
+        meta: {
+          freq: 'monthly',
+          cache_status: 'ready',
+          data_quality: 'official',
+          bars: 1,
+        },
+        ohlcv: [
+          { time: 1_780_000_000, open: 10, high: 12, low: 9, close: 11, volume: 1_000_000, amount: 10_000_000 },
+        ],
+      },
+    } as any, 'monthly', 'zh-CN')
+
+    expect(snapshot.freq).toBe('monthly')
+    expect(snapshot.label).toBe('月')
+    expect(snapshot.qualityLabel).toBe('已收盘')
+  })
+
+  it('distinguishes waiting source, provisional close, and partial-period quality', () => {
+    expect(marketSnapshotFromSymbolData({
+      target: { kind: 'stock', symbol: 'SH.600000', requested_freq: 'monthly', effective_freq: 'monthly' },
+      chart: { meta: { freq: 'monthly', cache_status: 'not_ready', load_status: 'pending' }, ohlcv: [] },
+    } as any, 'monthly', 'zh-CN').qualityLabel).toBe('等待更新')
+
+    expect(marketSnapshotFromSymbolData({
+      target: { kind: 'stock', symbol: 'SH.600000', requested_freq: 'daily', effective_freq: 'daily' },
+      chart: {
+        meta: { freq: 'daily', quality: 'provisional_close', bars: 1 },
+        ohlcv: [{ time: 1_780_000_000, open: 10, high: 11, low: 9, close: 10.5 }],
+      },
+    } as any, 'daily', 'zh-CN').qualityLabel).toBe('临时收盘')
+
+    expect(marketSnapshotFromSymbolData({
+      target: { kind: 'stock', symbol: 'SH.600000', requested_freq: 'weekly', effective_freq: 'weekly' },
+      chart: {
+        meta: { freq: 'weekly', is_partial_period: true, time_semantics: 'partial_period', bars: 1 },
+        ohlcv: [{ time: 1_780_000_000, open: 10, high: 11, low: 9, close: 10.5 }],
+      },
+    } as any, 'weekly', 'zh-CN').qualityLabel).toBe('周期未结束')
+  })
+})
+
+describe('StrategyChartTerminal MA acceptance evidence', () => {
+  it('reads MA acceptance from the symbol summary', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      summary: {
+        ma_acceptance: {
+          summary: 'MA13回踩承接',
+          periods: [13],
+          primary: {
+            period: 13,
+            value: 56.787,
+            touch_distance_pct: -0.046,
+          },
+          detail: 'MA13 56.79 / 触线 -0.046%',
+        },
+      },
+    } as any)
+
+    expect(acceptance?.summary).toBe('MA13回踩承接')
+    expect(acceptance?.periods).toEqual([13])
+    expect(acceptance?.primary.touch_distance_pct).toBe(-0.046)
+  })
+
+  it('falls back to signal MA alignment fields', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      signals: [
+        {
+          type: '一买',
+          freq: '30min',
+          ma_alignment: {
+            fib_accept_periods: [13],
+            fib_array_summary: 'MA13回踩承接',
+            fib_ma_array: [
+              {
+                period: 13,
+                pullback_acceptance: true,
+                touch_distance_pct: -0.046,
+              },
+            ],
+          },
+        },
+      ],
+    } as any)
+
+    expect(acceptance?.summary).toBe('MA13回踩承接')
+    expect(acceptance?.freq).toBe('daily')
+    expect(acceptance?.primary.period).toBe(13)
+  })
+
+  it('does not promote touch-only MA alignment into acceptance evidence', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      summary: {
+        ma_alignment: {
+          fib_accept_periods: [],
+          fib_touch_periods: [21, 13],
+          fib_breakdown_periods: [21],
+          fib_array_summary: 'MA21跌破待修复 / MA13触碰待确认',
+          fib_ma_array: [
+            {
+              period: 21,
+              pullback_touch: true,
+              pullback_acceptance: false,
+              pullback_breakdown: true,
+            },
+            {
+              period: 13,
+              pullback_touch: true,
+              pullback_acceptance: false,
+            },
+          ],
+        },
+      },
+    } as any)
+
+    expect(acceptance).toBeNull()
+  })
+
+  it('prioritizes the synthetic daily MA acceptance marker over ordinary technical labels', () => {
+    const maPriority = signalOverlayPriority({
+      type: 'MA承接',
+      signal_family: 'ma_acceptance',
+      freq: 'daily',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+        periods: [13],
+      },
+    } as any)
+    const macdPriority = signalOverlayPriority({ type: 'MACD' } as any)
+
+    expect(maPriority).toBeGreaterThan(macdPriority)
+  })
+
+  it('does not promote 30m technical signals into MA acceptance chart markers', () => {
+    const signalPriority = signalOverlayPriority({
+      type: '一买',
+      freq: '30min',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+        periods: [13],
+      },
+    } as any)
+    const maPriority = signalOverlayPriority({
+      type: 'MA承接',
+      signal_family: 'ma_acceptance',
+      freq: 'daily',
+      ma_acceptance: {
+        summary: 'MA13回踩承接',
+        periods: [13],
+      },
+    } as any)
+
+    expect(signalPriority).toBeLessThan(maPriority)
+  })
+
+  it('creates the MA acceptance marker only on the daily chart', () => {
+    const acceptance = maAcceptanceFromSymbolData({
+      summary: {
+        ma_acceptance: {
+          summary: 'MA13回踩承接',
+          periods: [13],
+          primary: {
+            period: 13,
+            value: 56.787,
+          },
+          event_dt: '2026-05-12',
+        },
+      },
+    } as any)
+    const bars = [
+      { timestamp: Date.UTC(2026, 4, 12), open: 59.24, high: 59.8, low: 56.05, close: 58.59, volume: 139 },
+    ]
+
+    expect(dailyMaAcceptanceSignalForChart(bars as any, acceptance, '30min')).toBeNull()
+    const signal = dailyMaAcceptanceSignalForChart(bars as any, acceptance, 'daily')
+    expect(signal?.freq).toBe('daily')
+    expect(signal?.signal_family).toBe('ma_acceptance')
+    expect(signal?.price).toBe(56.787)
+  })
+})
+
+describe('StrategyChartTerminal index multi-timeframe signals', () => {
+  const bars = [
+    { timestamp: Date.UTC(2026, 4, 11, 1, 30), open: 3860, high: 3890, low: 3840, close: 3880, volume: 1200 },
+    { timestamp: Date.UTC(2026, 4, 12, 7, 0), open: 3920, high: 3950, low: 3910, close: 3934, volume: 1800 },
+  ]
+
+  it('reads index chart signals from the Signals payload', () => {
+    const signals = signalsFromSymbolData({
+      target: { kind: 'index', label: '创业板指', effective_freq: '30min' },
+      chart: {
+        signals: [
+          {
+            dt: bars[1].timestamp / 1000,
+            type: '二买',
+            freq: '30min',
+            display_scope: 'current_timeframe',
+            signal_side: 'buy',
+          },
+        ],
+      },
+    } as any)
+
+    expect(signals).toHaveLength(1)
+    expect(signals[0].type).toBe('二买')
+    expect(signals[0].display_scope).toBe('current_timeframe')
+  })
+
+  it('keeps current, higher, and lower timeframe index markers visible on the chart', () => {
+    const visible = displaySignalsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[1].timestamp / 1000,
+          type: '二买',
+          freq: '30min',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[1].timestamp / 1000,
+          type: '多头上行',
+          freq: 'daily',
+          display_scope: 'higher_timeframe_context',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[1].timestamp / 1000,
+          type: '一卖',
+          freq: '15min',
+          display_scope: 'lower_timeframe_context',
+          signal_side: 'sell',
+          source: 'signals.index_report',
+        },
+      ] as any,
+      '30min',
+    )
+
+    expect(visible.map(signal => signal.type)).toEqual(expect.arrayContaining(['二买', '多头上行', '一卖']))
+    expect(visible.map(signal => signal.display_scope)).toEqual(expect.arrayContaining([
+      'current_timeframe',
+      'higher_timeframe_context',
+      'lower_timeframe_context',
+    ]))
+  })
+
+  it('uses the same key MA periods for every chart target', () => {
+    expect(maPeriodsForChart('daily', 'index')).toEqual([5, 8, 10, 13, 20, 21])
+    expect(maPeriodsForChart('weekly', 'industry')).toEqual([5, 8, 10, 13, 20, 21])
+    expect(maPeriodsForChart('30min', 'stock')).toEqual([5, 8, 10, 13, 20, 21])
+  })
+
+  it('uses readable timeframe labels instead of compact codes', () => {
+    expect(timeframeBadgeDisplayLabel('D', 'zh-CN')).toBe('日线')
+    expect(timeframeBadgeDisplayLabel('30M', 'zh-CN')).toBe('30分钟')
+    expect(timeframeBadgeDisplayLabel('15min', 'zh-CN')).toBe('15分钟')
+  })
+
+  it('keeps explicit index risk text ahead of timeframe badges', () => {
+    const signal = signalForWatchlist({
+      latest_signal: '未站稳5周线',
+      signal_detail: '上周五收盘价没站稳5周线',
+      sell_timeframes: [{ badge: 'D', side: 'sell' }],
+      buy_timeframes: [{ badge: '30m', side: 'buy' }],
+    }, 'index')
+
+    expect(signal).toBe('未站稳5周线')
+  })
+})
+
+describe('StrategyChartTerminal signal callouts', () => {
+  const bars = [
+    { timestamp: Date.UTC(2026, 4, 12, 1, 30), open: 36, high: 38, low: 35, close: 37, volume: 1200 },
+    { timestamp: Date.UTC(2026, 4, 12, 2, 0), open: 37, high: 39, low: 36, close: 38, volume: 1800 },
+    { timestamp: Date.UTC(2026, 4, 12, 2, 30), open: 38, high: 40, low: 37, close: 39, volume: 2200 },
+    { timestamp: Date.UTC(2026, 4, 12, 3, 0), open: 39, high: 41, low: 38, close: 40, volume: 2100 },
+    { timestamp: Date.UTC(2026, 4, 12, 3, 30), open: 40, high: 42, low: 39, close: 41, volume: 2400 },
+  ]
+
+  it('wraps adjacent multi-timeframe markers into one guided evidence box', () => {
+    const callouts = signalEvidenceCalloutsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[3].timestamp / 1000,
+          type: '二买',
+          freq: '30min',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[4].timestamp / 1000,
+          type: '多头上行',
+          freq: 'daily',
+          display_scope: 'higher_timeframe_context',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[4].timestamp / 1000,
+          type: '一卖',
+          freq: '15min',
+          display_scope: 'lower_timeframe_context',
+          signal_side: 'sell',
+          source: 'signals.index_report',
+        },
+      ] as any,
+      '30min',
+    )
+
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0].label).toBe('多周期共振')
+    expect(callouts[0].itemCount).toBe(3)
+    expect(callouts[0].items.map(item => item.freq)).toEqual(expect.arrayContaining(['30m', '日↧', '15m↥']))
+  })
+
+  it('renders main chart aggregation as a compact badge summary', () => {
+    const summary = signalCalloutBadgeSummary([
+      { label: '二买', side: 'buy', color: '#f59e0b', freq: '30m' },
+      { label: '多头上行', side: 'buy', color: '#f59e0b', freq: '日↧' },
+      { label: '一卖', side: 'sell', color: '#ef4444', freq: '15m↥' },
+      { label: 'MA承接', side: 'buy', color: '#f59e0b', freq: '周↧' },
+    ], 4, '多周期共振')
+
+    expect(summary.title).toBe('共振 4')
+    expect(summary.subtitle).toBe('二买/多头上行')
+  })
+
+  it('adds stable chart ids for right-rail callout details', () => {
+    const callouts = withSignalCalloutIds(signalEvidenceCalloutsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[3].timestamp / 1000,
+          type: '二买',
+          freq: '30min',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+        {
+          dt: bars[4].timestamp / 1000,
+          type: 'MACD金叉',
+          freq: 'daily',
+          display_scope: 'higher_timeframe_context',
+          signal_side: 'buy',
+          source: 'signals.index_report',
+        },
+      ] as any,
+      '30min',
+    ))
+
+    expect(callouts[0].calloutId).toBe('G1')
+    expect(signalCalloutBadgeSummary(
+      callouts[0].items,
+      callouts[0].itemCount,
+      callouts[0].label,
+      callouts[0].freq,
+      callouts[0].calloutId,
+    ).title).toBe('G1 共振 2')
+  })
+
+  it('carries explicit dates into chart callouts and item metadata', () => {
+    const callouts = signalEvidenceCalloutsForChart(
+      bars as any,
+      [
+        {
+          dt: bars[2].timestamp / 1000,
+          type: '二买',
+          freq: 'daily',
+          display_scope: 'current_timeframe',
+          signal_side: 'buy',
+          source: 'signals.stock_report',
+        },
+      ] as any,
+      'daily',
+      'dark',
+      'Asia/Shanghai',
+    )
+
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0].dateLabel).toBe('2026-05-12')
+    expect(callouts[0].signalDateLabel).toBe('2026-05-12')
+    expect(callouts[0].items[0].dateLabel).toBe('2026-05-12')
+  })
+
+  it('keeps volume and price-volume markers out of main chart callouts', () => {
+    const signals = [
+      {
+        dt: bars[4].timestamp / 1000,
+        type: '量价背离',
+        freq: '30min',
+        source: 'terminal_volume_signals',
+      },
+      {
+        dt: bars[4].timestamp / 1000,
+        type: '二买',
+        freq: '30min',
+        display_scope: 'current_timeframe',
+        signal_side: 'buy',
+        source: 'signals.stock_report',
+      },
+    ] as any
+
+    expect(displaySignalsForChart(bars as any, signals, '30min').map(signal => signal.type)).toEqual(['二买'])
+    const callouts = signalEvidenceCalloutsForChart(bars as any, signals, '30min')
+    expect(callouts).toHaveLength(1)
+    expect(callouts[0].items).toHaveLength(1)
+    expect(callouts[0].items[0].label).not.toContain('量')
+  })
+})
+
+describe('StrategyChartTerminal chart display filters', () => {
+  it('treats moving-average level names as duplicate chart overlays', () => {
+    expect(isMovingAverageLevelName('MA5')).toBe(true)
+    expect(isMovingAverageLevelName('日MA5')).toBe(true)
+    expect(isMovingAverageLevelName('周MA21')).toBe(true)
+    expect(isMovingAverageLevelName('日线MA20')).toBe(true)
+    expect(isMovingAverageLevelName('10日线')).toBe(true)
+    expect(isMovingAverageLevelName('5周线')).toBe(true)
+    expect(isMovingAverageLevelName('21日线')).toBe(true)
+    expect(isMovingAverageLevelName('二买 日')).toBe(false)
+    expect(isMovingAverageLevelName('前高压力')).toBe(false)
+  })
+})
+
+function incompleteCacheStatus() {
+  return {
+    available: true, trade_date: '2026-10-23', daily_coverage_date: '2026-10-23',
+    live_low_latency: { modules: [], summary: {} },
+    postmarket_backfill: {
+      run: { status: 'ok' }, summary: { critical_status: 'ok', critical_progress_pct: 100 },
+      tasks: [{ module: 'stock_daily', status: 'ok', close_complete: false, cache_usable: false,
+        result_summary: { result: { processed: 452, total: 452, covered_codes: 0, progress_pct: 100, quality: 'provisional_close' } } }],
+    },
+    mongo_stock_cache: {
+      freqs: [{ freq: '日线', symbols: null, today_symbols: 5219, quality: 'inventory_observed' }],
+      summary: { daily_symbols: null, daily_today_symbols: 5219, daily_coverage_pct: null,
+        daily_expected_universe_verified: false,
+        daily_observed_etf_coverage: { cached: 9, snapshot_symbols: 1657 } },
+    },
+    terminal_outputs: [], provider_health: [{ provider: 'eastmoney', status: 'cooldown_expired' }], blockers: [],
+  }
+}
+
+describe('StrategyChartTerminal truthful cache display', () => {
+  it('keeps nullable denominators unknown and ETF snapshot intersection separate', () => {
+    const summary = mongoCoverageState(incompleteCacheStatus() as any, 'zh-CN')
+
+    expect(summary.progress).toBeNull()
+    expect(summary.status).toBe('partial')
+    expect(summary.detail).toContain('已存股票 5,219 · 总数未确认')
+    expect(summary.statusLabel).toBe('总数未确认')
+    expect(summary.compactLabel).not.toContain('/0')
+    expect(summary.compactLabel).toContain('完整性未确认')
+    expect(summary.compactLabel).not.toContain('正式收盘')
+    expect(summary.subdetail).toContain('已存 9 只ETF日线')
+  })
+
+  it('does not infer a verified denominator from a historical all-time symbol count', () => {
+    const status = incompleteCacheStatus()
+    status.mongo_stock_cache.freqs[0].symbols = 5219 as any
+    delete (status.mongo_stock_cache.summary as any).daily_expected_universe_verified
+
+    expect(mongoCoverageState(status as any, 'zh-CN').progress).toBeNull()
+  })
+
+  it('only computes a percentage from a verified positive daily denominator', () => {
+    const status = incompleteCacheStatus()
+    status.mongo_stock_cache.freqs[0].symbols = 5219 as any
+    status.mongo_stock_cache.summary.daily_expected_universe_verified = true
+
+    expect(mongoCoverageState(status as any, 'zh-CN').progress).toBe(100)
+    expect(mongoCoverageState(status as any, 'zh-CN').compactLabel).not.toContain('正式收盘')
+    status.mongo_stock_cache.freqs[0].symbols = 0 as any
+    expect(mongoCoverageState(status as any, 'zh-CN').progress).toBeNull()
+  })
+
+  it('preserves unknown daily observations rather than rendering zero', () => {
+    const status = incompleteCacheStatus()
+    status.mongo_stock_cache.freqs[0].today_symbols = null as any
+    status.mongo_stock_cache.summary.daily_today_symbols = null as any
+    const summary = mongoCoverageState(status as any, 'zh-CN')
+    expect(summary.dailyToday).toBeUndefined()
+    expect(summary.detail).toContain('未知')
+    expect(summary.detail).not.toContain('股票 0')
+  })
+
+  it('keeps expired cooldown pending until a successful request validates the source', () => {
+    for (const row of [
+      { provider: 'eastmoney', status: 'cooldown_expired' },
+      { provider: 'eastmoney', status: 'cooldown', cooldown_until: '2026-10-24T18:00:00', updated_at: '2026-10-24T18:05:00' },
+    ]) {
+      const summary = sourceMonitorSummary([row], [], 'zh-CN')
+      expect(summary.status).toBe('partial')
+      expect(summary.statusLabel).toBe('待验证')
+      expect(summary.progress).toBe(0)
+      expect(summary.detail).toContain('近15分钟有效验证 0/1')
+      expect(summary.subdetail).toContain('不代表连接已中断')
+    }
+  })
+
+  it('does not hide an active provider failure behind another expired cooldown', () => {
+    const summary = sourceMonitorSummary([
+      { provider: 'eastmoney', status: 'cooldown_expired' },
+      { provider: 'sina', status: 'error', updated_at: '2026-10-24T18:05:00' },
+    ], [], 'zh-CN')
+    expect(summary.status).toBe('error')
+  })
+
+  it('distinguishes processed, covered, final close and usable cache from nested results', () => {
+    const tasks = incompleteCacheStatus().postmarket_backfill.tasks
+    const summary = postmarketDailyTaskSummary(tasks, 'zh-CN')
+    expect(summary).toMatchObject({ processed: 452, expected: 452, covered: 0, finalTasks: 0, usableTasks: 0, fullyUsable: false })
+    expect(summary.detail).toContain('已处理 452/452 · 已覆盖 0/452')
+    expect(summary.detail).toContain('正式收盘 0/1任务 · 缓存可用 0/1任务')
+    delete (tasks[0].result_summary.result as any).covered_codes
+    expect(postmarketDailyTaskSummary(tasks, 'zh-CN').covered).toBeUndefined()
+    expect(postmarketDailyTaskSummary(tasks, 'zh-CN').detail).toContain('已覆盖 ?/452')
+  })
+
+  it('requires finality, usability and full explicit coverage before accepting daily tasks', () => {
+    const task = { module: 'stock_daily', processed: 10, covered: 10, expected: 10, close_complete: true, cache_usable: false }
+    expect(postmarketDailyTaskSummary([task], 'zh-CN').fullyUsable).toBe(false)
+    task.cache_usable = true
+    expect(postmarketDailyTaskSummary([task], 'zh-CN').fullyUsable).toBe(true)
+    task.covered = 9
+    expect(postmarketDailyTaskSummary([task], 'zh-CN').fullyUsable).toBe(false)
+  })
+
+  it('renders pending daily coverage and wraps long badges for narrow card widths', () => {
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={incompleteCacheStatus() as any} />)
+    expect(markup).toContain('总数未确认')
+    expect(markup).toContain('数据完整度未确认')
+    expect(markup).toContain('待验收')
+    expect(markup).toContain('等待复验')
+    expect(markup).toContain('处理 100%')
+    expect(markup).toContain('本次已处理 452')
+    expect(markup).toContain('本次日线核验未完成')
+    expect(markup).toContain('flex-wrap:wrap')
+    expect(markup).toContain('white-space:normal;overflow-wrap:anywhere')
+    expect(markup).not.toContain('max-width:112px')
+  })
+})
+
+describe('StrategyChartTerminal controlled persistent read model', () => {
+  it.each(['bounded_readonly', 'bounded_no_backfill'])('shows cache readiness independently from analysis for %s', startup_profile => {
+    const session = { startup_profile, read_only: true, read_model_ready: true, ready: false, running: false }
+    const original = { ...session }
+    expect(isControlledReadModelReady(session)).toBe(true)
+    expect(marketLabel(session, 'zh-CN')).toBe('本地数据可查看')
+    const markup = renderToStaticMarkup(<ControlledSessionNotice session={session} locale="zh-CN" />)
+    expect(markup).toContain('完整分析尚未完成')
+    expect(markup).toContain('当前显示已存数据')
+    expect(markup).not.toContain('完整分析已就绪')
+    expect(session).toEqual(original)
+    expect(session.ready).toBe(false)
+  })
+
+  it('does not infer nonempty persistent cache merely from a controlled profile', () => {
+    const session = { startup_profile: 'bounded_readonly', read_only: true, ready: false }
+    expect(isControlledReadModelReady(session)).toBe(false)
+    expect(marketLabel(session, 'zh-CN')).toBe('本地数据加载中')
+  })
+
+  it('ignores the cache shortcut outside an explicit read-only bounded profile', () => {
+    for (const session of [
+      { startup_profile: 'normal', read_only: true, read_model_ready: true, ready: false, running: true },
+      { startup_profile: 'bounded_readonly', read_only: false, read_model_ready: true, ready: false, running: true },
+    ]) {
+      expect(isControlledReadModelReady(session)).toBe(false)
+      expect(marketLabel(session, 'zh-CN')).toBe('启动中')
+      expect(renderToStaticMarkup(<ControlledSessionNotice session={session} locale="zh-CN" />)).toBe('')
+    }
+    expect(marketLabel({ ready: true }, 'zh-CN')).toBe('已就绪')
+  })
+
+  it('retains source failures while showing readable cache and incomplete analysis', () => {
+    const cacheStatus = incompleteCacheStatus()
+    cacheStatus.provider_health = [{ provider: 'eastmoney', status: 'degraded', updated_at: '2026-10-24T18:00:00' } as any]
+    const markup = renderToStaticMarkup(<>
+      <ControlledSessionNotice locale="zh-CN" session={{ startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false }} />
+      <CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={cacheStatus as any} />
+    </>)
+    expect(markup).toContain('本地数据可查看')
+    expect(markup).toContain('完整分析尚未完成')
+    expect(markup).toContain('部分未更新')
+    expect(markup).toContain('部分来源暂时无法更新')
+  })
+})
+
+
+describe('source health governance', () => {
+  it('does not treat legacy ok or running records as validated success', () => {
+    for (const status of ['ok', 'running', 'unverified', 'stale']) {
+      const summary = sourceMonitorSummary([{ provider: 'sina', status, last_success_at: '2026-10-24T19:00:00' }], [], 'zh-CN')
+      expect(summary.status).toBe('partial')
+      expect(summary.value).toBe('0/1')
+      expect(summary.progress).toBe(0)
+    }
+  })
+  it('keeps one provider failure visible while a validated alternate is available', () => {
+    const summary = sourceMonitorSummary([
+      { provider: 'sina', endpoint: 'stock_minute', domain: 'minute', status: 'degraded' },
+      { provider: 'tencent', endpoint: 'stock_minute', domain: 'minute', status: 'ok', is_current_healthy: true },
+    ], [], 'zh-CN')
+    expect(summary.value).toBe('1/2')
+    expect(summary.problemCount).toBe(1)
+    expect(summary.status).toBe('error')
+  })
+  it('respects quarantined null coverage instead of reviving legacy ratios', () => {
+    const summary = postmarketDailyTaskSummary([{ module: 'stock_daily', covered: null, expected: null,
+      result_summary: { covered_codes: 5255, total: 1657, coverage_pct: 317.14 }, coverage_integrity: 'invalid',
+    }], 'zh-CN')
+    expect(summary.covered).toBeUndefined()
+    expect(summary.expected).toBeUndefined()
+    expect(summary.fullyUsable).toBe(false)
+  })
+})
+
+
+describe('quote source recovery display', () => {
+  it('separates current usable quotes from network and locally reused quotes', () => {
+    const status = incompleteCacheStatus() as any
+    status.live_low_latency.modules = [{ module: 'quote_snapshots', status: 'partial',
+      result: { count: 417, live: 400, network_quotes: 81, cache_reused: 319, missing_current: 17 },
+    }]
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    expect(markup).toContain('400/417')
+    expect(markup).toContain('本次获取 81 只')
+    expect(markup).toContain('读取已存 319 只')
+  })
+})
+
+
+function visibleSummary(markup: string): string {
+  return markup.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '')
+}
+
+describe('concise Chinese summaries with retained diagnostics', () => {
+  it('does not present a synthetic fallback zero count as a published strategy brief', () => {
+    const brief = { headline: '偏增量', summary: '0 buy candidates · 0 sell warnings', metadata: { source: 'agent-os-fallback' } } as any
+    expect(hasPublishedDailyBrief(brief)).toBe(false)
+    expect(hasPublishedDailyBrief({ ...brief, metadata: { source: 'signals-cache-status' } })).toBe(false)
+    expect(hasPublishedDailyBrief({ ...brief, headline: '2026-10-23 盘后简报', metadata: { source: 'signals-native-strategy' } })).toBe(true)
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" compact cacheStatus={{ ...incompleteCacheStatus(), available: false } as any} />)
+    expect(markup).toContain('行情暂未就绪')
+    expect(markup).not.toMatch(/OFF|更新进度 0%/)
+  })
+  it('keeps source names, module codes and exceptions inside closed details', () => {
+    const status = incompleteCacheStatus() as any
+    status.recovery_state = 'source_blocked'
+    status.critical_blocker = { provider: 'eastmoney', module: 'stock_daily', last_error_type: 'ConnectionError' }
+    status.provider_health[0].last_error_type = 'RuntimeError: ineligible_sources'
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    const visible = visibleSummary(markup)
+    for (const token of ['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources', '分母待核', '交集', '受控运行', '对象数据', '源阻塞']) {
+      expect(visible).not.toContain(token)
+      if (['eastmoney', 'stock_daily', 'RuntimeError', 'ConnectionError', 'ineligible_sources'].includes(token)) expect(markup).not.toContain(token)
+    }
+    expect(markup).not.toMatch(/<details[^>]*\bopen(?:=|>)/)
+    expect(visible).toContain('已存股票 5,219 · 总数未确认')
+    expect(visible).toContain('已存 9 只ETF日线')
+    expect(visible).not.toContain('1,657')
+    expect(visible).not.toContain('正式收盘 0/1任务')
+    expect(visible).toContain('本次日线核验未完成')
+  })
+
+  it('shows one runtime notice and preserves all raw notices without presenting them as strategy results', () => {
+    const markup = renderToStaticMarkup(<RuntimeStatusNotice locale="zh-CN"
+      session={{ startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false }}
+      notices={['自动分析未启用', 'sector_transition_disabled', '盘后更新中']}
+      error="RuntimeError: eastmoney ConnectionError" />)
+    const visible = visibleSummary(markup)
+    expect(visible.match(/可查看已存行情/g)).toHaveLength(1)
+    expect(markup).toContain('完整分析尚未完成')
+    expect(visible).toContain('部分数据暂时无法更新')
+    expect(visible).not.toMatch(/受控运行|RuntimeError|ConnectionError|eastmoney|disabled|自动分析未启用/)
+    expect(markup).not.toContain('RuntimeError: eastmoney ConnectionError')
+    expect(markup).toContain('查看维护诊断（技术信息）')
+    expect(markup.match(/<details/g)).toHaveLength(1)
+  })
+
+  it('does not label a healthy but old list as updated for the target date', () => {
+    const markup = renderToStaticMarkup(<PoolAuthorityStrip locale="zh-CN" tradeDate="2026-10-23"
+      meta={{ status: 'healthy', base_trade_date: '2026-09-01', revision: 24, stale_reason: 'ineligible_sources', generation_id: 'raw-generation' }} />)
+    const visible = visibleSummary(markup)
+    expect(visible).toContain('策略名单尚未更新 · 当前为2026-09-01名单')
+    expect(visible).not.toMatch(/r24|raw-generation|ineligible_sources|策略名单已更新/)
+    expect(markup).not.toContain('raw-generation')
+    expect(visibleSummary(renderToStaticMarkup(<PoolAuthorityStrip locale="zh-CN" tradeDate="2026-10-23"
+      meta={{ status: 'healthy', base_trade_date: '2026-10-23' }} />))).toContain('策略名单已更新')
+  })
+
+  it('renders disabled radar as one short line without zero stages or blocker codes', () => {
+    const radar = sectorTransitionRadarFromShell({ sector_transition_radar: {
+      freshness: { status: 'disabled', blockers: ['sector_transition_disabled'] }, states: [], events: [],
+    } } as any)
+    const markup = renderToStaticMarkup(<SectorTransitionRadarPanel locale="zh-CN" radar={radar} pendingUpdate={false} />)
+    expect(visibleSummary(markup)).toContain('板块转折雷达尚未启用')
+    expect(visibleSummary(markup)).not.toMatch(/disabled|压力|释放|稳定转折|>0</)
+    expect(markup).not.toContain('sector_transition_disabled')
+  })
+
+  it('distinguishes expired validation from disconnection and keeps the historic success inspectable', () => {
+    const status = incompleteCacheStatus() as any
+    status.provider_health = [{ provider: 'sina', status: 'stale', last_valid_success_at: '2026-10-24T20:39:00' }]
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    const visible = visibleSummary(markup)
+    expect(visible).toContain('等待复验')
+    expect(visible).toContain('来源状态尚未确认')
+    expect(markup).not.toContain('近15分钟有效验证 0/1')
+    expect(visible).toContain('不代表连接已中断')
+    expect(visible).not.toMatch(/断连|全部失败|sina|20:39/)
+    expect(markup).not.toContain('2026-10-24T20:39:00')
+    const diagnostics = renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open data={status} onClose={() => {}} />)
+    expect(diagnostics).toContain('2026-10-24T20:39:00')
+  })
+
+  it('keeps explicit zero categories and missing quote counts honest', () => {
+    const status = incompleteCacheStatus() as any
+    status.live_low_latency = { summary: { ok_modules: 0, total_modules: 1 }, modules: [{ module: 'quote_snapshots', status: 'ok', result: { count: 417 } }] }
+    const visible = visibleSummary(renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />))
+    expect(visible).toContain('0/1')
+    expect(visible).not.toContain('报价 0/417')
+    expect(visible).toContain('可用数据类别数')
+  })
+
+  it('does not convert an out-of-range stock count to complete coverage or infer a missing date', () => {
+    const status = incompleteCacheStatus() as any
+    status.mongo_stock_cache.freqs[0].symbols = 5000
+    status.mongo_stock_cache.summary.daily_expected_universe_verified = true
+    expect(mongoCoverageState(status, 'zh-CN').progress).toBeNull()
+    expect(mongoCoverageState(status, 'zh-CN').statusLabel).toBe('数量待确认')
+    status.daily_coverage_date = ''
+    expect(mongoCoverageState(status, 'zh-CN').isCurrent).toBe(false)
+    expect(mongoCoverageState(status, 'zh-CN').statusLabel).toBe('日期未确认')
+  })
+
+  it('localizes chart identity and confirmation labels while preserving standard indicators', () => {
+    expect(chartKindLabel('INDEX', 'zh-CN')).toBe('指数')
+    expect(chartFrequencyLabel('daily', 'zh-CN')).toBe('日线')
+    expect(traderDisplayText('confirmed · unconfirmed · conf 0.8 · MA21 MACD ETF', 'zh-CN')).toBe('已确认 · 待确认 · 置信度 80% · MA21 MACD ETF')
+    expect(traderDisplayText('RuntimeError: ineligible_sources', 'zh-CN')).toBe('部分数据暂不可用')
+    const markup = renderToStaticMarkup(<DataDetails locale="zh-CN" reason="已存行情可查看" impact="数据未完整" nextStep="无需手动操作" />)
+    expect(visibleSummary(markup)).not.toContain('Asia/Shanghai')
+    expect(markup).not.toContain('Asia/Shanghai')
+    expect(markup).not.toContain('<pre')
+  })
+})
+
+function verifiedLocalStatus() {
+  const status = incompleteCacheStatus() as any
+  status.recovery_state = 'partial/source_blocked'
+  status.postmarket_backfill.summary.critical_progress_pct = 43
+  status.daily_reconciliation = {
+    schema: 'daily-local-reconciliation-v1', trade_date: '2026-10-23', scope_verified: true,
+    scope_id: 'baostock-shsz-ordinary-20261023', scope_label: '沪深本地采集范围',
+    scope_members: 5224, required_daily: 5219, native_confirmed: 5219, snapshot_confirmed: 0,
+    source_reported_no_trade: 5, missing_required: 0, coverage_pct: 100,
+    coverage_evidence_kind: 'historical_native_only', global_expected: null, global_coverage_pct: null,
+    stock_inventory: { total: 5258, native: 5236, close_snapshot: 22, unverified: 0 },
+    outside_local_scope: { total: 39, native: 17, close_snapshot: 22, unverified: 0 },
+    etf_inventory: 9, source_proof: { reviewed_scope_sha256: 'a'.repeat(64) },
+  }
+  return status
+}
+
+describe('actual client acceptance regressions', () => {
+  it('shows dated native scope completion separately from the unchanged 43% legacy ledger', () => {
+    const status = verifiedLocalStatus()
+    const original = JSON.stringify(status)
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    const main = visibleSummary(markup)
+    expect(main).toContain('本地日线核验')
+    expect(main).toContain('5,219/5,219')
+    expect(main).toContain('沪深本地采集范围 5,224只')
+    expect(main).toContain('数据源标记未交易 5')
+    expect(main).toContain('原生日线 5,236 · 收盘快照 22')
+    expect(main).toContain('全A股覆盖率未核定')
+    expect(main).not.toContain('43%')
+    expect(markup).toContain('历史后台任务记录 · 43%')
+    expect(main).not.toContain('连接正常')
+    expect(JSON.stringify(status)).toBe(original)
+  })
+  it('does not count one close snapshot as a repaired native history gap', () => {
+    const status = verifiedLocalStatus()
+    Object.assign(status.daily_reconciliation, { native_confirmed: 5218, snapshot_confirmed: 1, missing_required: 1 })
+    expect(dailyLocalReconciliation(status)).not.toBeNull()
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    expect(markup).toContain('5,218/5,219')
+    expect(markup).toContain('有缺口')
+    expect(markup).toContain('未计入原生覆盖')
+  })
+  it.each([{ trade_date: '2026-10-22' }, { scope_verified: false }, { native_confirmed: 5220 }, { source_proof: {} }])('rejects unproved or inconsistent local coverage %o', change => {
+    const status = verifiedLocalStatus()
+    Object.assign(status.daily_reconciliation, change)
+    expect(dailyLocalReconciliation(status)).toBeNull()
+  })
+  it('shows a currently validated alternate without hiding the Eastmoney failure', () => {
+    const status = verifiedLocalStatus()
+    status.provider_health = [
+      { provider: 'sina', endpoint: 'quote_batch', current_health: 'ok', is_current_healthy: true },
+      { provider: 'eastmoney', endpoint: 'fullmarket_spot_snapshot', current_health: 'degraded', is_current_healthy: false },
+    ]
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    expect(markup).toContain('备用报价可用')
+    expect(markup).toContain('新浪报价已验证 · 东方财富仍受阻')
+    expect(markup).not.toContain('连接正常')
+    status.provider_health[0].is_current_healthy = false
+    expect(renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)).not.toContain('备用报价可用')
+  })
+  it('uses the matching published brief instead of the lazy cache-dashboard fallback', () => {
+    const fallback = { summary: '', headline: '', metadata: { source: 'signals-cache-status' } } as any
+    const brief = { source: 'terminal_stock_pool', current_authority: true, generation_id: 'r3', as_of: '2026-10-23', title: '收盘名单复核', summary: '10只买点待复核，14只线索', next_actions: ['复核日线、周线位置与失效条件'] }
+    const pool = { status: 'healthy', today_updated: true, generation_id: 'r3', base_trade_date: '2026-10-23' }
+    const selected = dailyBriefForShell(fallback, brief, pool)
+    expect(hasPublishedDailyBrief(selected)).toBe(true)
+    expect(selected.summary).toBe(brief.summary)
+    expect(dailyBriefForShell(fallback, brief, { ...pool, generation_id: 'different' })).toBe(fallback)
+  })
+  it('keeps the actual published focus identity ahead of historical wait-30m/setup-watch fields', () => {
+    const row = { display_policy: 'published_daily_weekly_review', published_pool_group: 'focus_stocks', trade_stage: 'watch_pool', setup_mode: 'watch', trade_intent: 'wait_30m', can_trade_now: false }
+    expect(publishedPoolRole(row)).toBe('entry_review')
+    expect(rawDecisionStage(row, 'focus_stocks')).toBe('entry_ready')
+    expect(rawDecisionStage({ ...row, display_policy: '' }, 'focus_stocks')).toBe('watch_preheat')
+    expect(row.can_trade_now).toBe(false)
+  })
+  it('does not borrow a daily quote to invent a missing weekly close or volume', () => {
+    const row = marketSnapshotFromSymbolData({ target: { effective_freq: 'weekly' }, chart: { ohlcv: [], meta: { cache_status: 'not_ready', load_status: 'local_only' } }, summary: { latest_price: 37.48, day_volume: 5800000, day_amount: 215000000 } } as any, 'weekly')
+    expect(row.status).toBe('empty')
+    expect(row.latestPrice).toBe('N/A')
+    expect(row.volume).toBe('N/A')
+    expect(row.amount).toBe('N/A')
+    expect(row.statusText).toContain('未启动补数')
+  })
+})
+
+
+describe('actionable data explanation and separate maintenance diagnostics', () => {
+  const session = { startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true, ready: false, running: false }
+  const poolMeta = { status: 'healthy', base_trade_date: '2026-09-01', revision: 24, stale_reason: 'ineligible_sources' }
+
+  it('accepts an authoritative current pool before the separate cache date arrives, without guessing stale status', () => {
+    const current = { status: 'healthy', base_trade_date: '2026-10-23', today_updated: true }
+    expect(runtimeDataExplanation({ locale: 'zh-CN', session, poolMeta: current }).summary).toContain('策略名单已更新至2026-10-23')
+    expect(runtimeDataExplanation({ locale: 'zh-CN', session, poolMeta }).summary).toContain('当日状态待确认')
+    expect(runtimeDataExplanation({ locale: 'zh-CN', session, poolMeta }).summary).not.toContain('名单仍为')
+  })
+
+  it('never borrows a keyboard cursor stock decision for a different chart target', () => {
+    const row = { kind: 'stock', code: 'SZ.301291', label: '明阳电气', raw: {} } as any
+    const groups = { focus_stocks: [row], watch_stocks: [], buy_candidates: [], risk_stocks: [] }
+    expect(activeDecisionRowFromGroups(groups, { kind: 'index', label: '上证指数', freq: 'daily' } as any, row)).toBeNull()
+    expect(activeDecisionRowFromGroups(groups, { kind: 'stock', label: 'SH.600036', freq: 'daily' } as any, row)).toBeNull()
+    expect(activeDecisionRowFromGroups(groups, { kind: 'stock', label: 'SZ.301291', freq: 'weekly' } as any, row)).toBe(row)
+  })
+
+  it('explains the saved date, older list impact and no manual repair without claiming any job is running', () => {
+    const explanation = runtimeDataExplanation({ locale: 'zh-CN', session, cacheStatus: incompleteCacheStatus() as any, poolMeta })
+    expect(explanation.summary).toContain('可查看2026-10-23已存行情')
+    expect(explanation.summary).toContain('名单仍为2026-09-01，不能视作当日结果')
+    expect(explanation.summary).toContain('可继续浏览已存行情')
+    expect(explanation.summary).not.toContain('无需额外操作')
+    expect(explanation.reason).toContain('验证已过期或尚未完成')
+    expect(explanation.impact).toContain('不代表实时或完整覆盖')
+    expect(explanation.impact).toContain('旧名单仅供回看')
+    expect(explanation.nextStep).toContain('无需手动修库或执行命令')
+    expect(JSON.stringify(explanation)).not.toMatch(/正在|自动修复|处理中|已连接|策略已就绪/)
+    expect(session.running).toBe(false)
+  })
+
+  it('does not serialize raw records anywhere in the ordinary collapsed or expanded explanation', () => {
+    const raw = { error: 'RuntimeError: ConnectionError', module: 'stock_daily', sentinel: 'raw-secret-marker' }
+    const markup = renderToStaticMarkup(<RuntimeStatusNotice locale="zh-CN" session={session}
+      cacheStatus={incompleteCacheStatus() as any} poolMeta={poolMeta} notices={['sector_transition_disabled']} error={raw.error} diagnostics={raw} />)
+    expect(markup).toContain('原因：')
+    expect(markup).toContain('影响：')
+    expect(markup).toContain('下一步：')
+    expect(markup.match(/<details/g)).toHaveLength(1)
+    expect(markup).not.toMatch(/<pre|role="dialog"|raw-secret-marker|RuntimeError|ConnectionError|stock_daily|sector_transition_disabled|&quot;session&quot;/)
+    expect(markup).toContain('查看维护诊断（技术信息）')
+  })
+
+  it('renders no raw JSON when maintenance is closed and provides a separate explicitly labelled dialog when opened', () => {
+    const raw = { error: 'ConnectionError', provider: 'sina', last_valid_success_at: '2026-10-24T20:39:51' }
+    expect(renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open={false} data={raw} onClose={() => {}} />)).toBe('')
+    const opened = renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open data={raw} onClose={() => {}} />)
+    expect(opened).toContain('role="dialog"')
+    expect(opened).toContain('aria-modal="true"')
+    expect(opened).toContain('position:fixed')
+    expect(opened).toContain('维护诊断 · 仅供排查问题')
+    expect(opened).toContain('关闭，返回看盘')
+    expect(opened).toContain('ConnectionError')
+    expect(opened).toContain('2026-10-24T20:39:51')
+    expect(opened).toContain('无需据此修改数据库或执行命令')
+    expect(renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open={false} data={raw} onClose={() => {}} />)).not.toContain('<pre')
+  })
+
+  it('does not even serialize diagnostic data before the maintenance window is explicitly opened', () => {
+    const raw = { toJSON() { throw new Error('raw data must stay out of ordinary UI') } }
+    expect(() => renderToStaticMarkup(<MaintenanceDiagnostics locale="zh-CN" open={false} data={raw} onClose={() => {}} />)).not.toThrow()
+    expect(() => renderToStaticMarkup(<RuntimeStatusNotice locale="zh-CN" session={session} cacheStatus={incompleteCacheStatus() as any} poolMeta={poolMeta} diagnostics={raw} />)).not.toThrow()
+  })
+
+  it('keeps unavailable data and unknown dates uncertain instead of inventing a recovery action or success', () => {
+    const status = incompleteCacheStatus() as any
+    status.available = false
+    status.daily_coverage_date = ''
+    status.mongo_stock_cache.freqs[0].today_symbols = null
+    status.mongo_stock_cache.summary.daily_today_symbols = null
+    const explanation = runtimeDataExplanation({ locale: 'zh-CN', cacheStatus: status, poolMeta: {}, session: { ...session, read_model_ready: false } })
+    expect(explanation.readable).toBe(false)
+    expect(explanation.summary).toContain('当前可用行情尚未确认')
+    expect(explanation.summary).toContain('暂不依赖当前结果')
+    expect(explanation.nextStep).not.toMatch(/刷新|修复中|等待自动|点击|启动|命令：/)
+    expect(explanation.summary).not.toContain('2026-10-23已存行情')
+  })
+
+  it('removes diagnostics and repeated details from the chart-side and four-card summaries', () => {
+    const status = incompleteCacheStatus() as any
+    status.provider_health[0].last_error_type = 'ConnectionError'
+    const markup = renderToStaticMarkup(<><CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />
+      <PoolAuthorityStrip locale="zh-CN" meta={poolMeta} tradeDate="2026-10-23" /></>)
+    expect(markup).not.toMatch(/<details|<pre|ConnectionError|ineligible_sources/)
+    expect(markup).toContain('已存股票 5,219 · 总数未确认')
+    expect(markup).toContain('当前为2026-09-01名单')
+  })
+})
+
+describe('current chart decision identity during selection', () => {
+  const target = { kind: 'auto', label: 'SZ.301291', freq: '30min' }
+  const row = { kind: 'stock', code: 'SZ.301291', label: '明阳电气', raw: {} } as any
+  const groups = { focus_stocks: [], watch_stocks: [row], buy_candidates: [], risk_stocks: [] }
+  const panel = (data: any, loading = true) => renderToStaticMarkup(<StrategyDecisionPanel
+    locale="zh-CN" row={activeDecisionRowFromGroups(groups, target, row)} target={target}
+    symbolData={data} loading={loading} booting={false}
+    sourceConfidence={[]} keyLevels={[]} signals={[]} divergences={[]} />)
+
+  it('does not certify an auto-kind pool lookup miss as outside-pool while reading the selected stock', () => {
+    expect(activeDecisionRowFromGroups(groups, target, row)).toBeNull()
+    const text = panel(null)
+    expect(text).toContain('正在读取当前标的，判断待确认')
+    expect(text).not.toMatch(/不在机会池|忽略|重新入池/)
+  })
+
+  it('does not borrow the previous index summary for a pending stock selection', () => {
+    const text = panel({ target: { kind: 'index', label: '上证指数', symbol: 'sh000001', effective_freq: '30min' },
+      summary: { trader_read: 'OLD_INDEX_DECISION_SENTINEL', title: 'OLD_INDEX_TITLE' } })
+    expect(text).toContain('判断待确认')
+    expect(text).not.toMatch(/OLD_INDEX|不在机会池|忽略/)
+  })
+  it('uses explicit stock identifiers without confusing index codes or guessing names', () => {
+    for (const value of ['SZ.301291', 'sz302132', 'SZ.000001', 'SH.600036', 'BJ.920026']) expect(searchTargetKind(value, looksLikeIndexValue(value))).toBe('stock')
+    expect(searchTargetKind('SH.000300', looksLikeIndexValue('SH.000300'))).toBe('index')
+    expect(searchTargetKind('上证指数', true)).toBe('index')
+    expect(searchTargetKind('明阳电气', false)).toBe('auto')
+  })
+})
+
+describe('Eastmoney exact current quote capability display', () => {
+  const valid = { provider: 'eastmoney', endpoint: 'push2delay.ulist.quote', current_health: 'ok', status: 'ok',
+    is_current_healthy: true, last_valid_success_at: '2026-10-25T07:40:00+00:00', validation_kind: 'validated_payload',
+    current_error_type: null, last_error_type: 'OLD_CONNECTION_ERROR' }
+  const render = (row: any, extra: any[] = []) => {
+    const status = verifiedLocalStatus(); status.provider_health = [row, ...extra]
+    return renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+  }
+  it.each(['push2delay.ulist.quote', 'stock.get'])('shows only the verified quote capability %s as partial', endpoint => {
+    const markup = render({ ...valid, endpoint })
+    expect(markup).toContain('东财报价已验证；其他接口分别核验')
+    expect(markup).toContain('部分接口已验证')
+    expect(markup).not.toContain('连接正常')
+    expect(render(valid, [{ provider: 'eastmoney', endpoint: 'board.clist', current_health: 'degraded' }])).toContain('东财报价已验证；仍有未更新来源')
+    expect(render({ ...valid, status: 'unverified', stored_status: 'unverified' })).toContain('东财报价已验证')
+  })
+  it.each([
+    {}, { last_valid_success_at: null }, { validation_kind: 'http_ok' }, { current_health: 'stale', is_current_healthy: false },
+    { status: 'error', current_health: 'degraded', is_current_healthy: false }, { endpoint: 'board.clist' },
+    { current_error_type: 'ConnectionError' }, { is_current_healthy: false },
+  ])('does not certify empty/transport-only/stale/failed/wrong-endpoint evidence %o', change => {
+    const row = Object.keys(change).length ? { ...valid, ...change } : {}
+    expect(render(row)).not.toContain('东财报价已验证')
+    expect(render(row)).not.toContain('东财报价可用')
+  })
+})
+
+describe('terminal selected-target request races with actual React effects', () => {
+  function deferred<T = any>() {
+    let resolve!: (value: T) => void
+    let reject!: (reason: any) => void
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+  }
+  async function mountTerminal(refresh = async () => {}) {
+    const require = createRequire(import.meta.url)
+    const window = require('@mixmark-io/domino').createWindow('<html><body><div id="root"></div></body></html>') as any
+    const keys = ['window', 'document', 'HTMLElement', 'Element', 'Node', 'SVGElement', 'IS_REACT_ACT_ENVIRONMENT']
+    const previous = Object.fromEntries(keys.map(k => [k, (globalThis as any)[k]]))
+    Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement,
+      Element: window.Element, Node: window.Node, SVGElement: window.SVGElement, IS_REACT_ACT_ENVIRONMENT: true })
+    window.innerWidth = 1600; window.innerHeight = 1000
+    const node = window.document.getElementById('root') as HTMLElement
+    const root = createRoot(node)
+    const requests: Array<{ label: string; kind: string; freq: string; task: ReturnType<typeof deferred> }> = []
+    vi.mocked(recordObservationEvent).mockClear()
+    vi.mocked(observedFetchJson).mockImplementation(async (_base, path) => {
+      if (path === '/api/workbench/shell') return { cache: { status: 'local_core_ready' },
+        session: { startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true },
+        sections: { published_pool: { status: 'ready' } },
+        watchlist_groups: { focus_stocks: [], buy_candidates: [], risk_stocks: [], watch_stocks: [
+          { symbol: 'SZ.301291', name: '明阳电气', display_policy: 'published_daily_weekly_review',
+            published_pool_group: 'watch_stocks', pool_type: 'watch', can_trade_now: false },
+        ] } } as any
+      if (path === '/api/pack/cache-status') return { available: false } as any
+      const parsed = new URL(path, 'http://local.test')
+      if (!parsed.pathname.startsWith('/api/workbench/symbol/')) throw new Error('unexpected mocked request ' + path)
+      const task = deferred()
+      requests.push({ label: decodeURIComponent(parsed.pathname.split('/').pop()!),
+        kind: parsed.searchParams.get('kind')!, freq: parsed.searchParams.get('freq')!, task })
+      return task.promise // Deliberately ignores AbortSignal: stale responses really settle.
+    })
+    const dashboard = { buy_candidates: [], sell_warnings: [], chart_context: {}, deep_links: [], decision_queue: [], daily_brief: {},
+      strategy_kpis: [], source_confidence: [], connector_health: [], review_runs: [] } as any
+    const render = (locale: any = 'zh-CN', url = 'http://local.test') => root.render(<StrategyChartTerminal
+      locale={locale} dashboard={dashboard} signalsWebBaseUrl={url} onOpenRecord={() => {}} onRefreshSignals={refresh} />)
+    await act(async () => render())
+    const chooseStock = async () => {
+      const button = Array.from(node.querySelectorAll('[role="button"]')).find(b => b.textContent?.includes('明阳电气'))
+      expect(button, Array.from(node.querySelectorAll('button')).map(b => b.textContent).join('|')).toBeTruthy()
+      const event = window.document.createEvent('Event'); event.initEvent('click', true, true)
+      await act(async () => button!.dispatchEvent(event))
+    }
+    const complete = async (request: typeof requests[number], title: string) => act(async () => request.task.resolve({
+      target: { kind: request.kind === 'index' ? 'index' : 'stock', symbol: request.kind === 'index' ? 'sh000001' : request.label,
+        label: request.kind === 'index' ? '上证指数' : '明阳电气', requested_freq: request.freq, effective_freq: request.freq },
+      summary: { title }, chart: { meta: { freq: request.freq }, ohlcv: [] },
+    }))
+    return { node, requests, chooseStock, complete, render,
+      close: async () => {
+        await act(async () => root.unmount())
+        vi.mocked(observedFetchJson).mockReset()
+        for (const key of keys) {
+          if (previous[key] === undefined) delete (globalThis as any)[key]
+          else (globalThis as any)[key] = previous[key]
+        }
+      } }
+  }
+
+  it.each(['success', 'failure'] as const)('keeps B selected when initialization A settles late with %s', async mode => {
+    const h = await mountTerminal()
+    try {
+      const a = h.requests[0]
+      await h.chooseStock()
+      const b = h.requests.find(r => r.label === 'SZ.301291')!
+      expect(b).toBeTruthy()
+      /* Initial pending-copy assertion separately verified; settle real old lifecycle outcome here. */
+      await h.complete(b, 'ACTIVE_B_ONLY')
+      if (mode === 'success') await h.complete(a, 'OLD_A_SENTINEL')
+      else await act(async () => a.task.reject(Object.assign(new Error('OLD_A_FAILURE'), { status: 503, payload: { session: { ready: false } } })))
+      expect(h.node.textContent).toContain('ACTIVE_B_ONLY')
+      expect(h.node.textContent).not.toMatch(/OLD_A_|正在读取当前标的，判断待确认/)
+      expect(h.node.textContent).not.toContain('启动中')
+      expect(h.node.querySelector('[aria-label="刷新交易台"]')?.hasAttribute('disabled')).toBe(false)
+    } finally { await h.close() }
+  })
+
+  it('does not let late initialization finally clear the still-pending B loading state', async () => {
+    const h = await mountTerminal()
+    try {
+      await h.chooseStock()
+      await h.complete(h.requests[0], 'OLD_A_SENTINEL')
+      expect(h.node.querySelector('[aria-label="刷新交易台"]')?.hasAttribute('disabled')).toBe(true)
+      /* Initial pending-copy assertion separately verified; settle real old lifecycle outcome here. */
+    } finally { await h.close() }
+  })
+
+  it('preserves selected B across locale and reconnect hydration instead of defaulting to A', async () => {
+    const h = await mountTerminal()
+    try {
+      await h.chooseStock()
+      await h.complete(h.requests.find(r => r.label === 'SZ.301291')!, 'ACTIVE_B_ONLY')
+      await act(async () => h.render('en-US'))
+      await act(async () => h.render('en-US', 'http://reconnected.test'))
+      const initializations = vi.mocked(recordObservationEvent).mock.calls.filter(([name]) => name === 'strategy.init-target')
+      expect((initializations.at(-1)?.[1] as any)?.target.label).toBe('SZ.301291')
+      expect(h.requests.filter(r => r.kind === 'index')).toHaveLength(1)
+      expect(h.node.textContent).toContain('ACTIVE_B_ONLY')
+    } finally { await h.close() }
+  })
+
+  it('does not issue the old A refresh after refresh waits while the user chooses B', async () => {
+    const gate = deferred<void>()
+    const h = await mountTerminal(() => gate.promise)
+    try {
+      await h.complete(h.requests[0], 'OLD_A_SENTINEL')
+      const refresh = h.node.querySelector('[aria-label="刷新交易台"]')!
+      const event = document.createEvent('Event'); event.initEvent('click', true, true)
+      await act(async () => refresh.dispatchEvent(event))
+      await h.chooseStock()
+      await h.complete(h.requests.find(r => r.label === 'SZ.301291')!, 'ACTIVE_B_ONLY')
+      await act(async () => gate.resolve())
+      expect(h.node.textContent).toContain('ACTIVE_B_ONLY')
+      expect(h.requests.filter(r => r.kind === 'index')).toHaveLength(1)
+    } finally { await h.close() }
+  })
+})
+
+
+describe('timeframe cache read errors', () => {
+  it('gives a recovery action without exposing transport diagnostics', async () => {
+    const { errorTimeframeSnapshot } = await import('./StrategyChartTerminal')
+    const result = errorTimeframeSnapshot('5min', 'timeout after 15000ms', 'zh-CN')
+    expect(result.status).toBe('error')
+    expect(result.statusText).toBe('本地读取超时，可点击该周期重试')
+    expect(result.latestPrice).toBe('N/A')
+    expect(errorTimeframeSnapshot('5min', 'ConnectionError internal-url', 'zh-CN').statusText).not.toContain('ConnectionError')
+  })
+})
+
+
+describe('timeframe evidence separation', () => {
+  it('labels stale partial monthly bars as history and hides internal reason codes', () => {
+    const result = marketSnapshotFromSymbolData({ target: { effective_freq: 'monthly' },
+      chart: { meta: { cache_status: 'stale', is_stale: true, is_partial_period: true, stale_reason: 'older_than_request', latest_bar_time: '2026-09-21T00:00:00' },
+        ohlcv: [{ time: 1790006400, open: 34, high: 35, low: 33, close: 34.78 }] } } as any, 'monthly')
+    expect(result.status).toBe('stale')
+    expect(result.qualityLabel).toBe('历史缓存')
+    expect(result.statusText).toContain('本周期尚无更新数据')
+    expect(result.statusText).not.toContain('older_than_request')
+  })
+  it('uses weekly evidence ahead of a copied daily summary', () => {
+    const result = marketSnapshotFromSymbolData({ target: { effective_freq: 'weekly' },
+      chart: { meta: { cache_status: 'ready' }, ohlcv: [{ time: 1790006400, open: 34, high: 38, low: 33, close: 37.48 }],
+        signals: [{ type: '突破下降趋势线', freq: 'weekly', dt: '2026-10-23' }, { type: '日线攀爬', freq: 'daily', dt: '2026-10-23' }] },
+      summary: { latest_signal: '日线攀爬' } } as any, 'weekly')
+    expect(result.signal).toBe('突破下降趋势线')
+  })
+})
+
+
+describe('local core shell first view', () => {
+  const core = { cache: { status: 'local_core_ready', building: true }, sections: { published_pool: { status: 'ready' } },
+    watchlist_groups: { focus_stocks: [{ symbol: 'SZ.301291' }], buy_candidates: [{ symbol: 'SH.600000' }] } } as any
+  it('shows the existing published list while enrichment is pending', () => {
+    expect(initialCoreWatchlistTab(core, 'sector_boards', false)).toBe('focus_stocks')
+    expect(initialCoreWatchlistTab({ ...core, watchlist_groups: { buy_candidates: [{ symbol: 'SH.600000' }] } }, 'sector_boards', false)).toBe('buy_candidates')
+    expect(shellNeedsWarmRefresh(core)).toBe(true)
+  })
+  it('never overrides a user tab or claims an unavailable pool is ready', () => {
+    expect(initialCoreWatchlistTab(core, 'sector_boards', true)).toBe('sector_boards')
+    expect(initialCoreWatchlistTab(core, 'all_etfs', false)).toBe('all_etfs')
+    expect(initialCoreWatchlistTab({ ...core, sections: { published_pool: { status: 'unavailable' } } }, 'sector_boards', false)).toBe('sector_boards')
+    expect(initialCoreWatchlistTab({ ...core, cache: { status: 'hit' } }, 'sector_boards', false)).toBe('sector_boards')
+  })
+  it('keeps pending counts separate from actual empty groups', () => {
+    expect(watchlistGroupCountLabel('all_etfs', 0, { all_etfs: { status: 'loading', count: null } })).toBe('读取中')
+    expect(watchlistGroupCountLabel('sector_boards', 0, { sector_boards: { status: 'loading', count: null } })).toBe('读取中')
+    expect(watchlistGroupCountLabel('sector_boards', 0, { sector_boards: { status: 'ready', count: 0 } })).toBe('0')
+    expect(watchlistGroupCountLabel('all_etfs', 80, { all_etfs: { status: 'ready', review_count: 80, count: 1662 } })).toBe('80 / 1,662')
+  })
+})

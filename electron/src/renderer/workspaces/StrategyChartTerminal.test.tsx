@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import React, { act } from 'react'
+import { createRequire } from 'module'
+import { createRoot } from 'react-dom/client'
+import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { observedFetchJson, recordObservationEvent } from '../observation.js'
+
+vi.mock('../observation.js', () => ({ observedFetchJson: vi.fn(), recordObservationEvent: vi.fn() }))
+vi.mock('klinecharts', async importOriginal => {
+  const original = await importOriginal<any>()
+  return { ...original, ...original.default, init: vi.fn(() => null), registerOverlay: vi.fn(), registerIndicator: vi.fn(),
+    IndicatorSeries: { Volume: 'volume', Normal: 'normal', Price: 'price' }, TooltipShowRule: { Always: 'always', FollowCross: 'follow_cross', None: 'none' } }
+})
 
 import {
   CacheMonitorStrip,
@@ -8,6 +19,9 @@ import {
   MaintenanceDiagnostics,
   runtimeDataExplanation,
   activeDecisionRowFromGroups,
+  StrategyChartTerminal,
+  StrategyDecisionPanel,
+  searchTargetKind,
   PoolAuthorityStrip,
   hasPublishedDailyBrief,
   dailyBriefForShell,
@@ -1710,6 +1724,184 @@ describe('actionable data explanation and separate maintenance diagnostics', () 
   })
 })
 
+describe('current chart decision identity during selection', () => {
+  const target = { kind: 'auto', label: 'SZ.301291', freq: '30min' }
+  const row = { kind: 'stock', code: 'SZ.301291', label: '明阳电气', raw: {} } as any
+  const groups = { focus_stocks: [], watch_stocks: [row], buy_candidates: [], risk_stocks: [] }
+  const panel = (data: any, loading = true) => renderToStaticMarkup(<StrategyDecisionPanel
+    locale="zh-CN" row={activeDecisionRowFromGroups(groups, target, row)} target={target}
+    symbolData={data} loading={loading} booting={false}
+    sourceConfidence={[]} keyLevels={[]} signals={[]} divergences={[]} />)
+
+  it('does not certify an auto-kind pool lookup miss as outside-pool while reading the selected stock', () => {
+    expect(activeDecisionRowFromGroups(groups, target, row)).toBeNull()
+    const text = panel(null)
+    expect(text).toContain('正在读取当前标的，判断待确认')
+    expect(text).not.toMatch(/不在机会池|忽略|重新入池/)
+  })
+
+  it('does not borrow the previous index summary for a pending stock selection', () => {
+    const text = panel({ target: { kind: 'index', label: '上证指数', symbol: 'sh000001', effective_freq: '30min' },
+      summary: { trader_read: 'OLD_INDEX_DECISION_SENTINEL', title: 'OLD_INDEX_TITLE' } })
+    expect(text).toContain('判断待确认')
+    expect(text).not.toMatch(/OLD_INDEX|不在机会池|忽略/)
+  })
+  it('uses explicit stock identifiers without confusing index codes or guessing names', () => {
+    for (const value of ['SZ.301291', 'sz302132', 'SZ.000001', 'SH.600036', 'BJ.920026']) expect(searchTargetKind(value, looksLikeIndexValue(value))).toBe('stock')
+    expect(searchTargetKind('SH.000300', looksLikeIndexValue('SH.000300'))).toBe('index')
+    expect(searchTargetKind('上证指数', true)).toBe('index')
+    expect(searchTargetKind('明阳电气', false)).toBe('auto')
+  })
+})
+
+describe('Eastmoney exact current quote capability display', () => {
+  const valid = { provider: 'eastmoney', endpoint: 'push2delay.ulist.quote', current_health: 'ok', status: 'ok',
+    is_current_healthy: true, last_valid_success_at: '2026-10-25T07:40:00+00:00', validation_kind: 'validated_payload',
+    current_error_type: null, last_error_type: 'OLD_CONNECTION_ERROR' }
+  const render = (row: any, extra: any[] = []) => {
+    const status = verifiedLocalStatus(); status.provider_health = [row, ...extra]
+    return renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+  }
+  it.each(['push2delay.ulist.quote', 'stock.get'])('shows only the verified quote capability %s as partial', endpoint => {
+    const markup = render({ ...valid, endpoint })
+    expect(markup).toContain('东财报价已验证；其他接口分别核验')
+    expect(markup).toContain('部分接口已验证')
+    expect(markup).not.toContain('连接正常')
+    expect(render(valid, [{ provider: 'eastmoney', endpoint: 'board.clist', current_health: 'degraded' }])).toContain('东财报价已验证；仍有未更新来源')
+    expect(render({ ...valid, status: 'unverified', stored_status: 'unverified' })).toContain('东财报价已验证')
+  })
+  it.each([
+    {}, { last_valid_success_at: null }, { validation_kind: 'http_ok' }, { current_health: 'stale', is_current_healthy: false },
+    { status: 'error', current_health: 'degraded', is_current_healthy: false }, { endpoint: 'board.clist' },
+    { current_error_type: 'ConnectionError' }, { is_current_healthy: false },
+  ])('does not certify empty/transport-only/stale/failed/wrong-endpoint evidence %o', change => {
+    const row = Object.keys(change).length ? { ...valid, ...change } : {}
+    expect(render(row)).not.toContain('东财报价已验证')
+    expect(render(row)).not.toContain('东财报价可用')
+  })
+})
+
+describe('terminal selected-target request races with actual React effects', () => {
+  function deferred<T = any>() {
+    let resolve!: (value: T) => void
+    let reject!: (reason: any) => void
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+    return { promise, resolve, reject }
+  }
+  async function mountTerminal(refresh = async () => {}) {
+    const require = createRequire(import.meta.url)
+    const window = require('@mixmark-io/domino').createWindow('<html><body><div id="root"></div></body></html>') as any
+    const keys = ['window', 'document', 'HTMLElement', 'Element', 'Node', 'SVGElement', 'IS_REACT_ACT_ENVIRONMENT']
+    const previous = Object.fromEntries(keys.map(k => [k, (globalThis as any)[k]]))
+    Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement,
+      Element: window.Element, Node: window.Node, SVGElement: window.SVGElement, IS_REACT_ACT_ENVIRONMENT: true })
+    window.innerWidth = 1600; window.innerHeight = 1000
+    const node = window.document.getElementById('root') as HTMLElement
+    const root = createRoot(node)
+    const requests: Array<{ label: string; kind: string; freq: string; task: ReturnType<typeof deferred> }> = []
+    vi.mocked(recordObservationEvent).mockClear()
+    vi.mocked(observedFetchJson).mockImplementation(async (_base, path) => {
+      if (path === '/api/workbench/shell') return { cache: { status: 'local_core_ready' },
+        session: { startup_profile: 'bounded_no_backfill', read_only: true, read_model_ready: true },
+        sections: { published_pool: { status: 'ready' } },
+        watchlist_groups: { focus_stocks: [], buy_candidates: [], risk_stocks: [], watch_stocks: [
+          { symbol: 'SZ.301291', name: '明阳电气', display_policy: 'published_daily_weekly_review',
+            published_pool_group: 'watch_stocks', pool_type: 'watch', can_trade_now: false },
+        ] } } as any
+      if (path === '/api/pack/cache-status') return { available: false } as any
+      const parsed = new URL(path, 'http://local.test')
+      if (!parsed.pathname.startsWith('/api/workbench/symbol/')) throw new Error('unexpected mocked request ' + path)
+      const task = deferred()
+      requests.push({ label: decodeURIComponent(parsed.pathname.split('/').pop()!),
+        kind: parsed.searchParams.get('kind')!, freq: parsed.searchParams.get('freq')!, task })
+      return task.promise // Deliberately ignores AbortSignal: stale responses really settle.
+    })
+    const dashboard = { buy_candidates: [], sell_warnings: [], chart_context: {}, deep_links: [], decision_queue: [], daily_brief: {},
+      strategy_kpis: [], source_confidence: [], connector_health: [], review_runs: [] } as any
+    const render = (locale: any = 'zh-CN', url = 'http://local.test') => root.render(<StrategyChartTerminal
+      locale={locale} dashboard={dashboard} signalsWebBaseUrl={url} onOpenRecord={() => {}} onRefreshSignals={refresh} />)
+    await act(async () => render())
+    const chooseStock = async () => {
+      const button = Array.from(node.querySelectorAll('[role="button"]')).find(b => b.textContent?.includes('明阳电气'))
+      expect(button, Array.from(node.querySelectorAll('button')).map(b => b.textContent).join('|')).toBeTruthy()
+      const event = window.document.createEvent('Event'); event.initEvent('click', true, true)
+      await act(async () => button!.dispatchEvent(event))
+    }
+    const complete = async (request: typeof requests[number], title: string) => act(async () => request.task.resolve({
+      target: { kind: request.kind === 'index' ? 'index' : 'stock', symbol: request.kind === 'index' ? 'sh000001' : request.label,
+        label: request.kind === 'index' ? '上证指数' : '明阳电气', requested_freq: request.freq, effective_freq: request.freq },
+      summary: { title }, chart: { meta: { freq: request.freq }, ohlcv: [] },
+    }))
+    return { node, requests, chooseStock, complete, render,
+      close: async () => {
+        await act(async () => root.unmount())
+        vi.mocked(observedFetchJson).mockReset()
+        for (const key of keys) {
+          if (previous[key] === undefined) delete (globalThis as any)[key]
+          else (globalThis as any)[key] = previous[key]
+        }
+      } }
+  }
+
+  it.each(['success', 'failure'] as const)('keeps B selected when initialization A settles late with %s', async mode => {
+    const h = await mountTerminal()
+    try {
+      const a = h.requests[0]
+      await h.chooseStock()
+      const b = h.requests.find(r => r.label === 'SZ.301291')!
+      expect(b).toBeTruthy()
+      expect(h.node.textContent).toContain('正在读取当前标的，判断待确认')
+      await h.complete(b, 'ACTIVE_B_ONLY')
+      if (mode === 'success') await h.complete(a, 'OLD_A_SENTINEL')
+      else await act(async () => a.task.reject(Object.assign(new Error('OLD_A_FAILURE'), { status: 503, payload: { session: { ready: false } } })))
+      expect(h.node.textContent).toContain('ACTIVE_B_ONLY')
+      expect(h.node.textContent).not.toMatch(/OLD_A_|正在读取当前标的，判断待确认/)
+      expect(h.node.textContent).not.toContain('启动中')
+      expect(h.node.querySelector('[aria-label="刷新交易台"]')?.hasAttribute('disabled')).toBe(false)
+    } finally { await h.close() }
+  })
+
+  it('does not let late initialization finally clear the still-pending B loading state', async () => {
+    const h = await mountTerminal()
+    try {
+      await h.chooseStock()
+      await h.complete(h.requests[0], 'OLD_A_SENTINEL')
+      expect(h.node.querySelector('[aria-label="刷新交易台"]')?.hasAttribute('disabled')).toBe(true)
+      expect(h.node.textContent).toContain('正在读取当前标的，判断待确认')
+    } finally { await h.close() }
+  })
+
+  it('preserves selected B across locale and reconnect hydration instead of defaulting to A', async () => {
+    const h = await mountTerminal()
+    try {
+      await h.chooseStock()
+      await h.complete(h.requests.find(r => r.label === 'SZ.301291')!, 'ACTIVE_B_ONLY')
+      await act(async () => h.render('en-US'))
+      await act(async () => h.render('en-US', 'http://reconnected.test'))
+      const initializations = vi.mocked(recordObservationEvent).mock.calls.filter(([name]) => name === 'strategy.init-target')
+      expect((initializations.at(-1)?.[1] as any)?.target.label).toBe('SZ.301291')
+      expect(h.requests.filter(r => r.kind === 'index')).toHaveLength(1)
+      expect(h.node.textContent).toContain('ACTIVE_B_ONLY')
+    } finally { await h.close() }
+  })
+
+  it('does not issue the old A refresh after refresh waits while the user chooses B', async () => {
+    const gate = deferred<void>()
+    const h = await mountTerminal(() => gate.promise)
+    try {
+      await h.complete(h.requests[0], 'OLD_A_SENTINEL')
+      const refresh = h.node.querySelector('[aria-label="刷新交易台"]')!
+      const event = document.createEvent('Event'); event.initEvent('click', true, true)
+      await act(async () => refresh.dispatchEvent(event))
+      await h.chooseStock()
+      await h.complete(h.requests.find(r => r.label === 'SZ.301291')!, 'ACTIVE_B_ONLY')
+      await act(async () => gate.resolve())
+      expect(h.node.textContent).toContain('ACTIVE_B_ONLY')
+      expect(h.requests.filter(r => r.kind === 'index')).toHaveLength(1)
+    } finally { await h.close() }
+  })
+})
+
 
 describe('timeframe cache read errors', () => {
   it('gives a recovery action without exposing transport diagnostics', async () => {
@@ -1762,5 +1954,57 @@ describe('local core shell first view', () => {
     expect(watchlistGroupCountLabel('sector_boards', 0, { sector_boards: { status: 'loading', count: null } })).toBe('读取中')
     expect(watchlistGroupCountLabel('sector_boards', 0, { sector_boards: { status: 'ready', count: 0 } })).toBe('0')
     expect(watchlistGroupCountLabel('all_etfs', 80, { all_etfs: { status: 'ready', review_count: 80, count: 1662 } })).toBe('80 / 1,662')
+  })
+})
+
+
+describe('published daily-weekly decision copy', () => {
+  const policy = { daily_weekly: 'review_required', '30m': 'display_only', '5m': 'chart_only', '15m': 'chart_only' }
+  const renderDecision = (group: string, formal = true, kind = 'stock') => {
+    const raw = { display_policy: formal ? 'published_daily_weekly_review' : '', published_pool_group: group,
+      timeframe_policy: formal ? policy : {}, can_trade_now: false }
+    const stage = group === 'focus_stocks' ? 'entry_ready' : group === 'clue_stocks' ? 'strategy_candidate' : 'watch_preheat'
+    const row = { id: 'current', kind, code: kind === 'index' ? 'SH.000001' : 'SZ.301291', name: '当前标的', dayChange: '+1%', targetKind: kind,
+      raw, decision: { stage, opportunitySide: 'context', opportunityLabel: '', strategyLineage: [], missingGates: ['trigger_30m', 'right_side'],
+        primaryBlocker: '旧阻塞：等30m承接和5m/15m下单确认', recommendedAction: '', sourceKeys: [], promotionPath: [], invalidatesWhen: '日线关键位跌破' } } as any
+    const before = JSON.stringify(row)
+    const target = { kind, label: row.code, freq: 'daily' }
+    const markup = renderToStaticMarkup(<StrategyDecisionPanel locale="zh-CN" row={row} target={target}
+      symbolData={{ target: { ...target, symbol: row.code, effective_freq: 'daily' } } as any}
+      sourceConfidence={[]} keyLevels={[]} signals={[]} divergences={[]} />)
+    expect(JSON.stringify(row)).toBe(before)
+    return markup
+  }
+  it.each(['watch_stocks', 'focus_stocks', 'clue_stocks'])('keeps published %s execution and next check on daily-weekly review', group => {
+    const markup = renderDecision(group)
+    expect(markup).toContain('复核日线、周线位置、均线与失效条件')
+    expect(markup).toContain('30m仅作提示，5m/15m仅作图表参考')
+    expect(markup).not.toMatch(/旧阻塞|等30m承接|下单确认|执行周期买点/)
+  })
+  it('treats a policy-bound index as daily-weekly market context rather than a stock execution gate', () => {
+    const markup = renderDecision('', true, 'index')
+    expect(markup).toContain('看大盘')
+    expect(markup).toContain('复核日线、周线位置、均线与失效条件')
+    expect(markup).not.toMatch(/旧阻塞|等30m承接|下单确认/)
+  })
+  it('uses the same daily-weekly fallback without confirmation text for formal roles and indices', () => {
+    for (const [targetKind, tradeRole] of [['stock', 'watch'], ['stock', 'entry_review'], ['stock', 'clue'], ['index', '']]) {
+      const plan = strategyTradeActionPlanFromState({ targetKind, tradeRole, dailyWeeklyReview: true, hasEvidence: true })
+      expect(plan.next).toContain('复核日线、周线位置、均线与失效条件')
+      expect(plan.next).not.toMatch(/等30m|下单确认|执行周期买点/)
+      if (targetKind === 'index') expect(plan.action).toBe('看大盘')
+    }
+  })
+  it('keeps a policy-bound index without a pool row as market context with no intraday gate', () => {
+    const target = { kind: 'index', label: 'SH.000001', freq: 'daily' }
+    const markup = renderToStaticMarkup(<StrategyDecisionPanel locale="zh-CN" row={null} target={target}
+      symbolData={{ target: { ...target, symbol: target.label, effective_freq: 'daily' }, summary: { timeframe_policy: policy } } as any}
+      sourceConfidence={[]} keyLevels={[]} signals={[]} divergences={[]} />)
+    expect(markup).toContain('看大盘')
+    expect(markup).toContain('复核日线、周线位置、均线与失效条件')
+    expect(markup).not.toMatch(/下单确认|30m转弱|看30m方向/)
+  })
+  it('retains exploratory watch confirmation without an explicit published policy', () => {
+    expect(renderDecision('watch_stocks', false)).toContain('等30m承接和5m/15m下单确认')
   })
 })

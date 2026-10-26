@@ -1,0 +1,9 @@
+{
+  "baseline_commit": "5e95a60",
+  "unmodified_baseline_sha256": "c115d2349cd814918bf9f2b7ff6bc91416fc6ab6fe1712eb6fdfa3db8e86a3e5",
+  "test_only_adaptations": [
+    "export existing panel for SSR",
+    "resolve original relative imports from artifact copy"
+  ],
+  "production_file_reverted": false
+}

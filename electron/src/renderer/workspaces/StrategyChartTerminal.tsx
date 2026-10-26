@@ -2392,6 +2392,12 @@ const decisionExplainHeroStyle: React.CSSProperties = {
   minWidth: 0,
 }
 
+const decisionDetailTextStyle: React.CSSProperties = {
+  ...mutedTextStyle,
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+}
+
 const decisionExplainRowStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '62px minmax(0, 1fr)',
@@ -3521,6 +3527,19 @@ export function publishedPoolRole(row: Record<string, unknown>): StockTradeRoleK
   if (row.display_policy !== 'published_daily_weekly_review') return ''
   const roles: Record<string, StockTradeRoleKey> = { focus_stocks: 'entry_review', watch_stocks: 'watch', clue_stocks: 'clue', risk_stocks: 'risk_first' }
   return roles[compactText(row.published_pool_group)] ?? ''
+}
+
+function usesPublishedDailyWeeklyReview(raw: Record<string, unknown>): boolean {
+  if (publishedPoolRole(raw)) return true
+  const policy = recordValue(raw.timeframe_policy)
+  return policy.daily_weekly === 'review_required' && policy['30m'] === 'display_only'
+    && policy['5m'] === 'chart_only' && policy['15m'] === 'chart_only'
+}
+
+function dailyWeeklyReviewCheck(locale: LongclawLocale): string {
+  return locale === 'zh-CN'
+    ? '复核日线、周线位置、均线与失效条件；30m仅作提示，5m/15m仅作图表参考。'
+    : 'Review daily/weekly levels, averages, and invalidation; 30m is context only and 5m/15m are chart references only.'
 }
 
 export function rawDecisionStage(row: Record<string, unknown>, stageHint?: WatchlistTabKey): DecisionStage {
@@ -6528,6 +6547,11 @@ export function symbolDataCacheKey(target: { label?: string; kind?: string; freq
   return `${kind}|${label}|${freq}`
 }
 
+export function searchTargetKind(value: string, isIndex: boolean): string {
+  if (/^(?:SZ\.?(?:00|30|15|16|18)\d{4}|SH\.?[56]\d{5}|BJ\.?920\d{3})$/i.test(value.trim())) return 'stock'
+  return isIndex ? 'index' : 'auto'
+}
+
 function formatNumber(value: unknown, digits = 2): string {
   const number = numberValue(value)
   if (number === undefined) return 'N/A'
@@ -6921,7 +6945,7 @@ function timeframeSignalSteps(row: WatchlistRow, locale: LongclawLocale): Array<
     ['execution', '5m/15m', 'right_side'],
   ]
   return defs.map(([key, fallbackLabel, gate]) => {
-    if (publishedPoolRole(row.raw) && ['trigger_30m', 'right_side'].includes(gate)) {
+    if (usesPublishedDailyWeeklyReview(row.raw) && ['trigger_30m', 'right_side'].includes(gate)) {
       return { key, label: key === 'trade' ? '30m提示' : '5m/15m图表', status: 'context', detail: locale === 'zh-CN' ? '仅供参考，不改变名单' : 'Context only; does not change pool membership' }
     }
     const record = recordValue(groups[key])
@@ -7333,7 +7357,7 @@ function traderPositionSummary(row: WatchlistRow, locale: LongclawLocale): strin
 }
 
 function traderCanActSummary(row: WatchlistRow, locale: LongclawLocale): string {
-  if (publishedPoolRole(row.raw) === 'entry_review') return locale === 'zh-CN' ? '复核日线、周线位置、均线与失效条件；盘中信号仅作参考。' : 'Review daily/weekly levels, averages, and invalidation; intraday signals are context only.'
+  if (usesPublishedDailyWeeklyReview(row.raw) && stockTradeRoleForRow(row) !== 'risk_first') return dailyWeeklyReviewCheck(locale)
   const role = stockTradeRoleForRow(row)
   if (role === 'risk_first') return locale === 'zh-CN' ? '不在机会池；除非它是持仓，否则不需要风险动作。' : 'Not in opportunity pool; no risk action unless held.'
   if (row.decision.stage === 'entry_ready') return locale === 'zh-CN' ? '可以进入买点复核，但必须带止损和仓位约束。' : 'Reviewable entry with stop and sizing constraints.'
@@ -7352,6 +7376,7 @@ export type StrategyTradeActionPlan = {
 export function strategyTradeActionPlanFromState(
   input: {
     targetKind?: string
+    dailyWeeklyReview?: boolean
     decisionStage?: string
     tradeRole?: string
     identity?: string
@@ -7379,6 +7404,16 @@ export function strategyTradeActionPlanFromState(
       reason: identity || (zh ? '暂不参与' : 'Skip-now'),
       next: zh ? '非持仓不处理；等重新转入线索池。' : 'Do nothing unless held; wait for a clue reset.',
       postmarket: zh ? '盘后只复核风险因子，不进买点样本。' : 'Review risk factors only; keep it out of entry samples.',
+    }
+  }
+  if (input.dailyWeeklyReview) {
+    const entryReview = role === 'entry_review' || stage === 'entry_ready'
+    return {
+      action: isIndex ? (zh ? '看大盘' : 'Read market') : entryReview ? (zh ? '看' : 'Review') : (zh ? '等' : 'Wait'),
+      tone: isIndex ? 'open' : entryReview ? 'success' : 'running',
+      reason: isIndex ? (zh ? '背景锚点' : 'Market anchor') : identity || (zh ? '日周复核' : 'Daily/weekly review'),
+      next: dailyWeeklyReviewCheck(locale),
+      postmarket: zh ? '盘后复核日周位置与失效条件，不直接执行。' : 'Review daily/weekly levels and invalidation after close; no direct execution.',
     }
   }
   if (stage === 'entry_ready' || role === 'left_attack' || role === 'right_attack') {
@@ -7487,6 +7522,7 @@ function preferredWatchlistTabForTradeRole(
 }
 
 function decisionConfirmationSummary(decision: WatchlistDecision, row: WatchlistRow, locale: LongclawLocale): string {
+  if (usesPublishedDailyWeeklyReview(row.raw) && stockTradeRoleForRow(row) !== 'risk_first') return dailyWeeklyReviewCheck(locale)
   if (decision.primaryBlocker) return decision.primaryBlocker
   if (decision.missingGates.length > 0) {
     return `${locale === 'zh-CN' ? '还差' : 'Missing'} ${decision.missingGates.map(key => decisionGateLabel(key, locale)).join(' / ')}`
@@ -8480,10 +8516,13 @@ export function StrategyChartTerminal({
   const resizeObserverRef = useRef<ResizeObserver | null>(null)
   const resizeFrameRef = useRef<number | null>(null)
   const activeRequestRef = useRef(0)
+  const selectionEpochRef = useRef(0)
+  const selectedTargetRef = useRef<ChartTarget | null>(null)
   const shellRefreshInFlightRef = useRef(false)
   const shellLoadedRef = useRef(false)
   const seenSectorTransitionEventIdsRef = useRef<Set<string>>(new Set())
   const silentSymbolRefreshInFlightRef = useRef(false)
+  const silentSymbolRequestOwnerRef = useRef<number | null>(null)
   const manualSymbolLoadingRef = useRef(false)
   const manualSymbolAbortRef = useRef<AbortController | null>(null)
   const timeframeSnapshotKeyRef = useRef('')
@@ -9009,6 +9048,7 @@ export function StrategyChartTerminal({
       }
       const nextEffectiveTarget = effectiveChartTarget(effectiveTarget, requestTarget)
       if (nextEffectiveTarget) {
+        if (selectedTargetRef.current) selectedTargetRef.current = nextEffectiveTarget
         setTarget(previous => (
           nextEffectiveTarget.label === previous.label
             && nextEffectiveTarget.kind === previous.kind
@@ -9134,11 +9174,16 @@ export function StrategyChartTerminal({
 
   const loadSymbol = useCallback(
     async (nextTarget: ChartTarget, options: { signal?: AbortSignal; silent?: boolean } = {}) => {
-      if (!baseUrl) return
+      if (!baseUrl || options.signal?.aborted) return
+      if (selectedTargetRef.current && symbolDataCacheKey(nextTarget) !== symbolDataCacheKey(selectedTargetRef.current)) return
       if (options.silent && (silentSymbolRefreshInFlightRef.current || manualSymbolLoadingRef.current)) return
       if (options.silent) silentSymbolRefreshInFlightRef.current = true
       const requestId = activeRequestRef.current + 1
       activeRequestRef.current = requestId
+      if (options.silent) silentSymbolRequestOwnerRef.current = requestId
+      const selectionEpoch = selectionEpochRef.current
+      const requestIsCurrent = () => requestId === activeRequestRef.current
+        && selectionEpoch === selectionEpochRef.current && !options.signal?.aborted
       if (!options.silent) {
         manualSymbolLoadingRef.current = true
         setLoading(true)
@@ -9171,11 +9216,11 @@ export function StrategyChartTerminal({
           'strategy.symbol',
           options.silent ? 'background-refresh' : 'load-symbol',
         )
-        if (requestId !== activeRequestRef.current) return
+        if (!requestIsCurrent()) return
         rememberSymbolData(nextTarget, nextSymbolData)
         applySymbolData(nextSymbolData, nextTarget, { silent: options.silent })
       } catch (rawError) {
-        if (options.signal?.aborted) return
+        if (!requestIsCurrent()) return
         if (cached && hasFreshCache) return
         const apiError = rawError as ApiError
         if (apiError.status === 503) {
@@ -9189,9 +9234,12 @@ export function StrategyChartTerminal({
         setBooting(false)
         setError(apiError.message || (locale === 'zh-CN' ? '图表数据加载失败。' : 'Failed to load Signals chart data.'))
       } finally {
-        if (options.silent) silentSymbolRefreshInFlightRef.current = false
-        if (!options.silent && requestId === activeRequestRef.current) manualSymbolLoadingRef.current = false
-        if (requestId === activeRequestRef.current) setLoading(false)
+        if (options.silent && silentSymbolRequestOwnerRef.current === requestId) {
+          silentSymbolRefreshInFlightRef.current = false
+          silentSymbolRequestOwnerRef.current = null
+        }
+        if (!options.silent && requestIsCurrent()) manualSymbolLoadingRef.current = false
+        if (requestIsCurrent()) setLoading(false)
       }
     },
     [applySymbolData, baseUrl, locale, rememberSymbolData],
@@ -9335,17 +9383,20 @@ export function StrategyChartTerminal({
     setBooting(false)
     setLoading(true)
     void (async () => {
-      const fallbackTarget = initialTargetFrom(null, dashboardRef.current)
+      const selectionEpoch = selectionEpochRef.current
+      const fallbackTarget = selectedTargetRef.current ?? initialTargetFrom(null, dashboardRef.current)
       recordObservationEvent('strategy.init-target', {
         target: fallbackTarget,
-        reason: 'fast-static-initial-target',
+        reason: selectedTargetRef.current ? 'preserve-user-selection' : 'fast-static-initial-target',
       })
       setTarget(fallbackTarget)
       setSearchDraft(fallbackTarget.label)
       void loadCacheStatus(controller.signal).catch(() => undefined)
       void loadShell(controller.signal).catch(() => undefined)
-      const symbolOutcome = await Promise.allSettled([loadSymbol(fallbackTarget, { signal: controller.signal })])
-      if (controller.signal.aborted) return
+      const symbolPromise = loadSymbol(fallbackTarget, { signal: controller.signal })
+      const initialRequestId = activeRequestRef.current
+      const symbolOutcome = await Promise.allSettled([symbolPromise])
+      if (controller.signal.aborted || selectionEpoch !== selectionEpochRef.current || initialRequestId !== activeRequestRef.current) return
       const symbolResult = symbolOutcome[0]
       if (symbolResult?.status === 'rejected') {
         const apiError = symbolResult.reason as ApiError
@@ -9540,6 +9591,10 @@ export function StrategyChartTerminal({
 
   const selectTarget = useCallback(
     (next: ChartTarget, source = 'strategy.target.select') => {
+      selectionEpochRef.current += 1
+      selectedTargetRef.current = next
+      silentSymbolRefreshInFlightRef.current = false
+      silentSymbolRequestOwnerRef.current = null
       const targetChanged = compactText(next.label) !== compactText(target.label)
         || compactText(next.kind) !== compactText(target.kind)
       recordObservationEvent(source, {
@@ -9685,7 +9740,7 @@ export function StrategyChartTerminal({
       const isIndex = indexTargets.some(row => targetMatchesSearchValue(row, value)) || looksLikeIndexValue(value)
       const shouldAddManualClue = shouldAddManualClueForSearch(value, isIndex)
       selectTarget(
-        { label: value, kind: isIndex ? 'index' : 'auto', freq: DEFAULT_TERMINAL_FREQ },
+        { label: value, kind: searchTargetKind(value, isIndex), freq: DEFAULT_TERMINAL_FREQ },
         'strategy.search.submit',
       )
       if (shouldAddManualClue) {
@@ -9697,12 +9752,14 @@ export function StrategyChartTerminal({
 
   const refreshNow = useCallback(() => {
     if (!target.label) return
+    const selectionEpoch = selectionEpochRef.current
     recordObservationEvent('strategy.refresh.click', { target })
     void (async () => {
       await onRefreshSignals?.()
+      if (selectionEpoch !== selectionEpochRef.current) return
       void loadCacheStatus().catch(() => undefined)
       void loadShell().catch(() => undefined)
-      void loadSymbol(target)
+      void loadSymbol(selectedTargetRef.current ?? target)
     })()
   }, [loadCacheStatus, loadShell, loadSymbol, onRefreshSignals, target])
 
@@ -10396,6 +10453,8 @@ export function StrategyChartTerminal({
             row={activeDecisionRow}
             target={target}
             symbolData={symbolData}
+            loading={loading}
+            booting={booting}
             sourceConfidence={sourceConfidence}
             keyLevels={chartKeyLevels}
             signals={chartVisibleSignals}
@@ -11604,7 +11663,11 @@ export function CacheMonitorStrip({
   const sourceSummary = sourceMonitorSummary(providerHealth, blockers, locale, cacheStatus.available)
   const sinaQuoteVerified = cacheStatus.available && providerHealth.some(item => compactText(item.provider) === 'sina'
     && compactText(item.endpoint) === 'quote_batch' && providerCurrentStatus(item) === 'ok')
-  const displaySourceStatus = sinaQuoteVerified && sourceSummary.status !== 'ok' ? 'partial' : sourceSummary.status
+  const eastmoneyQuoteVerified = cacheStatus.available && providerHealth.some(item => compactText(item.provider) === 'eastmoney'
+    && ['push2delay.ulist.quote', 'stock.get'].includes(compactText(item.endpoint))
+    && providerCurrentStatus(item) === 'ok' && compactText(item.last_valid_success_at)
+    && compactText(item.validation_kind) === 'validated_payload' && !compactText(item.current_error_type))
+  const displaySourceStatus = eastmoneyQuoteVerified || (sinaQuoteVerified && sourceSummary.status !== 'ok') ? 'partial' : sourceSummary.status
   const monitorPostStatus = local ? localMissing === 0 ? 'ok' : 'partial' : postCellStatus
   const monitorMongoStatus = local ? 'ok' : mongoStatus
   const refreshSeconds = cacheRefreshSeconds(cacheStatus)
@@ -11689,11 +11752,11 @@ export function CacheMonitorStrip({
         />
         <CacheMonitorCell
           title={locale === 'zh-CN' ? '数据来源' : 'Sources'}
-          value={locale === 'zh-CN' ? (!cacheStatus.available ? '暂不可用' : sinaQuoteVerified ? '备用报价可用' : sourceSummary.status === 'ok' ? '连接正常' : sourceSummary.status === 'partial' ? '等待复验' : '在线更新受阻') : sourceSummary.value}
+          value={locale === 'zh-CN' ? (!cacheStatus.available ? '暂不可用' : eastmoneyQuoteVerified ? '东财报价可用' : sinaQuoteVerified ? '备用报价可用' : sourceSummary.status === 'ok' ? '连接正常' : sourceSummary.status === 'partial' ? '等待复验' : '在线更新受阻') : sourceSummary.value}
           progress={local ? null : sourceSummary.progress}
           status={displaySourceStatus}
-          statusLabel={locale === 'zh-CN' ? (sourceSummary.status === 'ok' ? '已验证' : sinaQuoteVerified ? '部分在线可用' : sourceSummary.status === 'partial' ? '待确认' : '部分未更新') : sourceSummary.statusLabel}
-          detail={locale === 'zh-CN' ? (!cacheStatus.available ? '行情暂时无法读取' : sinaQuoteVerified ? (sourceBlocked ? '新浪报价已验证 · 东方财富仍受阻' : '新浪报价已验证；其他接口状态独立') : sourceSummary.status === 'ok' ? '近期请求已返回有效数据' : sourceSummary.status === 'partial' ? '来源状态尚未确认' : '部分来源暂时无法更新') : sourceSummary.detail}
+          statusLabel={locale === 'zh-CN' ? (eastmoneyQuoteVerified ? '部分接口已验证' : sourceSummary.status === 'ok' ? '已验证' : sinaQuoteVerified ? '部分在线可用' : sourceSummary.status === 'partial' ? '待确认' : '部分未更新') : sourceSummary.statusLabel}
+          detail={locale === 'zh-CN' ? (!cacheStatus.available ? '行情暂时无法读取' : eastmoneyQuoteVerified ? (sourceSummary.status === 'ok' ? '东财报价已验证；其他接口分别核验' : '东财报价已验证；仍有未更新来源') : sinaQuoteVerified ? (sourceBlocked ? '新浪报价已验证 · 东方财富仍受阻' : '新浪报价已验证；其他接口状态独立') : sourceSummary.status === 'ok' ? '近期请求已返回有效数据' : sourceSummary.status === 'partial' ? '来源状态尚未确认' : '部分来源暂时无法更新') : sourceSummary.detail}
           subdetail={locale === 'zh-CN' ? (!cacheStatus.available ? '数据可用范围尚待确认' : local ? `当前使用 ${compactText(local.trade_date)} 本地行情` : sourceSummary.status === 'partial' ? '验证已过期或尚未完成，不代表连接已中断' : '已存行情仍可查看') : sourceSummary.subdetail}
         />
       </div>
@@ -12945,17 +13008,19 @@ function TradeActionStrip({
       </div>
       <div style={tradeActionCellStyle}>
         <div style={tradeActionLabelStyle}>{locale === 'zh-CN' ? '下一确认' : 'Next check'}</div>
-        <div style={mutedTwoLineStyle} title={plan.next}>{plan.next}</div>
+        <div style={decisionDetailTextStyle} title={plan.next}>{plan.next}</div>
       </div>
     </div>
   )
 }
 
-function StrategyDecisionPanel({
+export function StrategyDecisionPanel({
   locale,
   row,
   target,
   symbolData,
+  loading = false,
+  booting = false,
   sourceConfidence,
   keyLevels,
   signals,
@@ -12965,11 +13030,30 @@ function StrategyDecisionPanel({
   row: WatchlistRow | null
   target: ChartTarget
   symbolData: WorkbenchSymbolData | null
+  loading?: boolean
+  booting?: boolean
   sourceConfidence: Record<string, unknown>[]
   keyLevels: StrategyKeyLevel[]
   signals: StrategySignal[]
   divergences: MacdDivergenceSignal[]
 }) {
+  const resolved = symbolData?.target
+  const requestedKind = compactText(target.kind).toLowerCase()
+  const resolvedKind = compactText(resolved?.kind).toLowerCase()
+  const sameIdentity = [resolved?.symbol, resolved?.label].some(value => compactText(value).toUpperCase() === target.label.trim().toUpperCase())
+  const sameFreq = normalizeSignalFreq(compactText(resolved?.effective_freq) || compactText(resolved?.requested_freq)) === normalizeSignalFreq(target.freq)
+  if (loading || booting || !resolved || requestedKind === 'auto' || requestedKind !== resolvedKind || !sameIdentity || !sameFreq) {
+    return <Panel title={locale === 'zh-CN' ? '交易判断' : 'Trade read'}
+      meta={locale === 'zh-CN' ? '判断待确认' : 'Decision pending'}>
+      <div style={compactListStyle}>
+        <div style={rowTitleStyle}>{target.label}</div>
+        <div style={mutedTwoLineStyle}>{loading || booting
+          ? (locale === 'zh-CN' ? '正在读取当前标的，判断待确认。' : 'Reading the selected target; decision pending.')
+          : (locale === 'zh-CN' ? '当前标的数据未确认，判断待确认。' : 'Selected-target data is not confirmed; decision pending.')}</div>
+        <div style={mutedLineStyle}>{locale === 'zh-CN' ? '等当前标的身份与数据匹配后，再核对名单和判断。' : 'Confirm the matching identity and data before reviewing pool membership.'}</div>
+      </div>
+    </Panel>
+  }
   if (!row) {
     const summary = recordValue(symbolData?.summary)
     const chain = recordValue(summary.chain_position)
@@ -12996,6 +13080,7 @@ function StrategyDecisionPanel({
     const isIndexTarget = target.kind.toLowerCase().includes('index') || target.kind.includes('指数')
     const actionPlan = strategyTradeActionPlanFromState({
       targetKind: target.kind,
+      dailyWeeklyReview: usesPublishedDailyWeeklyReview(summary),
       identity,
       confirmation: isIndexTarget ? '' : (locale === 'zh-CN' ? '还差入池线索、30m承接和5m/15m下单确认。' : 'Needs pool source, 30m support, and 5m/15m confirmation.'),
       evidence,
@@ -13007,7 +13092,9 @@ function StrategyDecisionPanel({
         ? (locale === 'zh-CN' ? '不处理，等重新进入线索池或出现技术信号。' : 'No action; wait for a clue reset or technical signal.')
         : (locale === 'zh-CN' ? '不能直接执行；没进入线索池/盯盘池/买点池前，只看图表盘面。' : 'No direct action; wait for clue, watch, or entry state.')
     const invalidationText = isIndexTarget
-      ? (locale === 'zh-CN' ? '30m转弱、日线关键位跌破或主线继续退潮。' : '30m weakens, daily key level breaks, or themes keep fading.')
+      ? (usesPublishedDailyWeeklyReview(summary)
+        ? (locale === 'zh-CN' ? '日线或周线关键位跌破、均线位置转弱。' : 'Daily/weekly key levels break or moving-average position weakens.')
+        : (locale === 'zh-CN' ? '30m转弱、日线关键位跌破或主线继续退潮。' : '30m weakens, daily key level breaks, or themes keep fading.'))
       : (locale === 'zh-CN' ? '回踩破位、右侧不修复或主线继续退潮。' : 'Breakdown, no right-side repair, or theme continues fading.')
     return (
       <Panel
@@ -13035,7 +13122,7 @@ function StrategyDecisionPanel({
           ].map(([label, value]) => (
             <div key={String(label)} style={decisionExplainRowStyle}>
               <div style={decisionExplainLabelStyle}>{label}</div>
-              <div style={mutedTwoLineStyle} title={String(value)}>{value}</div>
+              <div style={decisionDetailTextStyle} title={String(value)}>{value}</div>
             </div>
           ))}
         </div>
@@ -13043,7 +13130,8 @@ function StrategyDecisionPanel({
     )
   }
   const decision = row.decision
-  const action = decisionActionLabel(decision, locale)
+  const action = usesPublishedDailyWeeklyReview(row.raw) && stockTradeRoleForRow(row) !== 'risk_first'
+    ? (locale === 'zh-CN' ? '日周待复核' : 'Daily/weekly review pending') : decisionActionLabel(decision, locale)
   const invalidates = traderDisplayText(decision.invalidatesWhen || (locale === 'zh-CN' ? '触发条件失效或关键位被破坏' : 'Setup fails or key level breaks'), locale)
   const opportunity = decision.opportunityLabel || opportunitySideLabel(decision.opportunitySide, locale)
   const lineage = strategyLineageLabel(decision.strategyLineage, locale)
@@ -13069,6 +13157,7 @@ function StrategyDecisionPanel({
   const rowIdentity = formatCodeName(row.code, row.name)
   const actionPlan = strategyTradeActionPlanFromState({
     targetKind: row.targetKind,
+    dailyWeeklyReview: usesPublishedDailyWeeklyReview(row.raw),
     decisionStage: row.decision.stage,
     tradeRole,
     identity: identityDetail,
@@ -13108,7 +13197,7 @@ function StrategyDecisionPanel({
             ))}
           </div>
           {traderRead ? (
-            <div style={mutedTwoLineStyle}>{traderRead}</div>
+            <div style={decisionDetailTextStyle}>{traderRead}</div>
           ) : null}
         </div>
         <TradeActionStrip locale={locale} plan={actionPlan} />
@@ -13120,7 +13209,7 @@ function StrategyDecisionPanel({
         ].map(([label, value]) => (
           <div key={String(label)} style={decisionExplainRowStyle}>
             <div style={decisionExplainLabelStyle}>{label}</div>
-            <div style={mutedTwoLineStyle} title={String(value)}>{value}</div>
+            <div style={decisionDetailTextStyle} title={String(value)}>{value}</div>
           </div>
         ))}
         {primaryLevels.length > 0 || primarySignals.length > 0 || latestDivergence ? (

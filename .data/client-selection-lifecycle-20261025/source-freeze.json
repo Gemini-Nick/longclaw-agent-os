@@ -1,0 +1,9 @@
+{
+  "at_utc": "2026-10-25T07:52:17.421721+00:00",
+  "source_sha256": {
+    "electron/src/renderer/workspaces/StrategyChartTerminal.tsx": "bfd89bed4eb75310800fc95e04a769f65cc58a791da9130c68c6f4d1dea55b25",
+    "electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx": "27f1fb8799b11115d8f85f9b321cf63556b4171fc3f2719670a1ad4106137673"
+  },
+  "edits_frozen": true,
+  "build_install_owner": "root"
+}

@@ -1,0 +1,404 @@
+{
+  "baseline_commit": "5e95a60",
+  "method": "TypeScript compiler host baseline overlay in memory; no production file replaced",
+  "before_count": 79,
+  "after_count": 79,
+  "new_diagnostics": [],
+  "all_current": [
+    {
+      "file": "electron/src/renderer/App.tsx",
+      "code": 2322,
+      "message": "Type '({ id: string; title: string; subtitle: string; meta: string | undefined; preview: string | undefined; icon: string; kind: \"thread\"; } | { id: string; title: string; subtitle: string; meta: string | undefined; preview: string | undefined; icon: string; kind: \"wechat\"; } | { ...; })[]' is not assignable to type 'AgentConversationItem[]'.\n  Type '{ id: string; title: string; subtitle: string; meta: string | undefined; preview: string | undefined; icon: string; kind: \"thread\"; } | { id: string; title: string; subtitle: string; meta: string | undefined; preview: string | undefined; icon: string; kind: \"wechat\"; } | { ...; }' is not assignable to type 'AgentConversationItem'.\n    Type '{ id: string; title: string; subtitle: string; meta: string | undefined; preview: string | undefined; icon: string; kind: \"thread\"; }' is not assignable to type 'AgentConversationItem'.\n      Types of property 'icon' are incompatible.\n        Type 'string' is not assignable to type 'VectorIconName'."
+    },
+    {
+      "file": "electron/src/renderer/App.tsx",
+      "code": 2339,
+      "message": "Property 'panelSoft' does not exist on type '{ root: string; panel: string; text: string; textStrong: string; muted: string; mutedStrong: string; border: string; borderStrong: string; control: string; controlText: string; }'."
+    },
+    {
+      "file": "electron/src/renderer/App.tsx",
+      "code": 2339,
+      "message": "Property 'panelSoft' does not exist on type '{ root: string; panel: string; text: string; textStrong: string; muted: string; mutedStrong: string; border: string; borderStrong: string; control: string; controlText: string; }'."
+    },
+    {
+      "file": "electron/src/renderer/taskLaunchState.test.ts",
+      "code": 2352,
+      "message": "Conversion of type '{ metaKey: true; ctrlKey: false; key: string; preventDefault: Mock<Procedure>; }' to type 'KeyboardEvent<HTMLTextAreaElement>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  Type '{ metaKey: true; ctrlKey: false; key: string; preventDefault: Mock<Procedure>; }' is missing the following properties from type 'KeyboardEvent<HTMLTextAreaElement>': altKey, charCode, code, getModifierState, and 22 more."
+    },
+    {
+      "file": "electron/src/renderer/taskLaunchState.test.ts",
+      "code": 2769,
+      "message": "No overload matches this call.\n  The last overload gave the following error.\n    Type '{ pack_id: string; status: string; overview: { market_regime: { label: string; lianban_max: number; }; cluster_summary: {}; review_summary: {}; data_warning: string; }; buy_candidates: { symbol: string; }[]; ... 10 more ...; recent_runs: never[]; }' is not assignable to type 'LongclawPackDashboard | null'.\n      Type '{ pack_id: string; status: string; overview: { market_regime: { label: string; lianban_max: number; }; cluster_summary: {}; review_summary: {}; data_warning: string; }; buy_candidates: { symbol: string; }[]; ... 10 more ...; recent_runs: never[]; }' is not assignable to type '{ pack_id: \"due_diligence\"; title: string; status: string; notice: string; diagnostics: { diagnostic_id: string; status: string; label: string; detail: string; metadata: Record<string, unknown>; }[]; ... 4 more ...; operator_actions: { ...; }[]; } | { ...; }'.\n        Type '{ pack_id: string; status: string; overview: { market_regime: { label: string; lianban_max: number; }; cluster_summary: {}; review_summary: {}; data_warning: string; }; buy_candidates: { symbol: string; }[]; ... 10 more ...; recent_runs: never[]; }' is missing the following properties from type '{ pack_id: \"signals\"; title: string; status: string; notice: string; diagnostics: { diagnostic_id: string; status: string; label: string; detail: string; metadata: Record<string, unknown>; }[]; overview: { ...; }; ... 16 more ...; ai_factor_factory: { ...; }; }': title, notice, daily_brief, decision_queue, and 4 more."
+    },
+    {
+      "file": "electron/src/renderer/taskLaunchState.test.ts",
+      "code": 2769,
+      "message": "No overload matches this call.\n  The last overload gave the following error.\n    Type '{ pack_id: string; status: string; overview: { market_regime: { label: string; lianban_max: number; }; cluster_summary: {}; review_summary: {}; data_warning: string; }; buy_candidates: { symbol: string; }[]; ... 10 more ...; recent_runs: never[]; }' is not assignable to type 'LongclawPackDashboard | null'.\n      Type '{ pack_id: string; status: string; overview: { market_regime: { label: string; lianban_max: number; }; cluster_summary: {}; review_summary: {}; data_warning: string; }; buy_candidates: { symbol: string; }[]; ... 10 more ...; recent_runs: never[]; }' is not assignable to type '{ pack_id: \"due_diligence\"; title: string; status: string; notice: string; diagnostics: { diagnostic_id: string; status: string; label: string; detail: string; metadata: Record<string, unknown>; }[]; ... 4 more ...; operator_actions: { ...; }[]; } | { ...; }'.\n        Type '{ pack_id: string; status: string; overview: { market_regime: { label: string; lianban_max: number; }; cluster_summary: {}; review_summary: {}; data_warning: string; }; buy_candidates: { symbol: string; }[]; ... 10 more ...; recent_runs: never[]; }' is missing the following properties from type '{ pack_id: \"signals\"; title: string; status: string; notice: string; diagnostics: { diagnostic_id: string; status: string; label: string; detail: string; metadata: Record<string, unknown>; }[]; overview: { ...; }; ... 16 more ...; ai_factor_factory: { ...; }; }': title, notice, daily_brief, decision_queue, and 4 more."
+    },
+    {
+      "file": "electron/src/renderer/taskLaunchState.test.ts",
+      "code": 2769,
+      "message": "No overload matches this call.\n  The last overload gave the following error.\n    Type '{ work_item_id: string; title: string; summary: string; severity: string; status: string; pack_id: string; kind: string; created_at: string; updated_at: string; operator_actions: never[]; metadata: {}; }' is missing the following properties from type '{ work_item_id: string; pack_id: string; kind: string; title: string; summary: string; severity: string; status: string; work_mode: \"local\" | \"cloud_sandbox\" | \"weclaw_dispatch\"; interaction_surface: \"electron_home\" | \"weclaw\"; ... 10 more ...; updated_at?: string | ... 1 more ... | undefined; }': work_mode, interaction_surface, runtime_profile, runtime_target, and 3 more."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/AgentSessionsWorkspace.tsx",
+      "code": 2352,
+      "message": "Conversion of type 'Window & typeof globalThis' to type 'AgentSessionsWindow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.\n  Type 'Window & typeof globalThis' is not comparable to type '{ agentAPI?: { query: (message: string) => Promise<{ ok: boolean; }>; onText: (cb: (text: string) => void) => () => void; onResult: (cb: (result: unknown) => void) => () => void; onError: (cb: (error: string) => void) => () => void; } | undefined; longclawModelService?: { ...; } | undefined; longclawEmployees?: { .....'.\n    The types of 'longclawLaunch.launch' are incompatible between these types.\n      Type '(intent: { source: string; raw_text: string; mentions: { kind: string; value: string; metadata: Record<string, unknown>; label?: string | null | undefined; }[]; work_mode: \"local\" | \"cloud_sandbox\" | \"weclaw_dispatch\"; ... 12 more ...; created_at?: string | ... 1 more ... | undefined; }) => Promise<...>' is not comparable to type '(intent: Record<string, unknown>) => Promise<LaunchAutomationReceipt>'.\n        Types of parameters 'intent' and 'intent' are incompatible.\n          Type 'Record<string, unknown>' is missing the following properties from type '{ source: string; raw_text: string; mentions: { kind: string; value: string; metadata: Record<string, unknown>; label?: string | null | undefined; }[]; work_mode: \"local\" | \"cloud_sandbox\" | \"weclaw_dispatch\"; ... 12 more ...; created_at?: string | ... 1 more ... | undefined; }': source, raw_text, mentions, work_mode, and 8 more."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/AIFactorFactoryWorkspace.tsx",
+      "code": 2339,
+      "message": "Property 'fontFamily' does not exist on type '{ color: string; fontSize: number; lineHeight: number; }'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/AIFactorFactoryWorkspace.tsx",
+      "code": 2722,
+      "message": "Cannot invoke an object which is possibly 'undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.test.tsx",
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and 'signal_type' does not exist in type 'BacktestSignal'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.test.tsx",
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and 'signal_type' does not exist in type 'BacktestSignal'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.test.tsx",
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and 'signal_type' does not exist in type 'BacktestSignal'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type '({ timestamp: number; open: number; high: number; low: number; close: number; volume: number; } | null)[]' is not assignable to type 'KLineData[]'.\n  Type '{ timestamp: number; open: number; high: number; low: number; close: number; volume: number; } | null' is not assignable to type 'KLineData'.\n    Type 'null' is not assignable to type 'KLineData'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'KLineData' is not assignable to type '{ timestamp: number; open: number; high: number; low: number; close: number; volume: number; }'.\n    Types of property 'volume' are incompatible.\n      Type 'number | undefined' is not assignable to type 'number'.\n        Type 'undefined' is not assignable to type 'number'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type '({ index: number; timestamp: number; price: number; kind: \"entry\" | \"exit\" | \"signal\"; side: \"buy\" | \"sell\"; label: string | undefined; group: string | undefined; sourceIndex: number | undefined; ... 4 more ...; confidence: number | undefined; } | null)[]' is not assignable to type 'MiniKlineTradeMarker[]'.\n  Type '{ index: number; timestamp: number; price: number; kind: \"entry\" | \"exit\" | \"signal\"; side: \"buy\" | \"sell\"; label: string | undefined; group: string | undefined; sourceIndex: number | undefined; ... 4 more ...; confidence: number | undefined; } | null' is not assignable to type 'MiniKlineTradeMarker'.\n    Type 'null' is not assignable to type 'MiniKlineTradeMarker'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'MiniKlineTradeMarker' is not assignable to type '{ index: number; timestamp: number; price: number; kind: \"entry\" | \"exit\" | \"signal\"; side: \"buy\" | \"sell\"; label: string | undefined; group: string | undefined; sourceIndex: number | undefined; ... 4 more ...; confidence: number | undefined; }'.\n    Types of property 'side' are incompatible.\n      Type '\"buy\" | \"sell\" | undefined' is not assignable to type '\"buy\" | \"sell\"'.\n        Type 'undefined' is not assignable to type '\"buy\" | \"sell\"'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }[]' is not assignable to type 'DeepPartial<SmoothLineStyle>[]'.\n  Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }' is not assignable to type 'DeepPartial<SmoothLineStyle>'.\n    Types of property 'style' are incompatible.\n      Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }[]' is not assignable to type 'DeepPartial<SmoothLineStyle>[]'.\n  Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }' is not assignable to type 'DeepPartial<SmoothLineStyle>'.\n    Types of property 'style' are incompatible.\n      Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and 'color' does not exist in type 'DeepPartial<CandleLastPriceMarkLineStyle>'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and 'backgroundColor' does not exist in type 'DeepPartial<LastValueMarkTextStyle>'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }[]' is not assignable to type 'DeepPartial<SmoothLineStyle>[]'.\n  Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }' is not assignable to type 'DeepPartial<SmoothLineStyle>'.\n    Types of property 'style' are incompatible.\n      Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/BacktestWorkbench.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/PackWorkspace.tsx",
+      "code": 2741,
+      "message": "Property 'ai_factor_factory' is missing in type '{ pack_id: \"signals\"; title: string; status: string; notice: string; diagnostics: { diagnostic_id: string; status: string; label: string; detail: string; metadata: Record<string, unknown>; }[]; overview: { ...; }; ... 15 more ...; cache_status: { ...; }; }' but required in type '{ pack_id: \"signals\"; title: string; status: string; notice: string; diagnostics: { diagnostic_id: string; status: string; label: string; detail: string; metadata: Record<string, unknown>; }[]; overview: { ...; }; ... 16 more ...; ai_factor_factory: { ...; }; }'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/PackWorkspace.tsx",
+      "code": 2367,
+      "message": "This comparison appears to be unintentional because the types '\"factory\"' and '\"strategy\"' have no overlap."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/PackWorkspace.tsx",
+      "code": 2367,
+      "message": "This comparison appears to be unintentional because the types '\"factory\"' and '\"backtest\"' have no overlap."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx",
+      "code": 2322,
+      "message": "Type 'SectorTransitionRadarView | null' is not assignable to type 'SectorTransitionRadarView'.\n  Type 'null' is not assignable to type 'SectorTransitionRadarView'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2488,
+      "message": "Type 'unknown' must have a '[Symbol.iterator]()' method that returns an iterator."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type 'unknown' is not assignable to type 'Record<string, unknown>[]'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '{} | null' is not assignable to type 'Record<string, unknown> | null'.\n  Type '{}' is not assignable to type 'Record<string, unknown>'.\n    Index signature for type 'string' is missing in type '{}'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; show: true; }' is not assignable to type 'DeepPartial<CandleLastPriceMarkLineStyle>'.\n  Types of property 'style' are incompatible.\n    Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2353,
+      "message": "Object literal may only specify known properties, and 'backgroundColor' does not exist in type 'DeepPartial<LastValueMarkTextStyle>'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }[]' is not assignable to type 'DeepPartial<SmoothLineStyle>[]'.\n  Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }' is not assignable to type 'DeepPartial<SmoothLineStyle>'.\n    Types of property 'style' are incompatible.\n      Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }[]' is not assignable to type 'DeepPartial<SmoothLineStyle>[]'.\n  Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }' is not assignable to type 'DeepPartial<SmoothLineStyle>'.\n    Types of property 'style' are incompatible.\n      Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }[]' is not assignable to type 'DeepPartial<SmoothLineStyle>[]'.\n  Type '{ color: string; size: number; style: \"solid\"; dashedValue: number[]; }' is not assignable to type 'DeepPartial<SmoothLineStyle>'.\n    Types of property 'style' are incompatible.\n      Type '\"solid\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '\"dashed\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type 'DeepPartial<IndicatorStyle>' is not assignable to type 'Partial<IndicatorStyle>'.\n  Types of property 'ohlc' are incompatible.\n    Type 'DeepPartial<ChangeColor> | undefined' is not assignable to type 'ChangeColor | undefined'.\n      Type 'DeepPartial<ChangeColor>' is not assignable to type 'ChangeColor'.\n        Types of property 'upColor' are incompatible.\n          Type 'string | undefined' is not assignable to type 'string'.\n            Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2345,
+      "message": "Argument of type '{ label: string; side: \"buy\" | \"sell\" | \"neutral\"; color: string; freq: string; dateLabel: string; alignedDateLabel: string; scope: string; sourceLabel: string; details: string; }[] | { label: string; ... 5 more ...; details: string | undefined; }[]' is not assignable to parameter of type 'SignalCalloutItem[]'.\n  Type '{ label: string; side: string; color: string; freq: string | undefined; scope: string | undefined; sourceLabel: string | undefined; details: string | undefined; }[]' is not assignable to type 'SignalCalloutItem[]'.\n    Type '{ label: string; side: string; color: string; freq: string | undefined; scope: string | undefined; sourceLabel: string | undefined; details: string | undefined; }' is not assignable to type 'SignalCalloutItem'.\n      Types of property 'side' are incompatible.\n        Type 'string' is not assignable to type '\"buy\" | \"sell\" | \"neutral\"'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2345,
+      "message": "Argument of type 'string' is not assignable to parameter of type '\"buy\" | \"sell\" | \"neutral\"'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2345,
+      "message": "Argument of type '{ type: string; attrs: { x: number; y: number; width: number; height: number; }; styles: { color: string; borderColor: string; borderRadius: number; }; ignoreEvent: true; }' is not assignable to parameter of type '{ type: string; attrs: { coordinates: { x: number; y: number; }[]; x?: undefined; y?: undefined; width?: undefined; height?: undefined; text?: undefined; align?: undefined; baseline?: undefined; }; styles: { color: string; ... 7 more ...; family?: undefined; }; ignoreEvent: boolean; key?: undefined; } | { ...; } | {...'.\n  Types of property 'attrs' are incompatible.\n    Type '{ x: number; y: number; width: number; height: number; }' is not assignable to type '{ coordinates: { x: number; y: number; }[]; x?: undefined; y?: undefined; width?: undefined; height?: undefined; text?: undefined; align?: undefined; baseline?: undefined; } | { coordinates: { x: number; y: number; }[]; ... 6 more ...; baseline?: undefined; }'.\n      Types of property 'x' are incompatible.\n        Type 'number' is not assignable to type 'undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2345,
+      "message": "Argument of type '{ type: string; attrs: { x: number; y: number; text: string; align: string; baseline: string; }; styles: { color: string; size: number; weight: number; family: string; }; ignoreEvent: true; }' is not assignable to parameter of type '{ type: string; attrs: { coordinates: { x: number; y: number; }[]; x?: undefined; y?: undefined; width?: undefined; height?: undefined; text?: undefined; align?: undefined; baseline?: undefined; }; styles: { color: string; ... 7 more ...; family?: undefined; }; ignoreEvent: boolean; key?: undefined; } | { ...; } | {...'.\n  Types of property 'attrs' are incompatible.\n    Type '{ x: number; y: number; text: string; align: string; baseline: string; }' is not assignable to type '{ coordinates: { x: number; y: number; }[]; x?: undefined; y?: undefined; width?: undefined; height?: undefined; text?: undefined; align?: undefined; baseline?: undefined; } | { coordinates: { x: number; y: number; }[]; ... 6 more ...; baseline?: undefined; }'.\n      Types of property 'x' are incompatible.\n        Type 'number' is not assignable to type 'undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '({ timestamp: number; open: number; high: number; low: number; close: number; volume: number; turnover: number | undefined; } | null)[]' is not assignable to type 'KLineData[]'.\n  Type '{ timestamp: number; open: number; high: number; low: number; close: number; volume: number; turnover: number | undefined; } | null' is not assignable to type 'KLineData'.\n    Type 'null' is not assignable to type 'KLineData'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'KLineData' is not assignable to type '{ timestamp: number; open: number; high: number; low: number; close: number; volume: number; turnover: number | undefined; }'.\n    Types of property 'volume' are incompatible.\n      Type 'number | undefined' is not assignable to type 'number'.\n        Type 'undefined' is not assignable to type 'number'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '({ type: string; signal_type: string; price: undefined; source: string; details: string; display_scope: string; target_kind: string; dt?: number | undefined; time?: number | undefined; timestamp?: number | undefined; ... 23 more ...; ma_acceptance?: Record<...> | undefined; } | null)[]' is not assignable to type 'StrategySignal[]'.\n  Type '{ type: string; signal_type: string; price: undefined; source: string; details: string; display_scope: string; target_kind: string; dt?: number | undefined; time?: number | undefined; timestamp?: number | undefined; ... 23 more ...; ma_acceptance?: Record<...> | undefined; } | null' is not assignable to type 'StrategySignal'.\n    Type 'null' is not assignable to type 'StrategySignal'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'StrategySignal' is not assignable to type '{ type: string; signal_type: string; price: undefined; source: string; details: string; display_scope: string; target_kind: string; dt?: number; time?: number; timestamp?: number; date_str?: string; ... 22 more ...; ma_acceptance?: Record<string, unknown>; }'.\n    Types of property 'type' are incompatible.\n      Type 'string | undefined' is not assignable to type 'string'.\n        Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '({ name: string; value: number; role: string; position: string; distance_pct: number | null; timeframe: string; } | null)[]' is not assignable to type 'StrategyKeyLevel[]'.\n  Type '{ name: string; value: number; role: string; position: string; distance_pct: number | null; timeframe: string; } | null' is not assignable to type 'StrategyKeyLevel'.\n    Type 'null' is not assignable to type 'StrategyKeyLevel'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'StrategyKeyLevel' is not assignable to type '{ name: string; value: number; role: string; position: string; distance_pct: number | null; timeframe: string; }'.\n    Types of property 'name' are incompatible.\n      Type 'string | undefined' is not assignable to type 'string'.\n        Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'SignalCalloutCandidate' is not assignable to type '{ signal: StrategySignal; timestamp: number; alignedTimestamp: number; price: number; barIndex: number; priority: number; custom: boolean; item: { dateLabel: string; alignedDateLabel: string | undefined; ... 6 more ...; details?: string; }; }'.\n    The types of 'item.dateLabel' are incompatible between these types.\n      Type 'string | undefined' is not assignable to type 'string'.\n        Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'left' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 18047,
+      "message": "'right' is possibly 'null'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2345,
+      "message": "Argument of type '({ signal: StrategySignal; timestamp: number; alignedTimestamp: number; price: number; barIndex: number; priority: number; custom: boolean; item: { dateLabel: string; alignedDateLabel: string | undefined; ... 6 more ...; details?: string | undefined; }; } | null)[]' is not assignable to parameter of type 'SignalCalloutCandidate[]'.\n  Type '{ signal: StrategySignal; timestamp: number; alignedTimestamp: number; price: number; barIndex: number; priority: number; custom: boolean; item: { dateLabel: string; alignedDateLabel: string | undefined; ... 6 more ...; details?: string | undefined; }; } | null' is not assignable to type 'SignalCalloutCandidate'.\n    Type 'null' is not assignable to type 'SignalCalloutCandidate'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2345,
+      "message": "Argument of type '{ name: string; groupId: string; lock: true; points: { timestamp: number; value: number; }[]; extendData: string; styles: { line: { color: string; size: number; style: \"dashed\"; dashedValue: number[]; }; text: { ...; }; }; }' is not assignable to parameter of type 'string | OverlayCreate | (string | OverlayCreate)[]'.\n  The types of 'styles.line.style' are incompatible between these types.\n    Type '\"dashed\"' is not assignable to type 'LineType | undefined'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2339,
+      "message": "Property 'reason' does not exist on type 'WatchlistRow'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'WatchlistRangeColumn' is not assignable to type '{ key: string; label: string; aliases: string[]; }'.\n    Types of property 'aliases' are incompatible.\n      Type 'string[] | undefined' is not assignable to type 'string[]'.\n        Type 'undefined' is not assignable to type 'string[]'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '({ key: string; label: string; aliases: string[]; } | null)[]' is not assignable to type 'WatchlistRangeColumn[]'.\n  Type '{ key: string; label: string; aliases: string[]; } | null' is not assignable to type 'WatchlistRangeColumn'.\n    Type 'null' is not assignable to type 'WatchlistRangeColumn'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2677,
+      "message": "A type predicate's type must be assignable to its parameter's type.\n  Type 'TradeMapItem' is not assignable to type '{ role: StockTradeRoleKey; label: string; name: string; summary: string; phase: string; asOf: string; definition: string; source: string; }'.\n    Types of property 'phase' are incompatible.\n      Type 'string | undefined' is not assignable to type 'string'.\n        Type 'undefined' is not assignable to type 'string'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/StrategyChartTerminal.tsx",
+      "code": 2322,
+      "message": "Type '({ role: StockTradeRoleKey; label: string; name: string; summary: string; phase: string; asOf: string; definition: string; source: string; } | null)[]' is not assignable to type 'TradeMapItem[]'.\n  Type '{ role: StockTradeRoleKey; label: string; name: string; summary: string; phase: string; asOf: string; definition: string; source: string; } | null' is not assignable to type 'TradeMapItem'.\n    Type 'null' is not assignable to type 'TradeMapItem'."
+    },
+    {
+      "file": "electron/src/renderer/workspaces/WeChatWorkspace.tsx",
+      "code": 7016,
+      "message": "Could not find a declaration file for module 'qrcode'. '/Users/zhangqilong/github代码仓库/longclaw-agent-os/node_modules/qrcode/lib/index.js' implicitly has an 'any' type.\n  Try `npm i --save-dev @types/qrcode` if it exists or add a new declaration (.d.ts) file containing `declare module 'qrcode';`"
+    }
+  ]
+}
