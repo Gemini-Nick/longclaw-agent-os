@@ -1,0 +1,782 @@
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已跑：
+- `npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/renderer/taskLaunchState.test.ts`：15 passed
+- `npm run lint`：通过
+- `npm run build:electron`：通过
+- 最后重新打开 Electron 检查微信页：UI 已隐藏 raw id；窗口已关闭，无残留 `18744` 监听进程。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+记录位置：
+- 运行观察：[observation.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t132817z-wechat-qr-runtime-monitor/observation.md)
+- 当前绑定状态：[wechat-binding.json](/Users/zhangqilong/.longclaw/runtime-v2/wechat-binding.json)
+- 日志：[electron-current.log](/Users/zhangqilong/Library/Logs/Longclaw/electron-current.log)
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你需要重新优化当前微信模块的所有页面，优化扫码整体流程，直接验证扫码进入 runtime 并完成绑定，OpenID/iLink 身份认证
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$design-html](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-design-html/SKILL.md) 你这微信功能里面的页面很多内容没必要暴露给用户的，你需要重新设计，等本次优化完成以后，你重新设计页面布局和颜色。保持跟策略/回测 UI/UX协同
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已完成这一轮：微信模块现在主流程是 iLink 扫码绑定，已实扫验证进入 runtime 并完成绑定；页面也已重新收口成和策略/回测一致的暗色工作台，不再暴露二维码 URL、本地目录、account path、bot token、原始 iLink 用户串或全局 payload 抽屉。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+关键结果：
+- 绑定状态：`bound`
+- provider：`ilink_service_account`
+- identity：`ilink_verified`
+- scan：`confirmed`
+- 绑定时间：`2026-04-24T12:51:02.211Z`
+- token 边界：token 只写入 runtime account 文件，renderer 只看到 `bot_token_present=true`
+- OpenID 说明：当前 iLink 接口实测没有返回独立 `openid` 字段，返回的是 `ilink_user_id`，我按 iLink 身份锚点处理，没有假造 OpenID。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+页面优化：
+- 左侧只保留“微信入口 / 绑定状态 / 最近入站审计”，不再显示 workspace/session 路径。
+- 绑定卡片只显示“已绑定微信用户 / iLink 身份已认证 / 可用入口”。
+- 微信页关闭全局详情抽屉，避免重复详情和底层 payload 外泄。
+- 功能映射保留 `/kb`、`/issue`、`/plugin`、`/skill`、`/signals`、`/backtest`，但呈现为用户工作台入口。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已跑：
+- `npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/renderer/taskLaunchState.test.ts`：14 passed
+- `npm run lint`：通过
+- `npm run build:electron`：通过
+- Electron 实机打开微信页检查：通过，最终窗口已关闭，没有残留监听进程。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+证据位置：
+- 绑定状态：[wechat-binding.json](/Users/zhangqilong/.longclaw/runtime-v2/wechat-binding.json)
+- 扫码观察记录：[observation.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t124708z-wechat-ilink-binding/observation.md)
+- 当前日志：[electron-current.log](/Users/zhangqilong/Library/Logs/Longclaw/electron-current.log)
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf7e-c8b3-7b91-aa96-f2b7069ac17b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+工作树里还有其它此前已有的策略/回测/插件相关改动，我没有回滚；本次收尾集中在微信扫码绑定与微信页 UI 收口。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf75-bbec-7ed0-bf38-b05a00ae8843
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+实测结果：
+- callback server: `http://192.168.3.206:18744`
+- 你的微信扫码请求进来了：`192.168.3.164`
+- User-Agent 确认为 iPhone 微信：`MicroMessenger/8.0.71`
+- runtime 状态已写成 `bound`
+- 绑定时间：`2026-04-24T12:32:28.573Z`
+- 当前测试用户标识：`wechat-scan-c67d4216`
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf75-bbec-7ed0-bf38-b05a00ae8843
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我完成的优化：
+- Electron main process 新增局域网扫码 callback：`/wechat/bind?session=...`
+- 微信页展示真实二维码，扫码后自动轮询变成已绑定
+- 绑定状态支持 `qr_pending / bound / expired / revoked`
+- 过期二维码不能继续绑定
+- UI 文案改成“同一局域网扫码自动绑定”，手动完成只作为 fallback
+- 扫码实测日志已写入：[/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t123152z-wechat-scan-binding/observation.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t123152z-wechat-scan-binding/observation.md)
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf75-bbec-7ed0-bf38-b05a00ae8843
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+关键日志位置：
+- [/Users/zhangqilong/Library/Logs/Longclaw/electron-current.log](/Users/zhangqilong/Library/Logs/Longclaw/electron-current.log)
+- [/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t123152z-wechat-scan-binding/electron.log](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t123152z-wechat-scan-binding/electron.log)
+- [/Users/zhangqilong/.longclaw/runtime-v2/wechat-binding.json](/Users/zhangqilong/.longclaw/runtime-v2/wechat-binding.json)
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf75-bbec-7ed0-bf38-b05a00ae8843
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已通过：
+- `npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/renderer/taskLaunchState.test.ts`
+- `npm run lint`
+- `npm run build:electron`
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf75-bbec-7ed0-bf38-b05a00ae8843
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前限制也明确：这是本机 Agent OS 的局域网扫码绑定，已经能验证“扫码进入 runtime 并完成绑定”。但它还不是微信官方 OpenID/iLink 身份认证；现在先记录为 `wechat-scan-<session suffix>`，后面接服务号/iLink 后再替换成真实微信身份。Electron 测试进程已关闭，`18744` 端口也已经释放。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf71-eb4b-7222-b718-f81c9e2908c8
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. Electron 微信页生成真实二维码。
+2. 手机扫码能读到绑定 payload：`longclaw-wechat://bind?session=...`
+3. Electron 里点击“完成扫码绑定”，状态会从 `qr_pending` 变成 `bound`。
+4. 过期二维码不能完成绑定。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf71-eb4b-7222-b718-f81c9e2908c8
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+也就是说：**二维码显示和本机绑定状态是可验证的，但微信端扫码回调还没接。**
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf71-eb4b-7222-b718-f81c9e2908c8
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 点 `生成扫码绑定`
+- 手机扫码看是否能识别二维码内容
+- 回到 Electron 点 `完成扫码绑定`
+- 状态应变成 `bound`
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf71-eb4b-7222-b718-f81c9e2908c8
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你说的“直接扫码绑定”是：任意微信用户扫二维码后，不点 Electron 按钮，自动完成绑定，那下一步必须先做真实 provider 回调。QR 不能再只是 `longclaw-wechat://...`，要换成 iLink/服务号可访问的 HTTPS 绑定 URL，然后回调本地 runtime 完成绑定。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6c-765c-7343-af8d-8969c1c31ac5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+[$karpathy-guidelines](/Users/zhangqilong/.codex/skills/karpathy-guidelines/SKILL.md) 目标不明确，你先把扫码这一个功能做好。然后逐个逐个跟我讨论别的功能怎么实现
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6c-765c-7343-af8d-8969c1c31ac5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+先结论：我已经把“扫码绑定”单独收敛并做好了当前可落地的闭环，没继续推进插件/CI/CD 那些后续功能。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6c-765c-7343-af8d-8969c1c31ac5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 生成真实二维码，不再只是显示 `longclaw-wechat://...` 字符串：[WeChatWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/WeChatWorkspace.tsx:397)
+- 绑定 session 改成随机 UUID，10 分钟过期：[wechatPluginDev.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/runtime/wechatPluginDev.ts:256)
+- 增加扫码完成状态：`qr_pending -> bound`，过期二维码不能绑定：[wechatPluginDev.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/runtime/wechatPluginDev.ts:268)
+- Electron IPC 暴露 `wechat:complete-binding-session`：[main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:2425)
+- 加了绑定成功和过期测试：[wechatPluginDev.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/runtime/wechatPluginDev.test.ts:37)
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6c-765c-7343-af8d-8969c1c31ac5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/renderer/taskLaunchState.test.ts
+npm run lint
+npm run build:electron
+```
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6c-765c-7343-af8d-8969c1c31ac5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+边界也明确：现在是“本机 Agent OS 生成二维码 + 本机确认扫码完成”的闭环。真正的“任意微信用户扫码后自动回调绑定”还需要下一步接 iLink/服务号/provider callback，这个我还没做，也不应该和插件流水线混在一起做。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6c-765c-7343-af8d-8969c1c31ac5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+另外当前工作区里还有之前已有的插件/路由相关改动，以及 `reports/`、`BacktestWorkbench.tsx` 的未提交状态；这轮我没有继续扩这些功能。下一步建议只讨论：真实微信扫码回调到底接 iLink 还是服务号。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$karpathy-guidelines](/Users/zhangqilong/.codex/skills/karpathy-guidelines/SKILL.md) 你先明确你目前需要做什么
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 让“注册 overlay”不只是改状态  
+   现在 `registerPluginDevArtifact()` 只是把 issue 标成 `registered`，还没真正调用 `registerRuntimeCapability()`。这会让 UI 说“已发布”，但能力未必真的可调用。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 让插件流水线的 side effect 更诚实  
+   当前 `Create branch / Run CI / Merge` 还是本地状态机模拟。下一步不能一口气做完整 GitHub/GitLab，而应该先明确为 provider-neutral adapter 边界，避免以后写死 GitLab。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `registerPluginDevArtifact()` 增加一个输入：`runtimeDir / registryPath / artifactPath`
+- 注册前校验 artifact 目录存在，并且 skill/plugin manifest 合法
+- 调用现有 `registerRuntimeCapability()`
+- 把返回的 `registry_id / managed_path` 写进 `PluginDevIssue.metadata`
+- 如果 artifact 不存在，不能进入 `registered`，而是抛出明确错误或进入 `review_required`
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 不做真实 GitHub/GitLab API
+- 不做真实 CI runner
+- 不做自动 merge
+- 不做 WeChat 真实扫码回调
+- 不重构整个插件页
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 新增测试：没有 artifact 时不能注册。
+2. 新增测试：有 `SKILL.md` 或 plugin manifest 时，注册后 capability registry 里真的出现 entry。
+3. 继续跑：
+   ```bash
+   npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/runtime/capabilityRegistry.test.ts electron/src/renderer/taskLaunchState.test.ts
+   npm run lint
+   npm run build:electron
+   ```
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf6a-dda7-7312-a396-20173bb29148
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你同意，我下一步就只做这件事：把“注册 overlay”从假状态变成真的 registry 注册。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+继续执行，gstack 调用建议：先用 /office-hours 锁定产品定位，再用 /autoplan 做 CEO + Design + Eng + DX 全链路审查。这里不是单纯代码重构，涉及产品定位、UI、架构、DX、CI/CD，单跑 /plan-eng-review 不够。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已继续执行。结论：`/office-hours -> /autoplan` 这条路线是对的，这不是单纯工程重构，审查里已经把产品定位、UI、架构、DX、CI/CD 边界分开记录了。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Office Hours 产品定位：[zhangqilong-main-design-20260424-050739.md](/Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-design-20260424-050739.md)
+- Autoplan 全链路审查：[zhangqilong-main-autoplan-20260424-050739.md](/Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-autoplan-20260424-050739.md)
+- 测试计划：[zhangqilong-main-test-plan-20260424-050739.md](/Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-test-plan-20260424-050739.md)
+- gstack review log 已写入：[main-reviews.jsonl](/Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/main-reviews.jsonl)
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+Autoplan verdict 是 `DONE_WITH_CONCERNS`。方向确认：微信是移动端 intake + confirmation，插件页是可复用能力的生产治理中心。主要未完成项也明确了：真实 iLink/服务号回调、真实 git/GitHub/GitLab adapter、真实 CI/MR、注册时真正调用 runtime capability registry、以及高风险动作的确认弹窗。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/runtime/capabilityRegistry.test.ts electron/src/renderer/taskLaunchState.test.ts
+npm run lint
+npm run build:electron
+```
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结果：3 个测试文件、14 个测试通过；TypeScript check 通过；Electron main/preload/renderer build 完成。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf5f-9eb8-7891-92c5-ad28ed5d8add
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+有一个执行说明：当前 Codex Desktop 这次没有额外 spawn 外部模型 worker，所以 `/autoplan` 的 dual voices 已按 degraded 记录，没有伪造 Claude/Codex 双模型共识。下一步最值得做的是补 `registerPluginDevArtifact -> registerRuntimeCapability` 和真实 git/GitHub adapter，这两个是从“流程模型”走向“真的可复用插件生产线”的关键断点。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 微信入口 + 插件开发流水线整合路线图
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+把两个计划合成一条主线：微信不只是消息入口，而是 `Agent OS 的移动端工作入口`；插件页不只是管理已有 skill/plugin，而是承接“从微信提出需求 → 生成 issue → 自动开发 → CI/CD → MR/合并 → 注册成可复用 skill/plugin”的完整流水线。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+gstack 调用建议：先用 `/office-hours` 锁定产品定位，再用 `/autoplan` 做 CEO + Design + Eng + DX 全链路审查。这里不是单纯代码重构，涉及产品定位、UI、架构、DX、CI/CD，单跑 `/plan-eng-review` 不够。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 左侧导航改为：`策略 / 回测 / 执行 / 微信 / 插件`。
+- `工厂` 改名为 `插件`，保留现有 capability registry 和 runtime-managed overlay。
+- 微信页从“只读观察”升级为“绑定 + 入站路由 + 会话审计”。
+- 插件页分三块：`已安装`、`开发中`、`发布库`。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 采用 iLink/服务号式绑定路线，不继续扩大个人号黑盒桥接。
+- 微信页新增绑定状态：未绑定、扫码中、已绑定、过期、解绑。
+- 绑定后记录用户身份、权限、可调用 route、最近入站消息。
+- token 和 bot secret 只留在 runtime，不进前端 payload。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 显式命令优先：`/kb`、`/issue`、`/plugin`、`/skill`、`/signals`、`/backtest`。
+- 无显式命令时用 AI 语义分类。
+- 高风险动作必须确认：本地 git、自动开发、CI、merge、回测执行。
+- 四类核心入口：
+  - 复盘/小作文 → 知识库 review inbox。
+  - 普通开发需求 → 执行页任务。
+  - 可复用能力需求 → 插件页 issue。
+  - Signals/回测 → 对应专业工作台。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 新增 `PluginDevIssue` 状态机：Issue → Branch → Implementing → CI → MR → Review → Merge → Register。
+- 参考 GitLab 产品模型，但 v1 不强制接 GitLab API。
+- 当前仓库 remote 是 GitHub，所以实现要做 provider-neutral：本地 git/GitHub 先跑通，GitLab adapter 后续接入。
+- 合并后的 skill/plugin 自动注册到 runtime-managed overlay，出现在插件页和微信可调用能力列表里。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 每个插件/skill issue 自动生成验收标准。
+- CI 至少包括：类型检查、相关单测、build、manifest 校验。
+- CI 失败不能 merge，只能进入 `Review required`。
+- 合并后写入发布库，记录版本、来源 issue、MR、测试结果、安装路径。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+1. `/office-hours`
+   用来锁定“微信入口 + 插件流水线”是不是正确产品问题，避免一上来只做 UI 改名。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+2. `/autoplan`
+   这是最合适的主模式。它会顺序跑 CEO、Design、Eng、DX review，刚好覆盖这个改动的四个风险面。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+3. 实施后再跑：
+   - `/review`：检查 diff、架构和安全边界。
+   - `/qa`：验证 Electron UI、微信路由、插件开发流。
+   - `/ship`：准备 PR/MR 和发布记录。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+不建议只用 `/plan-eng-review`。这次不是纯技术重构，产品流和信息架构会决定后面代码怎么拆。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 微信绑定状态测试。
+- 入站路由分类测试。
+- `/plugin` 到 `PluginDevIssue` 的集成测试。
+- 插件页三视图渲染测试。
+- capability registry 注册/移除不破坏源目录测试。
+- git 分支、CI 状态、MR 状态的 provider-neutral adapter 测试。
+- Electron build 和关键页面手动 QA。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 微信是入口和确认通道，不是完整规划主界面。
+- 插件页是可复用能力的生产和治理中心。
+- v1 采用 GitLab 式流程模型，但先用本地 git/GitHub 能力落地。
+- Obsidian 仍只接收 reviewed knowledge，不接收原始微信消息。
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+What changed:
+- Added runtime state machine in [wechatPluginDev.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/runtime/wechatPluginDev.ts) for:
+  - WeChat binding states
+  - inbound route classification
+  - `/plugin` and `/skill` issue creation
+  - GitLab-like lifecycle: issue → branch → CI → MR → merge → register
+- Added IPC/preload APIs in [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts) and [preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts).
+- Updated WeChat page in [WeChatWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/WeChatWorkspace.tsx):
+  - binding panel
+  - command buttons: `/kb`, `/issue`, `/plugin`, `/skill`, `/signals`, `/backtest`
+  - inbound route composer
+  - recent receipts and plugin issue previews
+- Renamed user-facing `工厂 / Factory` to `插件 / Plugins`.
+- Updated plugin page in [CapabilitiesWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/CapabilitiesWorkspace.tsx):
+  - `已安装`
+  - `开发中`
+  - `发布库`
+  - `Skills`
+  - `运行环境`
+- Added lifecycle buttons for plugin issues: create branch, run CI, merge, register overlay.
+- Added runtime tests in [wechatPluginDev.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/runtime/wechatPluginDev.test.ts).
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf56-0ec3-7822-89c8-632e846b0f71
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+Verification passed:
+- `npm test -- --run electron/src/runtime/wechatPluginDev.test.ts electron/src/runtime/capabilityRegistry.test.ts electron/src/renderer/taskLaunchState.test.ts`
+- `npm run lint`
+- `npm run build:electron`
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf55-58fd-76b1-b63a-0429b2a7e10c
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你先把这两个计划做一次整合，制定一个优化路线图，确认一下调用gstack哪种重构模式更合适
+
+
+---
+来源：codex:019dbf4b-8d63-7290-bce3-865d6cbd5070#turn:019dbf54-1c30-7b11-956d-d89eae3b8ef2
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+自动开发需求需要和目前的工厂模块（改名为插件）重新整合，最终的目标是通过微信来创造可以复用的skill或者插件。这里面要参考gitlab模式，包括issue，包括合并等开发ci/cd
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+检查一下weclaw的日志，我刚刚发送了微信公众号的链接，但是没有反馈
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+时间线：
+- `2026-04-10 05:48:30 PDT` 收到你的新消息
+- `2026-04-10 05:48:30 PDT` 开始分发给 `codex`
+- `2026-04-10 05:48:32 PDT` 发出 typing 指示
+- `2026-04-10 05:48:48 PDT` agent 完成回复
+- `2026-04-10 05:48:49 PDT` 成功发送回复，并记录了 `delivered reply`
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这次和上条链接不同的地方是：
+- 新消息既出现在运行日志里，也出现在会话文件 [`o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json`](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json)
+- 对应 `.seen` 文件也写了，时间是 `05:48:30`
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要继续，我下一步可以把“为什么 linkhoard 回执没写入 session，而普通回复会写入”这个差异路径再顺一遍，定位到具体函数分支。
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#turn:019d776d-8ffe-73e3-9520-8e5d1fc3d31c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+关键时间线：
+- `2026-04-10 05:44:37 PDT` 收到你的消息：`https://mp.weixin.qq.com/s/MaL83c1xgp8o9KoQPhawmg`
+- `2026-04-10 05:44:41 PDT` 成功抓取并保存为 [`重磅！上交所、北交所交易规则调整征意！.md`](/Users/zhangqilong/.weclaw/workspace/重磅！上交所、北交所交易规则调整征意！.md)
+- `2026-04-10 05:44:43 PDT` 日志明确写了已发送回执：`OpenAI｜小德总收录播报： 已保存: 重磅！上交所、北交所交易规则调整征意！`
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#turn:019d776d-8ffe-73e3-9520-8e5d1fc3d31c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我核对到的证据：
+- 运行日志在 [`/private/tmp/longclaw-guardian/weclaw.bridge.launchd.log`](/private/tmp/longclaw-guardian/weclaw.bridge.launchd.log) 里有完整链路：收到消息 -> 保存文章 -> `sent reply`
+- 会话文件 [`o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json`](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json) 只记录了你的用户消息，没有把这次 linkhoard 回执写进去
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#turn:019d776d-8ffe-73e3-9520-8e5d1fc3d31c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：
+- 不是“没处理”，也不是“没发送”
+- 更像是“微信端你没看到这条回执”，或者“本地会话记录漏记了 linkhoard 回执”
+
+
+---
+来源：codex:019d776d-4836-7f51-935d-86a15e846210#turn:019d776d-8ffe-73e3-9520-8e5d1fc3d31c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以给你一个明确方案，专门排查这类“日志显示已发送，但聊天里没看到/本地没记账”的问题。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你看一下目前系统常驻的system service日志，是不是运行正常，有什么优化的方案？
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我是不是需要重新weclaw login和weclaw start呢？
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+不需要 `weclaw start`，已经在跑了。当前 `weclaw.bridge` 正常监听 `127.0.0.1:18011`，而且我已经重启过一次。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`weclaw login` 值得做，原因是现在失败已经收敛到上游 `sendmessage ret=-2`，不像本地进程没起来，更像账号会话/发送权限/上下文状态异常。日志里之前也出现过 `If this persists, run weclaw login to re-authenticate.`
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：
+- `weclaw start`：不用。
+- `weclaw login`：建议现在执行一次。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 常驻服务与微信送达修复方案
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+`guardian.monitor` 负责巡检和保活  
+`weclaw.bridge` 负责本机微信桥接与 API 入口  
+`repo.scheduler` 负责定时生成“最近情况”和本地循环状态  
+`codex.appserver` 提供 Codex 本地 app-server 能力  
+`claude.worker` 提供 Claude 可用性/备援检测
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+1. 发送策略层面，定时摘要被硬编码为“只有 `windowed_proactive` 才允许发送”，当前一直退化为 `reply`，所以每轮都被跳过。证据在 `runtime-wechat-control.py` 第 192 行附近，`delivery_mode != "windowed_proactive"` 直接写入 `skipped_window_unavailable`。  
+2. ingress 状态层面，`.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json` 已损坏，`runtime-roadmap-sync.py` 无法可靠解析会话窗口，导致“窗口是否打开”长期停留在旧时间戳。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+在此基础上，`weclaw.bridge` 自身还存在 TUN 下的网络不稳定问题，但这不是“为什么完全没收到”的第一原因。第一原因是产品逻辑先把发送关掉了。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## 关键职责与现状
+- `guardian.monitor`
+  - 启动 `weclaw-guardian monitor --config ~/.weclaw/services.json --uid 501`
+  - 作用是按 `services.json` 每 30 秒巡检 `codex.appserver`、`claude.worker`、`repo.scheduler`、`weclaw.bridge`，并执行保活/重启退避
+  - 目前状态正常，主要是总控，不直接负责发微信
+- `weclaw.bridge`
+  - 通过 `weclaw-real start -f` 以前台方式被 `launchd` 常驻
+  - 作用是维持本机微信桥接、监听本地端口 `18011`、承接 `weclaw send` 和任务派发 API
+  - 目前“进程活着但上游不稳”，日志里有 `no such host`、`TLS handshake timeout`、`EOF`、`context deadline exceeded`
+  - 在你要求下，必须继续工作在 TUN 模式，不能靠简单改成直连规避
+- `claude.worker`
+  - 当前实际走 `weclaw-guardian claude-worker`
+  - 作用是 Claude 通道健康检查和备援能力维持，不参与微信摘要发送
+  - 当前路由状态里 Claude 是 `not_logged_in`，因此只是备份不可用，不是本次微信送达失败的根因
+- `codex.appserver`
+  - 通过 `codex app-server --listen ws://127.0.0.1:45678`
+  - 作用是给本地 runtime 暴露 Codex 服务能力，供主链路调用
+  - 当前状态正常
+- `repo.scheduler`
+  - 每 4 小时执行一次 `repo-scheduler-service.sh`
+  - 负责工作区扫描、cloud sync、dependency update、routing reconcile、harness tick、roadmap sync、wechat summary、queued task dispatch
+  - “最近情况”就是它在生成，日志中可见它每轮都产出 `roadmap-queue.json` 和 `wechat-notification-state.json`
+  - 当前真正的问题是：它生成了摘要，但发送逻辑被 delivery policy 阻断

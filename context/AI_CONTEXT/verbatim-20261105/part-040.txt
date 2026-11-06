@@ -1,0 +1,600 @@
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d7-c622-7711-8cff-5454a3999e56
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Important Interfaces
+- 产品级 ownership contract：
+  - `hermes-agent = state + routing + delivery + pack orchestration`
+  - `longclaw-agent-os = primary workspace + reliable local surface`
+  - `weclaw = ingress/inbox`
+  - `Signals = specialist workspace`
+  - `Obsidian = reviewed knowledge plane`
+- 必须保留的交互契约：
+  - `Electron -> Signals` 深链打开 review/backtest/chart/detail
+  - `Hermes -> Electron` 提供 `overview / runs / work-items / pack dashboards / actions`
+  - `Hermes/pack -> Obsidian` 只允许 reviewed promotion，不允许 raw fallback
+- phase 1 不新增语音主入口契约，只保留 `Chanless` adapter hook。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d7-c622-7711-8cff-5454a3999e56
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 信息架构：
+  - 首次进入时，用户默认落在 `Electron`，而不是 `Signals` 或 `WeClaw` 深页。
+  - `Signals` 可以被进入，但不会在产品导航上与总控台平级。
+- 状态流：
+  - 微信窗口过期时，结果仍能在 `Electron Work Items` 找到。
+  - `manual review required`、`repair required`、`partial` 都有明确落点和下一动作。
+- 任务旅程：
+  - 一个金融任务能走通 `微信 -> Electron summary -> Signals deep dive -> reviewed insight -> Obsidian`。
+  - 一个尽调任务能走通 `云端 sandbox -> Electron evidence/review -> reviewed output`。
+- 设计约束：
+  - 控制面不是卡片拼盘首页。
+  - 窄窗口下详情抽屉和主队列仍可用。
+  - 键盘可完成筛选、打开详情、执行 action、返回列表。
+- 范围控制：
+  - 去掉 `Chanless` 后，phase 1 主旅程不受影响。
+  - `Obsidian` 中不出现 raw WeChat 会话或未审核 evidence。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d7-c622-7711-8cff-5454a3999e56
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- phase 1 产品楔子仍是“个人 Agent OS + Signals + Due Diligence 两个旗舰 pack”。
+- 云端执行平面是必需的，但当前只先承接 `due-diligence-core` 这类高价值浏览器任务，不把所有执行都塞进同一个“大 sandbox”叙事。
+- `Signals` 的独立性保留在能力层，不保留在默认产品入口层。
+- 语音不是 phase 1 的主产品承诺。
+- 当前设计评分从 `6/10` 提升到可执行的 `9/10`，剩余 1 分主要取决于最小 `DESIGN.md` 是否补齐并被实现严格遵守。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4cc-2e07-7d12-95e6-765b6e44cb17
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+[$plan-design-review](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-plan-design-review/SKILL.md) 目前这个架构我主要使用weclaw来进行信息的输入，electron来进行监控？编排任务？obsidian来进行知识库管理，chanless可以说被本地豆包输入法替代了？功能有些重叠 ，signals是完整独立的信息检测回测数据
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4c5-a2c1-7ea2-a7cd-537834674c4b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**已完成**
+- `longclaw-agent-os` 的 Node 侧已经打通。新增了开发 bootstrap 入口 [bootstrap-dev.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/bootstrap-dev.sh)，固定了 `npm` 作为 canonical package manager，并把 runtime install 和 dev bootstrap 在 [README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md) 里分开。实际 `npm ci` 已成功，`node_modules` 现在存在，`npm run lint` 也通过了。
+- 顺手修掉了 `longclaw-agent-os` 的一个真实依赖 bug：仓库把自己 `@shipany/open-agent-sdk` 又声明成了 dependency，导致安装递归炸掉。这个自依赖已经从 [package.json](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json) 和 lockfile 中移除。
+- 本机已经装上真实的 Python 3.11，路径是 `/opt/homebrew/bin/python3.11`。
+- `Signals` 已完成 3.11 `.venv` bootstrap。新增了 [pyproject.toml](/Users/zhangqilong/github代码仓库/Signals/pyproject.toml)、[scripts/python.sh](/Users/zhangqilong/github代码仓库/Signals/scripts/python.sh)、[scripts/bootstrap-dev.sh](/Users/zhangqilong/github代码仓库/Signals/scripts/bootstrap-dev.sh)，并把 README、AutoDL、cron、Docker、[CLAUDE.md](/Users/zhangqilong/github代码仓库/Signals/CLAUDE.md) 入口统一到了 wrapper。实际 bootstrap 已成功，`signals.core.cluster_store` 和 `signals.core.stock_names` 在 3.11 下导入通过。
+- `due-diligence-core` 也完成了 3.11 `.venv` bootstrap。新增了 [scripts/python.sh](/Users/zhangqilong/github代码仓库/due-diligence-core/scripts/python.sh) 和 [scripts/bootstrap-dev.sh](/Users/zhangqilong/github代码仓库/due-diligence-core/scripts/bootstrap-dev.sh)，并把 [README.md](/Users/zhangqilong/github代码仓库/due-diligence-core/README.md) 统一到 wrapper。
+- 在真实 bootstrap 里又暴露出 `due-diligence-core` 的主依赖缺口：顶层导入链会走到 `visual_challenge.py`，但主依赖没声明 `numpy` 和 `pillow`。这个已经补到 [pyproject.toml](/Users/zhangqilong/github代码仓库/due-diligence-core/pyproject.toml) 里，重新安装后 `import due_diligence_core` 已通过，`tests/test_visual_challenge.py` 也过了。
+- `agent-collab-ops` 现在也有了轻量 3.11 入口 [scripts/python.sh](/Users/zhangqilong/github代码仓库/agent-collab-ops/scripts/python.sh)，README 命令不再指向系统 `python3=3.9.6`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4c5-a2c1-7ea2-a7cd-537834674c4b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验证**
+- `longclaw-agent-os`: `bash bootstrap-dev.sh` 成功，`npm run lint` 通过。
+- `Signals`: `bash scripts/bootstrap-dev.sh` 成功；`bash scripts/python.sh` 导入关键模块通过。
+- `due-diligence-core`: `bash scripts/bootstrap-dev.sh` 成功；`bash scripts/python.sh -m pytest -q tests/test_visual_challenge.py` 结果 `6 passed`。
+- `agent-collab-ops`: `bash scripts/python.sh` 已确认实际走 `3.11.15`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4c5-a2c1-7ea2-a7cd-537834674c4b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**剩余边界**
+- 这台机器的默认 `/usr/bin/python3` 仍然是 `3.9.6`。我没有强改系统默认解释器；现在的策略是各仓通过自己的 `scripts/python.sh` 明确走 3.11。
+- `due-diligence-core` 只安装了 Python 包本身，`playwright` 浏览器二进制还没执行 `playwright install`。如果你下一步要跑真实浏览器流程，我可以继续把这层也补齐。
+- `agent-collab-ops` 现在只解决了“版本入口”问题，还没有正式的依赖清单；如果你希望，我下一步可以把它也补成完整的 `pyproject.toml`/bootstrap 仓。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da477-bc5b-70a2-9a33-04c312d2b16c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`longclaw-agent-os` 这边我补了显式的开发 bootstrap 路径：[bootstrap-dev.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/bootstrap-dev.sh)、[`package.json`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json)、[`README.md`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md)、[`install.sh`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/install.sh)、[`apply-live.sh`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apply-live.sh)。实际跑 `npm ci` 时又暴露出一个真问题：仓库把自己 `@shipany/open-agent-sdk` 又声明成了自己的 dependency，导致安装递归炸掉。我已经把这条自依赖从 [`package.json`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json) 和 lock 路径里清掉，并重新生成了 lock。现在 `node_modules` 已经装起来了，`npm run lint` 也通过了。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da477-bc5b-70a2-9a33-04c312d2b16c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+Python 这边我把基线统一到了 `3.11`，并写进了仓里，而不是继续靠口头约定。[`hermes-agent/.python-version`](/Users/zhangqilong/github代码仓库/hermes-agent/.python-version)、[`due-diligence-core/.python-version`](/Users/zhangqilong/github代码仓库/due-diligence-core/.python-version)、[`Signals/.python-version`](/Users/zhangqilong/github代码仓库/Signals/.python-version)、[`agent-collab-ops/.python-version`](/Users/zhangqilong/github代码仓库/agent-collab-ops/.python-version) 都补上了；`due-diligence-core` 也把 [`pyproject.toml`](/Users/zhangqilong/github代码仓库/due-diligence-core/pyproject.toml) 提到 `>=3.11`。`Signals` 新增了正式的 [`pyproject.toml`](/Users/zhangqilong/github代码仓库/Signals/pyproject.toml)，并且 `Signals` / `due-diligence-core` 都有了统一的 [`scripts/python.sh`](/Users/zhangqilong/github代码仓库/Signals/scripts/python.sh)、[`scripts/bootstrap-dev.sh`](/Users/zhangqilong/github代码仓库/Signals/scripts/bootstrap-dev.sh)、[`scripts/python.sh`](/Users/zhangqilong/github代码仓库/due-diligence-core/scripts/python.sh)、[`scripts/bootstrap-dev.sh`](/Users/zhangqilong/github代码仓库/due-diligence-core/scripts/bootstrap-dev.sh)。对应的 README、AutoDL 脚本、cron、Docker 入口、Signals 的 [`CLAUDE.md`](/Users/zhangqilong/github代码仓库/Signals/CLAUDE.md) 也都改成走这个统一入口了。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da477-bc5b-70a2-9a33-04c312d2b16c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证上，`bash -n` 过了所有新增和改动过的 shell 脚本，`longclaw-agent-os` 的 `npm run lint` 已通过。当前还没做的是系统级 Python 安装：这台机器的默认 `python3` 还是 `3.9.6`，所以我没有直接改你的系统环境；现在 `Signals` 和 `due-diligence-core` 的 wrapper 会明确失败并提示“需要 Python 3.11+”，不会再静默跑错解释器。下一步如果继续推进，就是在本机装一个 3.11 解释器，然后分别实际跑一遍 `bash scripts/bootstrap-dev.sh` 于 `Signals` 和 `due-diligence-core`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Agent OS 控制面 Beta 执行计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 下一阶段目标不是继续补抽象，而是把 `longclaw-agent-os` 做成一个可演示、可操作、可解释状态的 Electron 桌面控制面 Beta。
+- 产品形态固定为 `统一总控台`：先有全局 `Overview / Runs / Work Items / Packs`，再按 pack 下钻；不做两个独立工作台。
+- 数据源固定为 `Hermes /agent-os`。`longclaw-agent-os` 不再把 due-diligence HTTP 和 Signals 文件系统当成 Beta 主数据面；它们只保留本地开发 fallback。
+- 两个 pack 都做深，但不强行共用业务语义：
+  - `due-diligence` 保持 `Manual Review / Repair Cases / Site Health / Evidence`
+  - `Signals` 采用自己的深语义：`Review Runs / Backtest Backlog / Connector Health / Output Artifacts`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 控制面产品结构
+- 在 Electron renderer 内新增统一控制面入口，不走 CLI/Ink 作为主演示面。
+- 顶层固定 4 个页面：
+  - `Overview`：全局 KPI、pack health、adapter health、最近失败、最近高优先 work items
+  - `Runs`：跨 pack run 列表、状态过滤、详情抽屉、artifact 列表
+  - `Work Items`：所有可处理事项的统一列表
+  - `Packs`：`Due Diligence` 与 `Signals` 两个 pack 的专属深度页面
+- `Runs` 和 `Work Items` 共享右侧详情抽屉；抽屉内允许执行少量高价值操作，不做完整后台。
+- Health 不单独做一个新顶层页；全局 health 放 `Overview`，pack 细节 health 放 `Packs`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. Hermes 作为唯一 Beta 控制面 API
+- 保留现有 `GET /agent-os/overview`、`GET /agent-os/runs`、`GET /agent-os/runs/{run_id}/artifacts`。
+- 新增统一只读接口：
+  - `GET /agent-os/work-items`
+  - `GET /agent-os/packs/{pack_id}/dashboard`
+  - `GET /agent-os/adapters/health`
+- 新增统一少量操作接口：
+  - `POST /agent-os/actions/{action_id}`
+- `action_id` 由 Hermes 生成，桌面端不拼业务 API；桌面端只提交 payload。
+- `OperatorAction` 成为 Beta 唯一可变操作协议；客户端本地只处理 `open_path` / `open_url` / `copy_value` 这类纯桌面动作。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 3. 统一类型与控制面对象
+- 新增 `LongclawWorkItem`：
+  - `work_item_id`, `pack_id`, `kind`, `title`, `summary`, `severity`, `status`, `run_id`, `artifact_refs`, `operator_actions`, `created_at`, `updated_at`
+- 新增 `LongclawAdapterHealth`：
+  - `adapter_id`, `channel`, `status`, `last_ingest_at`, `last_delivery_at`, `notes`
+- 新增 pack 专属 dashboard DTO：
+  - `DueDiligenceDashboard`
+  - `SignalsDashboard`
+- `LongclawControlPlaneOverview` 扩展为只放总控信息：
+  - `packs`, `adapters`, `packHealth`, `adapterHealth`, `runs_summary`, `work_items_summary`, `recent_failures`, `memoryTargets`
+- 详细列表不再无限膨胀进 `overview`；列表和 pack 深页走单独接口。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 4. Due-Diligence 深页固定内容
+- `Due Diligence` 页面固定 4 个区块：
+  - `Recent Runs`
+  - `Manual Review Queue`
+  - `Repair Cases`
+  - `Site Health`
+- `work items` 映射规则固定：
+  - 每条 `manual review` 直接成为一个 `work item`
+  - 每条 `open repair case` 直接成为一个 `work item`
+  - `site health.recommended_action != continue` 生成 health 类 `work item`
+- Beta 可变操作固定为：
+  - 打开 evidence/artifact
+  - 重新触发 run
+  - 提交 manual review decision
+- `manual review decision` 只支持 4 个决定：
+  - `approved`
+  - `rejected`
+  - `needs_retry`
+  - `defer`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 5. Signals 深页固定内容
+- `Signals` 页面固定 4 个区块：
+  - `Recent Runs`
+  - `Review Runs`
+  - `Backtest Backlog`
+  - `Connector Health`
+- `SignalsPack` 需要补出深度控制面数据：
+  - 最近 `review/backtest/index/intraday` runs
+  - `backtest summary`：`total / evaluated / pending`
+  - `pending backlog preview`：取前 N 条 pending records
+  - `connector health`：`tushare / futu / weclaw notify / runner`
+- `work items` 映射规则固定：
+  - 最近 20 条 run 中任何 `failed` run -> `warning`
+  - `backtest pending > 0` -> `warning`
+  - `backtest pending > 100` -> `critical`
+  - `tushare_token` 缺失或 runner 不存在 -> `critical`
+  - `weclaw_enabled = false` -> `info`
+- Beta 可变操作固定为：
+  - 触发 `review` run
+  - 触发 `backtest` run
+  - 打开 output/stdout artifact
+  - 对已有 backtest result 执行 `push_report`
+- 不为 Signals 硬造 due-diligence 风格的 `manual review queue` 或 `repair case`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 6. Electron 交互与刷新策略
+- `longclaw-agent-os` 使用 `createLongclawControlPlaneClientFromEnv()` 连接 Hermes。
+- 轮询而不是 websocket：
+  - `Overview / Work Items` 每 10 秒刷新
+  - `Runs / Pack Dashboard` 每 15 秒刷新
+  - 所有页面都有手动刷新
+- 详情抽屉内 artifact 行为固定：
+  - 本地绝对路径 -> Electron `shell.openPath`
+  - `http/https` -> 外部浏览器打开
+  - 其余 URI -> 仅支持复制
+- 文本类 artifact 只做轻量 inline preview：
+  - `json / md / txt / stdout.log`
+  - 大于 256KB 直接外部打开，不做内嵌渲染
+- Beta 不做 session inbox、channel timeline、scheduler editor、multi-tenant admin。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Test Plan
+- Hermes contract tests：
+  - `GET /agent-os/work-items`
+  - `GET /agent-os/packs/due_diligence/dashboard`
+  - `GET /agent-os/packs/signals/dashboard`
+  - `POST /agent-os/actions/{action_id}`
+- Signals mapping tests：
+  - pending backlog
+  - connector health
+  - failed run -> work item
+  - operator action emission
+- Due-diligence mapping tests：
+  - manual review / repair case / site health 三类 work item
+  - review decision action payload
+- Renderer integration tests：
+  - `Overview` 同时看到两个 pack
+  - `Runs` 中点击 run 能看到 artifacts
+  - `Work Items` 能执行 due-diligence review decision
+  - `Signals` 页面能触发 `review` 和 `backtest`
+  - 本地路径和 URL artifact 分别走对的打开策略
+- Demo acceptance：
+  - 桌面端首次打开可看到统一总控台
+  - 两个 pack 都有深页
+  - 至少 3 个真实可点击动作可成功执行
+  - Hermes 挂掉时页面能显示明确降级态，不进入空白页
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Assumptions
+- 本里程碑是 `产品演示 Beta`，优先桌面产品可见性，不提前做通用平台抽象。
+- Electron 是唯一主演示入口；CLI 控制面不进入本阶段主计划。
+- Hermes 是 Beta 唯一控制面真源；direct due-diligence/signals fallback 仅保留给本地开发。
+- 少量操作原则固定：只做 `open / retry / run / review decision / push report` 这类高价值动作。
+- Signals 的“做深”按自身业务模型做深，不强行模仿 due-diligence 的队列语义。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+开subagent研究几个环境问题  1、这个仓多次提到当前没有 node_modules 2、python环境的版本需要统一
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**结论**
+这两个环境问题本质上是同一类债：仓库边界已经往工程化走了，但 bootstrap 入口还没有统一。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**核心发现**
+- `longclaw-agent-os` 当前没有 `node_modules`，不是“正常状态”，而是“开发依赖没 bootstrap”。仓库自己就这么定义的：[`README.md`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md:39) 写的是 `npm install -> npm run build -> npm run electron:start`，[`package.json`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json:48) 的测试也直接依赖 `node_modules/.bin/vitest`。我本地复现到的就是 `NO_NODE_MODULES`。
+- `longclaw-agent-os` 的混乱点不在“要不要装依赖”，而在“谁负责装”。`bash install.sh` 走的是 guardian/runtime 安装链，不会装 Electron/renderer 的 JS 依赖；见 [`install.sh`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/install.sh:1) 和 [`scripts/guardian/install-v2.sh`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh:27)。所以现在文档把 runtime install 和 dev bootstrap 混在了一起。
+- `longclaw-agent-os` 实际上偏向 `npm`，但仓里又同时有 `package-lock.json` 和 `pnpm-lock.yaml`，而 [`package.json`](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json:1) 没有 `packageManager` 字段。我本地也确认了 `HAS_PACKAGE_MANAGER false`。这就是为什么这个仓会反复出现“到底该不该有 node_modules”的噪音。
+- Python 问题比 `node_modules` 更严重。当前机器默认 `python3` 是 `3.9.6`，但 [`hermes-agent/pyproject.toml`](/Users/zhangqilong/github代码仓库/hermes-agent/pyproject.toml:10) 已经要求 `>=3.11`，而且不是“文档建议”，是真实运行依赖。用当前 `python3` 导入 [`hermes_constants.py`](/Users/zhangqilong/github代码仓库/hermes-agent/hermes_constants.py:20) 会直接报 `TypeError unsupported operand type(s) for |: 'type' and 'NoneType'`。
+- `Signals` 现在是最危险的 Python 仓，因为它已经部分写成 3.10+/3.11 风格，但仓本身没有版本锚点。它没有 `pyproject.toml`，只有 [`requirements.txt`](/Users/zhangqilong/github代码仓库/Signals/requirements.txt:1)，同时大量入口还在用裸 `python`，见 [`README.md`](/Users/zhangqilong/github代码仓库/Signals/README.md:27)。我本地用 `python3 3.9.6` 导入 [`signals/core/cluster_store.py`](/Users/zhangqilong/github代码仓库/Signals/signals/core/cluster_store.py:20) 也复现了同样的 `TypeError`。
+- `due-diligence-core` 相对好一些，但也不统一：元数据是 [`>=3.10`](/Users/zhangqilong/github代码仓库/due-diligence-core/pyproject.toml:10)，而部署镜像已经走 `python:3.11-slim`。这说明它现在更像“代码暂时兼容 3.10，部署现实已经站在 3.11”。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**建议的统一标准**
+- Python 统一到 `3.11.x`。不要继续让系统 `python3=3.9` 充当默认入口。
+- Node 侧把 `longclaw-agent-os` 明确成 `npm` canonical，至少补 `packageManager` 字段，并清掉多余锁文件信号。
+- 每个关键仓都加版本锚点。Python 侧优先补 `.python-version` 或 `.tool-versions`；`Signals` 还需要正式补 `pyproject.toml` 和 `requires-python = ">=3.11"`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**建议的落地顺序**
+1. 先定基线：全仓统一 `Python 3.11.x`，`longclaw-agent-os` 统一 `npm`。
+2. 修文档和入口：把 `longclaw-agent-os` 的“runtime install”和“dev bootstrap”拆开写，明确 `install.sh` 不会装 `node_modules`。
+3. 修 `Signals`：补 Python 元数据，清理裸 `python`/`pip` 入口，改成 `uv` 或 repo venv。
+4. 修 `due-diligence-core`：正式决定是升到 `3.11`，还是补 `3.10` 支持；按现状我建议直接升 `3.11`。
+5. 加 smoke check：每仓启动前先检查 `sys.version`，低于 `3.11` 直接失败。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da45e-08ef-74b1-bf43-b92da2c699f7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以直接开始落这套环境收敛改动：
+- 给几个仓补 `.python-version`
+- 给 `Signals` 补 `pyproject.toml`
+- 给 `longclaw-agent-os` 补 `packageManager` 和 bootstrap 文档/脚本
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da43e-f5be-7ea0-8743-3bc48bb5ce53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`hermes-agent` 现在不再把微信和语音强行分成不同 session 了；两个 adapter 都会优先用 `canonical_user_id` / `canonical_session_id` 归一化到同一个 `session:<id>`，并且新增了统一的 run artifact 读取接口。关键改动在 [integrations.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/integrations.py:26)、[service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py:101)、[api_server.py](/Users/zhangqilong/github代码仓库/hermes-agent/gateway/platforms/api_server.py:540)。这意味着控制面以后走 Hermes 时，`runs` 和 `artifacts` 都能从同一个 core API 读，不用再分仓绕路。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da43e-f5be-7ea0-8743-3bc48bb5ce53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`weclaw` 和 `Chanless` 也接上了 Hermes 入站。`weclaw` 新增了 best-effort 的 Agent OS ingress sink，并在消息进入旧路由前同步上报到 Hermes；同时支持 `WECLAW_AGENT_OS_BASE_URL` / `WECLAW_AGENT_OS_API_KEY` / `WECLAW_CANONICAL_USER_ID`，也兼容 `LONGCLAW_*` 这组全局变量。见 [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go:15)、[handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:35)、[config.go](/Users/zhangqilong/github代码仓库/weclaw/config/config.go:13)、[start.go](/Users/zhangqilong/github代码仓库/weclaw/cmd/start.go:156)。`Chanless` 也新增了对应 client 和配置面，触发词剥离后的 canonical 命令会先投递到 Hermes，再继续走原来的本地处理链路。见 [client.go](/Users/zhangqilong/github代码仓库/Chanless/internal/agentos/client.go:13)、[main.go](/Users/zhangqilong/github代码仓库/Chanless/cmd/chanless/main.go:20)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da43e-f5be-7ea0-8743-3bc48bb5ce53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`longclaw-agent-os` 这边补了更完整的 control-plane schema，并且加了从环境变量直接实例化 client 的入口；如果只配 Hermes base URL，现在 artifacts 也能走统一的 `/agent-os/runs/{run_id}/artifacts` 了。见 [models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts:13)、[client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts:25)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da43e-f5be-7ea0-8743-3bc48bb5ce53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果：
+- `python3 -m pytest -o addopts='' /Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_contracts.py /Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py /Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_integrations.py`
+- `go test ./...` in `/Users/zhangqilong/github代码仓库/weclaw`
+- `go test ./...` in `/Users/zhangqilong/github代码仓库/Chanless`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da43e-f5be-7ea0-8743-3bc48bb5ce53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+还没做的部分也很明确：`longclaw-agent-os` 目前还是数据层，没有真正把 Runs / Review / Health 页面挂出来；`mempalace` / `Obsidian` 还只是 target contract，没有接真实 promotion 流；eval gate 也还没把 harness / shadow compare / runtime health 串成一个统一晋升门禁。下一步最值当的是直接把 `longclaw-agent-os` 的三个页面接上这套新 control-plane client。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 统一 Agent OS 整合计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 目标：做一个真正统一的个人 Agent OS，用一个核心承载 `session / memory / skills / scheduler / delivery / approvals / eval`，再把微信、语音、金融分析、尽调这些能力按层接进去。
+- 代码归属直接锁定：
+  - `hermes-agent`：未来 `Agent Core（云侧）`
+  - `longclaw-agent-os`：`Client Runtime（端侧）` + 统一控制面
+  - `weclaw` / `Chanless`：`Interaction Adapter Layer（通道侧）`
+  - `Signals` / `due-diligence-core`：首批两个旗舰 `Domain Pack`
+  - `mempalace-sync`：原始记忆导入工具，不是产品壳子
+  - `gstack` / `superpowers`：内部研发工作流，不进产品 runtime
+- 第一阶段定位：`个人 OS + 双旗舰域`，默认运行形态是 `本地壳子 + 远端工作核`，不是纯本地大杂烩，也不是直接云端 SaaS。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## What Already Exists
+- `longclaw-agent-os` 已经明确是端侧 runtime，已经有 guardian、安装升级、runtime policy 注入。
+- `weclaw` 已经明确是微信桥核心，边界很清楚，且已有 CLI / HTTP / task-dispatch 面。
+- `Signals` 已经是成熟垂直能力域，具备 CLI、多模式执行、WeChat 接入。
+- `due-diligence-core` 已经是影刀替代的云侧核心，具备 site spec、adapter、validation、shadow compare、输出兼容链路。
+- `hermes-agent` 已经写明自己是未来统一 core 的候选底座，目标对象已经是 `session / memory / skills / scheduler / user model`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Target Architecture
+```text
+Adapters: weclaw / Chanless / future channels
+        |
+        v
+hermes-agent = Agent Core
+  session | task bus | scheduler | routing | delivery policy
+  approvals | memory ingress | knowledge promotion | eval gate
+        |
+        +------------------+-------------------+-----------------+
+        |                  |                   |
+   SignalsPack      DueDiligencePack      future Domain Packs
+        |
+        v
+longclaw-agent-os = desktop shell + control plane + evidence/review UI
+```
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Current -> This plan -> 12-month ideal
+- Current: 多仓边界大体正确，但没有一个统一 runtime contract
+- This plan: 一个共享 core contract，两个旗舰 domain pack，一个统一控制面，一套记忆/交付/评测模型
+- Ideal: 一个可移植 Agent Core，能同时服务 Mac、微信、语音、未来移动端/云端，而不用重写业务逻辑
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Interfaces
+- 在 `hermes-agent` 定义核心类型：`Session`、`Task`、`Run`、`Artifact`、`Approval`、`DeliveryPolicy`、`MemoryRecord`、`ReviewDecision`、`DomainPackDescriptor`
+- 定义 `DomainPack` 契约：`describe()`、`health()`、`capabilities()`、`run(request)`、`list_artifacts(run_id)`、`review_actions(run_id)`、`eval_suite()`
+- 定义 Adapter 契约：输入统一 inbound event，输出遵守 delivery policy；不在 adapter 层做业务编排
+- 定义控制面契约：列出 runs、读取 artifacts、打开 evidence、提交 manual review、触发 operator actions
+- 定义记忆契约：原始/逐字 memory 进 MemPalace，reviewed knowledge 进 Obsidian，promotion 和 user model 状态由 core 持有
+- 定义交付契约：WeChat 负责 live reply + 条件性 proactive，语音负责 ingress，桌面通知做可靠兜底
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Implementation Plan
+1. 边界冻结
+- 发一份唯一可信的 repo map，停止不同仓各自描述不同架构。
+- 明确哪些东西不迁移：`weclaw` 消息语义、`Signals` 引擎逻辑、`due-diligence-core` 站点执行逻辑。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+2. 抽核心
+- 以 `hermes-agent` 作为 portable core 的代码归宿，不以 `longclaw-agent-os` 继续膨胀。
+- 先落 `session / task / artifact / delivery / memory / eval` 共享 contract，再迁业务域。
+- 先做 Domain Pack 注册层和 Adapter 注册层，再做迁移。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+3. 统一通道层
+- 保持 `weclaw` 只做微信桥、媒体、context token、task dispatch。
+- 保持 `Chanless` 只做语音入口，并迁到同样的 inbound-event / delivery-policy 契约。
+- 明确通道保证：微信是 `windowed proactive`，不是永远可靠的后台推送。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+4. 升级两个旗舰域
+- 把 `Signals` 包成 `SignalsPack`，保留现有 CLI / WeChat 流程，只把外部入口换成统一 contract。
+- 把 `due-diligence-core` 包成 `DueDiligencePack`，保留 site adapter、challenge framework、validation、export parity。
+- `aippt` 不进 phase 1，但 phase 1 必须把 Domain Pack SDK 抽好，保证 phase 2 接它时不用再改 core。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+5. 重做统一控制面
+- 把 `longclaw-agent-os` 收紧成桌面控制面：Runs、Evidence、Shadow Compare Queue、Manual Review Queue、Runtime Health、Operator Actions。
+- 只消费 core API，不在桌面 repo 里重新写 Signals 或尽调状态机。
+- 首批页面就围绕“看任务、看证据、看复核、看健康”四件事展开。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+6. 统一记忆、交付、质量门禁
+- 把 `mempalace-sync` 升成 raw memory ingestion 路径。
+- 保持 Obsidian 只存 reviewed knowledge。
+- 把 harness、shadow compare、runtime health、domain regression 合成正式 promotion gate。
+- `gstack` / `harness` / domain validation 继续做内部 release workflow，不做最终产品 runtime 依赖。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Not In Scope
+- 把所有仓直接并成一个 monorepo
+- 把 `weclaw` 语义搬进 desktop app 或 core
+- 把 `Signals` 重写成 runtime 内核
+- 把 `due-diligence-core` adapter/challenge 逻辑搬进桌面端
+- phase 1 就做多租户通用 SaaS 平台
+- phase 1 就把 `aippt` 做成首批旗舰域

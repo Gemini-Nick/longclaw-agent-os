@@ -1,0 +1,904 @@
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6297-51fa-7952-80ae-0784abe80e81
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+cd ~/github代码仓库/longclaw-agent-os
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/claude-worker.sh apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/codex-appserver.sh apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/guardian-monitor.sh apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw-bridge.sh apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weguard apps/runtime/bin/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/guardian/cmd/weclaw-guardian/main.go apps/runtime/guardian/cmd/weclaw-guardian/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/guardian/config/services.json apps/runtime/guardian/config/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/guardian/go.mod apps/runtime/guardian/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/common.sh scripts/guardian/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/cleanup-legacy-runtime.sh scripts/guardian/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/install-v2.sh scripts/guardian/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/uninstall-v2.sh scripts/guardian/
+cp /Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/README.md README.md
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6297-51fa-7952-80ae-0784abe80e81
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+cd ~/github代码仓库/longclaw-agent-os
+git checkout -b codex/runtime-single-package
+git status
+git add README.md apps/runtime scripts/guardian
+git commit -m "runtime: package guardian and weclaw as single install bundle"
+git push -u origin codex/runtime-single-package
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6297-51fa-7952-80ae-0784abe80e81
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你想把“单包安装入口”也进 GitHub 仓库，再额外复制这几个文件到仓库根目录或单独的发布目录：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6297-51fa-7952-80ae-0784abe80e81
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- [install.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/install.sh)
+- [uninstall.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/uninstall.sh)
+- [PRODUCT.md](/Users/zhangqilong/Documents/Playground/watchdog-migration/PRODUCT.md)
+- [bundle/README.md](/Users/zhangqilong/Documents/Playground/watchdog-migration/bundle/README.md)
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6297-51fa-7952-80ae-0784abe80e81
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+更推荐的做法是：  
+GitHub 仓库只提交“产品层源码 + 打包说明”，`bundle/weclaw-real` 不直接进 repo，而是在发布时由 CI 或本地打包脚本放进去。这样以后升级 `weclaw` 内核更干净。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6297-51fa-7952-80ae-0784abe80e81
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以直接给你一份“发布到 GitHub 的最小文件清单”，只列必须提交的文件。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 单包可安装的产品边界
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Summary
+- 目标：用户未来在另一台 Mac 上，理论上只需要执行一个安装包，就能装好整套后台服务。
+- 产品应拆成两层：
+  - 产品层：你自己的 runtime 安装包，负责安装、启动、托管、升级、观测
+  - 内核层：`weclaw` fork，只负责微信桥接本体
+- 设计原则：用户只面对“一个安装包”，但代码层面必须把“产品层”和“桥接内核”分开，否则后续升级会越来越难。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 明确边界
+- 产品层必须负责：
+  - `launchd` 服务注册与托管
+  - `guardian`、`scheduler`、`codex`、`claude`、`weclaw` 的编排
+  - `Watchdog 自动化报告`
+  - 日志、状态文件、故障降级、清理旧残留
+  - 安装、升级、卸载
+- `weclaw` fork 只负责：
+  - 微信登录与凭据
+  - 消息桥接
+  - API server
+  - 基础 CLI 能力
+- 不应放进 `weclaw` fork 的内容：
+  - `guardian` 逻辑
+  - `scheduler` 逻辑
+  - `launchd` 产品托管逻辑
+  - 你的 Watchdog 报告与 failover 策略
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 安装模型
+- 最终交付物是一个大包。
+- 用户只执行一次，例如：
+  - `bash install.sh`
+  - 或一个 `.pkg`
+- 这个安装包内部完成：
+  - 安装 `weclaw-real`
+  - 安装 runtime 脚本和二进制
+  - 写入 `LaunchAgents`
+  - 注册 `guardian/codex/claude/weclaw/repo-scheduler`
+  - 清理历史残留
+  - 启动服务
+- 用户首次只额外做一件事：
+  - `weclaw login` 扫码
+- 之后由常驻服务接管，不需要再手工 `weclaw start`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 升级原则
+- 升级产品层时，不覆盖用户微信凭据
+- 升级 `weclaw` 内核时，不改产品层的 `launchd/guardian/scheduler`
+- 永远优先在产品层修集成问题
+- 只有通用问题才回馈到 `weclaw` fork
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 验收标准
+- 新机器执行一个安装包后，5 个服务自动就位
+- `scheduler` 自动运行，`weclaw` 自动常驻
+- `claude` 未认证不会重启风暴
+- `weclaw` 会话过期只显示 `session_expired`，不刷屏
+- 后续升级时，产品层和 `weclaw` 内核可以分别替换
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Assumptions
+- 平台先只做 macOS
+- 微信仍是唯一通知通道
+- 产品目标是“单包安装”，不是让用户手工拼装多个组件
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- [install.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/install.sh)
+- [uninstall.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/uninstall.sh)
+- [PRODUCT.md](/Users/zhangqilong/Documents/Playground/watchdog-migration/PRODUCT.md)
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+核心变化是把产品层和 `weclaw` 内核层明确拆开了：
+- 产品层包内固定使用 `bundle/weclaw-real` 作为桥接内核输入位
+- `install.sh` 现在会整体铺开 `longclaw-agent-os` runtime 源码树，再安装 runtime、注册 `LaunchAgents`、启动服务
+- `install-v2.sh` 现在明确优先安装包内的 `weclaw-real`，不再隐式依赖机器上已有 `weclaw`
+- 增加了 [uninstall-v2.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/uninstall-v2.sh)，默认只移除 runtime 服务，保留微信凭据和 `weclaw-real`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+为了让包内容自洽，我也把缺失的 runtime 必需脚本补进镜像了，包括 `weguard`、`codex-appserver.sh`、`claude-worker.sh`、`guardian-monitor.sh`，并把 [apply-live.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/apply-live.sh) 同步到同一边界。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证结果：
+- 所有安装/卸载脚本 `bash -n` 通过
+- `weclaw-guardian` 重新编译通过
+- 单包安装模拟已经能走到 `launchd bootstrap` 阶段；在沙箱里失败于没有真实 GUI launchd 上下文，这是预期的，不是包内容缺失
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在这套包的使用方式已经收敛成：
+1. 把 `weclaw` fork 构建产物放到 [bundle/README.md](/Users/zhangqilong/Documents/Playground/watchdog-migration/bundle/README.md) 规定的位置，也就是 `bundle/weclaw-real`
+2. 在目标 Mac 上执行：
+```bash
+bash install.sh
+```
+3. 首次再手工执行一次：
+```bash
+~/.weclaw/bin/weclaw login
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6292-6248-7ae2-82c9-92120b8e64a7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我这里不能直接把这些改动写到你真实仓库和系统路径；如果你要把这版同步到 live，下一步就是运行你自己的部署/同步链路，或者我继续帮你生成一份“打包发布清单”。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628f-ec92-78f3-9ade-7615ba92c6e7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+是的。你需要明确这些界限，我未来是要打包这一套服务给另外的mac，要做到可复用的产品级
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+因为 upstream 作者解决的是“通用 CLI 工具能跑起来”的问题，不是“在你这台机器上作为一套长期托管的 macOS 常驻服务体系稳定运行”的问题。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw start`
+- `weclaw stop`
+- `weclaw restart`
+- `weclaw status`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 用户自己手工启动
+- 自己手工停止
+- 用 pid 文件判断状态已经够用了
+- 后台化一次就可以了
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+在这种使用方式下，他的实现其实并不离谱：
+- `start` 默认后台化
+- `status` 看 pid 文件
+- `restart` 杀旧进程再拉新进程
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 由 `launchd` 托管
+- 由 `guardian` 做统一观测
+- 要和 `scheduler`、`codex`、`claude` 联动
+- 要稳定跑很久
+- 要能区分 `running`、`session_expired`、`unauthenticated`
+- 不能因为一个通知桥的问题把整个系统搞乱
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `launchd` 和自带 daemon 化模型冲突
+- 一个进程管理器最怕你再套一层自后台化
+- 因为它要托管前台主进程，你却让它托管了一个启动器
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `pid file` 只适合简单单机工具
+- 但不适合你这种“外部 supervisor + 端口服务 + 多组件联动”的环境
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. `session expired` 在 upstream 里只是运行日志
+- 但在你这里，它已经是系统状态的一部分，需要被建模成健康状态而不是刷日志
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+4. 作者大概率没有你这种集成诉求
+- 很多开源作者只关心“功能可用”
+- 不一定会优先考虑 macOS launchd、长期守护、企业级 observability、静默降级这些运维问题
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在碰到的问题，本质上就是把一个“面向人工操作的 CLI bridge”接进了“面向常驻托管的后台服务系统”，于是接口语义不够用了。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这也是为什么我一直建议把大部分修正放在外层 runtime，而不是先去质疑 upstream 设计。因为很多时候不是 upstream 不行，而是：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- upstream 解决的是 80% 通用场景
+- 你这里属于那 20% 的集成场景
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628e-a7fe-7961-8c72-1cd4128f8812
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一步可以顺手帮你把这个边界总结成一条很实用的维护原则：
+- 哪些问题该在你自己的 runtime 层修
+- 哪些问题值得回馈成 upstream patch
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+有一个问题，因为我这个weclaw是fork github项目的，你这样改会不会影响我后续迭代升级？
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+会有影响，但目前这版影响是可控的，而且主要落在“本地运行时层”，不是直接把你的 fork 改坏。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw-bridge.sh`
+- `install-v2.sh`
+- `apply-live.sh`
+- 本地 `~/.weclaw/bin/weclaw` wrapper
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这些都属于你自己的运行时接入层，不是 upstream `weclaw` 核心源码本体。  
+这类改动对你以后升级 fork 的影响较小，因为：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- upstream `weclaw-real` 还是保留原样
+- 你只是外面多了一层 wrapper 和 launchd 托管逻辑
+- 将来升级时，核心冲突主要在你的 runtime 脚本，不在 `weclaw` 主程序逻辑里
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+第二层，影响较大的部分。
+如果后面为了彻底解决 session warning 刷屏，或者为了让前台托管更优雅，去直接改你 fork 里的 `weclaw` Go 源码，那就会增加后续升级成本。因为那时你会有：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 自己 fork 上的行为补丁
+- upstream 新版本的变更
+- 两边合并时需要处理冲突
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 先尽量只改“外层集成”
+- 不直接侵入 upstream `weclaw` 核心实现
+- 只有外层实在兜不住时，才考虑补 upstream patch
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw-real` 作为原始二进制
+- `weclaw` 作为本地 wrapper
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 继续保留本地 wrapper 模式
+- 升级 `weclaw-real`
+- wrapper 继续适配
+- 这是我更推荐的方式
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. 等以后 upstream 自己修好了这些问题
+- 直接删掉 wrapper
+- 回归纯 upstream 行为
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 会增加一点运维复杂度
+- 但目前不会明显卡死你后续 fork 升级
+- 因为当前改动主要是“集成层补丁”，不是“深改 upstream 核心”
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628d-c8a0-7e03-a338-b160d5558ae8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 凡是 `launchd`、`guardian`、`scheduler`、微信通知接入相关逻辑，都尽量放在你自己的 runtime 层
+- 凡是 `weclaw` 本体协议、登录、monitor、API server 逻辑，尽量少改 upstream 源码
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# `weclaw` 通知型常驻服务收口方案
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Summary
+- 保留 `weclaw` 作为通知型常驻服务，不再把它当核心控制面服务。
+- 目标是让 `launchd` 真正托管 `weclaw` 的前台主进程，而不是托管一个“启动后立刻退出”的桥接脚本。
+- 成功标准：
+  - `launchctl print gui/.../com.zhangqilong.ai.weclaw.bridge` 的主进程生命周期与 `127.0.0.1:18011` 的监听进程一致
+  - `weclaw.bridge` 不再出现“listener 还活着，但 LaunchAgent 已退出并重拉”的分裂状态
+  - 微信会话过期仍显示为 `session_expired`，但不会高频刷屏，也不会影响 `scheduler`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Key Changes
+- `weclaw` 进程模型调整
+  - `weclaw-bridge.sh` 不再调用 `~/.weclaw/bin/weclaw start -f`
+  - 改为直接 `exec` 真正的前台 `weclaw-real` 入口，让当前 shell 进程被主服务进程替换
+  - 如果 `weclaw-real` 已支持前台模式，直接使用前台模式参数；如果当前 `start -f` 就是前台模式，则 bridge 直接调 `weclaw-real start -f`，绕过 wrapper 的后台化逻辑
+  - `launchd` 托管的 PID 应和实际监听 `18011` 的 PID 收口到同一条生命周期
+- `weclaw` wrapper 保留但职责收窄
+  - `~/.weclaw/bin/weclaw` 继续作为用户侧命令包装层，仅处理 `status`、`stop`、`restart`
+  - `status` 以真实监听态优先，pid 文件只作为辅助
+  - `restart` 不再通过“再后台启动一个新进程”实现，而是配合 `launchctl kickstart` 或先停后由 LaunchAgent 接管启动
+  - bridge 自己不再走 wrapper 的 `start`
+- `weclaw.bridge` 稳定性与日志
+  - bridge 日志只保留启动、退出、异常摘要
+  - 微信会话过期继续视为 `session_expired` 已知状态
+  - 重复的 session warning 做时间窗口抑制，只保留首条和低频摘要
+  - `scheduler` 继续把通知失败标记为 `notify_skipped_session_expired`，不影响同步成功判定
+- `LaunchAgent` 行为保持不变
+  - 仍由 `com.zhangqilong.ai.weclaw.bridge` 托管
+  - 保持登录后自动启动和 `KeepAlive`
+  - 不引入新的 daemon 或备用通道
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Public Interfaces / Behavior
+- `~/.weclaw/bin/weclaw`
+  - `status`：语义为“实际 bridge/listener 是否活着”
+  - `stop`：终止真实前台 `weclaw-real` 并清理 stale pid
+  - `restart`：重启由 LaunchAgent 托管的服务链路，不再隐式走后台 fork 模式
+- `weclaw-guardian status`
+  - `weclaw` 状态继续只显示 `running`、`session_expired`、`not_running`
+- `scheduler`
+  - 保持“登录后立即执行一次 + 每 4 小时执行一次”
+  - 保持当前“🔄 Watchdog 自动化报告”格式
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Test Plan
+- 生命周期收口
+  - 启动后 `launchctl print ...weclaw.bridge` 中的 `pid` 与 `lsof -iTCP:18011 -sTCP:LISTEN` 对应进程一致
+  - `weclaw.bridge` 在正常运行期间 `runs` 不持续增加
+  - `last exit code` 在稳定期保持 `(never exited)` 或长期不变化
+- 命令行为
+  - `~/.weclaw/bin/weclaw status` 与监听态一致
+  - `~/.weclaw/bin/weclaw stop` 后 listener 消失
+  - `launchctl kickstart -k gui/$(id -u)/com.zhangqilong.ai.weclaw.bridge` 后 listener 恢复
+- 异常场景
+  - 微信未登录时 `weclaw` 进入 `session_expired`
+  - bridge 日志不再每 5 秒刷同一条 warning
+  - `scheduler` 在会话过期下仍正常同步，只记录通知跳过
+- 回归检查
+  - `claude-worker` 继续保持 idle，不再重启风暴
+  - `active-agent.json` 继续稳定为 `codex`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Assumptions
+- 保留微信作为唯一通知通道，不引入备用投递链路。
+- `weclaw` 的定位是通知桥，不参与核心调度与 failover 决策。
+- 若 upstream `weclaw-real` 当前没有可直接前台托管的入口，则实现时优先改本地 wrapper/bridge 调用方式；只有在无法收口生命周期时才考虑补 upstream 二进制改造。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- [weclaw-bridge.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw-bridge.sh)
+  - 不再走 `~/.weclaw/bin/weclaw start -f`
+  - 现在直接 `exec ~/.weclaw/bin/weclaw-real start -f`
+  - 这样 `launchd` 持有的就是实际前台主进程链路，不再是“启动器脚本”
+- [weclaw](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw)
+  - `restart` 优先改成 `launchctl kickstart -k gui/.../com.zhangqilong.ai.weclaw.bridge`
+  - 若未加载则回退到 `launchctl bootstrap`
+  - 不再自己后台拉起新实例
+  - `stop` 会先 `bootout` 这个 LaunchAgent，再清理残留 listener/pid
+- [apply-live.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/apply-live.sh) 和 [install-v2.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/install-v2.sh)
+  - 保持之前的安装链路修复，继续安装新编译的 `weclaw-guardian` 和 `weclaw` wrapper
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我已经做了非改动验证：
+- `bash -n` 通过
+- fake `launchctl` 测试确认 `weclaw restart` 现在走 `kickstart -k gui/501/com.zhangqilong.ai.weclaw.bridge`
+- fake `weclaw-real` 测试确认 `weclaw-bridge.sh` 现在会直接 `exec ... start -f`，不是再走后台化包装
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+bash /Users/zhangqilong/Documents/Playground/watchdog-migration/apply-live.sh
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-ec7e-7c30-8694-47ddf79b6a15
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+执行完后我继续帮你验这三项：
+- `launchctl print ...weclaw.bridge` 的 `pid` 是否和 `lsof -iTCP:18011` 一致
+- `weclaw.bridge` 的 `runs` 是否不再增加
+- `claude-worker` 是否仍保持 idle，不回退到重启风暴
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+区别在于你要不要“常驻服务”，取决于 `weclaw` 在系统里的职责，不取决于它需不需要扫码登录。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `scheduler` 跑完后能直接把“Watchdog 自动化报告”发出去
+- 你登录成功后，后续消息桥会自动维持，不需要每次手工 `weclaw start`
+- `guardian` 能统一观测它的状态，比如 `running`、`session_expired`
+- 出现异常时，系统知道是“微信会话过期”，不是“服务根本没启动”
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 每次要发消息前都得先手工启动
+- `scheduler` 和微信通知重新耦合成“跑了但不一定发得出去，且状态不透明”
+- 历史那条“Watchdog 自动化报告”链路就又回到半手工状态
+- `weclaw` 的登录态、在线态、消息桥状态都不再在统一服务体系里
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 如果你还要“后台定时同步 + 自动微信报告”，`weclaw` 还是应该作为常驻服务存在
+- 但它应该是“可失效的常驻服务”，不是“必须永远健康的核心服务”
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 作用：通知桥
+- 地位：重要，但不是核心控制面
+- 失效策略：进入 `session_expired`，不拖垮 `scheduler`、`codex`、`guardian`
+- 恢复方式：你手工 `weclaw login` 一次后继续接管
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `codex` / `guardian` / `scheduler` 是核心后台
+- `weclaw` 是通知型后台
+- 它值得常驻，但不值得因为它失效而把整套系统搞乱
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 让它的常驻方式正确
+- 让它过期时安静
+- 让它恢复后自动继续工作
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628b-1235-7c50-b3b1-0f8d0abf1fbc
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一步可以继续把这个判断收敛成一个很短的实施方案，只针对最后这一个问题：
+- `weclaw` 保留为通知型常驻服务
+- 但改成由 `launchd` 真正托管前台主进程，而不是现在这种启动器模式
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+把 weclaw.bridge 改成真正持有前台进程，而不是让它启动一个后台 weclaw-real 后自己退出。你这句话什么意思？要怎么改呢？
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+意思是你现在的 `weclaw.bridge` 其实不是“真正的主进程”，它更像一个启动器。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `launchd` 拉起 `weclaw-bridge.sh`
+2. `weclaw-bridge.sh` 执行 `~/.weclaw/bin/weclaw start -f`
+3. 这个 `weclaw start` 又会再 fork/后台化，真正把 `weclaw-real` 放到后台跑起来
+4. `weclaw-bridge.sh` 自己就结束了
+5. 所以 `launchd` 管的是“启动脚本”，不是“真正提供 18011 服务的那个前台进程”
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `launchd` 看到 bridge 退出，会认为这个 job 已结束，可能重拉
+- 但真正的 `weclaw-real` 还在后台活着，于是出现“bridge 重启了，但监听进程也还在”的分裂状态
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在看到的现象就是这个：
+- `com.zhangqilong.ai.weclaw.bridge` 有 `runs = 2`
+- 但 `127.0.0.1:18011` 一直有 `weclaw-real` 在监听
+- 说明 launchd 管的不是同一个生命周期
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `launchd` 拉起 `weclaw-bridge.sh`
+2. `weclaw-bridge.sh` 不再调用 `weclaw start`
+3. 它直接 `exec` 真正的前台 `weclaw-real` 主进程
+4. 这样 `launchd` 持有的 PID 就是实际监听 `18011` 的那个进程
+5. 进程挂了，launchd 才重启；进程没挂，launchd 就不会误判
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `launchd -> weclaw-bridge.sh -> weclaw start -> 后台 weclaw-real`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `launchd -> weclaw-bridge.sh -> exec weclaw-real <前台模式>`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+第一，`weclaw-bridge.sh`
+- 不再执行 `weclaw start -f`
+- 改成直接执行真实二进制的前台命令
+- 如果 `weclaw-real` 支持直接前台运行，就直接 `exec ~/.weclaw/bin/weclaw-real ...`
+- 如果它不支持，就需要找它内部真正的前台入口参数，或者改 upstream 二进制
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+第二，`weclaw` wrapper
+- 保留给用户用的 `status/stop/restart`
+- 但 bridge 自己不要再走 wrapper 的 `start`
+- bridge 应该直接调用真实前台进程，避免再次后台化
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 用户侧命令：
+  - `~/.weclaw/bin/weclaw` 继续作为 wrapper
+- 服务侧命令：
+  - `weclaw-bridge.sh` 直接调 `~/.weclaw/bin/weclaw-real`
+- 目标：
+  - `launchctl print ...weclaw.bridge` 的 `pid`
+  - 和 `lsof -iTCP:18011` 的 `pid`
+  - 最终应该指向同一个进程，或者至少是同一个主链路上的前台进程
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d628a-680b-7691-8b4b-58538f6a3fbe
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一步可以把这件事整理成一版精确实施方案，明确到：
+- bridge 脚本具体改成什么调用方式
+- 怎么确认 `weclaw-real` 是否支持前台运行
+- 如果不支持，应该改 wrapper 还是改 upstream `weclaw` 二进制
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6289-0406-7231-bb5c-79b8b567e23e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经修好：
+- `weclaw status` 现在正常了，当前返回：
+  - `weclaw is running (listener=127.0.0.1:18011 pid=49770)`
+- 真实监听也一致：
+  - `127.0.0.1:18011` 上现在是 `weclaw-real` 在监听
+- `claude-worker` 的静默降级已经生效了：
+  - `launchctl` 现在显示 `runs = 1`、`last exit code = (never exited)`
+  - 最新日志在 `2026-04-06 04:23:50` 已经变成
+    - `claude auth unavailable; entering idle mode (claude auth not logged in)`
+  - 之前那种 `fails=3/3` + `exiting for launchd restart` 的循环已经停止
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6289-0406-7231-bb5c-79b8b567e23e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还剩 1 个问题：
+- `weclaw.bridge` 这个 LaunchAgent 本身还不稳定
+  - 它在 `2026-04-06 04:23:51` 启动后，又在 `04:24:19` 退出了一次
+  - `launchctl print` 现在显示 `runs = 2`、`last exit code = 0`
+  - 但实际 `18011` 监听还在，说明当前是：
+    - `weclaw.bridge` 退掉了
+    - `weclaw-real` 还在后台继续跑
+  - 这表示 bridge 的“常驻进程”和真正的 listener 进程现在是分离的，还没完全收口成单一稳定链路
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6289-0406-7231-bb5c-79b8b567e23e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论：
+- `weclaw status` 修好了
+- `claude` 重启风暴修好了
+- 现在剩下的唯一问题是 `weclaw.bridge` 自己会干净退出并被 launchd 重拉，但 listener 没挂

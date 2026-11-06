@@ -1,0 +1,77 @@
+{
+  "id": "019e23f0-4a32-7201-a2f1-8ec99c3e7689",
+  "title": "检查 Codex 自动化与 launchd",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e23f0-4a32-7201-a2f1-8ec99c3e7689",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "22582ca750c0e451a25d03940fadc59fdcd097854301adb5dc1bf81f09e64419",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#first-request",
+      "timestamp": null,
+      "verbatim": "1、检查一下目前的codex自动化任务和任务日志，明确一下目前的自动化任务是有效能完成任务？但是我目前没有收到过任何一条微信 2、检查一下launchd的系统级别常驻服务和日志，看看有没有优化空间"
+    },
+    {
+      "hash": "e107edf12d65d8a84b1863bf1b96bcde3cc4549b7e0a7e29930f586573bbd33a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "结论：Codex 自动化任务基本是有效在跑的，多个窗口已经生成过 `NOTIFY`；你没收到微信，主因不是任务没执行，而是“生成摘要”和“发送微信”之间没有接上。"
+    },
+    {
+      "hash": "36d41ed5784bcc075aef37932cf8dddf413d9404ea70c188992071844a17d366",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "- 8 个 Codex 自动化任务都是 `ACTIVE`，最近都有运行痕迹。\n- 盘前、10 点窗口、午盘、2 点窗口、尾盘、周度校准都生成过 `NOTIFY`。\n- 运行维护任务最新结果是 `DONT_NOTIFY`，表示它认为 runtime 正常，不需要推送。\n- 盘后复盘任务最近有失败，主要卡在 `/api/workbench/shell` timeout；当前我实测该接口已经可返回 JSON。\n- 所有自动化命令里都没有 `--send`，所以它们只生成/打印结果，不会真正发微信。\n- Signals 当前配置里 `WECLAW_ENABLED=False`，`WECLAW_SEND_TO` 为空；即使命令加了 `--send`，也还缺投递配置。\n- WeClaw 本身现在是活的：`127.0.0.1:18011/health` 返回 `ok`，绑定文件也是 `bound`，但日志里有间歇性 iLink/DNS/TLS 失败，曾提示连续失败时需要 `weclaw login`。"
+    },
+    {
+      "hash": "13234777942047f73e35624e823929a0dba060ca0e8a3cd890bb70f26cdf7837",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "- 常驻服务整体架构是对的：`signals.runtime`、`longclaw.runtime`、`weclaw.bridge`、`codex.appserver`、`openclaw.gateway`、`mongodb`、`keepawake`、Clash 后台服务都在跑。\n- `signals-runtime.sh status` 显示 web、quote、signal、workbench、board 等 lane 都在运行。\n- `longclaw-runtime.sh status` 显示 guardian 和 scheduler-loop 正常，当前没有 scheduler lock。\n- `keepawake` 生效，`pmset` 里有防睡眠断言。\n- 优化空间主要在日志和投递链，不是服务没起来。"
+    },
+    {
+      "hash": "031c31fd290754b578abecb045c24b37ebe22ae852182c892bd3fda2eb59db92",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "1. 在 Signals `.env` 里启用 WeClaw：\n   `WECLAW_ENABLED=true`\n   `WECLAW_API_URL=http://127.0.0.1:18011`\n   `WECLAW_SEND_TO=o9cq807Zo-n55fMzg7XifEQg8IrU@im.wechat`"
+    },
+    {
+      "hash": "cb87542106ea5edca6c2f602a35ae8ca091f4198361c2044e62e89e0005fd1bc",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "3. 加一个发送前 preflight：检查 WeClaw `/health`、`WECLAW_SEND_TO`、context token、绑定状态，失败时把失败原因写进 automation memory。"
+    },
+    {
+      "hash": "b4d6238a11147c61099dd338cafa962408b17f846be5542fa82039497a492f15",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "4. 清理 launchd 日志噪音：\n   - 修正 `weclaw status` 指向不存在的 `~/.weclaw/weclaw.log`。\n   - 给 `/tmp/longclaw-guardian/*.log` 加轮转或大小上限。\n   - 降低 `weclaw-bridge.log` 健康检查的重复写入。\n   - 处理反复出现的 `[acp] unhandled method: skills/changed`。\n   - 如果不需要 Futu 港股指数，关闭或降级 `FutuOpenD 不可达 127.0.0.1:11111` 警告；如果需要，就启动 Futu OpenD。"
+    },
+    {
+      "hash": "b87046a378c325cb83eddb078b06018c2eae44aee3484b2217660ed3ba61fa1d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e23f0-4a32-7201-a2f1-8ec99c3e7689#recent",
+      "timestamp": null,
+      "verbatim": "我这轮没有改文件，也没有发测试微信，因为这会产生外部可见消息。下一步只需要你确认一句“可以发测试微信”，我就按上面的最小改动接通投递链，并发一条测试消息验证。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

@@ -1,0 +1,37 @@
+{
+  "id": "019f1b28-37a0-7af2-9044-316544451794",
+  "title": "排查复盘笔记未送达",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019f1b28-37a0-7af2-9044-316544451794",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "a3976e239516a30a8883e529bf76621fdc6ddbd386bed03bbb97a057b09fa5ca",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f1b28-37a0-7af2-9044-316544451794#recent",
+      "timestamp": null,
+      "verbatim": "1. 昨晚正常自动化没有留下 `2026-06-30` 成功发送记录；数据链路本身也延迟到北京时间 `2026-07-01` 早上才补齐一批盘后数据。\n2. 我刚刚已经重新生成了复盘正文，gate=`NOTIFY`，MCP context 成功；但 WeChat 补发失败。长正文、短正文、CLI 发送、直接 iLink `sendmessage` 都返回同一个错误：`ret=-2 errmsg=`。"
+    },
+    {
+      "hash": "3eeab038b3dd6e19b998cf647ce601d72e0591aa100b0727415b4aae6317baf0",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f1b28-37a0-7af2-9044-316544451794#recent",
+      "timestamp": null,
+      "verbatim": "本地 WeClaw 进程和 health 是正常的，`getupdates/getconfig` 也通，所以目前不是本机服务没启动，而是 iLink 的发送层拒绝当前出站消息。失败记录已写回 [memory.md](/Users/zhangqilong/.codex/automations/signals-postmarket-strategy-review/memory.md)。"
+    },
+    {
+      "hash": "8f1e3e389adec753de20a6d5f8461abf2f3975c243b77c779d52cbf80a87bd58",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f1b28-37a0-7af2-9044-316544451794#recent",
+      "timestamp": null,
+      "verbatim": "下一步需要你在微信里给 WeClaw bot 随便发一条消息刷新会话，或者重新跑一次 `weclaw login`；刷新后我就能直接重发刚生成的那版正文。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

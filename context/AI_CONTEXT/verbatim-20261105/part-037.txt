@@ -1,0 +1,752 @@
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. Local Work / 按钮可用性
+- `Local Work` 的行为固定为：
+  - 如果检测到本地 ACP bridge，则默认走本地 ACP。
+  - 如果未检测到 bridge，不允许伪装成可用；Home 上显示 `degraded`，Launch 按钮禁用或降为明确提示。
+- ACP bridge 探测规则固定为：
+  - 优先 `LONGCLAW_LOCAL_ACP_SCRIPT`
+  - 否则回退到当前兼容脚本路径
+  - 结果暴露到 renderer，作为 `Local Work` 的 readiness 来源
+- `Reset runtime`、`Dispatch via WeClaw`、`Pack shortcuts`、`detail drawer actions` 全部要加 availability guard：
+  - 不满足前置条件时，不执行调用
+  - 给出明确的 inline notice，而不是抛异常到全局 error banner
+- `WeClaw Dispatch` 这轮只修“按钮/入口稳定性”和状态表达，不要求补完整真实微信闭环。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 布局、滚动和显示修复
+- 保留系统标题栏，不做 `webkit-app-region` 自定义拖拽，不改 BrowserWindow 框架。
+- 壳层滚动规则收口为：
+  - 侧栏 `overflow-y: auto`
+  - 主工作区 `overflow-y: auto`
+  - 详情抽屉 `overflow-y: auto`
+  - 小窗口下三者都能独立滚动
+- 修掉当前“有内容但看不到滚动条”的结构性问题：
+  - sidebar 允许滚动
+  - page banner/header 不挤压掉主内容滚动区
+  - detail overlay 打开时不遮掉主区滚动和关闭动作
+- 视觉层只做稳定性优化，不改设计方向：
+  - error/notice banner 改成更克制的 panel 内消息
+  - 空态和 degraded 态统一文案
+  - 交互控件补 hover/disabled/aria 状态，避免“能点但会炸”的假可用感
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 4. 明确的首轮修复顺序
+- 第一优先级：
+  - `Unknown pack: due_diligence`
+  - 缺环境时的全局报错
+  - Local Work 假可用
+- 第二优先级：
+  - 侧栏和主工作区滚动
+  - 小窗口布局截断
+  - detail drawer 覆盖层体验
+- 第三优先级：
+  - banner 文案和 degraded 展示统一
+  - pack/studio 的状态标签更清晰
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Test Plan
+- 运行态降级：
+  - 没有 `LONGCLAW_AGENT_OS_BASE_URL` 时，`Home` 仍能打开，不报全局异常。
+  - 没有 `LONGCLAW_DUE_DILIGENCE_BASE_URL` 时，进入 `Packs > Due Diligence` 显示 degraded state，不再报 `Unknown pack`.
+  - 没有本地 ACP bridge 时，`Local Work` 不执行假 launch，页面给出明确 unavailable/degraded 提示。
+- 正常可用：
+  - 有 ACP bridge 时，`Local Work` 默认走本地 ACP。
+  - 有 Longclaw Core 时，`Cloud Sandbox` 继续走 canonical launch。
+- 布局：
+  - 侧栏在较小窗口高度下可滚动。
+  - `Home`、`Runs`、`Work Items`、`Packs` 主区都可滚动。
+  - 详情抽屉打开后仍能关闭、滚动，不吞掉主页面交互。
+- 回归：
+  - `npm run lint`
+  - `npm run build:electron`
+  - 现有 `client.test.ts`
+  - 新增 1 组 control-plane fallback tests，覆盖 `due_diligence/signals` degraded dashboard 行为
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 本轮不做 frameless，不做自定义标题栏，只保留系统标题栏。
+- 本轮优先把 Electron 做成“没接全后端也能稳定演示”的客户端，而不是强依赖统一启动器才可用。
+- `Local Work` 的默认语义保持不变：**有本地 ACP bridge 就走本地 ACP**；没有 bridge 就明确降级。
+- `Signals` 和 `due-diligence` 这轮只要求 UI/状态稳定，不要求深执行闭环一起完成。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**已修复**
+- `Packs` 不再因为已知 pack 缺配置/后端不可达而抛 `Unknown pack`；`due_diligence` 和 `signals` 会返回 `degraded` / `not_connected` dashboard，而不是整页失败。见 [client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts) 和 [models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts)。
+- Electron 启动时会自动读取 `~/.longclaw/runtime-v2/stack.env`，并把 `Longclaw Core connected / Due Diligence connected / Signals available / Local ACP available` 作为可读摘要暴露给 renderer。见 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)。
+- `Local Work` 现在先探测 ACP bridge：
+  - 优先 `LONGCLAW_LOCAL_ACP_SCRIPT`
+  - 否则回退旧路径
+  - 没 bridge 时明确显示 `degraded`，并禁用假可用按钮
+  见 [acp-client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/acp-client.ts) 和 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)。
+- `Home`、`Runs`、`Work Items`、`Packs` 改成面板级降级，不再因为单个请求失败触发全局错误；按钮也都加了 availability guard。见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)。
+- 滚动和布局结构收紧了：侧栏、主区、详情抽屉都能独立滚动，小窗口下不再容易被截断。见 [layout.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/layout.ts)。
+- 错误/提示从全局 banner 收回到更克制的 panel 内消息，补了 disabled/notice 视觉语义。见 [designSystem.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.ts)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**已验证**
+- `npm run test -- src/services/longclawControlPlane/client.test.ts`
+- `npm run lint`
+- `npm run build:electron`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5be-1992-7471-ab1f-ed942a593c8b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**当前边界**
+- 这轮解决的是 Electron 稳定性和优雅降级，不是重新打通真实微信闭环。
+- 这台机器上本地 ACP bridge 仍然缺失，所以 `Local Work` 现在会正确显示不可用，而不是假装能跑。真实可用前还需要你本机实际存在 ACP bridge 脚本。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b4-aee1-7653-9e63-b15195917a11
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你查看一下整个electron的报错信息，包括页面拖动，先把很明显的bug和优化显示解决了。目前有些按钮点击报错，没有滚动条等布局问题，都会影响整体效果
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b0-b1f3-7990-a0e0-5be22f14af2c
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+目前可以拉起来electron并且测试验证三种模式么？其中Local work如果本地存在acp bridge，也会默认走本地acp
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b0-b1f3-7990-a0e0-5be22f14af2c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**现在可以验证的**
+- `Home` 里的三种模式入口已经在界面里了：
+  - `Local Work`
+  - `Cloud Sandbox`
+  - `WeClaw Dispatch`
+  见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:99)
+- 模式选择、launch 记录、task/run/work item 的本地 ledger 语义已经接好了。
+- `Local Work` 当前默认后端确实是 `acp`，不是 `sdk`，见 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:32) 和 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:57)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b0-b1f3-7990-a0e0-5be22f14af2c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**现在还不能算完整通过的**
+- `Cloud Sandbox` 和真实 `WeClaw Dispatch` 的 canonical 链路还没法完整验证，因为本机 `Longclaw Core` 没起来，`http://127.0.0.1:8642/agent-os/overview` 现在没有响应。
+- Electron 运行时已经报过一次 `Unknown pack: due_diligence`，说明 pack/dashboard 这层也还没完全 ready。
+- 所以现在是“客户端能开、模式能看、部分本地 fallback 能跑”，不是“三模式端到端都已实证通过”。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b0-b1f3-7990-a0e0-5be22f14af2c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**关于你问的 Local Work**
+- 结论是：**如果本地存在 ACP bridge，它会默认走本地 ACP。**
+- 但要更精确一点，当前代码默认找的是固定脚本：
+  - `~/.weclaw/claude-acp.sh`
+  见 [acp-client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/acp-client.ts:60)
+- 这台机器上我查过：
+  - `~/.weclaw/claude-acp.sh` 不存在
+  - `~/.weclaw/codex-acp.sh` 也不存在
+- 所以当前机器上，`Local Work` 虽然默认走 ACP 模式，但**没有 bridge 文件可连**，不能算可用。
+- 另外，代码里还**没有**通用的 `LONGCLAW_LOCAL_ACP_SCRIPT` 优先覆盖逻辑；现在是写死默认 `claude-acp.sh`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b0-b1f3-7990-a0e0-5be22f14af2c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**准确判断**
+- `Electron`：已经拉起来，可以看和点。
+- `Local Work`：只有在你放好了本地 ACP bridge 脚本后，才会真正默认走本地 ACP。
+- `Cloud Sandbox`：当前不能完整验证，因为 `Longclaw Core` 没启动。
+- `WeClaw Dispatch`：当前不能完整验证，因为也依赖 `Longclaw Core` 和 WeClaw 到 core 的真链路。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da5b0-b1f3-7990-a0e0-5be22f14af2c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步最值当的是两件事：
+1. 把 `Longclaw Core` 在 `8642` 拉起来。
+2. 给 `Local Work` 补成“存在本地 bridge 就自动走 bridge，并支持 codex/claude 可配置”。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 双层运行态计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- Longclaw 需要从“单轴三模式”改成 **双层建模**：
+  - `产品级 work_mode`
+  - `部署级 runtime_profile`
+- 这能同时满足两件事：
+  - 保留你要的三种用户体验
+  - 不把你当前机器上的 `WeClaw -> 本机 ACP 常驻桥接` 误写成产品默认形态
+- phase 1 的统一规则固定为：
+  - **模型层统一云端**
+  - `local` = 本地环境 + 云端模型
+  - `cloud_sandbox` = 云端环境 + 云端模型
+  - `weclaw_dispatch` = 微信/WeClaw 控制本地环境 + 云端模型
+- 你当前机器只是一种 `runtime_profile`：
+  - `dev_local_acp_bridge`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Changes
+### 1. 双层建模
+- 保留产品级 `work_mode`：
+  - `local`
+  - `cloud_sandbox`
+  - `weclaw_dispatch`
+- 新增部署级 `runtime_profile`：
+  - `dev_local_acp_bridge`
+  - `packaged_local_runtime`
+  - `cloud_managed_runtime`
+- 新增解析后的运行态字段：
+  - `runtime_target`
+    - `local_runtime`
+    - `cloud_runtime`
+  - `interaction_surface`
+    - `electron_home`
+    - `weclaw`
+  - `model_plane`
+    - `cloud_provider`
+- 映射固定为：
+  - `local` -> `runtime_target=local_runtime`, `interaction_surface=electron_home`, `model_plane=cloud_provider`
+  - `cloud_sandbox` -> `runtime_target=cloud_runtime`, `interaction_surface=electron_home`, `model_plane=cloud_provider`
+  - `weclaw_dispatch` -> `runtime_target=local_runtime`, `interaction_surface=weclaw`, `model_plane=cloud_provider`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. 当前机器与用户版分离
+- 你当前机器的实现固定归类为：
+  - `runtime_profile=dev_local_acp_bridge`
+- 这个 profile 下：
+  - `local` 和 `weclaw_dispatch` 通过本机 ACP / resident agent bridge 落到本地环境
+  - `cloud_sandbox` 通过 Longclaw Core 落到云端环境
+- 用户版默认不继承这个实现细节。
+- 用户版目标 profile 固定为：
+  - `packaged_local_runtime`
+- 这个 profile 下：
+  - `local` 和 `weclaw_dispatch` 都落到用户机器上安装的 Longclaw 本地 runtime
+  - 不依赖你当前的 ACP 常驻桥接形态
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. Longclaw Core contract 重写
+- `LaunchIntent` 保留 `work_mode`，并新增或固定承载：
+  - `interaction_surface`
+  - `runtime_profile`
+  - `runtime_target`
+  - `model_plane`
+- `Task / Run / Work Item` 都要带上：
+  - `work_mode`
+  - `runtime_profile`
+  - `runtime_target`
+  - `interaction_surface`
+  - `model_plane`
+- 旧的 `execution_plane=weclaw_dispatch` 视为错误历史建模。
+- 兼容读取时统一迁移为：
+  - `work_mode=weclaw_dispatch`
+  - `runtime_target=local_runtime`
+  - `interaction_surface=weclaw`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 4. Electron 与 WeClaw 的产品表达
+- `Electron Home` 继续展示三种 `work_mode`，但文案改成环境导向：
+  - `Local Work`: 本地环境，云端模型
+  - `Cloud Sandbox`: 云端环境，云端模型
+  - `WeClaw Dispatch`: 微信控制本地环境，云端模型
+- `Studio` 或设置面新增只读的 `runtime_profile` 显示，不把它暴露成用户要理解的主模式。
+- `WeClaw` 发送 launch 时继续发 `work_mode=weclaw_dispatch`，但实现层同时带上当前 profile 解析结果。
+- `Local Work` 当前开发态继续可通过 ACP bridge 连接本机 executor，但这个只属于 `dev_local_acp_bridge`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 数据层：
+  - `work_mode` 与 `runtime_profile` 分离后，`Task / Run / Work Item` 仍能正确聚合到同一 ledger
+  - 旧 `execution_plane=weclaw_dispatch` 数据能被兼容读入
+- 当前机器验证矩阵：
+  - `runtime_profile=dev_local_acp_bridge`
+  - `local` 成功落本地环境
+  - `weclaw_dispatch` 成功从 WeClaw 控制本地环境
+  - `cloud_sandbox` 成功落 Longclaw Core 的云端 runtime
+- 产品验证矩阵：
+  - `packaged_local_runtime` profile 下，`local` 与 `weclaw_dispatch` 都不依赖 ACP bridge 语义
+  - `cloud_managed_runtime` profile 下，`weclaw_dispatch` 默认标记为 unavailable/degraded，不自动偷偷改成 `cloud_sandbox`
+- UI 验收：
+  - 用户只看见三种 `work_mode`
+  - 不需要理解你机器上的特殊桥接实现
+  - 但开发/运维面能看到当前 `runtime_profile`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- phase 1 不做本地模型推理，模型层统一云端。
+- `weclaw_dispatch` 继续是正式顶级 `work_mode`，不是普通 surface。
+- `packaged_local_runtime` 是面向用户的目标形态；`dev_local_acp_bridge` 只属于你当前开发环境。
+- `cloud_managed_runtime` 不是本轮主实现目标，只作为未来 profile 保留。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`Longclaw Core` 现在把 `work_mode` 和部署级运行态拆开建模了：新增了 `runtime_profile / runtime_target / interaction_surface / model_plane`，并把旧的 `execution_plane=weclaw_dispatch` 只作为兼容读取，统一归一到本地运行态。[contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py:92) [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py:237) [service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py:278)  
+Electron 这边已经按这个模型改了数据层和产品表达：三种 `work_mode` 还在，但用户只看到模式，不需要理解你当前机器的特殊桥接；开发/运维面会显示当前 `runtime_profile=dev_local_acp_bridge`。[models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts:43) [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:531) [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:78)  
+WeClaw 发 launch 时也会显式带上 `work_mode=weclaw_dispatch`、`runtime_profile`、`runtime_target=local_runtime`、`interaction_surface=weclaw`、`model_plane=cloud_provider`。[agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go:165)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已通过：
+- `hermes-agent`: `python3 -m pytest -o addopts='' tests/agent_core/test_contracts.py tests/agent_core/test_service.py tests/gateway/test_api_server_agent_os.py`
+- `longclaw-agent-os`: `npm run test -- src/services/longclawControlPlane/client.test.ts`
+- `longclaw-agent-os`: `npm run lint`
+- `longclaw-agent-os`: `npm run build:electron`
+- `weclaw`: `go test ./...`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da59a-cac4-7732-86b2-3194ff75b0a2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+边界也明确：这轮完成的是 contract、客户端、WeClaw 接线和回归验证；`packaged_local_runtime` / `cloud_managed_runtime` 已经进入模型，但还不是完整独立运行时实现。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da598-ccf4-7292-b126-8e50689fbe7b
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+但是目前weclaw的模式，是走的本机的acp常驻系统服务桥接，这个是一种特殊环境。我不知道你能否理解？当我派发产品给用户的时候，他们不一定是我目前的环境形态
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da596-e3dc-76a2-be12-eef04328b5c0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+这三个模式不太对。如果是本地模式，模型也应该用云端的，但是环境是本地的。 如果是sandbox模式，应该环境和模型都是云端的。如果是微信dispatch模式，也应该是微信控制本地环境，然后请求云端模型
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da584-509b-7172-b404-1c79e30e218e
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+可以拉起一个electron，然后我测试一下三种模式目前能否成功运行么？
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da584-509b-7172-b404-1c79e30e218e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在还**不能在这个回合里直接帮你拉起 Electron**，因为当前会话被锁在 **Plan Mode**，这个模式只允许做非改动/非执行性的就绪检查，不允许真正启动应用。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da584-509b-7172-b404-1c79e30e218e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `longclaw-agent-os` 的 `npm run lint` 已通过
+- `longclaw-agent-os` 的 `npm run build:electron` 已通过
+- Electron 里三模式入口已经在代码里存在：
+  - `Local Work`
+  - `Cloud Sandbox`
+  - `WeClaw Dispatch`
+  见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:93)
+- Electron 的 launch IPC 也已经接好，见 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:786) 和 [preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts:59)
+- 实际启动命令已经存在，见 [package.json](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json:31)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da584-509b-7172-b404-1c79e30e218e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **UI 本身现在是可启动的**
+- 但要“有效测试三种模式”，不只是打开窗口，还要看后端是否接好：
+  - `Local Work`：最容易测，没 Longclaw Core 时也会走本地 fallback
+  - `Cloud Sandbox`：需要 `LONGCLAW_AGENT_OS_BASE_URL` 或 `LONGCLAW_HERMES_AGENT_OS_BASE_URL`
+  - `WeClaw Dispatch`：除了 Longclaw Core，还需要 WeClaw 侧真的把 launch 打进来  
+  这些环境读取逻辑在 [client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts:98)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da584-509b-7172-b404-1c79e30e218e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **从构建和入口上看，Electron 现在已经具备被拉起测试的条件**
+- **但在当前 Plan Mode 下，我不能真的执行 `npm run electron:start`**
+- **而且如果你要测三模式“是否成功运行”，至少要先决定是只测 UI/本地 fallback，还是要连 Longclaw Core/WeClaw 做真链路**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da584-509b-7172-b404-1c79e30e218e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一步可以直接给你一版**决策完整的启动测试计划**，明确：
+1. 先测哪一种模式  
+2. 哪些环境变量必须有  
+3. 哪些模式可以本地单机验证  
+4. 哪些模式必须连 WeClaw / Longclaw Core 才算有效验证
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 三模式 Agent OS 计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- Longclaw phase 1 改成 **三种平权工作模式**，产品形态对齐 `Claude Code / Codex` 的选择感：
+  - `Local Work`
+  - `Cloud Sandbox`
+  - `WeClaw Dispatch`
+- 这三种是 **产品级工作模式**，不是三个独立产品。
+- 对用户只讲一个东西：`Longclaw Agent OS`。
+  - `Electron` 是默认 home 和统一任务治理面
+  - `Longclaw Core` 是云侧运行态
+  - `WeClaw` 是第三种正式工作模式，不再只是附属 companion
+- `Signals` 和 `due-diligence-core` 本轮继续降为“可加载旗舰 pack”，不阻塞首轮模式闭环。
+- 核心产品规则更新为：
+  - `Choose a mode, then launch work.`
+  - `All modes converge into one task ledger.`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 产品结构重写为三模式
+- `Home` 变成明确的 **Mode Launcher**，顶部先选工作模式，再发起任务。
+- 三种模式定义固定为：
+  - `Local Work`
+    - 面向本机 workspace
+    - 适合直接操作本地代码、文件、终端
+    - 由本地 agent executor 承接
+  - `Cloud Sandbox`
+    - 面向云端 sandbox workspace
+    - 适合长时任务、远程执行、脱离本机依赖的工作
+    - 由云侧 sandbox executor 承接
+  - `WeClaw Dispatch`
+    - 面向微信线程发起、续接、催办、接收轻量结果
+    - 任务从微信形态中启动和维持上下文
+    - 仍必须沉淀到统一 `Task / Run / Work Item`
+- `Electron` 继续统一承接：
+  - `Home`
+  - `Runs`
+  - `Work Items`
+  - `Packs`
+  - `Studio`
+- `Runs / Work Items` 不再按来源分裂成三套 UI；所有模式都归并到同一治理面。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. Longclaw Core 运行态重写
+- `hermes-agent` 在产品上彻底内化为 `Longclaw Core`。
+- `Longclaw Core` 必须显式支持三种 `work_mode`：
+  - `local`
+  - `cloud_sandbox`
+  - `weclaw_dispatch`
+- 运行态内部允许保留两层真实执行面，但产品上统一暴露为三模式：
+  - `Execution Plane`
+    - `local_executor`
+    - `cloud_executor`
+  - `Dispatch Plane`
+    - `weclaw_dispatch`
+- `WeClaw Dispatch` 虽然技术上更接近 dispatch/control plane，但在产品契约里按正式工作模式处理，必须拥有：
+  - mode selection
+  - launch receipt
+  - task visibility
+  - status continuity
+- `LaunchIntent` 编译后，先确定 `work_mode`，再决定具体 executor / pack / provider routing。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 关键接口调整
+- `LaunchIntent` 增加 canonical 字段：
+  - `work_mode`
+  - `launch_surface`
+  - `workspace_target`
+- `Task` 至少增加：
+  - `work_mode`
+  - `origin_surface`
+  - `execution_plane`
+- `overview / tasks / runs / work-items` 必须带回模式信息，供 Electron 展示筛选和状态解释。
+- `WeClaw` 侧显式 launch 也要传 `work_mode=weclaw_dispatch`，而不是只传 pack/skill/plugin。
+- `Electron Home` 的 launch composer 必须允许：
+  - 先选模式
+  - 再输入自然语言 / `@pack` / `@skill` / `@plugin`
+- `Studio` 只做 capability 可见层，但 capability 的推荐和预设需要按 `work_mode` 维度展示。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 4. 首轮实现优先级
+- 第一优先级：`WeClaw Dispatch -> Longclaw Core -> Electron`
+  - 真正从微信发起
+  - 进入 canonical task ledger
+  - 在 Electron 中可见并可跟踪
+- 第二优先级：`Home` 的模式切换和任务创建
+  - Local / Cloud Sandbox / WeClaw Dispatch 三个 mode selector
+  - 统一 recent launches / recent tasks / mode-aware status
+- 第三优先级：pack 可加载
+  - `Signals`
+  - `due-diligence-core`
+  - 只要求可注册、可见、可选，不要求都跑完整深执行闭环
+- 本地 resident Claude/Codex 的定位改为：
+  - `Local Work` 的 executor 候选实现
+  - 不再是整个产品默认依赖
+- 云侧 Longclaw Core 需要同时支持：
+  - API provider runtime
+  - agent executor runtime（至少包裹 Codex CLI / ACP 类能力）
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Test Plan
+- 模式层验收：
+  - `Home` 首屏能看到三种平权工作模式
+  - 三种模式都能发起 launch
+  - launch 后都进入同一个 `Task / Run / Work Item` 体系
+- 微信主路径验收：
+  - 从真实微信发起一条显式任务
+  - 该任务被记录为 `work_mode=weclaw_dispatch`
+  - Electron 中能看到对应 task/run/work item
+- 本地模式验收：
+  - 选择 `Local Work` 发起任务
+  - 任务记录为 `work_mode=local`
+  - 不依赖 WeClaw 才能成立
+- 云端模式验收：
+  - 选择 `Cloud Sandbox` 发起任务
+  - 任务记录为 `work_mode=cloud_sandbox`
+  - Cloud executor health 可读
+- pack loadability：
+  - `Signals` 在 `Packs` 中可见且可被某个 mode 选择
+  - `due-diligence-core` 在 `Packs` 中可见且可被某个 mode 选择
+- 回归：
+  - `longclaw-agent-os` lint + Electron build
+  - `weclaw` Go tests
+  - `hermes-agent` Agent OS pytest
+  - 模式字段在 API 和客户端 schema 中保持一致
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- phase 1 的产品不再把“微信只是 companion”作为主假设；`WeClaw Dispatch` 是正式工作模式。
+- `Electron` 仍是唯一 default home，但不是唯一正式工作入口。
+- `Longclaw Core` 是统一运行态；`hermes-agent` 只是实现仓名。
+- 三模式是产品级平权，底层是否映射为两类 executor + 一类 dispatch plane，不影响用户心智。
+- 首轮仍优先做任务管理闭环，而不是把 `Signals` / `due-diligence-core` 全部做成深执行成品。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这次实际并行拆成了 3 条 lane：
+- `UI`：三模式 `Home`/mode launcher，落在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)
+- `Control Plane`：`work_mode / origin_surface / execution_plane / mode_summary` 的 schema、client、tests，落在 [models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts)、[client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts)、[client.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.test.ts)
+- `WeClaw`：显式把 `work_mode=weclaw_dispatch`、`launch_surface`、`workspace_target` 发进 Longclaw Core，落在 [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我主线程补了：
+- Longclaw Core 三模式 contract 和 service 逻辑，在 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py)、[service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)
+- Electron 本地 provisional fallback 的三模式字段，在 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)
+- 对应回归测试，在 [test_contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_contracts.py)、[test_service.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py)、[test_api_server_agent_os.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/gateway/test_api_server_agent_os.py)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+回归结果：
+- `hermes-agent`: `16 passed, 1 skipped`
+- `weclaw`: `go test ./...` 通过
+- `longclaw-agent-os`: `client.test.ts` 通过，`npm run lint` 通过，`npm run build:electron` 通过
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以结论不是“可以”，而是“这类任务就应该并行”，前提是像这次一样按写入面锁死 ownership。下一轮最适合继续并行的是“真实微信闭环验证”和“模式文档/运行态命名收口”。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da570-5812-7f83-b9f2-d8a1825c1216
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+我觉得这种形态就是类似claude code或者codex你是可以选择本地工作或者是云端沙盒工作，或者是远程dispatch(weclaw的微信形态)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da56e-4df2-70c1-b9e9-ec132161ce9b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+云侧的agent os应该是一个运行态，然后应该是对接云端lite llm这种可以直接对接api提供云服务的场景。目前本地机子是通过weclaw+常驻的claude+Codex来提供大模型服务，这是因为目前的产品逻辑并没有向外扩散
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da56a-367c-7322-9b7f-ae294c6eb944
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+优先保证微信到electron的任务管理，signals和due-diligence可以被加载即可。hermes应该是和longclaw的agent os融为一体？
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+客户端目前已经改造完毕了么？按照新的设计语言，然后我微信可以直接跑通整个流程么？
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+准确结论是：**客户端主体已经改造到位，但还不能算 100% 全部收口；微信链路已经具备跑通条件，但我不能说“现在直接一定跑通了真实全流程”，因为真实微信闭环还没在这台环境里实跑，只完成了模拟闭环验证。**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**客户端状态**
+- 按新的设计语言，主壳已经落下来了：`Home / Runs / Work Items / Packs / Studio`、`Cowork Launch + Governance Snapshot` 都已经在客户端里了，见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:135)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1396)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1549)。
+- 设计语言也已经切到新系统：字体、色板、状态 badge、工业化壳层都在 [designSystem.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.ts:3)；三栏布局和抽屉退化规则对齐了 [DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md:126) 和 [layout.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/layout.ts:1)。
+- 但它还**不是完全 finished**。代码里明确还保留了几处 `provisional / local_fallback` 语义，比如 `Studio` 仍写着 capability inventory 是 provisional，[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:158)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1858)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1943)，而 launch history 也还兼容 local fallback，[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1517)。

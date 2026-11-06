@@ -1,0 +1,109 @@
+{
+  "id": "019eb423-fb78-7ed0-98a0-433416efacf8",
+  "title": "优化ETF K线和收益率显示",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019eb423-fb78-7ed0-98a0-433416efacf8",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "c3ab1bb9f57e2375dde2b6213b83ef63b71b6b76b552c9adef462ee5205779ec",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#first-request",
+      "timestamp": null,
+      "verbatim": "1、etf缺少k数据  2、收益率目前在指数/个股/etf上不能直接在13和27上显示，还要拖动滚动条，优化比例"
+    },
+    {
+      "hash": "a2d0dcbac2fe6c76360fb503606ca739ef376bd55e2c25d13a35538baf74dfbf",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n除了板块收益率的比例你调优了，别的所有涉及到收益率显示比例的，你都需要考虑在13寸/27寸显示屏下面做好优化"
+    },
+    {
+      "hash": "bea68b3c7c3b7b0b01ff1ff84cddab58193d55c1b44ff54cbcfb2762a4c3a16c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#recent",
+      "timestamp": null,
+      "verbatim": "改动集中在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:5716)："
+    },
+    {
+      "hash": "28a832f923cffbdb8c6dda5c381b336d410b8189323b3527e120cf0be39dff30",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#recent",
+      "timestamp": null,
+      "verbatim": "- 新增统一百分比样式：`tabular-nums`、右对齐、固定 min/max、ellipsis，覆盖 13 寸窄屏和 27 寸宽屏。\n- `watchlistGridTemplate` 现在所有收益率 tab 都使用统一 `minmax(52px, 0.55fr)` 区间收益列：[StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:10558)\n- 覆盖了大盘指数、行业 ETF、全量 ETF、板块、买点池、盯盘池、线索池等 watchlist。\n- 同步覆盖顶部“涨幅”、周期快照收益、右侧交易解释涨跌幅、板块候选/驱动涨幅徽标等零散百分比显示。"
+    },
+    {
+      "hash": "38beb057b4fb9d741ecd72e14e64d156e55896da08b89635c97f826cf60dc06f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#recent",
+      "timestamp": null,
+      "verbatim": "测试和安装：\n- `StrategyChartTerminal.test.tsx`: 41 passed\n- `npm run build`: passed\n- `npm run electron:install:mac`: 已安装到 `/Applications/隆小侠 Agent OS.app`\n- 已确认安装包内包含新规则：`minmax(52px, 0.55fr)` 和 `tabular-nums`"
+    },
+    {
+      "hash": "b9cbc86efaf2134431fa7391851bc42266e5b9ac59dd2638c83381532433a3a9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#recent",
+      "timestamp": null,
+      "verbatim": "补充：自动化截图能打开新版应用，但没能稳定切到交易台页；安装包内容和构建链路已验证。"
+    },
+    {
+      "hash": "b6b0b6262e62c451d962afd47e108e147f44fa6550c619e978418866367df093",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#turn:019eb424-f362-7333-9d02-c66d8386da60",
+      "timestamp": null,
+      "verbatim": "## codex-clipboard-b8923cf1-b81f-4c94-a32a-edb61b6998df.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/codex-clipboard-b8923cf1-b81f-4c94-a32a-edb61b6998df.png"
+    },
+    {
+      "hash": "bbbb3199b71bf931c054097185055aa811a721341de08a0ea03d7ac3812dbd7e",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#turn:019eb424-f362-7333-9d02-c66d8386da60",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n1、etf缺少k数据  2、收益率目前在指数/个股/etf上不能直接在13和27上显示，还要拖动滚动条，优化比例"
+    },
+    {
+      "hash": "f0d142464eaaa7d38f37b3429a7e068b0590ce55313d3949db6de83e8aaa4422",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#turn:019eb424-f362-7333-9d02-c66d8386da60",
+      "timestamp": null,
+      "verbatim": "1. ETF 缺 K：\n后端修了 `strategy_snapshots` 的真实读取路径，改为读 `snapshot.etf_analysis.review_universe`；缺历史 K 时先用 ETF 快照生成 `spot_only` 日线兜底，同时后台补 K。补 K 成功后会清掉 symbol payload 缓存，避免继续看到空图。\n关键位置：[workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:6094)、[workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:6164)、[workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:12512)"
+    },
+    {
+      "hash": "e9fe4d84324933189ff4ef3212b5ca99765ed03ba169ff1025ad99203fb11494",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#turn:019eb424-f362-7333-9d02-c66d8386da60",
+      "timestamp": null,
+      "verbatim": "2. 13/27 寸收益率显示比例：\n右侧指数/个股/ETF watchlist 改成紧凑响应式列宽，收益率列不再用固定 `64px/72px`，并关闭横向滚动；缺失收益率状态现在显示 `现货 / 缺K / 历史不足`，不再一律“计算失败”。\n关键位置：[StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:1161)、[StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:6531)、[StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:10514)"
+    },
+    {
+      "hash": "141b043953c024b4c9bf8e7e123dc990a603f9e2d7c08df90a658f67e1741143",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#turn:019eb424-f362-7333-9d02-c66d8386da60",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- `tests/test_workbench_watchlist_groups.py`: 136 passed\n- `StrategyChartTerminal.test.tsx`: 39 passed\n- `npm run build`: passed\n- `npm run build:electron`: passed\n- 已重启 Signals Web，当前 `all_etfs=80`；抽样 `SH.588200 / SH.513120 / SZ.159915` 从现货兜底补成完整 bars：`878 / 948 / 1209` 根。"
+    },
+    {
+      "hash": "fe0ab8532a9e7a4a8c247464d236116dd45c379171acba097c6e6945b1005bb3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eb423-fb78-7ed0-98a0-433416efacf8#turn:019eb424-f362-7333-9d02-c66d8386da60",
+      "timestamp": null,
+      "verbatim": "注意：仓库里原本还有其他未提交脏改，如 `signals/sync/modules/terminal_pool.py`、`tests/test_terminal_stock_pool.py`，我没有回滚或改动它们。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

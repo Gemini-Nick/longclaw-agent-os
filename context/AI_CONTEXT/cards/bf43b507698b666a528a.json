@@ -1,0 +1,117 @@
+{
+  "id": "019ef1e4-8f09-7f51-bf76-5196da546fe6",
+  "title": "清晰标注买卖点日期",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ef1e4-8f09-7f51-bf76-5196da546fe6",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "06c8e7bfeba3810ff2eac425ffe535ad7ab4deab9b09792329a9828cfea9f3ed",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#first-request",
+      "timestamp": null,
+      "verbatim": "右侧这个买卖点需要标识清晰的日期，同时k线里面也需要标识清晰的买卖点和日期。目前很模糊"
+    },
+    {
+      "hash": "cc772ee7f7e8e49d33d0007d27b7ae83f7a8607f269e75ef8d96e70f3982e40c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-06-22 下午5.42.17.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_XZVXPo/截屏2026-06-22 下午5.42.17.png"
+    },
+    {
+      "hash": "c7ebe9b401574672258e05385ef9aa5528d7891f07fd11488790714c620e30db",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "The focused UI element is 按钮\n</appshot>"
+    },
+    {
+      "hash": "f169f9b63618d812722923c5c470b08517f1dbefe979a4b2dacbae3615ddfd42",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n你优化一下k线的前端显示，这几个均线都揉在一起了。整体优化k线的显示"
+    },
+    {
+      "hash": "c909526292ec27c7c394c29f652a84d98c9695edd218a074b7be2adde1b5a752",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "已完成并在已安装的 `/Applications/隆小侠 Agent OS.app` 里用 Computer Use 看过通信 ETF 主图。"
+    },
+    {
+      "hash": "9b8292918c289ee50979d50302b98c180b16f70696373dcfb03e7e2629ca4f3e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "主要改动在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:3851)：弱化多条 MA 线的视觉权重、关闭 MA 的主图末值标签/常驻 tooltip、加大右侧价格轴留白，并过滤掉 `MA5`、`日MA5`、`10日线`、`5周线` 这类已经由 MA 指标线表达过的蓝色关键价位虚线。买卖点 callout 仍保留清晰日期。"
+    },
+    {
+      "hash": "2e59d24b91a77532aa596f6dc537bb4279882e66c224a8ff3518e37c32d1ec89",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "测试也补在 [StrategyChartTerminal.test.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx:796)，覆盖 MA 价位过滤和买卖点日期元数据。"
+    },
+    {
+      "hash": "38da78ea3cee36405bf7e6722ba43021dda5bae7e941574ca17a27f95ad453b1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "验证：\n- `npm test -- electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx` 通过，44 个测试。\n- `npm run lint -- --pretty false` 通过。\n- `npm run electron:install:mac` 已重新打包安装。\n- 已在装好的 Agent OS 中打开 `SH.515880` 通信 ETF，主图不再出现右轴附近一堆 MA 蓝色虚线标签，均线拥挤明显下降。"
+    },
+    {
+      "hash": "34c5db07d4911ee93de486a0f4649164bb0231a1df732b2af9f86914380f831a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#recent",
+      "timestamp": null,
+      "verbatim": "注意：现场仍显示 `行情通道 BLOCKED`、部分分钟周期读取中，这是运行数据通道状态，不是这次 K 线前端显示改动造成的。"
+    },
+    {
+      "hash": "63f4c929257408d462228f6179b23795ebcca88fab102c791212253efb7c00cd",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#turn:019ef1e4-ee37-7ba3-b1ae-64da91023db9",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n/goal 右侧这个买卖点需要标识清晰的日期，同时k线里面也需要标识清晰的买卖点和日期。目前很模糊"
+    },
+    {
+      "hash": "45c546a3382836438f8a34855e12fb021f237a19851e7c6137c049bf589c6dfc",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#turn:019ef1e4-ee37-7ba3-b1ae-64da91023db9",
+      "timestamp": null,
+      "verbatim": "已改完并装进 `/Applications/隆小侠 Agent OS.app`。"
+    },
+    {
+      "hash": "6dfdbad6c05e26db996fae13eaadae96e8bd9e8ee1e45aab4475732912221bc9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#turn:019ef1e4-ee37-7ba3-b1ae-64da91023db9",
+      "timestamp": null,
+      "verbatim": "改动在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)：\n- K 线图上的 `G1/G2` 买卖点标签现在直接显示日期。\n- 右侧“图上标注详情”的按钮、标题、明细项都显示 `YYYY-MM-DD`。\n- 如果信号日期和锚定 K 线日期不同，会额外标出锚定日期。"
+    },
+    {
+      "hash": "e1c98918a38bf6f999f7c848ff03097d8f3994c1cdd26e8374b6093babb8acda",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef1e4-8f09-7f51-bf76-5196da546fe6#turn:019ef1e4-ee37-7ba3-b1ae-64da91023db9",
+      "timestamp": null,
+      "verbatim": "验证：\n- `npm test -- electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx`，43 个测试通过。\n- `npm run lint -- --pretty false` 通过。\n- `npm run electron:install:mac` 已重新打包安装。\n- 用 Computer Use 看了已安装 App：通信ETF 页面右侧显示 `G1 周↧ 买 2025-11-28`，K 线标签里也显示 `2025-11-28`。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

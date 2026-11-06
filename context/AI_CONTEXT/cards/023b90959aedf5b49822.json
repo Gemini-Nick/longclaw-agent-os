@@ -1,0 +1,325 @@
+{
+  "id": "019e0ace-47aa-7e22-9280-9340f0b40e93",
+  "title": "整理5月8日200日新高名单",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e0ace-47aa-7e22-9280-9340f0b40e93",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "a1fad3b6878b5fe486f35fe6a190cf3d8de0b4c2c6a0bfcbf477a9cb280bfb03",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#first-request",
+      "timestamp": null,
+      "verbatim": "帮我整理出5月8号创200日新高的股票名单，包含他们价格和行业板块和过去5日涨幅和量比等"
+    },
+    {
+      "hash": "16e99c337bf47eb5c7b5b533e18f2be9945bf6c7a75fa2d17921b8c177e40ab5",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 下午9.30.18.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_ByKj4N/截屏2026-05-08 下午9.30.18.png"
+    },
+    {
+      "hash": "155744ceb9d116d65aad3af3fbc92288f17561572908fb4b9e337589b098b05a",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n标的下面的介绍/动作都是雷同的，没有个性化描述。盯盘池也是类似，UI布局也聚集一起看不清。你需要优化"
+    },
+    {
+      "hash": "adfd0a3cce496498da1a670db53bde8dcd58b0964a8225cde1aed03071bb4ff6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "已优化并装进正在用的 AgentOS 应用里了。真实入口在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)，不是 Signals 那个静态 `workbench.js`。"
+    },
+    {
+      "hash": "38ae0a60503b3c7b51520f9b5e5d086ed5f651255aa8a14f84cc912618caa337",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "- Signals 后端现在给池子输出个性化字段：`display_summary`、`display_action`、`display_badges`、`display_breakout`。\n- 买点池/盯盘池不再只显示雷同的“右侧进攻 + 主线宽松”模板，而是按个股展示 200 日新高突破幅度、5 日涨幅、量比、缺失确认、风险标记、链条/板块。\n- UI 行布局拆成“名称/标签/摘要/上下文/动作”，动作区单独展示，视觉上不再全挤在一行。"
+    },
+    {
+      "hash": "3780e80606892e728ba8f29d52c9a4e92db665a9a65231391b36d0b9145d1a87",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "- 重新扫描池子：`focus=24, watch=48, clue=24, risk=0`\n- 后端测试：`tests/test_terminal_stock_pool.py` 52 passed，`tests/test_workbench_watchlist_groups.py` 89 passed\n- AgentOS 类型检查：`npm run lint` passed\n- Electron 打包安装：`npm run electron:install:mac` 成功\n- 已重启 `/Applications/隆小侠 Agent OS.app`"
+    },
+    {
+      "hash": "752eaf32e4a8f46cb2bf4b6e51b7eee85a85ef43b08dbcc22ad71125d8752d2e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "视觉复核也看过了：买点池里例如绿的谐波会显示“进攻买点 / 右侧进攻 / 200日新高 / 机器人链”，并带突破、5日涨幅、量比；盯盘池里金螳螂会显示“等5m/15m确认”，并保留“缺口卖:衰竭”这类风险标记，不直接过滤。"
+    },
+    {
+      "hash": "d2361d8c06b545e4ce3cf29cfdd0300b4b9080d8431c7b8e351c2cc3d3a40940",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent",
+      "timestamp": null,
+      "verbatim": "现在仍然是交易终端式高密度布局，但已经从“雷同文案”改成“个股证据 + 动作差异”。下一步如果继续压视觉问题，应该做左侧池子宽度/行密度开关，而不是再堆更多文字。"
+    },
+    {
+      "hash": "e757fd86294ccfa3754251e5ff77a596d4c4735921b488f4ffc29f31403759c9",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "开个subagent买点池帮我调整权整，再开一个subagent思考一下盯盘池怎么处理比较好"
+    },
+    {
+      "hash": "9ec17029958afdc065df2ba4bf58a6e4569c6218ac3b2d2f102c8f1904626bc4",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "1. **风险只标记，不硬过滤**\n   - 有买点理由的票，即使同时有卖点/风险/周期冲突，也继续按买点或盯盘路径进入池子。\n   - 行上保留：`risk_marked`、`risk_marker`、`risk_marker_reason_type`、`risk_level`、`top_risk_reason`、`risk_signal_reasons`。\n   - 只有“纯风险、没有买点理由”的票才进入 `risk_stocks`。"
+    },
+    {
+      "hash": "31267fe7b75c8eb1b6b3ff7e0cac033436127a4a742cd02dc2bb9f7b17b90e61",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "我还补了一刀：`周期冲突` 也不再直接变成 `skip_now`，现在会合成 `周期冲突` 风险标记，但不阻断买点路径。"
+    },
+    {
+      "hash": "b1338ff8b0863e96662e3e9b77414badee77f3bcf8a30b9dd7933e9666eb0384",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "- `py_compile` 通过\n- `tests/test_terminal_stock_pool.py`：`52 passed`\n- 已用当前信号重建真实 `terminal_stock_pool`\n  - 买点池：24\n  - 盯盘池：48\n  - 风险池：0\n  - 买点池中带风险标记：5\n  - 盯盘池中带风险标记：14"
+    },
+    {
+      "hash": "4678be57ea5394d3663b3d989170b080972549a684e0ab1ef46dec5cbd8adddf",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "`risk_stocks=0` 是这次语义调整后的结果：当前这些风险票大多同时有买点理由，所以被保留在买点池/盯盘池并打风险标记；不是被吞掉。纯风险票仍会进风险池。"
+    },
+    {
+      "hash": "dbeb48b56bd9f631f04a792146188b9fc0b2a6a9b2c5c161e6974078ae025308",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "盯盘池 subagent 的结论也很清楚：下一步应该先做 `watch_lane`，不要再让盯盘池用一个总分混排。建议第一阶段加四类 lane：`等下单确认`、`等30m买点`、`低吸承接`、`新高突破观察`。这个我还没动代码，避免和买点池改动混在一起。"
+    },
+    {
+      "hash": "956a19724694c8262fec948fc19f1f4af54c6c97b04cc3d23367de70de006baf",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77",
+      "timestamp": null,
+      "verbatim": "主要改动文件：\n- [terminal_pool.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/terminal_pool.py:2743)\n- [test_terminal_stock_pool.py](/Users/zhangqilong/github代码仓库/Signals/tests/test_terminal_stock_pool.py:1543)"
+    },
+    {
+      "hash": "c442e119ad1648d3851ff0b1e435d0cb10dc5c1bb8934558696bf5a0a3b9ef6c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "买点池有右侧进攻的意思了，主要问题可能是入池的排序上要考虑权重的分配。盯盘池的问题比较大，也很难界定"
+    },
+    {
+      "hash": "951e36e1942333fd77c54ce6e9bae2c5c1cffe071889ed993711c2b5239cd6f9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "买点池现在已经有“右侧进攻”的味道了，问题不是方向，而是**权重不要被 200 日新高单因子带偏**。我建议买点池改成这个权重结构："
+    },
+    {
+      "hash": "3a2dff5ca1f81852530158cbdf3641d5141b799d7c8647c3db8b5fb3dfa36e04",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "- `风险过滤`：先做 gate，不参与加分；有明确风险信号直接降级/进风险池\n- `30m 交易周期买点`：最高权重，决定能不能进买点池\n- `5m/15m 下单确认`：第二权重，决定排序靠前还是等待\n- `日线/周线趋势背景`：中高权重，只做背景加成\n- `200日新高/突破动量`：加分项，不应该单独决定入买点池\n- `均线确认/Fibonacci 支撑`：稳定性加分\n- `产业链/主线`：同分排序加分，不替代技术触发"
+    },
+    {
+      "hash": "93971515e8362ca9e81e108519164f007f2e2f0da5f5c488e33e400a68da7ff6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "也就是说：`200日新高` 可以把一个已有右侧结构的票往前推，但不能让一个只有日线新高、没有 30m/5m 买点确认的票直接变成买点池核心。"
+    },
+    {
+      "hash": "ae2dacadd392644e8bd12d711f2f9da3ec024269fb232990652b5aed7aab337f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "1. **买点等待池**：有日线/30m 背景，但还差 5m/15m 确认。\n2. **强势观察池**：200 日新高、放量突破、主线强化，但买点还没出现。\n3. **线索/主题池**：产业链、板块、消息或人工线索驱动，技术只是弱确认。"
+    },
+    {
+      "hash": "fc635eed671b7b15afd67736f41667c66ee55fad9578016594f05757f5c3ec5a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "这三类不应该放在同一个排序逻辑里。我的建议是把盯盘池拆成内部三条 lane，UI 上可以仍叫“盯盘池”，但排序分别算："
+    },
+    {
+      "hash": "5e687e982575945a0b56c02a4e335623bd40cbd9ac38942e336a81d092c0e7a5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "- `watch_entry_waiting`：准买点，按“离买点还差什么”排序\n- `watch_momentum`：强势突破，按 200 日新高、量比、5 日涨幅、回撤风险排序\n- `watch_clue`：题材/产业链线索，按主线强度和是否出现技术靠近排序"
+    },
+    {
+      "hash": "8bc75abb01f0dcfe55dcbd11e57745b33612d0330399118b8f1a30b0c83280dd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70",
+      "timestamp": null,
+      "verbatim": "下一步我建议直接改排序模型：买点池先调整权重；盯盘池先不强行一个总分排序，而是拆 lane，否则“盯盘”会越来越像垃圾桶，什么都能放进去但不好决策。"
+    },
+    {
+      "hash": "91da87b5f98207bce46957b18c4fdb977e8c8cf0dbf232c3923d246ec05f3ba7",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "你重新扫描一下盯盘池和买点池，哪些公司因为这个指标新增而加入筛选了，你评估一下"
+    },
+    {
+      "hash": "4d3eb78289cb5cfd504703fbde874954c3fe1fed217c03bc208cb6a17c5a6926",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "已重扫。按 2026-05-08 数据口径，本次全市场 A 股扫描 5533 只，失败 0；发现 `200日新高突破` 技术信号 332 条。重建池子后，因这个指标进入买点/盯盘筛选的有 50 只：买点池 9 只，盯盘池 41 只；另有 4 只虽然触发新高，但被风险池拦截。"
+    },
+    {
+      "hash": "dcceb79b38c264f1d2e4d56f13d2ed98e781c82621e15b3b8ccbe82c1716d080",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "**买点池新增 9 只**\n| 排名 | 公司 | 板块/链条 | 价格 | 5日涨幅 | 量比 | 突破幅度 | 评价 |\n|---:|---|---|---:|---:|---:|---:|---|\n| 4 | 炬光科技 | 半导体/晶圆制造 | 434.64 | 18.69% | 1.55 | 3.46% | 强势但已较高，适合复核承接 |\n| 5 | 长龄液压 | 机器人/自动化 | 126.51 | 27.47% | 1.75 | 2.78% | 量价健康，买点池质量较高 |\n| 6 | 腾远钴业 | 锂资源 | 91.00 | 10.84% | 1.06 | 1.60% | 新高质量一般，更多看板块延续 |\n| 8 | 卡倍亿 | 汽车零部件/智能车 | 63.95 | 9.22% | 2.80 | 2.94% | 放量不错，优先看回踩不破 |\n| 9 | 四方股份 | 电网/储能 | 64.20 | 22.96% | 1.17 | 4.12% | 趋势强，追高风险略高 |\n| 10 | 震裕科技 | 电池 | 237.25 | 11.92% | 0.86 | 0.86% | 缩量新高，确认度偏弱 |\n| 11 | 美腾科技 | AI应用/人工智能 | 28.48 | 12.57% | 0.62 | 0.56% | 缩量新高，先观察持续性 |\n| 12 | 绿的谐波 | 机器人/人形机器人 | 262.99 | 26.65% | 2.75 | 9.09% | 最值得重点复核，动量和板块都强 |\n| 19 | 飞凯材料 | 半导体材料 | 35.27 | 11.79% | 1.53 | 0.75% | 新高幅度小，适合低吸观察 |"
+    },
+    {
+      "hash": "73c8439e9ce98e897bdee304f360298abcca09b30b0e04e7bc968bb7082a7887",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "**盯盘池前排重点**\n| 排名 | 公司 | 板块/链条 | 价格 | 5日涨幅 | 量比 | 突破幅度 | 评价 |\n|---:|---|---|---:|---:|---:|---:|---|\n| 1 | 尤安设计 | 地产基建 | 41.15 | 35.58% | 3.50 | 7.83% | 盯盘第一梯队，但已大涨 |\n| 2 | 炼石航空 | 军工/航空 | 12.58 | 26.05% | 6.43 | 10.03% | 放量最强之一，注意高位分歧 |\n| 3 | 天津普林 | PCB | 29.50 | 17.30% | 1.70 | 5.64% | PCB方向可继续盯 |\n| 4 | 大连热电 | 电力 | 9.09 | 19.45% | 4.51 | 9.81% | 放量突破，偏短线情绪 |\n| 5 | 宏川智慧 | 物流/仓储 | 16.04 | 27.71% | 1.53 | 7.65% | 趋势强，等分时回踩确认 |\n| 6 | 拱东医疗 | 医疗器械 | 22.50 | 20.51% | 3.55 | 4.13% | 放量较好，可盯延续 |\n| 7 | 万盛股份 | 化工材料 | 15.00 | 15.12% | 2.30 | 8.80% | 突破幅度足，注意板块强度 |\n| 8 | 雄塑科技 | 地产基建/管网 | 13.46 | 15.44% | 2.05 | 13.67% | 新高突破强，但题材偏轮动 |\n| 14 | 中青宝 | 游戏传媒 | 15.25 | 29.13% | 4.11 | 15.65% | 技术分很高，适合重点盯盘但不追高 |"
+    },
+    {
+      "hash": "9b718a08b99506d860e9a175d4e1f75be92814a5fe8944ff0e3fdb40dfc6e350",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "其余进入盯盘池的还有：诚邦股份、胜宏科技、开尔新材、恒申新材、理工导航、北投科技、东山精密、东星医疗、盈峰环境、先河环保、北部湾港、浙江力诺、凯伦股份、东南网架、苏州高新、中材科技、杭华股份、森泰股份、松发股份、恒星科技、南大环境、赛特新材、海通发展、中国巨石、隆达股份、京投发展、粤海饲料、丰林集团、宁波富达、九州一轨、科新发展、阿拉丁。"
+    },
+    {
+      "hash": "14fd3ca170ecd166296d5e048fe67fba9ac4387efb078413bee75b73757f9b5e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "**被风险池拦截**\n苏州科达、众源新材、菲沃泰、威海广泰。它们触发了 200 日新高，但池子里有卖点/冲突/风险优先信号，所以不应按买点处理。"
+    },
+    {
+      "hash": "6a57a7a208b96b6da9c8a1bfd3787865196951e935dee4488a065b0f74e76e6e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17",
+      "timestamp": null,
+      "verbatim": "我的判断：这个指标对池子的扩容很明显，买点池从原来 2 只扩到 24 只，但新增 200 日新高里有不少已经 5 日涨幅 20%-35% 以上。优先级我会放在“强势突破后回踩不破”的复核，而不是直接追。当前最值得单独盯的：绿的谐波、长龄液压、卡倍亿、四方股份、尤安设计、炼石航空、中青宝、天津普林、胜宏科技。"
+    },
+    {
+      "hash": "1a712938135af44f55f4af8a7ecd0f33c5f337244a08d4ef85c4eb01de7d7072",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0adc-9656-7ff0-9d3e-2a7313b3d11b",
+      "timestamp": null,
+      "verbatim": "- 自定义因子：[entry_factors.py](/Users/zhangqilong/github代码仓库/Signals/signals/core/entry_factors.py:146)  \n  严格判断“当日最高价突破前 199 个交易日高点”，也就是 200 日窗口，并输出价格、前高、突破幅度、过去 5 日涨幅、量比。\n- 扫描发布：[technical_signal_scan.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/technical_signal_scan.py:670)  \n  现在会把它写成 `terminal_technical_signals` 的买点信号，`technical_evidence.entry_factor` 里保留完整指标明细。\n- 盯盘/买点池排序：[terminal_pool.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/terminal_pool.py:25)  \n  已纳入 `ENTRY_FACTOR_TOKENS`、右侧突破机会识别、`buy_point_quality`，并新增 `breakout_momentum` 分项，盯盘池和买点池排序都会吃到。\n- 回测 UI/API：[backtest.py](/Users/zhangqilong/github代码仓库/Signals/signals/web2/api/backtest.py:1068)、[index.html](/Users/zhangqilong/github代码仓库/Signals/signals/web2/static/index.html:83)、[backtest.js](/Users/zhangqilong/github代码仓库/Signals/signals/web2/static/js/backtest.js:107)  \n  下拉里已新增“200日新高”，参数里可调 lookback 和量比过滤。"
+    },
+    {
+      "hash": "47c05453030169ec73e40a2d5fd5e38566e7a36a15774c83b3bff19bdd3fc593",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0adc-9656-7ff0-9d3e-2a7313b3d11b",
+      "timestamp": null,
+      "verbatim": "- `py_compile` 通过\n- `tests/test_technical_signal_scan.py`：13 passed\n- `tests/test_terminal_stock_pool.py`：49 passed\n- `node --check signals/web2/static/js/backtest.js` 通过\n- 用本地真实缓存无写入验证 `688655`：生成 `200日新高突破`，`score/total_score=90.105`，5 日涨幅 `55.2838%`，量比 `1.2209`，突破幅度 `18.7234%`"
+    },
+    {
+      "hash": "6687988f2acbcb1f4f58c6eb07cfcfc4d7039bac67c8b354c3405f9057de61ed",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0adc-9656-7ff0-9d3e-2a7313b3d11b",
+      "timestamp": null,
+      "verbatim": "工作区里还有几个本轮前就存在的未提交改动，比如 `signals/web/api/workbench.py`、`tests/test_workbench_watchlist_groups.py` 和两个 untracked 文件，我没有处理它们。"
+    },
+    {
+      "hash": "e7917b95b0c1aa01da4be9f4e91c2f9cb37a10d99c95c149673e9fd45923eaf5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ad9-7a0e-7063-ad6d-e2c9d53923dc",
+      "timestamp": null,
+      "verbatim": "1. [signals/core/entry_factors.py](/Users/zhangqilong/github代码仓库/Signals/signals/core/entry_factors.py:80)  \n   写成纯筛选因子，比如 `detect_200d_new_high_entries()`，负责计算：\n   `当日最高 > 前199日最高`、`5日涨幅`、`量比/成交量放大`、`突破幅度`。"
+    },
+    {
+      "hash": "06a4b53bd5bc7e19a83dfdf3b615dd6f0e75d91493ee5cf96b9ecfdcc32d183e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ad9-7a0e-7063-ad6d-e2c9d53923dc",
+      "timestamp": null,
+      "verbatim": "2. [signals/sync/modules/technical_signal_scan.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/technical_signal_scan.py:706)  \n   在盘后全市场扫描里调用这个因子，并写入 `terminal_technical_signals`。这个模块已经负责扫描、去重、写 Mongo 和 freshness。"
+    },
+    {
+      "hash": "2dfd381f1b065ff3831c52a024a58945fbe21b47b4be1dbf3ae984ccdea14e67",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ad9-7a0e-7063-ad6d-e2c9d53923dc",
+      "timestamp": null,
+      "verbatim": "3. 不要直接写进 `terminal_stock_pool`。  \n   [terminal_pool.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/terminal_pool.py:1149) 已经会读取最新 `terminal_technical_signals`，再结合知识层、产业链热度、风险信号做最终池子排序。直接塞池子会绕过你现在的评分/分层逻辑。"
+    },
+    {
+      "hash": "98a4261d3d41e3e4de67a02f2000dcf0d93d6046386208bec9ec6e0812d95eda",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ad9-7a0e-7063-ad6d-e2c9d53923dc",
+      "timestamp": null,
+      "verbatim": "这个链路已经在 [postmarket.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/postmarket.py:170) 里排好了。"
+    },
+    {
+      "hash": "c9cf635026985ad0957a41cbfb0adb67ab597a8d1acbdeac86e35a6f83ab4a97",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ad9-7a0e-7063-ad6d-e2c9d53923dc",
+      "timestamp": null,
+      "verbatim": "- `signal_type`: `200日新高突破`\n- `signal_family`: `entry_factor`\n- `freq`: `日线`\n- `signal_side`: `buy`\n- `score`: 综合 `突破幅度 + 5日涨幅 + 量比 + 均线状态`\n- `technical_evidence`: 保存 `prev_199_high`、`today_high`、`close`、`five_day_gain_pct`、`volume_ratio`\n- `invalidates_when`: `跌回前199日高点下方，或放量突破次日不能维持`"
+    },
+    {
+      "hash": "d92af8d70ae977d8169e53c17434c97644f456de29756d39944e4278ce4dffee",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ad9-7a0e-7063-ad6d-e2c9d53923dc",
+      "timestamp": null,
+      "verbatim": "一句话：这不是“手工名单池”，而是一个盘后全市场硬技术因子，应该进入 `technical_signal_scan`，让池子自动消费。下一步直接实现这三个改动就行。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

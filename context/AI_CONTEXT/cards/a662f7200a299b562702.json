@@ -1,0 +1,93 @@
+{
+  "id": "019d779d-efeb-7750-91d7-027184fd32ed",
+  "title": "解释 Longclaw Runtime 摘要",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019d779d-efeb-7750-91d7-027184fd32ed",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "673465a848eb31794c2a550d1f3bf63d4710945bb42344168362c9d31969c609",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#first-request",
+      "timestamp": null,
+      "verbatim": "Longclaw Runtime 摘要 时间: 2026-04-10T06:28:40.888075-07:00 整体: 当前有 5 个待处理问题，最高风险 ⚠️ 主备: codex (primary=codex, backup=claude) 送达模式: summary=background_summary, conversation=reply, reliable_local 最值得盯: knowledge-base/environment_missing: Missing path: CLAUDE.md 阻塞/待审阅: 3/2 微信任务队列: pending=0, running=0 下一步: knowledge-base: 人工审阅 environment_missing   这个runtime是什么意思呢？对我来说怎么去解决"
+    },
+    {
+      "hash": "8970ab7a821b2975d9b85189befcaaba0a05b1953eb9b0ca109946605ce92278",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "- 当前运行面还有 `5` 个待处理问题\n- 最高优先级问题是 `knowledge-base/environment_missing`\n- 具体缺失项是 `CLAUDE.md`\n- 主 agent 现在是 `codex`，备份是 `claude`\n- `3/2` 表示大概有 3 个阻塞项、2 个待人工审阅项\n- “下一步: 人工审阅 environment_missing” 的意思是：系统判断这个问题更像“配置/知识缺口”，需要你确认或补齐，而不是自动修复"
+    },
+    {
+      "hash": "f931609d4b8f8ba6d23a875898f8e9057f49cbb2dc8db7589c5c91f050daa8e5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "`knowledge-base/environment_missing: Missing path: CLAUDE.md`"
+    },
+    {
+      "hash": "737e032e76930019139cb9ccbf510bc323af2fc09e7eb2bad01ccec615473d80",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "我核实了当前工作区根目录 `/Users/zhangqilong/github代码仓库`，这里确实没有根级 `CLAUDE.md`，但很多子项目里有，比如 `Chanless/CLAUDE.md`、`gstack/CLAUDE.md`、`superpowers/CLAUDE.md`。而 `longclaw-agent-os` 里也明确把项目根目录 `CLAUDE.md` 当成 onboarding/项目说明是否齐备的标志，见 [projectOnboardingState.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/projectOnboardingState.ts#L18) 和 [README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md)。"
+    },
+    {
+      "hash": "1da7b6ad1fda7ff2b6d7885b90905aa1b503682d136b94d9d75bf7a34fad630a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "- 如果你当前是把整个 `/Users/zhangqilong/github代码仓库` 当成一个统一工作区来跑 runtime，那么它希望这个工作区根目录也有一份 `CLAUDE.md`，用来说明“这个总工作区是什么、有哪些子仓库、默认工作方式是什么”。\n- 如果你实际是分别进入各个子项目工作，那这个告警更像“根工作区没有总说明文件”，不一定会影响每个子项目内的正常使用，只是 runtime 会持续提示这个环境上下文不完整。"
+    },
+    {
+      "hash": "dcde6ae06d2a1d48b548fbe645a5e73d54d8c34f87c97fad9d1a423652842a53",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "1. 你把这个大目录当总工作区用  \n在 `/Users/zhangqilong/github代码仓库/CLAUDE.md` 补一份根级说明。内容不需要长，重点写：\n- 这是多仓库工作区\n- 常用项目有哪些\n- 默认应先进入具体子项目再执行开发任务\n- 哪些目录是产品代码，哪些只是资料/配置\n- 共享约束，比如语言、测试、提交习惯"
+    },
+    {
+      "hash": "28f0c1779c501ec99e87560db46cdd74e27f5ed9e01f49931a94a7d4544e5555",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "2. 你不想把大目录当项目  \n那就不要从这个总目录启动/绑定 runtime，改成从具体项目目录启动，比如：\n- `/Users/zhangqilong/github代码仓库/longclaw-agent-os`\n- `/Users/zhangqilong/github代码仓库/Chanless`"
+    },
+    {
+      "hash": "293995fc4aa8d0123b4a673f0ed119b0adca2104f34aa59aa8378bdb3b68e630",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "这样 runtime 会去看具体项目自己的 `CLAUDE.md`，告警通常就不会再指向总目录缺文件。"
+    },
+    {
+      "hash": "b16c7bf121d3a567736a2bebe88b8326e534635c97f6133b88a3d8d3da796d86",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "我的建议是选第 1 种，成本最低。因为你这个目录明显是一个多项目工作台，补一个根级 `CLAUDE.md` 能把这类“environment_missing”长期压下去，而且对 agent 理解你的工作区结构也有帮助。"
+    },
+    {
+      "hash": "9051144ac59d86fb0a004bd65519f4ac601d674bf885effce24d68d870f009cd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d779d-efeb-7750-91d7-027184fd32ed#recent",
+      "timestamp": null,
+      "verbatim": "如果你要，我下一步可以直接给你一份适合这个目录的根级 `CLAUDE.md` 内容草稿。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

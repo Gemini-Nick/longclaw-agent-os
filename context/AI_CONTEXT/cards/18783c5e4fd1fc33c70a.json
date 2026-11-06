@@ -1,0 +1,29 @@
+{
+  "id": "019e7790-c89e-7633-b990-5ff9feb6a481",
+  "title": "优化首页与切标加载",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e7790-c89e-7633-b990-5ff9feb6a481",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "db6a4f9c805a36b3f0b49010163168ef473bd322d2e5ba2fc19fcff40b394ca5",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e7790-c89e-7633-b990-5ff9feb6a481#recent",
+      "timestamp": null,
+      "verbatim": "<appshot app=\"隆小侠 Agent OS\" bundle-identifier=\"com.zhangqilong.longclaw.agentos\" window-title=\"隆小侠 Agent OS\" image=\"隆小侠 Agent OS Appshot 2026-05-30T06-31-40.484Z.png\">\nWindow: \"隆小侠 Agent OS\", App: 隆小侠 Agent OS.\n标准窗口 隆小侠 Agent OS\n\tcontainer (settable, string) 隆小侠 Agent OS\n\t\tcontainer (settable, string)"
+    },
+    {
+      "hash": "052c8d8a738740938174904456b1b56bd2784c4e8a289fff8e430c0b0c94e64b",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e7790-c89e-7633-b990-5ff9feb6a481#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n进入agent首页加载缓慢，每次切换标的等待时间超过5秒"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

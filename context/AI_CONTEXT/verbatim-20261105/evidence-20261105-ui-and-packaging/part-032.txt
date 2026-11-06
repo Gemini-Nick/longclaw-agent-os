@@ -1,0 +1,821 @@
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 本地闭环重构与产品化过渡计划
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+基于当前资料，第一阶段先把 `WeChat -> WeClaw -> Mac -> 双 agent -> 知识库` 的本地闭环理顺，再收紧服务拓扑，最后把现有 `ROADMAP` 变成可自动迭代的计划控制面。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 第一阶段顺序：`本地闭环 -> 服务拓扑 -> roadmap 自动化`
+- 第一批执行范围：只覆盖核心本地栈，不把 `Chanless` / `Signals` 放进首批执行闭环
+- 第一版自动化权限：只生成计划、队列、dashboard、review artifacts，不直接改业务代码或自动开 PR
+- 控制面采用双层并行：
+  - `hermes-agent` 是战略真源
+  - `runtime state` 是运行真源
+  - `知识库` 是审阅投影层
+- 双 agent 第一阶段采用 `主备 failover`，稳定后再进入角色分工，并为后续 `GLM / Kimi / MiniMax` 扩展预留 schema
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `Gemini-Nick/hermes-agent` 只负责产品级真源：`PLAN / ROADMAP / ARCHITECTURE / REPO_MAP`
+- `~/.weclaw/runtime` 与 `~/.longclaw/runtime-v2/state` 负责机器可读运行真源：agent 路由、服务健康、harness 结果、roadmap 队列、sync 状态
+- `/Users/zhangqilong/Desktop/知识库` 只负责 `Knowledge Review Plane（知识侧）`：dashboard、inbox、promotion、人工审阅
+- 不再把 `learning runtime` 当成独立顶层系统；统一收进 `Agent Core（云侧）` 的 `user model + skills + Harness Engineering Loop`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Phase 1 固定本地链路为：
+  - `weclaw bridge ingress`
+  - `Routing Controller`
+  - `primary/backup agent execution`
+  - `runtime state persistence`
+  - `knowledge projection`
+  - `brief/summary generation`
+- `weclaw` 继续只负责微信语义、媒体、archive contract、agent input policy；不承担计划、调度、服务托管逻辑
+- `longclaw-agent-os` 继续承担 `Client Runtime（端侧）`：桌面宿主、launchd、guardian、repo.scheduler、本地控制链
+- `repo.scheduler` 继续保持 `4 小时 + 手动触发`，不新增新的常驻 roadmap service
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 第一阶段目标不是“智能多 agent 编排”，而是“一个明确主 agent + 一个可靠备份 agent”
+- 当前运行默认值沿用现状：
+  - `effective_agent = codex`
+  - `backup_agent = claude`
+  - `claude` 当前视为 `not_logged_in` 的不健康状态来源
+- 路由控制器成为以下状态的唯一 owner：
+  - `preferred_primary`
+  - `preferred_backup`
+  - `effective_agent`
+  - `routing_mode`
+  - `reason`
+  - `manual_override`
+  - per-agent health snapshot
+- `guardian` 只负责进程存活与 restart/backoff；是否切主备、何时回切，由 routing controller 决定
+- Phase 2 再进入角色分工，支持按 agent 特长做 `coding / review / planning` 路由；Phase 3 预留多 agent 扩展
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 4. 服务拓扑收口到 guardian + scheduler + one-shot harness
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 常驻面固定为：
+  - `guardian.monitor`
+  - `weclaw.bridge`
+  - `codex.appserver`
+  - `claude.worker`
+- 定时面固定为：
+  - `repo.scheduler` 作为唯一 one-shot 自动化宿主
+- `harness loop` 和单独 harness launchd job 进入退役路径；支持入口只保留 one-shot：
+  - `harness tick`
+  - `harness brief`
+  - `harness doctor`
+  - `harness eval`
+- `repo.scheduler` 在 workspace maintenance 之后统一调用 `harness tick`，由 harness 产出机器摘要，scheduler 只消费摘要，不再各自维护独立的 summary 逻辑
+- `harness/state` 与 live generated outputs 迁移到 `~/.longclaw/runtime-v2/state/harness`
+  - 现有 repo 内 `longclaw-agent-os/harness/` 保留 policies、projects registry、report templates 和迁移期兼容逻辑
+  - 首次迁移需要把 `failures.json / schedule.json / notifications.json` 搬到 runtime state，并保留旧 failure id
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 第一版 `roadmap automation` 读取三类输入：
+  - `hermes-agent/docs/longclaw/{PLAN,ROADMAP}`
+  - runtime health / active-agent / harness findings
+  - 知识库中的 dashboard / review signals
+- 第一版只生成三类产物：
+  - runtime queue：可执行 next steps、blocked items、sync pending
+  - knowledge projection：`00 Dashboard` 与必要的 `10 Inbox` 审阅项
+  - hermes sync artifact：当前里程碑状态、阻塞项、下一轮建议
+- `hermes-agent` 和 runtime 采用并行控制，但职责硬分离：
+  - `hermes-agent` 不直接当本地运行时
+  - runtime 不直接改架构定义
+  - 两者通过 roadmap sync artifact 对齐
+- 第一版不自动改业务代码；只允许生成计划、状态和 review artifacts。后续阶段再放开 `docs/config` 写入，再后才考虑代码变更
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `~/.weclaw/runtime/active-agent.json`
+  - 扩展为 routing canonical state，至少包含：`routing_mode`、`preferred_primary`、`preferred_backup`、`effective_agent`、`reason`、`manual_override`、per-agent health
+- `~/.longclaw/runtime-v2/state/roadmap-queue.json`
+  - 保存当前 milestone、next steps、blocked items、pending reviews、pending sync
+- `~/.longclaw/runtime-v2/state/harness/*.json`
+  - 作为 harness live state 和 machine summary 真源
+- `hermes-agent/docs/longclaw/PLAN.md` 与 `ROADMAP.md`
+  - 继续作为战略输入，不让 runtime 直接重写它们
+- `hermes-agent/docs/longclaw/status/`
+  - 新增自动同步的 runtime status / roadmap sync artifacts
+- `/Users/zhangqilong/Desktop/知识库/00 Dashboard`
+  - 新增长期稳定的本地运行态 dashboard
+- `/Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat`
+  - 保持 WeChat 会话归档入口，不让 runtime state 反客为主
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- WeChat 入站消息经过 `weclaw` 后，路由状态、实际执行 agent、知识库归档三者一致
+- `claude` 不健康时，`active-agent.json`、`~/.weclaw/config.json`、对外执行结果都稳定落到 `codex`
+- `guardian.monitor` 不参与业务路由决策，只负责服务存活；主备切换由 routing state 驱动
+- `repo.scheduler` 仍保持 4 小时 one-shot；不新增新的常驻 launchd label
+- 手动执行一次 scheduler，能同时更新：
+  - runtime queue
+  - harness summary
+  - knowledge dashboard
+  - hermes sync artifact
+- 迁移后删除 repo 内 live harness state，不丢失既有 `failure_id`、schedule 节点和通知去重状态
+- 当知识库不可写时，runtime queue 仍更新，并产生 projection failure；当 hermes repo 不可同步时，runtime queue 标记 `sync_pending`，不让 scheduler 整体失败
+- 第一版不会自动改业务代码；所有自动产物限于 runtime state、dashboard/inbox、hermes status docs
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 当前首批不纳入 `Chanless` 与 `Signals` 的执行闭环；它们放到第二波重构
+- 当前 `codex` 继续作为有效主 agent 默认值，直到 `claude` 登录与健康恢复
+- 第一版 roadmap 自动化默认只生成计划和同步产物，不自动提交、不开 PR、不改业务代码
+- `runtime state` 是本地闭环 canonical state，Obsidian 永远只是投影和审阅层，不是唯一机器真源
+- `hermes-agent` 是产品级架构与 roadmap 真源，但不是第一版本地执行宿主
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+关键改动集中在这几处：
+- [harness runtime](/Users/zhangqilong/github代码仓库/longclaw-agent-os/harness/bin/harness) 现在把 live state 和 generated output 收口到 `~/.longclaw/runtime-v2/state/harness`，保留 legacy state 首次迁移，去掉了 loop 驱动的发送节奏，`brief/tick` 只产出 machine-readable summary。
+- [guardian failover](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/guardian/cmd/weclaw-guardian/main.go) 把 `active-agent.json` 扩成 routing canonical state，包含 `preferred_primary`、`preferred_backup`、`effective_agent`、`routing_mode`、`agents` 健康快照，当前默认主备是 `codex -> claude`。
+- [repo scheduler](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh) 现在在 workspace maintenance 后统一执行 `harness tick` 和 [runtime roadmap sync](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-roadmap-sync.py)，只保留 `repo.scheduler` 这个 one-shot 宿主，不再依赖单独的 harness loop。
+- [guardian install/verify](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh) / [verify-v2.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/verify-v2.sh) 已经纳入 installed `harness`、installed `runtime-roadmap-sync.py`、legacy `com.zhangqilong.ai.harness.loop` 清理，以及 runtime harness asset 同步。
+- [hermes status support](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/status/README.md) 已建好，runtime 会把同步产物写到总库 `docs/longclaw/status/`，并通过 `.gitignore` 忽略 live status 文件。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+本机运行态也已经切到新逻辑：
+- [active-agent.json](</Users/zhangqilong/.weclaw/runtime/active-agent.json>) 现在是新 schema，当前状态是 `effective_agent=codex`、`preferred_backup=claude`、`claude=not_logged_in`。
+- [roadmap-queue.json](</Users/zhangqilong/.longclaw/runtime-v2/state/roadmap-queue.json>) 已经包含 routing、harness、pending_sync。
+- [Longclaw Runtime Dashboard](</Users/zhangqilong/Desktop/知识库/00 Dashboard/Longclaw Runtime.md>) 和 [runtime-status-latest.json](</Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/status/runtime-status-latest.json>) 已经能同步刷新。
+- `com.zhangqilong.ai.harness.loop` 已退役，`launchctl print gui/501/com.zhangqilong.ai.harness.loop` 现在返回找不到服务。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我实际验证过：
+- `node --check` 检查了 [harness runtime](/Users/zhangqilong/github代码仓库/longclaw-agent-os/harness/bin/harness)
+- `python3 -m py_compile` 检查了 [runtime roadmap sync](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-roadmap-sync.py)
+- `go build` 通过了 [weclaw-guardian](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/guardian/cmd/weclaw-guardian/main.go)
+- [verify-v2.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/verify-v2.sh) 全部通过
+- 安装态 `repo-scheduler-service.sh` 跑了一次 `DRY_RUN=1`，成功刷新 harness 和 roadmap sync
+- 我还模拟了知识库权限失败，确认 queue 仍会写出，并把 `knowledge_projection` 标成 `pending`，不会让 scheduler 整体失败
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b7c-f61a-79b3-bfa9-052c6ffaaa31
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在还没做的是提交 git。两个仓库都有未提交改动；如果你要，我下一步可以直接帮你整理成一批可提交的 commits。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b71-cdfc-7913-8253-41c46a9b4973
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+可以基于目前这些资料，构建一个重构计划么？我希望先把目前wechat-weclaw-mac-双agent-知识库这套本地逻辑理顺，包括整个architecture逐步迈向产品化，基于已有的roadmap来自动化迭代
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6e-67bc-7de2-a7fe-212117c70f7d
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+改动落在这几份：
+- [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md)
+- [PLAN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/PLAN.md)
+- [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)
+- [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md)
+- [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6e-67bc-7de2-a7fe-212117c70f7d
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+具体上，我做了三类收敛：
+- 增加了 `Concept Model` / `Concept Boundaries` / `Relationship Of Terms`，避免把 `self-improving agent` 误当成单独层或仓库
+- 把旧的 `learning loop` 表达统一收成 `Harness Engineering Loop`，并把 `user model` 明确放回 `Agent Core（云侧）`
+- 让 roadmap 和 architecture 的表述一致，不再一边说 `Harness Engineering Loop`，一边又回到旧的 `learning` 说法
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-dd59-76f3-beab-f882130ec405
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这次新增的是 [PLAN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/PLAN.md)，我把桌面的 [`架构plan.md`](/Users/zhangqilong/Desktop/架构plan.md) 吸收到总库里，定位成“工作中的架构草案”。README 也补了入口，在 [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md) 的 `Key docs for this fork` 下现在能直接看到它。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-dd59-76f3-beab-f882130ec405
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在这套文档结构是清楚的：
+- [PLAN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/PLAN.md)：演进中的架构草案
+- [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)：正式架构定义
+- [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md)：仓库分类和边界
+- [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)：阶段路线
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-dd59-76f3-beab-f882130ec405
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，下一步我可以继续做一件事：把这四份文档再统一成一套更强的术语和叙事，特别是把 `harness engineering loop`、`self-improving agent`、`Hermes-like core` 三者关系写得更硬。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-4b42-7ae0-a136-fd6c677d19fb
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 架构plan.md: /Users/zhangqilong/Desktop/架构plan.md
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-4b42-7ae0-a136-fd6c677d19fb
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## My request for Codex:
+这个plan我和核心文档三份，我可以更新在Gemini-Nick/hermes-agent这个里面么
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-4b42-7ae0-a136-fd6c677d19fb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在 [`hermes-agent`](/Users/zhangqilong/github代码仓库/hermes-agent) 已经被我定位成总库和未来 `Agent Core（云侧）` 的入口，所以这几份内容放在这里最合理：
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-4b42-7ae0-a136-fd6c677d19fb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 你的草案 [`架构plan.md`](/Users/zhangqilong/Desktop/架构plan.md)
+  - 建议收进 [`docs/longclaw/PLAN.md`](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/PLAN.md)
+- 核心文档三份
+  - [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md)
+  - [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)
+  - [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md)
+  - [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-4b42-7ae0-a136-fd6c677d19fb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `PLAN.md`：工作中的架构决策和演进草案
+- `README.md`：产品入口和总述
+- `ARCHITECTURE.md`：正式架构图和分层定义
+- `REPO_MAP.md`：仓库归类和边界
+- `ROADMAP.md`：阶段路线
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b6c-4b42-7ae0-a136-fd6c677d19fb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以直接把 [`架构plan.md`](/Users/zhangqilong/Desktop/架构plan.md) 合并进 [`docs/longclaw/PLAN.md`](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/PLAN.md)，并顺手把 README 加一个链接入口。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b19-b8c7-77b2-86c5-4ce4abf4cfc6
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+总库新建一个就叫hermes agent（harness engineering），然后fork我之前说的hermes 项目
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b19-b8c7-77b2-86c5-4ce4abf4cfc6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已完成。GitHub 上已经 fork 出 [Gemini-Nick/hermes-agent](https://github.com/Gemini-Nick/hermes-agent)，并把这批产品级文档推到了 `main`，当前提交是 `b690ba3`。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b19-b8c7-77b2-86c5-4ce4abf4cfc6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在这个总库的入口在 [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md)。我把它改成了 Longclaw 的产品总入口，明确了这不是继续堆本地多服务，而是以 Hermes-like unified runtime 为北极星，朝 `Harness Engineering` 的自进化闭环收敛。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b19-b8c7-77b2-86c5-4ce4abf4cfc6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+核心文档已经落到这三份：
+- [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)：四层术语、A/B 架构图、为什么要靠近 Hermes、以及 `harness` 如何并入 core 内的 improvement loop
+- [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md)：`hermes-agent`、`longclaw-agent-os`、`weclaw`、`Chanless`、`Signals`、知识库的正式归类
+- [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)：从本地参考实现到分布式产品架构的阶段路线
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b19-b8c7-77b2-86c5-4ce4abf4cfc6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这版已经把 `hermes-agent` 定位成未来 `Agent Core（云侧）` 的总库，把 [`longclaw-agent-os`](/Users/zhangqilong/github代码仓库/longclaw-agent-os) 降成当前 `Client Runtime（端侧）` 参考实现，并把 `harness` 从“独立 runtime 名词”收回成 core 内的 `Harness Engineering` 闭环。工作区是干净的；这次没有跑测试，因为改动是文档和仓库结构定位。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 两步走架构图与仓库分类
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Summary
+- 统一术语：
+  - `Client Runtime（端侧）`
+  - `Agent Core（云侧）`
+  - `Interaction Adapter Layer（通道侧）`
+  - `Knowledge Review Plane（知识侧）`
+- 当前阶段目标：把现有系统收敛成稳定的**本地参考实现**。
+- 未来阶段目标：从中抽出可分发的 **`Agent Core（云侧）`**，最终支持双模并存。
+- 设计判断：
+  - `hermes-agent` 更偏**产品级统一 runtime**，适合云上托管和分发。
+  - 你当前体系更偏**端侧参考实现 + 多仓协作**，适合先验证能力和边界。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Architecture A
+### `Local-first Reference Architecture（当前本地参考实现）`
+```mermaid
+flowchart TB
+  subgraph CR["Client Runtime（端侧）"]
+    AO["longclaw-agent-os"]
+    GD["Guardian substrate"]
+    UI["Desktop / CLI / local runtime / device integration"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+subgraph IA["Interaction Adapter Layer（通道侧）"]
+    WC["weclaw"]
+    CH["Chanless"]
+    CA["future channel adapters"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+subgraph KP["Knowledge Review Plane（知识侧）"]
+    OB["Obsidian knowledge base"]
+    DB["Dashboard / review / intervention"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+subgraph AC["Agent Core（云侧）"]
+    HC["Hermes-like core (future extract)"]
+    SS["session"]
+    MM["memory"]
+    SK["skills"]
+    SC["scheduler"]
+    LL["learning loop"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+IA --> CR
+  CR --> KP
+  CR --> AC
+  KP --> AC
+  AC --> KP
+```
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+适用原因：
+- 现在你主要自用，需要快速闭环。
+- 你有本机账号态、微信登录态、`launchd`、本地工具链、桌面通知、语音输入等端侧依赖。
+- 这时 `Guardian substrate` 仍然必要，因为你现在不是单一统一 runtime。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+优点：
+- 最贴近当前现实，迁移成本最低。
+- 便于继续跑通 `weclaw / guardian / signals / knowledge base / chanless`。
+- 可以逐步抽核心，不会一下打散现有系统。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+缺点：
+- 端侧逻辑和产品核心仍耦合。
+- 仓库边界需要持续整理。
+- 不适合作为最终分发架构直接复制给别人。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Architecture B
+### `Distributed Product Architecture（未来产品化架构）`
+```mermaid
+flowchart TB
+  subgraph CR["Client Runtime（端侧）"]
+    APP["Mac / Mobile / Glass / Pad clients"]
+    UX["UI / notification / local cache / device capability"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+subgraph IA["Interaction Adapter Layer（通道侧）"]
+    WX["WeChat"]
+    TG["Telegram / Lark / Line / etc."]
+    VC["Voice / multimodal adapters"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+subgraph AC["Agent Core（云侧）"]
+    AG["Unified agent runtime"]
+    SS["session"]
+    MM["memory"]
+    SK["skills"]
+    SC["scheduler / automations"]
+    LL["learning loop / user model"]
+    DV["delivery"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+subgraph KP["Knowledge Review Plane（知识侧）"]
+    OB["Obsidian / Notion / review workspace"]
+    RV["human review / intervention / audit"]
+  end
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+CR --> AC
+  IA --> AC
+  AC --> KP
+  KP --> AC
+  AC --> CR
+  AC --> IA
+```
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+为什么 `hermes-agent` 更像这一路：
+- 它把 CLI、gateway、cron、memory、session search 放进统一 runtime。
+- 它更依赖外部托管环境，而不是自己维护一层本地 substrate。
+- 因此更适合 VPS / Docker / serverless / 产品分发。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+优点：
+- 架构最干净，最适合分发。
+- `session / memory / skills / scheduler` 天然统一。
+- 多端、多通道、多租户更容易扩展。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+缺点：
+- 对你当前体系重构量大。
+- 端侧依赖强的能力要重新切边界。
+- `guardian` 这类本地 substrate 要么弱化，要么外包给部署环境。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Repo Classification
+### Primary mapping
+- [`longclaw-agent-os`](/Users/zhangqilong/github代码仓库/longclaw-agent-os)
+  - 当前归类：`Client Runtime（端侧）`
+  - 角色：端侧参考实现、安装升级、launchd/runtime 编排、桌面产品外壳
+- [`weclaw`](/Users/zhangqilong/github代码仓库/weclaw)
+  - 当前归类：`Interaction Adapter Layer（通道侧）`
+  - 角色：WeChat bridge core、消息语义、媒体处理、session/media facts、archive contract
+- [`Chanless`](/Users/zhangqilong/github代码仓库/Chanless)
+  - 当前归类：`Interaction Adapter Layer（通道侧）`
+  - 角色：语音输入与本地语音调度入口，偏端侧语音 adapter
+- [`Signals`](/Users/zhangqilong/github代码仓库/Signals)
+  - 当前归类：业务能力域；当前更像 `Agent Core（云侧）` 可调用能力的一部分
+  - 角色：金融分析引擎、web/review/backtest/sync、可被 agent 调用的 domain engine
+- `/Users/zhangqilong/Desktop/知识库`
+  - 当前归类：`Knowledge Review Plane（知识侧）`
+  - 角色：Inbox -> Promote -> Knowledge 的人工审阅与正式知识沉淀层
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### Internal sub-systems
+- `guardian`
+  - 归类：`Client Runtime（端侧）` 内的 substrate
+  - 角色：本地 service supervision，不是未来产品核心本身
+- `watchdog`
+  - 当前建议归类：先留在 `Client Runtime（端侧）`；未来抽进 `Agent Core（云侧）` 的 scheduler/orchestration
+- `harness`
+  - 当前建议归类：先留在 `Client Runtime（端侧）`；未来拆成 `Agent Core（云侧）` 的 evaluation/feedback 子系统
+- `learning runtime`
+  - 不建议再作为独立顶层名保留
+  - 未来直接归入 `Agent Core（云侧）` 的 `memory + skills + learning loop`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Recommended Direction
+- 近期按 Architecture A 收敛：
+  - 把 `longclaw-agent-os` 明确成 `Client Runtime（端侧）` 参考实现。
+  - 清理常驻 service，收紧 `guardian / watchdog / harness` 边界。
+  - 让知识库继续承担 `Knowledge Review Plane（知识侧）`。
+- 中期开始抽 `Agent Core（云侧）`：
+  - 第一批抽象对象固定为 `session / memory / skills / scheduler`。
+  - `watchdog`、`harness` 的可移植部分进入 `Agent Core（云侧）`。
+  - `weclaw`、`chanless` 保持在 `Interaction Adapter Layer（通道侧）`。
+- 长期走向 Architecture B：
+  - `Client Runtime（端侧）` 变轻。
+  - `Agent Core（云侧）` 成为统一产品核心。
+  - 支持端侧直连云侧核心，也支持部分轻量本地运行。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 当前 `longclaw-agent-os` 不作为最终产品核心仓库，而作为 `Client Runtime（端侧）` 参考实现。
+- 未来双模并存，但主抽象方向优先面向 `Agent Core（云侧）`。
+- `Signals` 不是基础运行时，而是高价值业务能力域，未来应作为可插拔 domain engine 被核心调用。
+- `Knowledge Review Plane（知识侧）` 保持人类可读、可审阅、可回溯，不作为唯一机器状态真源。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b15-fd8a-7172-b461-08215c314108
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你需要把计划列在一个github总库里面，总库主要是架构图和readme描述产品路径，然后主要是靠近hermes agent或者说全自动进化harness agent模式
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b13-251f-7d50-8aaf-1912e451b06b
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+中文标识也要加上比如，Client Runtime（端侧），Agent Core（云侧）
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b13-251f-7d50-8aaf-1912e451b06b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+但我建议你把这四个括号里的中文理解成**主部署侧 / 主归属侧**，不是绝对绑定关系。这样表述更稳：
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b13-251f-7d50-8aaf-1912e451b06b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Client Runtime（端侧）`
+  - 主归属在用户设备侧
+- `Agent Core（云侧）`
+  - 主归属在云侧，但也可本地轻量运行
+- `Interaction Adapter Layer（通道侧）`
+  - 主归属在交互通道与协议接入
+- `Knowledge Review Plane（知识侧）`
+  - 主归属在人类知识沉淀与审阅
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b13-251f-7d50-8aaf-1912e451b06b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你认可，我下一轮就直接用这组术语输出正式的 A/B 架构图和仓库归类表。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b11-40c3-7441-ad51-e73236f5dba0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Client Runtime`
+  - 中文：`客户端运行时`
+  - 含义：运行在用户设备上的宿主环境，不等于 GUI
+  - 覆盖：`macOS app`、`iPhone/iPad app`、`眼镜端`、本地 CLI、端上后台 agent
+  - 职责：UI、通知、设备能力、权限、账号接入、端上缓存、必要的本地执行
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b11-40c3-7441-ad51-e73236f5dba0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Agent Core`
+  - 中文：`Agent 核心`
+  - 含义：真正的 agent runtime 核心，不和部署位置绑定
+  - 可运行在：本机、`Docker`、`VPS`、云服务、serverless
+  - 职责：`session`、`memory`、`skills`、`scheduler`、`learning loop`、任务编排
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b11-40c3-7441-ad51-e73236f5dba0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Interaction Adapter Layer`
+  - 中文：`交互适配层`
+  - 含义：所有用户接入通道和协议适配
+  - 覆盖：`WeChat`、`Lark`、`Telegram`、`Line`、`Discord`、`Slack`、语音、邮件
+  - 职责：消息协议、身份映射、上下文路由、媒体接入
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b11-40c3-7441-ad51-e73236f5dba0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Knowledge Review Plane`
+  - 中文：`知识审阅平面`
+  - 含义：人类可读的知识沉淀、审阅、确认、追溯层
+  - 覆盖：`Obsidian`、`Notion`、网盘、文档仓库、dashboard、人工介入台
+  - 职责：知识投影、人工审阅、证据追溯、长期归档
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b11-40c3-7441-ad51-e73236f5dba0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Client Runtime` 是**设备侧**
+- `Agent Core` 是**逻辑核心**
+- `Agent Core` 不等于“云”，只是未来通常更适合云托管
+- 所以 `Docker / VPS` 是 `Agent Core` 的部署形态，不是它的架构名
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b11-40c3-7441-ad51-e73236f5dba0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- [`longclaw-agent-os`](/Users/zhangqilong/github代码仓库/longclaw-agent-os)：当前是 `Client Runtime` 的参考实现
+- `未来 Hermes`：更接近 `Agent Core`
+- [`weclaw`](/Users/zhangqilong/github代码仓库/weclaw)、`chanless`：`Interaction Adapter Layer`
+- 你的 Obsidian 知识库：`Knowledge Review Plane`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6b10-33c3-7bd1-98a6-c820ce64e894
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+端侧宿主就是（gui）? 云端核心就是（docker vps）？通道适配就是channel( lark，wechat, telegram，line?) 知识库就是（notion,obsidian,网盘？？）

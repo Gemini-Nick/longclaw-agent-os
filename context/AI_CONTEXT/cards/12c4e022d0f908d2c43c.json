@@ -1,0 +1,93 @@
+{
+  "id": "019ed340-b04e-7e41-8c62-495764c61437",
+  "title": "排查进入系统卡顿",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ed340-b04e-7e41-8c62-495764c61437",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "f5fdb44f138ef780d0e4870c407873a0170d005d630ee65436bf3bfb6c8ac93c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#first-request",
+      "timestamp": null,
+      "verbatim": "检查一下，为什么每次进入系统都会卡顿，而且会显示数据一直在加载，缓存pending"
+    },
+    {
+      "hash": "aab8432be4517ba6103b4c5d798768b89d8386a7ad4e9c4bebb2824167263bb3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#recent",
+      "timestamp": null,
+      "verbatim": "结论：卡顿主因是进入策略页时 Electron 把重接口 `/api/pack/dashboard` 当作健康/首屏数据源；这个接口实测会到 6-13 秒，而 Electron 控制面请求 5 秒超时，超时后会退到空 dashboard，所以你看到 `加载中 / Mongo 0/0 / PENDING`。我已改成："
+    },
+    {
+      "hash": "4a48eba98a3e5b2d565f2f65efc4eb22a3353edba4b89b1fca5b7bff312eba2a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#recent",
+      "timestamp": null,
+      "verbatim": "- 启动/运行状态探针改走轻接口 `/api/pack/descriptor`，实测约 `0.004-0.011s`。\n- 策略 dashboard 改成小窗口请求 `recent_limit=5&backlog_limit=5`，实测约 `3.18s`。\n- Signals 新增 `/api/pack/cache-status`，dashboard 失败时可保留真实缓存状态。\n- 修掉 Signals 里两个慢查询点：无限时 distinct、终端输出精确 count。profile 里 `terminal_outputs` 从约 `4.889s` 降到约 `1.839s`。\n- 已重新安装 `/Applications/隆小侠 Agent OS.app`，asar 时间：`Jun 16 19:10:11 2026`。"
+    },
+    {
+      "hash": "a536d6801d925e3a04b111d8bafa9008a09d74782d5e4affd90460c9e9ba5cfa",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#recent",
+      "timestamp": null,
+      "verbatim": "Computer Use 最终读屏结果已经恢复：缓存条显示 `盘中 PARTIAL · 盘后 终端池已刷新 · Mongo 2026-06-17 204/5,509 · 网络源 BLOCKED`，候选池也恢复到 `33` 条，不再是 `Mongo 0/0` 的空态。剩下的 `PARTIAL/BLOCKED` 是后端真实状态：盘中部分模块和网络源仍有降级，不是 App 首屏加载失败。"
+    },
+    {
+      "hash": "90c34ce65d415cbf74b3f08327891d6d7160d33071fe65d8b80169400524176b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#recent",
+      "timestamp": null,
+      "verbatim": "验证已跑：\n- `longclaw-agent-os`: `npm run lint -- --pretty false`\n- `longclaw-agent-os`: `npm test -- src/services/longclawControlPlane/client.test.ts`\n- `Signals`: `bash scripts/python.sh -m pytest tests/test_domain_pack.py -q`"
+    },
+    {
+      "hash": "5c91585a31e81d3ba21c8b475579048612109e5d0349a988711143c57a80fcad",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#turn:019ed340-f013-7502-a5e3-c1ab15f52a09",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n检查一下，为什么每次进入系统都会卡顿，而且会显示数据一直在加载，缓存pending"
+    },
+    {
+      "hash": "acc2ac220be228044a7431cb1a94698921db32d570cc738d534bf6fcad2994ea",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#turn:019ed340-f013-7502-a5e3-c1ab15f52a09",
+      "timestamp": null,
+      "verbatim": "第一，`pending` 不是纯 UI 假状态。北京时间 `2026-06-17 09:46` 左右，Signals 后端显示 `postmarket:2026-06-16` 还在 `running`：`62` 个任务里 `37 pending / 10 partial / 2 running`，关键路径进度 `64.49%`，`stock_daily_deferred_symbols=1244`。provider 表里 Sina/Eastmoney/Tencent 的日线接口都在 cooldown，错误是 SSL EOF、RemoteDisconnected、超时。所以盘后全量一直不收敛，缓存监控自然显示 PENDING/加载中。"
+    },
+    {
+      "hash": "8c297a80fdccadbea306f6dfb5ae9e4b8da09313a976b43ad0245f487367a00e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#turn:019ed340-f013-7502-a5e3-c1ab15f52a09",
+      "timestamp": null,
+      "verbatim": "我做了一个窄修复：把 Agent OS 的 Signals 连通性探测从重的 dashboard 换成轻的 descriptor。改动在 [electron/src/main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)。验证结果："
+    },
+    {
+      "hash": "6d18527b735f83fa622edee957460e262b3db72620a1b170d313e06a2b76b9d3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#turn:019ed340-f013-7502-a5e3-c1ab15f52a09",
+      "timestamp": null,
+      "verbatim": "- 新探针 `/api/pack/descriptor`：`200`，`0.0015s`\n- 旧探针 `/api/pack/dashboard?recent_limit=5&backlog_limit=5`：`200`，`7.79s`\n- `npm run lint -- --pretty false` 通过"
+    },
+    {
+      "hash": "556ccef67fb875ac42ee2a46abf5eb02455041a4044b0d34a6c637bb497f5ee3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed340-b04e-7e41-8c62-495764c61437#turn:019ed340-f013-7502-a5e3-c1ab15f52a09",
+      "timestamp": null,
+      "verbatim": "注意：这次只改了源码，还没有覆盖 `/Applications/隆小侠 Agent OS.app`。当前打开的打包 App 仍然会保留旧行为，下一步需要重新打包安装，才会实际减少进系统时的固定卡顿。后端 pending 还需要单独处理 stock_daily shard/provider cooldown 的收敛策略。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

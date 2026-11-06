@@ -1,0 +1,45 @@
+{
+  "id": "019ed4fc-8cbc-7232-a8ac-543e0e71cb20",
+  "title": "修复 WeClaw 配置报错",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ed4fc-8cbc-7232-a8ac-543e0e71cb20",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "ae98fa2665781ead816a9cfb1ef4044ac04caa2c6c8a1de0154eb82a79cd645e",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed4fc-8cbc-7232-a8ac-543e0e71cb20#first-request",
+      "timestamp": null,
+      "verbatim": "检查一下weclaw日志，修复这个报错OpenAI｜小德总汇报： Error: thread error: agent error: failed to load configuration: /Users/zhangqilong/.codex/config.toml:11:16: unknown variant priority, expected fast or flex"
+    },
+    {
+      "hash": "f1a501cf06e4350fb1f0ca9c2bc61346dc08ae7766cbbdcf20f259f1763af270",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4fc-8cbc-7232-a8ac-543e0e71cb20#recent",
+      "timestamp": null,
+      "verbatim": "根因在 `/Users/zhangqilong/.codex/config.toml:11`："
+    },
+    {
+      "hash": "948fe3fdd500be4a5ef04e2f3cf43c8c614aff3a8135b3c16edded12ac21448b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4fc-8cbc-7232-a8ac-543e0e71cb20#recent",
+      "timestamp": null,
+      "verbatim": "- WeClaw 当前运行中：PID `99570`\n- 新 Codex ACP 子进程已初始化 ready：PID `101`\n- `/health` 返回 `ok`\n- 重启后的日志没有再出现 `unknown variant priority` / `failed to load configuration`"
+    },
+    {
+      "hash": "26567a3f8391c7f4f90ae81c30fc2db0ebc3b038272c3470adf5351061dfee30",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4fc-8cbc-7232-a8ac-543e0e71cb20#recent",
+      "timestamp": null,
+      "verbatim": "实际日志位置是 `/private/tmp/longclaw-guardian/weclaw.bridge.launchd.log`，不是 `weclaw status` 显示的默认路径。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

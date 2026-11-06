@@ -1,0 +1,85 @@
+{
+  "id": "01a037b6-cc30-7982-bef7-1ad39c576c1c",
+  "title": "[标题含凭据信息，归集索引已隐去；原聊天保留]",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:01a037b6-cc30-7982-bef7-1ad39c576c1c",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "ea6c076657e8bbb4c801d9e60f7c0c5a0b47b850e30775ac76a352e8d346764d",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#first-request",
+      "timestamp": null,
+      "verbatim": "为什么我长时间没打开codex，token还会自动消耗。你研究一下是不是自动化任务或者别的任务导致的消耗用量"
+    },
+    {
+      "hash": "1d4222a65e21fb987918b349579ce15a986bd5d48a94cfebadfeb01976641870",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#recent",
+      "timestamp": null,
+      "verbatim": "因此现在不需要再暂停其他自动化任务。配置记录见 [automations](</Users/zhangqilong/.codex/automations>)。"
+    },
+    {
+      "hash": "e6e34826cd26e6791e45d08bf88ae609e13083fdf92020ec8db32ca5a560b66c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037d8-c5e4-7880-9ac4-02165f3da121",
+      "timestamp": 1787643348,
+      "verbatim": "1. `PAUSED` 只阻止未来触发，不会撤销历史用量，也不一定中止已经启动的任务。\n2. 目前 13 个自动化仍全部是 `PAUSED`，没有发现 8 月 17 日之后新的自动化运行。\n3. 但“本次调查线程”一直处于 `active`。刚才它自己的本地 Token 计数已经累计约 220 万；前面读取过大的历史日志，确实造成了额外消耗，这是我这次调查方式不够节制。"
+    },
+    {
+      "hash": "74e3c8eb46a5a4bba8caa5076d8386cc14a5e23f62cb95fa2a83d6478004352d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037d8-c5e4-7880-9ac4-02165f3da121",
+      "timestamp": 1787643348,
+      "verbatim": "我现在停止继续读取和调用工具，避免再产生消耗。官方文档也确认自动化任务可以在 Codex 界面未打开时独立运行。[Codex Use Cases](https://developers.openai.com/codex/use-cases)"
+    },
+    {
+      "hash": "2077714cd0842feb0210a880b0fef991b3fa27e38e3d5a8b7d20bf1b90840fc5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037b7-2c51-7d70-a808-bbe882665331",
+      "timestamp": 1787641146,
+      "verbatim": "结论：之前确实有自动化任务在消耗 Token，但目前已全部暂停；8 月 18 日至今没有发现新的自动化运行记录。"
+    },
+    {
+      "hash": "09692347649c8d129ac0773a4c231ec0d2b6d67b9afafea64335831aa9a32299",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037b7-2c51-7d70-a808-bbe882665331",
+      "timestamp": 1787641146,
+      "verbatim": "- 找到 13 个 Codex 自动化，当前全部是 `PAUSED`。\n- 8 月 2–17 日共运行 27 次，按本地 rollout 的 Token 记录合计约 822 万（包含缓存输入，不能与官方账单 1:1 对应）。\n- 主要消耗来源：\n  - `隆小侠｜交易台巡检`：约 400.7 万\n  - `Signals｜盘后复盘`：约 193.8 万\n  - `个人助理｜晨间重点简报`：约 181.3 万\n  - `Signals｜周度策略校准`：约 46.2 万\n- 最大单次是 8 月 17 日交易台巡检，约 299 万 Token。它后来继续处理了一条“什么原因，能否修复一下”的追问，执行了大量诊断和代码操作，并不是单纯后台待机。\n- 即使自动化最后输出 `DONT_NOTIFY`，启动、读取上下文和执行门禁本身仍会消耗 Token。\n- 8 月 18–25 日没有新的 `thread_source=automation` 记录；当前只有本次用户线程活跃。"
+    },
+    {
+      "hash": "210adba700b8e2f0013806917d725daba5ea5397a0b98217529a93b45bca77a5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037b7-2c51-7d70-a808-bbe882665331",
+      "timestamp": 1787641146,
+      "verbatim": "- Codex app-server、Longclaw runtime、WorkBuddy 同步服务一直常驻，但目前看到的是本地同步、健康检查和模型列表刷新，不存在对应的 Codex 推理会话记录。\n- WorkBuddy 同步最近主要报 `unsupported WorkBuddy memory version: 5`，看起来不是 Token 消耗源。\n- WeClaw 日志存在每 3 分钟一次的模型列表刷新超时，但没有匹配的 Token rollout，暂不能认定它在消耗用量。"
+    },
+    {
+      "hash": "6da8fab81dbdb10f45e75e1ae85c1873f8d2958bc62dc5af58a66b0bdde1e13a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037b7-2c51-7d70-a808-bbe882665331",
+      "timestamp": 1787641146,
+      "verbatim": "因此，最可能的解释是：之前的定时自动化和自动化线程追问消耗了用量；不是“Codex 长时间没打开仍因空闲状态自动扣 Token”。官方文档也把 Automation/Follow a goal 明确列为 Codex 的自动化使用场景。[Codex Use Cases](https://developers.openai.com/codex/use-cases)"
+    },
+    {
+      "hash": "4fda3f8b2b54412acc3ecfd1ee01770b39c1bc1db80fa3400a0c2ebcb47681f0",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:01a037b6-cc30-7982-bef7-1ad39c576c1c#turn:01a037b7-2c51-7d70-a808-bbe882665331",
+      "timestamp": 1787641146,
+      "verbatim": "相关本地记录：[自动化配置](</Users/zhangqilong/.codex/automations/agentos-signals-runtime-maintenance-8cd7bdfc662f/automation.toml>)、[8 月 17 日高消耗任务](</Users/zhangqilong/.codex/sessions/2026/08/17/rollout-2026-08-17T09-22-23-01a00d50-06c5-7162-bc8f-560c33d2d1ff.jsonl>)。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

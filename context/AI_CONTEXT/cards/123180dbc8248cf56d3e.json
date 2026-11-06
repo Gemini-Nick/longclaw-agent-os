@@ -1,0 +1,69 @@
+{
+  "id": "019d488c-aece-71b3-92f7-3e693e5861b8",
+  "title": "Codex Companion Task: In the longxiaoxia-agent-os Electron app at /Users/zh...",
+  "source_backend": "codex-archived",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "room": "archived-evidence-20261105",
+  "source_scope": "codex-archived-thread:019d488c-aece-71b3-92f7-3e693e5861b8",
+  "review_status": "archived source; not restored or blanket fact verified",
+  "quotes": [
+    {
+      "hash": "70b8f822d9c28d8741a6def40a9f77874399f0262f32d4ea37d9280e46100324",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "In the longxiaoxia-agent-os Electron app at /Users/zhangqilong/Desktop/github代码仓库/longxiaoxia-agent-os/electron/src/, make these cleanup edits to remove unnecessary skills injection logic. ACP mode means the CC CLI session auto-loads skills from .claude/skills/ based on cwd, so the Electron app should NOT build or inject skills context."
+    },
+    {
+      "hash": "14465e2118b94660cc826e6969cf95bd2e8d6f414fec73c874886e4fcb54fbca",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "1. electron/src/main.ts:\n   - Delete the enabledSkillPaths variable (Set) and all references to it\n   - Delete the readSkillContent function\n   - Delete the buildSkillsContext function\n   - Delete ipcMain.handle for skills:toggle and skills:getContext\n   - In handleQuery: remove the skillsCtx and fullMessage construction; pass the raw message directly to ACP instead of fullMessage"
+    },
+    {
+      "hash": "e07cfd5f31ac174b2dd29a042b9a3de42366d1bdf5e39cb992ca1be4d9baaad7",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "2. electron/src/preload.ts:\n   - Delete the toggleSkill API exposure (ipcRenderer invoke for skills:toggle)"
+    },
+    {
+      "hash": "19f0a200102100235903aa39a7956911cdb981314a032613e2b807155c211a67",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "3. electron/src/renderer/App.tsx:\n   - Delete toggleSkill type declaration from the window.electronAPI interface\n   - Remove checkbox/toggle interaction from Skills panel; keep it as pure read-only display of available skills"
+    },
+    {
+      "hash": "d4ac0d632792b6ce6ef3de7acac9292736f1d0d22f0264223e567e314b8aaac8",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "After edits, run: cd /Users/zhangqilong/Desktop/github代码仓库/longxiaoxia-agent-os && node electron/build.mjs\nConfirm build passes."
+    },
+    {
+      "hash": "882c15e57d8df549fd5c5a8fbfcc162347d5f81a847fba6a70c6e71462cdf028",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "Verification: After all edits, grep for buildSkillsContext, enabledSkillPaths, readSkillContent, skills:toggle, skills:getContext, fullMessage, toggleSkill across the three files to confirm zero remaining references. Then run the build command and confirm exit code 0."
+    },
+    {
+      "hash": "9b694bae904235be92c7bf58217108841faa6e2c0fa6eda0c261d8882a407ec2",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d488c-aece-71b3-92f7-3e693e5861b8#turn:019d488c-af8d-7ac3-a8e0-33cbd3253b05",
+      "timestamp": null,
+      "verbatim": "Safety: Only modify the three listed files. Do not refactor unrelated code. Do not add comments or type annotations. Delete code, do not add code."
+    }
+  ]
+}

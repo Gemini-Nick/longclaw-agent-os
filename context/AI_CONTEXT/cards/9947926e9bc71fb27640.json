@@ -1,0 +1,53 @@
+{
+  "id": "019e1b23-60f6-72d1-b4a6-3726e4385010",
+  "title": "修复股票搜索未入线索池",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e1b23-60f6-72d1-b4a6-3726e4385010",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "ff881df787c6ea1981afa893f4cf0ff58d7a24f73187a2ee9d5b038cd1870c92",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e1b23-60f6-72d1-b4a6-3726e4385010#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-12 上午12.42.37.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_TiYjeb/截屏2026-05-12 上午12.42.37.png"
+    },
+    {
+      "hash": "381d398daa94dc60ddf641bfd9f963f8b86a9f9bc1cea2d09503bf096b8eeff6",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e1b23-60f6-72d1-b4a6-3726e4385010#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n现在代码更新以后，搜索某只股票不会自动加入线索池了？能否修复一下"
+    },
+    {
+      "hash": "4331fac4a4d9223b98bafb9e175dff4a2a9f88cf7cfa643924a3d7995a0e445d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e1b23-60f6-72d1-b4a6-3726e4385010#recent",
+      "timestamp": null,
+      "verbatim": "改动点：\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:6593)：非指数搜索现在都会 upsert 到 `/api/workbench/manual-clues`，不再因为股票已在买点池/盯盘池而跳过。\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:5184)：修了 `SZ.300394` 这类创业板代码被误判成指数的问题。\n- [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:7154)：后端只隐藏“手动线索自己被提升为买点池”的项，不再因为系统买点池已有同一股票就把手动线索从线索池过滤掉。"
+    },
+    {
+      "hash": "ae26e96e610b63cbd30b40da5970c4086f1539392fb90dd6cc6ba7f5ab4706cc",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e1b23-60f6-72d1-b4a6-3726e4385010#recent",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- `npm test -- electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx`：3 passed\n- `npm run lint`：通过\n- `bash scripts/python.sh -m pytest tests/test_workbench_watchlist_groups.py`：97 passed\n- 已重启 Signals web，并重新安装/重启 `/Applications/隆小侠 Agent OS.app`\n- 活接口确认：`SZ.002759 天际股份` 现在在 `buy_candidates` 里显示为 `terminal_manual_clues/manual_clue=true`，同时仍保留在 `focus_stocks` 买点池里。"
+    },
+    {
+      "hash": "a5bdc180c74381bd5f5c208c3aaa180267c8c917a12f317b6e2aad400cbd4e25",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e1b23-60f6-72d1-b4a6-3726e4385010#recent",
+      "timestamp": null,
+      "verbatim": "electron-builder 打包时仍输出了既有的 `node_modules` extraneous/invalid 依赖噪音，但包已成功生成、签名、安装并重启。当前改动还没提交 git。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

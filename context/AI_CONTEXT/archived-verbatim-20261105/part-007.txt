@@ -1,0 +1,934 @@
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Recommended Migration Architecture
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### `weclaw` 对外暴露稳定配置/接口
+- 增加稳定配置项，而不是迁移实现：
+  - `voice_input_mode_default`
+  - `archive_tool_enabled`
+  - `obsidian_enabled`
+  - `obsidian_formal_write_enabled`
+  - `agent_input_policy`
+- `longclaw-agent-os` 只负责写这些配置，不接管实现
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### `longclaw-agent-os` 作为策略层
+- 安装时向 `~/.weclaw/config.json` 注入默认策略
+- 根据环境切换：
+  - 公司网络 / 本地开发 / 正式运行
+- 对 `weclaw` 的 archive/cleanup 命令做编排与调度
+- 必要时提供 wrapper 命令，但 wrapper 不重写微信语义逻辑
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### `weclaw` 继续作为核心产品模块
+- 任何“未来 fork 也希望继承”的能力，优先进入 `weclaw`
+- `agent-os` 只承载“这个产品怎么部署、怎么组合、怎么托管”
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 即使脱离 `longclaw-agent-os`，单独运行 `weclaw` 仍应具备：
+  - 微信语音 transcript-first
+  - 媒体 sidecar/session
+  - Obsidian tool archive
+- 切换不同 runtime 配置时：
+  - 只改变策略行为
+  - 不改变 `weclaw` 的核心协议与数据结构
+- future fork 验证：
+  - `Gemini-Nick/weclaw` 单仓可独立解释“微信语音如何建模、媒体如何归档”
+  - 不需要阅读 `longclaw-agent-os` 才能理解其核心语义
+- `longclaw-agent-os` 验证：
+  - 只负责把能力装起来、配置好、监控住
+  - 不需要解析微信原始 item 才能工作
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 你的首要目标是保住 `Gemini-Nick/weclaw <- fastclaw-ai/weclaw` 的可继承性
+- `longclaw-agent-os` 更像产品运行时与编排层，不应成为微信语义主仓
+- “稳定性”应通过配置注入、调度、守护、补偿来获得，而不是通过把核心语义从 `weclaw` 抽走
+- 下一步如果要重构语音输入模型，应在 `weclaw` 内完成，并把 `longclaw-agent-os` 限定为策略配置与运行时消费方
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`weclaw` 继续承载消息语义和产品协议，`longclaw-agent-os` 只承载策略注入和 runtime 编排，没有把微信语义逻辑迁到下游。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 在 [config.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/config/config.go) 给 `weclaw` 增加了稳定策略接口：
+  - `voice_input_mode_default`
+  - `archive_tool_enabled`
+  - `obsidian_formal_write_enabled`
+  - `agent_input_policy`
+- 在 [tool.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian/tool.go) 把 Obsidian 正式写入能力挂到这些配置门控下：
+  - archive tool 是否启用由 `weclaw` 自己判断
+  - `formal` 写入必须显式允许
+- 在 [install-v2.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh) 里只做 runtime 配置注入：
+  - 默认 agent 输入策略
+  - voice mode 默认值
+  - Obsidian vault/notes/assets 路径
+  - auto-archive 相关开关
+- 在 [repo-scheduler-service.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh) 里把调度职责收敛为正式补偿执行：
+  - `weclaw obsidian maintain --formal`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `go test ./config ./obsidian ./messaging ./cmd` 通过
+- `bash -n` 校验了：
+  - [install-v2.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh)
+  - [repo-scheduler-service.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这次改完后的边界是清晰的：
+- `weclaw` 负责 `VoiceItem.Text`、媒体解析、sidecar/session、archive tool 协议、formal note 协议
+- `longclaw-agent-os` 负责把这些能力装起来、配起来、调度起来
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d664e-c593-7cb0-b33e-6bd80c1cea8b
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还有一个思路，如果有些职责迁移到longclaw-agent-os是否合适，这样能保证weclaw本身的稳定性，你是需要去评估的
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d664c-e2a8-7942-8297-70c010f58d1d
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我告诉你我的目标，我希望不要丢失https://github.com/Gemini-Nick/weclaw 这个的继承关系，因为我一直在fork上游https://github.com/fastclaw-ai/weclaw 这个项目，你需要稳妥的考虑
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果我目前直接用github weclaw最新版本来替换本地weclaw的go服务，会造成什么影响么
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你本地 `weclaw` 现在不是“GitHub 最新干净版”，而是三层叠加：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 本地已提交 `HEAD`: `de7e7a0`
+- 你的 GitHub `origin/main`: `107ecdf`
+- 你工作区里还有一批**未提交**改动
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 本地 `HEAD` 比 `origin/main` 多 `1` 个提交
+- 本地 `HEAD` 比 `upstream/main` 多 `2` 个提交
+- 当前工作区还有未提交改动：
+  - [cmd/start.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/cmd/start.go)
+  - [config/config.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/config/config.go)
+  - [messaging/handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)
+  - [messaging/handler_test.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler_test.go)
+  - [cmd/obsidian.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/cmd/obsidian.go)
+  - [obsidian/](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**如果你替换成你自己 GitHub 的 `origin/main` (`107ecdf`)**
+会丢这些：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 丢失本地已提交但还没推的品牌化回复改动  
+  也就是 `de7e7a0` 那一层：
+  - 品牌化前缀
+  - 较新的媒体保存回执文案
+- 丢失当前所有未提交改动  
+  包括：
+  - Obsidian 集成
+  - 自动/AI-native 归档
+  - formal/debug 分流
+  - 这轮 agent tool archive 路径
+  - 你现在围绕语音/归档调过的逻辑
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+但会保留：
+- 入站图片/文件支持  
+  因为 `origin/main` 就是 `107ecdf`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**如果你替换成上游 `upstream/main` (`10711d0`)**
+会丢得更多：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 丢失你 fork 上的 `107ecdf`
+  这意味着你当前已经接上的“微信入站图片/文件处理”也可能退回
+- 丢失 `de7e7a0`
+- 丢失所有未提交改动
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**对运行时的具体影响**
+1. `~/.weclaw/config.json` 不会自动消失  
+   但是新版/旧版 binary 可能忽略你现在新增的配置项，尤其是：
+   - `obsidian_*`
+   - 归档相关字段
+   - 你最近加的行为开关
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `~/.weclaw/workspace` 里的媒体和 sidecar 不会自动消失  
+   但旧版 binary 可能不认识这些 sidecar 元数据，或者根本不会继续维护它们。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. `longclaw-agent-os` runtime 还能把进程拉起来  
+   但“拉起来”和“你现在这些能力还能用”是两回事。最容易退化的是：
+   - Obsidian 归档
+   - 品牌化回复
+   - 语音/图片/文件的当前定制流程
+   - 你这轮本地验证过但还没进 GitHub 的行为
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**关于你现在关心的语音**
+如果你只是问“换成 GitHub 最新版，语音转文字会不会恢复正常”：
+- 不能指望它自动变好
+- 因为当前语音问题的核心不在 runtime，而在 `weclaw` 的输入建模方式
+- GitHub 最新版大概率还是沿用当前这套“转写 + 本地音频路径一起发给 agent”的思路，至少不会包含你本地还没提交的统一重构
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**最稳的结论**
+现在**不建议直接拿 GitHub 最新版覆盖本地运行中的 `weclaw-real`**。  
+因为你会立刻失去一批已经在本机可用、但还没沉淀到远端的能力，而且未必能换来语音行为变好。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 先把你当前本地有效改动分层整理清楚
+- 识别哪些必须保留
+- 再决定是：
+  - 以你本地为基线向上 merge GitHub 最新
+  - 还是先把本地关键改动提交/推送，再做升级
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6649-9f75-7360-8fa8-e9cd66df9072
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一步可以直接给你整理一版**“本地 `weclaw` 相对 GitHub 最新的能力差异清单”**，明确哪些能丢、哪些绝对不能丢。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6648-53a6-7be1-b48d-6e0624ff81cc
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你可以整理成一版面向 weclaw 的统一语音输入模型重构计划，但是要考虑未来weclaw fork的可继承性。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+是啊。肯定要统一语音输入模型重构，关键是哪个部位在承担这个职责？我理解目前是weclaw这个服务目前在做？你先研究清楚架构
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在可以比较明确地回答：**目前“统一语音输入模型”的职责，确实是在 `weclaw` 里承担，不在 `longclaw-agent-os runtime`，也不在 agent 自身。**
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**当前架构**
+1. `longclaw-agent-os runtime`
+   - 负责进程托管和运行环境。
+   - [weclaw-bridge.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/bin/weclaw-bridge.sh) 只做：
+     - 启动 `weclaw-real start -f`
+     - TLS preflight
+     - pid/port 清理
+     - 日志落盘
+   - 它**不理解微信消息内容**，也不做语音转写/媒体语义决策。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `weclaw`
+   - 这是**真正的消息桥接层**，也是当前语音输入模型的责任方。
+   - [start.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/cmd/start.go) 里创建 `Handler`，把 monitor 收到的微信消息全部交给 [HandleMessage](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)。
+   - `weclaw` 在这里做三件关键事：
+     - 从微信 `VoiceItem.Text` 读取微信自带转写
+     - 下载并保存原始音频到 `workspace`
+     - 决定最终发给 agent 的**canonical prompt shape**
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. agent (`claude` / `codex`)
+   - 只是接收 `weclaw` 给它的一段文本输入。
+   - `claude` 是 CLI agent。
+   - `codex` 是 ACP `app-server`。
+   - 两者**没有单独的微信语音桥接代码**；区别主要来自它们对同一输入的行为不同。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**为什么现在会出问题**
+问题点就在 `weclaw` 的这段统一包装逻辑里，见 [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 先从 `VoiceItem.Text` 取微信转写
+- 然后如果音频也保存成功，就把文本改写成：
+  - `收到一条微信语音，原始音频已保存到本地：<path>`
+  - `微信转写：<text>`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这意味着当前 `weclaw` 输出给 agent 的“统一语音输入模型”其实是：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这对 `claude` 基本没副作用，但对 `codex app-server` 会产生很强的工具诱导：
+- 它看到本地 `.audio` 路径，就倾向把这当成“应该进一步检查/分析的文件”
+- 所以才出现你日志里的大量 `item/commandExecution/*`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**所以责任结论**
+统一语音输入模型应该由 `weclaw` 负责，原因是：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 微信原始消息结构只在 `weclaw` 里可见
+- `VoiceItem.Text` 这个微信转写字段只在 `weclaw` 这里能拿到
+- 只有 `weclaw` 同时知道：
+  - 转写文本
+  - 原始音频路径
+  - 当前默认 agent 是谁
+- runtime 不知道消息内容
+- agent 不应该反过来决定“微信语音到底该被视为文本还是附件”
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `runtime` 负责“把服务跑起来”
+- `agent` 负责“基于规范化输入思考和回复”
+- **`weclaw` 负责“把微信语音规范化成统一输入模型”**
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**根治方向**
+因此后续要重构的，不是 `codex` 特判，也不是 runtime，而是 `weclaw` 的语音 canonicalization 层：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 默认只把 `VoiceItem.Text` 作为正文发给所有 agent
+- 原始音频保留在 sidecar / workspace / archive context 里
+- 只有显式命中“听原音 / 分析音频 / 重新转写”时，才把音频路径提升为主输入
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6645-6d6d-7321-b219-f1b95ede2c68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你认可这个职责划分，我下一步可以继续把它整理成一版**面向 `weclaw` 的统一语音输入模型重构计划**。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+不对吧。我在claude code转写微信语音的时候，没有特定写一段语音消息桥接啊，为什么codex要专门写呢
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你这个质疑是对的。**问题不应该靠给 `codex` 单独硬写一段“专门桥接文案”来解决。**
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 当前 `weclaw` 对 `claude` 和 `codex` 的语音桥接**没有做 agent 特判**
+- 语音进入 bridge 后，统一会被处理成同一种文本：
+  - 如果微信给了 `VoiceItem.Text`，就取这段转写
+  - 再拼成：
+    - `收到一条微信语音，原始音频已保存到本地：...`
+    - `微信转写：...`
+- 这段统一文本之后，谁是默认 agent，就发给谁
+- 你的当前配置里也没有 agent 级 `system_prompt` 差异：
+  - `claude`: 纯 CLI
+  - `codex`: ACP `app-server`
+  - 都没单独配置 `system_prompt`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. **不是 `claude` 有专门语音桥接，而 `codex` 没有**
+2. **两边拿到的输入本质上一样**
+3. 差异来自 **agent 自身执行机制不同**
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `claude` CLI 更像“收到一段文本就直接答”
+- `codex app-server` 是强工具型 agent，它看到同一条输入里还带着一个本地音频路径，就容易把这当成“应该继续分析的文件”
+- 这也是你日志里看到大量 `item/commandExecution/*` 的原因
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **把语音桥接的产品语义重新定义清楚**
+- 然后让所有 agent 都遵守这一个统一语义
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 现在 bridge 把语音包装成了“转写文本 + 本地音频路径”
+- 这对 `claude` 没问题
+- 但对 `codex` 会诱发错误的工具行为
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **语音的 canonical input shape**
+- 不是 agent-specific prompt hack
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 默认：`只把微信转写当正文`
+- 附件音频：只记录到 sidecar / session / Obsidian 上下文里
+- 只有用户明确说“听原音”“分析音频细节”“重新转写”时，才把本地音频路径提升为主输入
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这样：
+- `claude` 不会退化
+- `codex` 也不会被本地 `.audio` 路径带偏
+- 语义是一致的，不是为某个 agent 特制
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6644-091c-7841-b847-380ce23cc3ea
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你认可这个判断，我下一步给你出一版**不是 agent 定制、而是统一语音输入模型重构**的完整计划。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6641-f3a2-7372-a6ce-75f2fc6a4454
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你查看一下最新的日志，为什么我发送微信语音到codex agent的时候没有自动转换？我之前用微信语音到claude code acp的时候，是自动桥接成文字信息然后给cc的，你仔细研究一下不同的机制？
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# AI-Native Obsidian 归档重构方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+目标是把当前“关键词拦截 + 后台归档器”的半规则式流程，重构成真正 AI-native 的归档系统：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 由 `codex/claude` 在对话中自主判断是否应该归档
+- 通过一个明确的“归档工具”执行正式知识库写入
+- 正式 note 仍由 agent 生成内容，但必须通过受控工具提交
+- 不再依赖 handler 里的关键词匹配作为主路径，只保留极少量安全兜底
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+核心原则是：
+- “决定归档”交给 agent
+- “怎么写正式库”也交给 agent
+- “写入边界、审计、路径规范”由工具层强制
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 把归档变成显式工具，而不是命令词路由
+- 新增一个 Obsidian 归档工具接口，供 agent 在对话中调用。
+- 工具输入固定为结构化参数：
+  - `conversation_id`
+  - `title`
+  - `summary`
+  - `message_ids`
+  - `selected_media_paths`
+  - `note_body`
+  - `mode=formal|debug`
+- agent 看到“帮我归档到 obsidian / 收录知识库 / 这段要沉淀”时，不是让 handler 去猜，而是直接调用工具。
+- handler 不再承担主要归档意图识别，只保留最小兜底：
+  - 如果消息明显是归档命令但 agent 未调用工具，可记录告警或提示，而不是自己代替决策。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. 正式库写入改成“agent 生成内容 + tool 落盘”
+- agent 负责生成真正可用的知识库 note：
+  - 标题
+  - 摘要
+  - 关键对话
+  - 附件说明
+  - 语音转写 / 视频说明
+- 但 agent 不直接任意改 vault 文件，而是调用归档工具提交内容。
+- 工具层负责：
+  - 校验正式路径只能写到 `Inbox/WeChat/YYYY-MM/` 和 `Assets/WeChat/YYYY-MM/`
+  - 拷贝附件
+  - 写 note
+  - 注入统一 frontmatter
+  - 返回最终 `note_path` 和 `asset_paths`
+- 这样既保留 AI-native 的内容生成，又保留工程边界和可审计性。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. 会话与媒体上下文改成 agent 可消费的稳定输入
+- 继续维护 session window 和媒体索引，但作用从“handler 自动归档”改为“给 agent 提供可归档上下文”。
+- agent 调用归档工具时，必须基于这组稳定上下文：
+  - 最近一轮消息
+  - 最近媒体列表
+  - 媒体类型
+  - 文件本地路径
+  - 语音转写
+- 工具层不再自己猜“该归档哪张图”，而是要求 agent 显式传入选择结果。
+- 若 agent 未选择媒体，则允许只归档文本会话，但必须明确 `selected_media_paths=[]`。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. 调试与正式路径彻底分离
+- `formal` 模式：
+  - 仅供 agent 归档工具和受信任后台调用
+  - 写入正式 Obsidian vault
+- `debug` 模式：
+  - 仅供 CLI 调试和人工验证
+  - 写入 `_debug` 子目录或独立 debug vault
+- agent 默认走 `formal`
+- CLI 默认走 `debug`
+- 任何正式 note 都必须包含：
+  - `archive_scope`
+  - `trigger_reason=agent_tool`
+  - `conversation_id`
+  - `source_message_ids`
+  - `debug: false`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 可观测性改成“工具调用审计”
+- 关键日志不再围绕关键词命中，而是围绕工具调用：
+  - `archive tool invoked`
+  - `mode=formal|debug`
+  - `conversation_id`
+  - `selected_media_count`
+  - `note_path`
+  - `asset_paths`
+- 若用户明显表达归档意图，但 agent 没有调用工具，记录：
+  - `archive_intent_unhandled`
+- scheduler 只负责清理与补偿，不再作为正式主归档入口。
+- 微信回执由工具结果驱动：
+  - 成功：返回 note 标题和路径
+  - 失败：返回明确失败原因
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 用户发送图片后说“帮我归档到 Obsidian”
+  - agent 应调用归档工具
+  - 正式 vault 写入 note + asset
+  - 微信回执带 note 标题/路径
+- 用户发送语音后说“这段收录到知识库”
+  - agent 选择语音附件
+  - note 包含音频链接和转写
+- 用户发送普通聊天，不提归档
+  - agent 不应调用归档工具
+  - 不产生正式 note
+- 用户表达归档意图但没有附件
+  - agent 仍可调用工具生成纯文本会话 note
+- CLI 调试归档
+  - 默认只写 `_debug`
+  - 不污染正式库
+- 审计验证
+  - 每篇正式 note 都带完整 frontmatter
+  - 日志里可追溯本次工具调用和源消息
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- “AI-native”优先级高于“handler 规则拦截”
+- agent 可以也应该决定是否归档
+- 正式内容由 agent 生成，但写入必须经过受控工具，不允许无约束直接改正式 vault 任意位置
+- scheduler 退居清理/补偿角色，不再承担正式主归档职责
+- 正式 vault 仍是 `/Users/zhangqilong/Documents/Obsidian Vault`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+核心改动在 [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go) 和新加的 [tool.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian/tool.go)。现在不再由 `handler` 直接把“归档到知识库”排进旧的 pending session 队列，而是把“最近会话 + 最近媒体 + 工具协议”作为上下文发给 agent；如果 agent 决定归档，就在回复末尾返回一个 `weclaw-obsidian-tool` 结构化块，`weclaw` 再执行受控落盘。正式 note 会统一注入审计 frontmatter：`archive_scope=session`、`trigger_reason=agent_tool`、`conversation_id`、`source_message_ids`、`debug=false`，并且只允许把选中的媒体复制进正式 vault。CLI 仍默认走 debug 目标，不污染正式库。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我也把这版装到你机器上了：重新构建了 `~/.weclaw/bin/weclaw-real`，并重启了 `weclaw.bridge`。当前 `weguard status` 正常，`codex` / `claude` / `weclaw` 都是 `running`。验证上我跑了 `go test ./obsidian ./messaging ./cmd`，全部通过。新增/更新的测试主要在 [tool_test.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian/tool_test.go) 和 [handler_test.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler_test.go)，覆盖了 formal tool 落盘、frontmatter 审计字段、handler 收到 tool call 后直接生成正式 note 这条路径。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f5-4814-75f3-a49a-e917d630c592
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在你可以直接在微信里这样测一轮：先发图片/文件/语音，再发“帮我归档到 Obsidian”或“收录到知识库”。如果 agent 正常调用工具，Obsidian 正式库会直接出现新的 note 和附件，回复里也会带 note 标题和相对路径。还没替你提交 Git；当前 `weclaw` 工作区里除了这轮改动，也叠着你之前未提交的 `cmd/start.go`、`config/config.go`、`cmd/obsidian.go`、`obsidian/` 等变更。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f3-46d0-7c13-8211-accaffefba85
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+是，按你的偏好，之前那套“handler 词表识别归档意图”只能算临时补丁，不是最终形态。你要的更 AI-native 路线已经明确了：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f3-46d0-7c13-8211-accaffefba85
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 归档判定：`Agent 工具调用`
+- 正式写入：`Agent 直接写`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f3-46d0-7c13-8211-accaffefba85
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这意味着架构要反过来设计，不再是“handler 识别命令并短路”，而是“agent 在对话里决定是否归档，并以受控方式直接写 Obsidian”。但这里仍然需要一点约束，否则又会回到现在这种“能写出来，但不可审计、不可控”的状态。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f1-9fb9-7891-aad3-f44daacc6946
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+日志里最值得优化的不是“有没有产物”，而是“产物是怎么来的”。这轮其实已经生成了一个 `.md`，就是 [20260406-201440.md](/Users/zhangqilong/Documents/Obsidian%20Vault/Inbox/WeChat/20260406-201440.md)。但它不是走正式自动归档链路生成的，而是 `codex` 在普通对话分支里直接把文件写进了 Obsidian。这个区别很关键。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f1-9fb9-7891-aad3-f44daacc6946
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 归档口令仍然会漏拦截。`20:14:48` 你发的是 `帮我归档到obsdian`，日志里下一步直接就是 `dispatching to agent`，说明 handler 没把它当归档命令拦下。
+- 产物格式不对。生成的 note 仍然是旧的“单图片 note”格式，没有 `archive_scope`、`trigger_reason`、`source_message_ids` 这些正式归档字段，说明不是 scheduler/session archive 写的。
+- 会话窗口被旧历史污染。当前 [session json](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json) 里混着多轮旧消息，agent 也能读写其中路径，容易把“归档”变成一次开放式 agent 操作。
+- ACP 噪音太大。`hook/*`、`turn/diff/updated`、`item/fileChange/*` 把真正的归档事件淹掉了，导致排障成本很高。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f0-c44d-7703-8568-0220d8bdaac8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `自动归档主路径还不够“收口”`
+现在这次产物虽然出来了，但走的不是你要的正式自动归档链路，而是又被 `codex` 在对话里“手工处理”了。证据是：
+- `20:14:48` 你发的是 `帮我归档到obsdian`
+- bridge 日志直接进入了 `dispatching to agent`
+- 最后生成的 [20260406-201440.md](/Users/zhangqilong/Documents/Obsidian%20Vault/Inbox/WeChat/20260406-201440.md) 仍然是旧的“单图片 note”格式，没有 `archive_scope`、`trigger_reason`、`source_message_ids` 这些正式归档字段  
+这说明“自动归档”还会漏掉，然后退回成 agent 自己改文件。根治上应该把“归档类口令”在 handler 层直接拦截掉，不再允许落到 agent 普通对话分支。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f0-c44d-7703-8568-0220d8bdaac8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `归档口令识别还不够鲁棒`
+你这次用了 `obsdian` 这个拼写，系统没拦住。当前规则还是偏关键词匹配，应该补成更强的归档语义识别：
+- 支持常见拼写误差，如 `obsdian`
+- 支持更宽的中文表达，比如“放进知识库”“帮我存档”“收录一下”
+- 命中/未命中的原因要显式打日志  
+现在日志里缺少“为什么没命中”的负路径信息，这让排查很被动。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f0-c44d-7703-8568-0220d8bdaac8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. `日志噪音太大，真正关键事件不够显眼`
+bridge 日志里大量是：
+- `unhandled method: hook/...`
+- `unhandled method: turn/diff/updated`
+- `unhandled method: mcpServer/startupStatus/updated`  
+这些把真正关键的归档信号淹掉了。建议把日志分层：
+- `INFO`: 媒体保存、归档触发、task queued、task archived、note_path
+- `DEBUG`: ACP 未处理事件、diff delta、hook 细节  
+否则每次都得在一堆低价值噪音里找核心线索。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f0-c44d-7703-8568-0220d8bdaac8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+4. `会话窗口会被旧对话污染`
+现在的 session 文件还保留了多轮旧消息和 agent 长回复，见 [o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json)。这会带来两个问题：
+- 归档对象容易混入历史上下文
+- 标题、摘要、附件选择可能漂移  
+比较稳的做法是：一旦正式归档成功，就切断当前窗口，重新开始下一轮；不要让同一 session 文件无限累积。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f0-c44d-7703-8568-0220d8bdaac8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+**当前状态**
+- 正式库里现在有一条真实归档：
+  - [20260406-201440.md](/Users/zhangqilong/Documents/Obsidian%20Vault/Inbox/WeChat/20260406-201440.md)
+  - [20260406-201440.jpg](/Users/zhangqilong/Documents/Obsidian%20Vault/Assets/WeChat/20260406-201440.jpg)
+- 但这条是“agent 直接落文件”的结果，不是你要的正式 session auto-archive
+- `_debug` 隔离已经生效，旧测试件不在正式目录了
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65f0-c44d-7703-8568-0220d8bdaac8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以直接把这 4 个点整理成一版明确的收口计划，目标就是：`归档命令一律在 handler 层闭环，agent 不再碰正式 Obsidian 文件写入`。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Obsidian 自动归档误写与误展示修复计划

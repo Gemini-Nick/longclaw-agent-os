@@ -1,0 +1,45 @@
+{
+  "id": "019ec8cd-5636-7f63-8039-1b1453c5d973",
+  "title": "修复复盘笔记发送时间点",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ec8cd-5636-7f63-8039-1b1453c5d973",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "916c23b9cdc59d40fb85b569ee36261d14453cd5dd06a3fac16c3c55e52f4467",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ec8cd-5636-7f63-8039-1b1453c5d973#first-request",
+      "timestamp": null,
+      "verbatim": "检查一下目前盘中/盘后复盘笔记的发送情况，修复并且列出今天会发送的时间点"
+    },
+    {
+      "hash": "541fa832e7d7621316692a1d804fcb897fdff152f19fcbe7f8f6ac032192f4de",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ec8cd-5636-7f63-8039-1b1453c5d973#recent",
+      "timestamp": null,
+      "verbatim": "结论：已修复发送链路。问题点不是 Signals gate，而是 WeClaw bridge 近期有连续 iLink 超时/EOF，历史上对应过 `ret=-2` 发送失败。我已重启 WeClaw，进程从旧 pid `69867` 换到 `62907`，并等到今天第一条 09:15 任务实际触发验证。"
+    },
+    {
+      "hash": "362fe9abe6d39adfe981eee345184aaf3971db9bdc48222e9f7cfdd7a4f7990b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ec8cd-5636-7f63-8039-1b1453c5d973#recent",
+      "timestamp": null,
+      "verbatim": "当前状态：`signals-0915-preopen-strategy-map` 在 **2026-06-15 09:16:20 北京时间** 已成功发送，gate=`NOTIFY`，send=`Text sent`。Signals API 正常，`/api/pack/dashboard` 和 `/api/workbench/shell` 都是 HTTP 200；6 个日内/盘后 automation 都是 `ACTIVE`。我没有改 Signals 代码，当前 repo 里已有的未提交 diff 没动。"
+    },
+    {
+      "hash": "f48ec475c27e45ea3ca9dce5523e3743c16da351dbbbcc80bd51d124190ebb51",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ec8cd-5636-7f63-8039-1b1453c5d973#recent",
+      "timestamp": null,
+      "verbatim": "| 时间 | 任务 | 状态 |\n|---|---|---|\n| 09:15 | 盘前策略地图 | 已发送成功 |\n| 09:45 | 10点窗口 | 待触发 |\n| 11:15 | 午间重规划 | 待触发 |\n| 13:45 | 14点窗口 | 待触发 |\n| 14:30 | 收盘风险 | 待触发 |\n| 20:30 | 盘后长复盘 | 待触发 |"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

@@ -1,0 +1,1073 @@
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf40-3ff1-7cc3-998d-d4971cb97b7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 当前推荐：双 repo，单产品栈，contract 融合。
+- 稳定后可迁移到 monorepo：
+  - `apps/electron`
+  - `packs/signals`
+  - `packages/contracts`
+  - `services/sync`
+- 不推荐现在把 Python 逻辑复制进 Electron。那会制造第二套 Signals。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf40-3ff1-7cc3-998d-d4971cb97b7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**我以后按这个规则执行**
+- 你说 `npm build`，默认是 `/Users/zhangqilong/github代码仓库/longclaw-agent-os`。
+- 你说 `Signals 测试/缓存/东财/Mongo/sync`，默认是 `/Users/zhangqilong/github代码仓库/Signals`。
+- 你说“融合”，默认先改 contract、adapter、launch/service、Electron workspace，不先搬 repo。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf40-3ff1-7cc3-998d-d4971cb97b7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步最应该做的是 P1：把 `SignalsPack.dashboard()` 和 Electron `SignalsDashboardSchema` 对齐，然后跑 `npm run build:electron`，再用 Computer Use 验证 Electron 里的 Signals Strategy/Backtest 不再降级。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf3d-c256-7972-b63f-c902cb978921
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+目前的数据链路还有什么需要优化？使用computer use测试验证所有的业务逻辑，然后npm build起来，符合目前交易信号逻辑
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Signals 全模块缓存与数据链路优化方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+把 Signals 从“各模块自己决定数据源”收敛成“运行时只读统一缓存，sync daemon 负责写入和预热”的架构。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+当前关键问题不是 Mongo 有没有跑起来，而是 `gateway` 的 realtime path 仍会同步打外部源。实测 `get_concept_rank(realtime)` 会阻塞约 11 分钟跑 THS 概念分页，这必须作为 P0 修掉。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+API / web / web2 / run.py / WeClaw / cluster / review / social:
+  只读 Mongo / disk fallback / snapshot，不同步拉外部源
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+signals-sync / backfill:
+  唯一负责外部源请求、预热、补数、健康状态写入
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+默认范围按你已选的“运行时全覆盖 + 按模块需求预热”执行，不做全市场全历史仓库。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+在 `signals/data/gateway.py` 完成读写分离：
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `get_board_rank(realtime)`、`get_concept_rank(realtime)` 不再调用 `_fetch_realtime_sources()`。
+- realtime 只读 `board_em/board_ths/board_sina`、`concept_em/concept_ths/concept_sina` 快照。
+- 快照缺失或过期时返回 `freshness=stale|empty|pending`，不阻塞、不污染 canonical。
+- historical 只读 `board_ranking/concept_ranking` 的 `source=canonical` 数据。
+- `get_kline()` 升级为 first-class path：
+  - historical: `bars -> kline_cache -> disk imported cache`
+  - realtime/intraday: 只读 sync 写入的短 TTL minute/quote snapshot
+  - runtime 不再直接请求 Eastmoney/Sina/AKShare。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+get_stock_bars(request)
+get_index_bars(request)
+get_social_heat(request)
+get_concept_constituents(request)
+get_data_freshness()
+get_cache_contracts()
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+data
+mode_used
+source
+as_of
+freshness
+is_stale
+is_partial
+latency_ms
+errors[]
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+新增 `signals/data/contracts.py`，把所有运行时模块需要的数据列成机器可读契约。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+web dashboard
+web2 backtest/chart
+run.py review/intraday/cluster
+WeClaw intents
+L1 index
+L2 industry/concept/cluster
+L3 review_screener/stock_deep_dive
+social/theme/sector_momentum
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+consumer
+domain
+mode
+market
+freq
+symbols_selector
+required_freshness
+stale_policy
+sync_job
+fallback_collections
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- sync daemon 根据契约预热数据。
+- health API 根据契约判断“哪个模块还缺数据”。
+- 后续新增模块必须先声明数据需求，不能再私自打 provider。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改 `signals/sync/engine.py` 和 sync modules：
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 修正当前“只在精确 HH:MM 命中才跑”的调度问题，改成 `now >= scheduled_time && today_not_run`。
+- daemon 启动时执行 `bootstrap_preheat`：
+  - provider health
+  - board/concept latest canonical
+  - board/concept realtime snapshots
+  - board_constituents 若为空则补
+  - stock_names / name_to_code
+  - index daily/minute
+  - active stock daily/minute
+  - social/concept/social_heat 缓存
+- 盘中 job：
+  - board/concept source snapshots
+  - active stock quote/minute
+  - index quote/minute
+  - social heat/comment/weibo
+- 盘后 job：
+  - stock/index daily bars 写 `bars`
+  - board/concept close merge 写 `board_ranking/concept_ranking`
+- 周末 job：
+  - board_constituents
+  - concept_constituents
+  - stock_names/reference data
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+每个 provider 加 timeout、latency、error type，并写：
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+provider_health
+data_freshness
+sync_log
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+bars
+board_ranking
+concept_ranking
+board_constituents
+kline_cache
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+board_em
+board_ths
+board_sina
+concept_em
+concept_ths
+concept_sina
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+stock_names
+concept_constituents
+social_comment
+social_weibo
+social_heat
+index_bars
+quote_snapshots
+rotation_history
+cluster_history
+refresh_requests
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+canonical bars / ranking: no TTL
+source snapshots: 1-7 days
+quote/minute snapshots: 1-3 days
+social hot/comment/weibo: 2h-7 days
+constituents/reference: 7-30 days
+legacy kline_cache/bar_cache: 24h or compatibility only
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `.data/cache/kline_*.json` -> `bars` 或 `kline_cache`
+- `.data/cache/stocks_*.json` -> `board_constituents/concept_constituents`
+- `.data/cache/social_*.json` -> social collections
+- `.data/cache/rotation_history.json` -> `rotation_history`
+- `.data/cache/cluster_history/*` -> `cluster_history`
+- `.cache/name_to_code.json` -> `stock_names`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `web2 backtest`：强制 `DataRequest(domain=kline, mode=historical, purpose=backtest)`。
+- chart/history：默认 historical；只有显式 intraday 才 realtime。
+- L2 industry/concept/cluster：
+  - historical 读 canonical
+  - realtime 读 source snapshots merge
+  - 不再 fallback 到实时 provider。
+- L1 index：读 `get_index_bars()`，不在 runtime 内直接 AKShare/Futu/yfinance。
+- L3 review_screener/stock_deep_dive：读 stock daily/minute cache，缺失返回 stale/pending。
+- social/theme/sector_momentum：读 social/concept cache，缺失返回 pending，不临时 live fetch。
+- WeClaw：复用同一 Gateway，回复里带 `source/freshness/stale_reason`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- `IntentResolver`：
+  - `as_of < today` 必须 historical。
+  - `purpose=backtest/review/analog` 必须 historical。
+  - `purpose=intraday/live/quote` 才 realtime。
+- Gateway：
+  - realtime read path monkeypatch provider 后仍不得调用 provider。
+  - historical board/concept 只读 `source=canonical`。
+  - realtime snapshot 缺失返回 stale/empty，不写 canonical。
+  - kline historical 优先 `bars`，再 legacy cache。
+- Sync scheduler：
+  - daemon 启动可 catch-up。
+  - 错过精确分钟仍会当天补跑。
+  - provider timeout 写 `provider_health`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 断网或 monkeypatch 外部源失败时：
+  - `get_kline(historical)` 仍读 Mongo/disk。
+  - `get_concept_rank(historical)` 仍读 `concept_ranking`。
+  - `get_concept_rank(realtime)` 只读 snapshot 并返回 stale metadata。
+  - `cluster_industries(realtime)` 不阻塞。
+  - `web2 backtest` 不触发外部源。
+- sync preheat 后校验关键集合非空：
+  - `bars`
+  - `board_ranking`
+  - `concept_ranking`
+  - `board_constituents`
+  - `concept_constituents`
+  - `stock_names`
+  - `social_heat`
+  - source snapshots。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```bash
+bash scripts/python.sh -m pytest tests -q
+launchctl print gui/$(id -u)/com.zhangqilong.ai.signals.sync
+~/.longclaw/runtime-v2/bin/weguard status
+mongosh mongodb://127.0.0.1:27017/signals --eval 'db.data_freshness.find().pretty()'
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 测试通过。
+- realtime gateway 不再出现 10 分钟级阻塞。
+- Mongo 中所有契约要求的缓存都有 freshness 状态。
+- API 可以明确返回 `fresh/stale/pending/empty`，不再静默空白。
+- Eastmoney 只在 sync/backfill 直连调用，runtime 不依赖它。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- MongoDB 已按本机 `127.0.0.1:27017/signals` 运行。
+- `signals-sync` launchd 已存在，继续沿用当前 label：`com.zhangqilong.ai.signals.sync`。
+- Eastmoney 继续直连，不走代理。
+- 本轮不做全市场全历史仓库；目标缓存规模按模块需求控制在约 `1-2GB`。
+- 初次预热预计 `10-40min`，THS/social 慢源用 timeout 限制，不能影响 runtime。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**已完成**
+- `gateway` realtime rank 已只读 Mongo snapshot，不再同步跑东财/THS/Sina provider。实测 `concept realtime` 从之前约 11 分钟降到 `190-206ms`。
+- `get_kline()` 改成只读 `bars -> kline_cache -> disk_kline_cache`，传入的 legacy fetcher 会被忽略，避免 web/web2 backtest 在运行时打外部源。
+- 新增数据契约层：[signals/data/contracts.py](/Users/zhangqilong/github代码仓库/Signals/signals/data/contracts.py:19)，health 可看各消费者缓存覆盖。
+- 新增/扩展 gateway API：[signals/data/gateway.py](/Users/zhangqilong/github代码仓库/Signals/signals/data/gateway.py:497)  
+  `get_stock_bars`、`get_index_bars`、`get_social_heat`、`get_concept_constituents`、`get_data_freshness`、`get_cache_contracts`。
+- sync daemon 修了错过精确分钟不跑的问题，并加了启动 bootstrap：[signals/sync/engine.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/engine.py:179)。
+- 新增 `cache_preheat`，把已有本地缓存导入 Mongo：[signals/sync/modules/cache_preheat.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/cache_preheat.py:214)。
+- L3 `StockDeepDive` 和 `review_screener` 的 K 线读取已切到 gateway cache，不再运行时拉 AKShare/东财/Sina。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**已预热 Mongo**
+- `bars: 2804`
+- `board_ranking: 1197`
+- `concept_ranking: 1268`
+- `board_constituents: 12`
+- `concept_constituents: 12`
+- `stock_names: 5509`
+- `social_heat: 50`
+- `social_weibo: 1`
+- `social_comment: 1`
+- `data_freshness: 11`
+- contracts 检查：`11/11 ready`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验证**
+- `bash scripts/python.sh -m pytest tests -q`：`29 passed, 5 warnings`
+- `signals-sync` 已重启并运行：PID `59496`
+- `weguard status` 显示 `signals-sync running`
+- `get_kline(SH.600000)` 读 `bars` 成功：`969` 根，`fresh`
+- `StockDeepDive(SH.600000)` 日线来源：`Gateway/Mongo`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf2c-61fb-7111-b8c9-0db42178be1a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+注意：仓库里仍保留一些 legacy provider helper 代码，主要用于 sync/backfill 或尚未完全收口的老入口；但本轮核心 runtime 链路已经被 gateway/cache 卡住，不再让 backtest、rank、social、review/deep-dive 的关键路径现场打外部行情源。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf18-5eee-7663-b66f-6bf59af3a870
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$autoplan](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-autoplan/SKILL.md) 继续缓存signal所有模块需要用到的数据，优化整体的数据链路
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbeb8-e4bf-7e01-8069-d5ee649a3bb1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 旧进程清理
+- 已停止旧的 Signals `web 8011` 和 `web2 6008` screen 常驻进程。
+- 当前 `8011 / 6008 / 18012` 都没有监听。
+- 只保留 MongoDB 和 `signals-sync`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbeb8-e4bf-7e01-8069-d5ee649a3bb1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. MongoDB 安装与配置
+- 已通过 Homebrew 安装：
+  - `mongodb-community 8.2.7`
+  - `mongosh 2.8.2`
+- MongoDB 已启动：
+  - `127.0.0.1:27017`
+  - Homebrew service: `mongodb-community started`
+- 已写入 [Signals/.env](/Users/zhangqilong/github代码仓库/Signals/.env):
+  - `MONGO_URL=mongodb://127.0.0.1:27017/signals`
+  - `MONGO_DB_NAME=signals`
+  - `EM_PROXY_ENABLED=false`
+- 已执行 `deploy/init-mongo.js` 初始化 collections / indexes / TTL。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbeb8-e4bf-7e01-8069-d5ee649a3bb1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. signals-sync 状态
+- `signals-sync` 已重新启动并正常运行：
+  - `com.zhangqilong.ai.signals.sync`
+  - PID `51294`
+- `weguard status` 显示：`signals-sync running`
+- 日志确认：`signals-sync mongo ping ok`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbeb8-e4bf-7e01-8069-d5ee649a3bb1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. 东财直连与预热
+- 已跑 `board_ranking` 最小预热。
+- 东财直连成功：
+  - 东财行业：`496`
+  - 东财概念：`491`
+- 写入 canonical：
+  - `board_ranking source=canonical`: `611`
+  - `concept_ranking source=canonical`: `602`
+- gateway historical 验证：
+  - board: `historical board_ranking fresh 611`
+  - concept: `historical concept_ranking fresh 602`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbeb8-e4bf-7e01-8069-d5ee649a3bb1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+5. 测试结果
+- `bash scripts/python.sh -m pytest tests -q`
+- 结果：`24 passed, 5 warnings`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbeb7-fa8a-7e70-a24e-1313ab34aef0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+1、你把旧进程都清理掉 2、你安装一个mongodb并配置好，重新跑一下测试
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Signals 数据架构重构方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+Request Intent Layer
+-> Data Gateway
+-> Storage Model
+-> Runtime Consumers
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+历史收盘数据：Mongo/disk canonical 优先，miss 才补历史源。
+实时行情数据：实时接口优先，写短 TTL snapshot，失败时返回最近 snapshot + stale。
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+不要再让 `web2 backtest`、`L2 行业分析`、`cluster`、`sync` 各自决定数据源。它们都应该调用同一个 Data Gateway。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```mermaid
+flowchart TB
+  Consumer["web / web2 / run.py / WeClaw"] --> Request["DataRequest"]
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Request --> Intent{"mode"}
+  Intent -->|"historical"| Hist["Historical Close Path"]
+  Intent -->|"realtime"| Live["Realtime Quote Path"]
+  Intent -->|"auto"| Resolver["Intent Resolver"]
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Resolver --> Hist
+  Resolver --> Live
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Hist --> Cache["Mongo canonical -> disk cache"]
+  Cache --> Backfill["historical provider backfill"]
+  Backfill --> Canonical["canonical collections"]
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Live --> Realtime["realtime providers"]
+  Realtime --> Snapshot["source snapshots / short TTL"]
+  Snapshot --> View["merged realtime view"]
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Canonical --> Runtime["web/web2/analysis"]
+  View --> Runtime
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+domain: kline | board | concept | constituents | social
+mode: historical | realtime | auto
+market: A | HK | US
+as_of: YYYY-MM-DD | today
+freq: daily | weekly | monthly | 15m | 30m | quote
+symbol / board_name / concept_name
+allow_stale: true | false
+purpose: backtest | review | intraday | cluster | chart | sync
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+data
+mode_used
+source
+as_of
+freshness: fresh | stale | partial | empty
+is_stale
+is_partial
+latency_ms
+errors[]
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `bars`: K 线 canonical，按 `meta.symbol + meta.freq + dt` 查询。
+- `board_ranking`: 行业收盘 canonical，每个交易日一批。
+- `concept_ranking`: 概念收盘 canonical，每个交易日一批。
+- `board_constituents`: 成分股缓存，按行业名维护。
+- `kline_cache`: web2 兼容层，后续可逐步并入 `bars`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+这些表是“实时源级快照”，用于盘中展示和多源 merge，不作为历史事实源。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 保存实时源原始标准化结果。
+- TTL 短一些，建议 1-7 天。
+- 盘中 cluster/L2 可以读它们 merge。
+- 收盘后由 sync job 生成 `board_ranking/concept_ranking` canonical。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+sync_log
+provider_health
+data_freshness
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+provider_health:
+  provider
+  endpoint
+  domain
+  last_success_at
+  last_error_at
+  last_error_type
+  avg_latency_ms
+  status: ok | degraded | down
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+data_freshness:
+  domain
+  market
+  mode
+  as_of
+  collection
+  latest_dt
+  stale_reason
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+signals/data/gateway.py
+signals/data/models.py
+signals/data/providers/
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+get_kline(request)
+get_board_rank(request)
+get_concept_rank(request)
+get_board_constituents(request)
+get_provider_health()
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```mermaid
+flowchart LR
+  H["historical request"] --> M["Mongo canonical"]
+  M --> D["disk cache"]
+  D --> P["historical providers"]
+  P --> W["write canonical"]
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `purpose=backtest/review/analog` 强制 historical。
+- `as_of < today` 强制 historical。
+- `today && market closed` 强制 historical。
+- historical 不因为当前盘中就打实时行情接口。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+bars -> disk kline -> kline_cache -> Sina historical -> Eastmoney fallback -> AKShare fallback
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+board_ranking/concept_ranking -> disk cache -> source snapshots merge -> external historical/close补数
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```mermaid
+flowchart LR
+  R["realtime request"] --> P["realtime providers"]
+  P --> S["source snapshot"]
+  S --> Merge["merge realtime view"]
+  Merge --> Out["response"]
+  P -->|fail| Stale["latest snapshot + stale"]
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+THS realtime + Sina realtime + Eastmoney push2delay
+-> board_ths/board_sina/board_em
+-> merge realtime board view
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+Sina realtime + Eastmoney push2delay + THS
+-> concept_sina/concept_em/concept_ths
+-> merge realtime concept view
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+实时失败时不污染 canonical，只返回 `is_stale=true`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+Label: com.zhangqilong.ai.signals.sync
+Script: ~/.longclaw/runtime-v2/bin/signals-sync.sh
+Log: /tmp/longclaw-guardian/signals.sync.launchd.log
+WorkingDirectory: /Users/zhangqilong/github代码仓库/Signals
+RunAtLoad: true
+KeepAlive: true
+ThrottleInterval: 30
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+~/.weclaw/services.json
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```json
+{
+  "label": "com.zhangqilong.ai.signals.sync",
+  "domain": "gui",
+  "uid": 501,
+  "restart_base_seconds": 60,
+  "max_backoff_seconds": 900,
+  "name": "signals-sync",
+  "service_type": "service"
+}
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 当前 `Signals` 本机 `DB_ENABLED=False`。
+- 必须让 launchd 脚本显式加载 `MONGO_URL`。
+- 否则 sync daemon 会启动即无效。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+`signals.sync` 从“旧集合写入器”升级为“数据预热器”。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 盘中 job：更新 source snapshots。
+- 盘后 job：生成 canonical close snapshots。
+- 周末 job：更新成分股。
+- 每次写入 `sync_log/provider_health/data_freshness`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `cluster_industries()` 实时模式读 `board_em/ths/sina`，历史模式读 `board_ranking`。
+- `get_industry_representatives()` 接收 `mode/as_of`，不再自己猜。
+- `get_concept_rankings()` 接收 `mode/as_of`，historical 优先 `concept_ranking`，realtime 才读 `concept_sina/em/ths`。
+- `board_cons` 使用最新 `board_ranking` 的 canonical 行业名，不再无日期过滤扫历史。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+DataRequest(domain=kline, mode=historical, purpose=backtest)
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 历史 chart 默认 historical。
+- 盘中 chart 如需要最新 30m，可显式 realtime。
+- 返回数据源和 stale 状态，前端显示“Mongo历史 / 实时新浪 / stale snapshot”。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+| Failure | Expected Behavior |
+|---|---|
+| 东财 push2his 挂 | historical 继续读 Mongo/disk/Sina |
+| 东财 board 302 | realtime 跟随 push2delay 或降级 THS/Sina |
+| Mongo 未配置 | launchd 启动失败并写清晰日志 |
+| Mongo stale | API 返回 stale reason，不静默当成最新 |
+| realtime 源失败 | 返回最近 snapshot + `is_stale=true` |
+| source snapshots 缺失 | cluster 降级 canonical，不空白 |
+| canonical 缺失 | sync 补收盘数据，前台显示 pending/degraded |
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- Unit:
+  - `IntentResolver`: `as_of < today` 必须 historical。
+  - `backtest` purpose 必须 historical。
+  - `today + market open + purpose=intraday` 必须 realtime。
+  - realtime 失败不写 canonical。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Integration:
+  - `get_kline(historical)` 断网仍能读 Mongo/disk。
+  - `get_concept_rank(historical)` 优先 `concept_ranking`。
+  - `get_concept_rank(realtime)` 优先 `concept_sina/em/ths`。
+  - `cluster_industries(realtime)` 多源 merge。
+  - `cluster_industries(historical)` canonical fallback。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Runtime:
+  - `launchctl print gui/$(id -u)/com.zhangqilong.ai.signals.sync`
+  - `~/.longclaw/runtime-v2/bin/weguard status`
+  - `tail -f /tmp/longclaw-guardian/signals.sync.launchd.log`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- CEO: 方向应从“修东财请求”升级为“数据平面产品化”。只修接口会继续反复坏。
+- Eng: 最大风险是 schema 分裂和隐式 mode 判断。必须先引入 `DataRequest` 和 gateway。
+- DX: 需要健康接口和明确错误信息，否则以后每次都是翻日志猜是哪条链路坏。
+- Design: 本次不是 UI 方案，跳过视觉设计审查。

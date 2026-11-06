@@ -1,0 +1,633 @@
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我主线程补了：
+- Longclaw Core 三模式 contract 和 service 逻辑，在 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py)、[service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)
+- Electron 本地 provisional fallback 的三模式字段，在 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)
+- 对应回归测试，在 [test_contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_contracts.py)、[test_service.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py)、[test_api_server_agent_os.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/gateway/test_api_server_agent_os.py)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+回归结果：
+- `hermes-agent`: `16 passed, 1 skipped`
+- `weclaw`: `go test ./...` 通过
+- `longclaw-agent-os`: `client.test.ts` 通过，`npm run lint` 通过，`npm run build:electron` 通过
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da572-2e84-7a03-ba77-57a10ad61976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以结论不是“可以”，而是“这类任务就应该并行”，前提是像这次一样按写入面锁死 ownership。下一轮最适合继续并行的是“真实微信闭环验证”和“模式文档/运行态命名收口”。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da570-5812-7f83-b9f2-d8a1825c1216
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+我觉得这种形态就是类似claude code或者codex你是可以选择本地工作或者是云端沙盒工作，或者是远程dispatch(weclaw的微信形态)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da56e-4df2-70c1-b9e9-ec132161ce9b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+云侧的agent os应该是一个运行态，然后应该是对接云端lite llm这种可以直接对接api提供云服务的场景。目前本地机子是通过weclaw+常驻的claude+Codex来提供大模型服务，这是因为目前的产品逻辑并没有向外扩散
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da56a-367c-7322-9b7f-ae294c6eb944
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+优先保证微信到electron的任务管理，signals和due-diligence可以被加载即可。hermes应该是和longclaw的agent os融为一体？
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+客户端目前已经改造完毕了么？按照新的设计语言，然后我微信可以直接跑通整个流程么？
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+准确结论是：**客户端主体已经改造到位，但还不能算 100% 全部收口；微信链路已经具备跑通条件，但我不能说“现在直接一定跑通了真实全流程”，因为真实微信闭环还没在这台环境里实跑，只完成了模拟闭环验证。**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**客户端状态**
+- 按新的设计语言，主壳已经落下来了：`Home / Runs / Work Items / Packs / Studio`、`Cowork Launch + Governance Snapshot` 都已经在客户端里了，见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:135)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1396)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1549)。
+- 设计语言也已经切到新系统：字体、色板、状态 badge、工业化壳层都在 [designSystem.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.ts:3)；三栏布局和抽屉退化规则对齐了 [DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md:126) 和 [layout.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/layout.ts:1)。
+- 但它还**不是完全 finished**。代码里明确还保留了几处 `provisional / local_fallback` 语义，比如 `Studio` 仍写着 capability inventory 是 provisional，[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:158)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1858)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1943)，而 launch history 也还兼容 local fallback，[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1517)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**微信链路状态**
+- `WeClaw -> Hermes` 这段已经接好了。显式 `@pack / @skill / @plugin` 可以转发到 Hermes，配置入口在 [README_CN.md](/Users/zhangqilong/github代码仓库/weclaw/README_CN.md:191)。
+- 但现在**真正被验证通过的是模拟闭环，不是真实微信闭环**。我刚重新跑过：
+  - `npm run lint`
+  - `npm run build:electron`
+  - `npm run validate:weclaw-client-simulated`
+  这些都通过了。
+- 模拟闭环验证文档和真实微信 runbook 已经写好，在 [VALIDATION_WECLAW_TO_CLIENT.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/VALIDATION_WECLAW_TO_CLIENT.md:90)。文档里也明确写了：真实微信闭环是**手工 runbook + 证据包**，不是已经自动实跑完成。
+- 所以对“我微信可以直接跑通整个流程么？”的准确回答是：**有条件可以，但前提是你本地 Hermes、WeClaw、Electron 都连到同一个 Agent OS，并且你走显式 `@pack` 主路径；当前还没有证据证明这台环境下已经真实微信 100% 跑通。**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要一句更短的判断：
+- **客户端：80-90% 完成，主壳和设计语言已经到位。**
+- **微信全流程：具备跑通条件，但还差最后一次真实微信实证。**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55f-4ad4-74b3-9688-50a793209e0c
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一步可以继续帮你把“真实微信闭环”的**精确启动顺序和命令清单**整理成一份你直接照抄执行的 checklist。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**1. 最快验证：自动化模拟闭环**
+在 [longclaw-agent-os/scripts/validate-weclaw-client-simulated.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/validate-weclaw-client-simulated.sh:1) 里已经串好了 `WeClaw -> Hermes -> Electron client` 的模拟闭环。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+cd /Users/zhangqilong/github代码仓库/longclaw-agent-os
+bash scripts/validate-weclaw-client-simulated.sh
+```
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+cd /Users/zhangqilong/github代码仓库/longclaw-agent-os
+npm run validate:weclaw-client-simulated
+```
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**2. 半实战验证：不走真实微信，只走 WeClaw 前门**
+如果你已经启动了 WeClaw 本地 API，可以直接打新入口 [weclaw/api/server.go](/Users/zhangqilong/github代码仓库/weclaw/api/server.go:1) 里的 `POST /api/agent-os/launch`：
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+curl -X POST http://127.0.0.1:18011/api/agent-os/launch \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "text": "@pack due_diligence.company_due_diligence 调查这家公司",
+    "from_user_id": "simulation@im.wechat",
+    "context_token": "ctx-1",
+    "target_agents": ["claude"]
+  }'
+```
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**3. 真实验证：微信发消息到客户端**
+完整 runbook 在 [VALIDATION_WECLAW_TO_CLIENT.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/VALIDATION_WECLAW_TO_CLIENT.md:1)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+最小步骤是：
+- 启动 Hermes，并确认 `/agent-os/overview` 可访问
+- 启动 WeClaw，并配好：
+  - `WECLAW_AGENT_OS_BASE_URL`
+  - `WECLAW_AGENT_OS_API_KEY`
+- 启动 Electron，并配好：
+  - `LONGCLAW_HERMES_AGENT_OS_BASE_URL`
+  - `LONGCLAW_HERMES_API_KEY`
+- 在真实微信发送：
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+@pack signals.review 请给我一份今天的盘前 review
+```
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+然后确认：
+- WeClaw 日志里有 ingress 和 `/agent-os/launches`
+- Hermes `/agent-os/tasks?limit=5` 能看到新 task
+- Electron `Home` 里有 recent launch
+- `Runs` 或 `Work Items` 里能看到对应对象
+- `Packs > Signals` 里能看到相应状态
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da55e-9865-7162-866f-d079b1ece0fc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要最省事，我建议你现在先跑第 1 步。  
+如果你要，我下一条可以直接给你一份“按你当前机器环境可执行”的精确命令清单。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 两目标收口计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Summary
+- 本轮所有工作只围绕两个目标收口：
+  - `目标 1`：完成整体设计代码改造
+  - `目标 2`：完成一次从 `WeClaw` 到客户端的完整验证
+- 产品主线固定为：
+  - `Chat launches, console governs.`
+  - `Electron` 是唯一 default home
+  - `WeClaw` 是 remote cowork companion
+  - `Hermes` 是唯一 canonical `LaunchIntent -> Task / Run / Work Item` 编排层
+- 能力调用策略固定为：
+  - 前门以 **显性加载** 为主
+  - 用户通过 `@pack / @skill / @plugin`、capability chips、presets、shortcuts 发起任务
+  - 不把“自由文本智能猜 pack”作为本轮主目标
+  - 当前已有的默认 pack / routing hint 只保留为兼容能力，不作为主 UX 或主验收路径
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 设计代码改造收口到产品层 + 运行时用户可见层
+- `Electron` 信息架构最终锁定为：
+  - `Home`
+  - `Runs`
+  - `Work Items`
+  - `Packs`
+  - `Studio`
+- `Home` 必须彻底成为双层首页：
+  - 左侧 `Cowork Launch`
+  - 右侧 `Governance Snapshot`
+- `Cowork Launch` 的完成标准固定为：
+  - 支持自然语言输入
+  - 支持显式 `@pack / @skill / @plugin`
+  - 显示 active capabilities / recent launches / 当前 workspace context
+  - 明确告诉用户：长时、evidence-heavy、needs-review 的工作会进入治理面
+- `Studio` 的完成标准固定为：
+  - 不做 marketplace 首页
+  - 只展示 curated / visible capabilities
+  - pack-first，skills/plugins 次之
+  - 词表、状态、badge、detail drawer 语法与治理面完全一致
+- `Runs / Work Items / Packs` 必须共享统一的 row/drawer/preview 语法，不允许页面各自发明第二套交互
+- 运行时层本轮只改 **用户可见层**：
+  - `install / apply-live / guardian / runtime status / weclaw bridge health / README / docs / 状态输出` 的命名、状态词、产品文案全部对齐 Longclaw 词表
+  - 统一状态词：
+    - `running`
+    - `needs review`
+    - `partial`
+    - `delivery failed`
+    - `degraded`
+    - `reviewed insight`
+  - 不在本轮改 `launchd / guardian / scheduler` 的深层内部契约和 state file shape
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. 前门与 canonical 编排收口
+- `Hermes` 继续作为唯一 canonical 编排入口：
+  - `POST /agent-os/launches`
+  - `GET /agent-os/tasks`
+  - `GET /agent-os/tasks/{task_id}`
+- `LaunchIntent` 本轮冻结为前门唯一 canonical 输入对象
+- `Electron Home` 和 `WeClaw` 都必须走同一条 Hermes launch 通路
+- 主产品策略固定为：
+  - canonical launch 依赖显式 capability loading
+  - `@pack` 决定 pack
+  - `@skill` 决定 workflow/preset
+  - `@plugin` 决定 capability bundle / connector preset
+- 兼容策略固定为：
+  - 现有 `default launch pack / capability` 能力保留，但不作为主交互设计、不作为主验收路径
+- `WeClaw` 的完成标准固定为：
+  - 保持 channel semantics、消息/媒体解析、remote companion 定位
+  - 不伪装控制台
+  - 显式 capability launch 能提交 Hermes
+  - 普通状态追问和轻量回复仍留在 WeChat 表面
+- `Electron` 的完成标准固定为：
+  - 最近 launches、tasks、capability substrate、治理状态在同一产品语言里可读
+  - 不再让用户通过本地 cowork runtime 理解系统状态；状态归属始终落在治理面
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 验证计划按“两条路径 + 两个交付物”收口
+- 验证必须同时覆盖两条路径：
+  - `模拟闭环`
+  - `真实微信闭环`
+- 验证交付形式固定为：
+  - `模拟闭环 = 自动化`
+  - `真实微信闭环 = 手工 runbook + 证据包`
+- 验证矩阵固定为：
+  - `模拟闭环` 以 `Due Diligence` 为主场景
+    - 从 WeClaw 可控入口发起显式 capability launch
+    - 经 Hermes 生成 canonical `Task / Run / Work Item`
+    - 在 Electron `Home / Runs / Work Items / Packs` 中看到对应状态
+  - `真实微信闭环` 以 `Signals Review` 为主场景
+    - 在真实微信中发一条显式 capability 消息
+    - 经 WeClaw 入站、Hermes launch、Electron 客户端看到对应 launch/task/run
+- 为什么这样分配：
+  - `Signals Review` 更适合作为真实微信演示路径
+  - `Due Diligence` 更适合作为可控、可重复的模拟闭环验证路径
+- 两条验证都必须输出证据：
+  - Electron 截图
+  - Hermes 任务/运行记录
+  - WeClaw 日志或 API 调用记录
+  - 失败时的排障路径
+- 本轮验收不要求每个 pack 在每条路径都跑一遍；但合并后的验证矩阵必须覆盖：
+  - 两条 ingress 路径
+  - 两个 flagship pack
+  - 一次 canonical task/run/work item 可见性
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 设计代码改造验收：
+  - `Electron` 首次进入默认落在 `Home`
+  - `Home` 不是 KPI 卡片墙，也不是全屏聊天页
+  - `Studio` 不是 marketplace 首页
+  - `Runs / Work Items / Packs` 共用统一详情抽屉和状态语法
+  - runtime 用户可见脚本与状态输出不再混用旧词表
+- 编排链验收：
+  - `Electron Home` 的显式 capability launch 能进入 Hermes `LaunchIntent`
+  - `WeClaw` 的显式 capability launch 能进入同一 Hermes 通路
+  - `Task / Run / Work Item` 在 Electron 中可见且状态一致
+- 模拟闭环验收：
+  - 有自动化脚本或测试入口可重复触发
+  - 脚本跑完后可自动检查 Hermes task/run 与 Electron control-plane 可见性
+- 真实微信闭环验收：
+  - 有手工 runbook
+  - 明确前置条件、发送内容、期望结果、截图点位、日志位置、失败排障顺序
+- 回归检查：
+  - `longclaw-agent-os` 通过类型检查和 Electron 构建
+  - `weclaw` 通过 Go 测试
+  - `hermes-agent` 通过 Agent OS 相关 pytest
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 本轮的“整体设计代码改造”完成边界包括：
+  - 产品壳层
+  - companion 词表对齐
+  - 运行时用户可见层
+  - 不包括运行时深层契约重写
+- 本轮的前门策略是“显性加载能力”，不是“智能猜路由”
+- `default launch pack` 相关能力只作为兼容保留，不作为主产品承诺
+- `模拟闭环` 负责自动化沉淀，`真实微信闭环` 负责真实世界证明
+- 这版计划替换之前所有更泛化的 Longclaw 执行计划，后续实现和 review 都应以这两个目标为唯一优先级
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+设计和用户可见层这边，我补齐了 Longclaw 词表和交付面：运行时状态脚本现在用 `WeClaw Companion / Reviewed Knowledge Plane / Remote Companion Runtime / reviewed_handoff_status` 这套术语，不再沿用旧的 `Knowledge Projection / WeChat Runtime / archive_status` 叙事，改动在 [runtime-status](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-status:1)、[runtime-roadmap-sync.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-roadmap-sync.py:1)、[README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md:1)、[guardian README](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/guardian/README.md:1)。同时补了验证交付：[VALIDATION_WECLAW_TO_CLIENT.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/VALIDATION_WECLAW_TO_CLIENT.md:1) 和一键脚本 [validate-weclaw-client-simulated.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/validate-weclaw-client-simulated.sh:1)，并把它挂进了 [package.json](/Users/zhangqilong/github代码仓库/longclaw-agent-os/package.json:27)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`WeClaw -> 客户端` 的自动化闭环也已经打通并验证通过。受控前门入口和测试在 [server.go](/Users/zhangqilong/github代码仓库/weclaw/api/server.go:1)、[server_test.go](/Users/zhangqilong/github代码仓库/weclaw/api/server_test.go:1)、[handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:637)，Electron 客户端侧的模拟可见性验证在 [client.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.test.ts:1)。通过的回归包括：
+- `bash /Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/validate-weclaw-client-simulated.sh`
+- `cd /Users/zhangqilong/github代码仓库/weclaw && go test ./...`
+- `cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run lint`
+- `cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run build:electron`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da552-12bf-7c50-950b-d033f01bae24
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+剩下唯一没在这台机器上实跑的是“真实微信闭环”。我已经把完整手工 runbook、证据点位和排障顺序写进 [VALIDATION_WECLAW_TO_CLIENT.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/VALIDATION_WECLAW_TO_CLIENT.md:1)；要真正完成这一步，只需要在你有真实微信会话和 Hermes/WeClaw/Electron 同时在线的环境里按文档走一遍。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da540-54d1-7c41-baa6-f49e8d8df077
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+目前制定一个完整的目标1、完成整体的设计代码改造  2、完成一次从weclaw到客户端的验证  一切计划按照这两个目标来进行优化
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da53a-2194-7690-bf00-c36036bfd020
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`hermes-agent` 现在支持服务端默认路由策略：如果前门消息没有 `@pack`，Hermes 会先看 `metadata.routing_hint.default_pack_id` / `default_capability`，再看环境变量 `LONGCLAW_DEFAULT_LAUNCH_PACK` / `LONGCLAW_DEFAULT_LAUNCH_CAPABILITY`，最后才报缺少 pack。关键改动在 [service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)、测试在 [test_service.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py)。这意味着桌面端普通自然语言 launch，只要你给 Hermes 配了默认 pack，就会直接落到 canonical `Task / Run / Work Item`，不再被迫走本地 provisional fallback。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da53a-2194-7690-bf00-c36036bfd020
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`weclaw` 也补上了同样的默认路由入口。现在除了显式 `@pack / @skill / @plugin` 以外，如果配置了 `WECLAW_DEFAULT_LAUNCH_PACK`（可选再配 `WECLAW_DEFAULT_LAUNCH_CAPABILITY`），普通微信自由文本也会提交 `/agent-os/launches`，而不是只做 ingress 上报。相关改动在 [config.go](/Users/zhangqilong/github代码仓库/weclaw/config/config.go)、[start.go](/Users/zhangqilong/github代码仓库/weclaw/cmd/start.go)、[agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go)、[agent_os_test.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os_test.go)，文档同步到了 [README.md](/Users/zhangqilong/github代码仓库/weclaw/README.md)、[README_CN.md](/Users/zhangqilong/github代码仓库/weclaw/README_CN.md) 和 [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da53a-2194-7690-bf00-c36036bfd020
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已过：
+- `python3 -m pytest -o addopts='' /Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py /Users/zhangqilong/github代码仓库/hermes-agent/tests/gateway/test_api_server_agent_os.py`
+- `cd /Users/zhangqilong/github代码仓库/weclaw && go test ./...`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da52c-046f-7a70-a8b2-44ce937e8fe6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`Electron Home` 现在已经改成 Hermes-first。`Home` 的发起不再直接走 `agentAPI.query`，而是优先走 `window.longclawLaunch.launch(...)`，同时读取 `window.longclawLaunch.listTasks(...)` 和 `window.longclawCapabilitySubstrate.getSummary()` 来驱动最近 launches、能力可见性和 Studio 上下文。相关改动在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)、[main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)。现在显式 `@pack` launch 会进 Hermes；没有 `@pack` 的桌面自然语言 launch 会自动回退到本地 cowork runtime，不会直接炸掉。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da52c-046f-7a70-a8b2-44ce937e8fe6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`WeClaw` 这边也从“只报 ingress”升级成了“ingress + 显式 capability launch”。所有文本仍然会走 ingress；如果消息里带显式 `@pack` / `@skill` / `@plugin`，就会额外提交 `/agent-os/launches`，把微信前门接进 Hermes 的 canonical launch contract。实现和测试在 [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go)、[handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go)、[agent_os_test.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os_test.go)。对应说明也补到了 [README.md](/Users/zhangqilong/github代码仓库/weclaw/README.md) 和 [README_CN.md](/Users/zhangqilong/github代码仓库/weclaw/README_CN.md)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da52c-046f-7a70-a8b2-44ce937e8fe6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已过：`cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run lint`，`cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run build:electron`，`cd /Users/zhangqilong/github代码仓库/weclaw && go test ./...`。  
+剩下的主要边界也很明确：微信普通自由文本现在仍然只做 ingress，不会自动变成 Hermes launch；桌面无 `@pack` 的本地回退 launch 也还是 provisional，没有沉淀进 Hermes task history。下一步最值当的是把“无显式 `@pack` 时的 routing hints”做成 Hermes 侧 canonical policy。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da526-d467-7291-b976-30893513c972
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+主要结果：
+- `longclaw-agent-os` 现在已经从旧的 `Overview / Runs / Work Items / Packs` 改成新的 `Home / Runs / Work Items / Packs / Studio`。`Home` 是 `Cowork Launch + Governance Snapshot`，`Studio` 是第一版 curated capability 壳子，治理面的 inspection 语法保留在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)。
+- Electron 侧正式拆成三类数据面：`longclawLaunch`、`longclawCapabilitySubstrate`、`longclawControlPlane`，并新增 `LongclawTask / LongclawLaunchIntent / LongclawLaunchReceipt / LongclawStudioSummary` 这类 DTO，落在 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)、[preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts)、[models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts)、[client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts)。
+- `hermes-agent` 补上了前门 canonical intent 层：`LaunchMention / LaunchIntent / LaunchReceipt`、最小 `Task lifecycle`、以及 `/agent-os/launches`、`/agent-os/tasks`、`/agent-os/tasks/{task_id}`，核心在 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py)、[service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)、[api_server.py](/Users/zhangqilong/github代码仓库/hermes-agent/gateway/platforms/api_server.py)。
+- canonical docs 也已经整体换成新叙事：`Chat launches, console governs`、`Capability Substrate`、`Professional Grounds`、`remote cowork companion`，起点在 [DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md) 和 [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da526-d467-7291-b976-30893513c972
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果：
+- `longclaw-agent-os`: `npm run lint` 通过，`npm run build:electron` 通过。
+- `hermes-agent`: `python3 -m pytest -o addopts='' tests/agent_core/test_contracts.py tests/agent_core/test_service.py tests/gateway/test_api_server_agent_os.py` 结果 `12 passed, 1 skipped`。
+- 跳过的是 `test_api_server_agent_os.py` 里依赖 `aiohttp` 的分支；核心 contract/service 主链已通过。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da526-d467-7291-b976-30893513c972
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+剩余边界：
+- 现在 Electron 已能消费新前门/治理结构，但真正的跨表面完整闭环还需要再做一次端到端联调，尤其是 `WeClaw -> Hermes launch -> Electron Home/Tasks`。
+- `weclaw` 这轮只改了文档边界，没有继续动运行时代码。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da51b-ab21-7be1-bf83-214712270784
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+按这 4 条 lane 真开 worker，并把每个 worker 的写入范围锁死
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da51b-ab21-7be1-bf83-214712270784
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `Worker A` 正在跑 `renderer shell`
+- 只允许改：
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.ts`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/layout.ts`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/index.html`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da51b-ab21-7be1-bf83-214712270784
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. `Worker B` 正在跑 `Electron IPC + schema/client`
+- 只允许改：
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da51b-ab21-7be1-bf83-214712270784
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. `Worker C` 已完成 `Hermes contracts/API`
+- 只改了：
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/__init__.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/gateway/__init__.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/gateway/platforms/api_server.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_contracts.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/tests/gateway/test_api_server_agent_os.py`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da51b-ab21-7be1-bf83-214712270784
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. `Worker D` 正在跑 `canonical docs + companion docs`
+- 只允许改：
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/PLAN.md`
+  - `/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/ARCHITECTURE.md`
+  - `/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/PRODUCT_BOUNDARY.md`
+  - `/Users/zhangqilong/github代码仓库/weclaw/README.md`
+  - `/Users/zhangqilong/github代码仓库/weclaw/docs/ARCHITECTURE.md`
+  - `/Users/zhangqilong/github代码仓库/agent-collab-ops/README.md`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da51b-ab21-7be1-bf83-214712270784
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+锁定方式是显式 ownership，不允许跨 lane 写文件，并且我已经要求每个 worker 不得回退其他人的改动、遇到并发变化必须适配。  
+当前进度上，`Worker C` 已经把 `LaunchIntent + tasks API` 这条关键链补上了，其余 3 条还在跑。我会继续盯结果并做最后整合。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 设计系统与多表面落地执行计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Summary
+- Longclaw 不再按“纯治理台”来定义，也不改成“聊天即产品”。新定位锁定为：**单人高杠杆操盘手的 Agent OS**。
+- 产品结构采用 **双层并列**：
+  - `Cowork Front Door`：负责发起任务、调用 `@plugin / @skill / @pack`、远程派单、轻量追问。
+  - `Governance Console`：负责 `runs / artifacts / evidence / review / work items / delivery / promotion`。
+- 设计方向继续锁定为 **Warm Industrial Command Center**，但保守吸收 `Claude Cowork / WorkBuddy / OpenHands` 这类产品的两个优点：
+  - `能力可见性`
+  - `发起体验`
+- 借鉴策略明确为：**借结构，不借产品重心**。
+  - 借：launch 输入条、active capabilities、context panel、能力提示、最近 launch 反馈
+  - 不借：全屏聊天首页、紫色 AI SaaS 风、插件市场中心化、治理台降级
+- 核心原则固定为：**`Chat launches, console governs.`**

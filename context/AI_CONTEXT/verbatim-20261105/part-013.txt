@@ -1,0 +1,862 @@
+
+
+---
+来源：codex:019ddce6-1b9c-7693-be0f-800531fb02b1#turn:019ddce7-bccb-77f1-aea8-42eb2d81f0b5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+真实买点 33 只全部是 `entry_confirmed`，样本包括 `SH.688381、SH.688456、SH.688566、SH.688677、SH.688399、SH.688627、SH.688511、SH.688609`。这些样本都有多周期共振，常见信号是 `一买 / 背驰买 / 趋势买 / MACD绿柱扩大_零上 / MACD绿柱缩小_零下`，rank 按上级周期、30m 触发、5m/15m 确认、技术分、共振和置信度加权。
+
+
+---
+来源：codex:019ddce6-1b9c-7693-be0f-800531fb02b1#turn:019ddce7-bccb-77f1-aea8-42eb2d81f0b5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+观察预热 120 只不是买点，比如 `SH.688506、SH.688793、SH.688586` 是 `entry_waiting_30m_confirm`，`SH.688617、SH.688379` 是 `entry_waiting_right_side_confirm`。这些只能等确认。
+
+
+---
+来源：codex:019ddce6-1b9c-7693-be0f-800531fb02b1#turn:019ddce7-bccb-77f1-aea8-42eb2d81f0b5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+策略候选来源在 [snapshot.py](/Users/zhangqilong/github代码仓库/Signals/signals/strategy/snapshot.py:119)：`market_pools、signals、quote_snapshots、board_ranking、concept_ranking`。候选构造逻辑在 [snapshot.py](/Users/zhangqilong/github代码仓库/Signals/signals/strategy/snapshot.py:354)。当前策略候选 12 个，样本是 `SZ.002812、SH.600487、SH.603906、SH.605003、SH.688401`；其中有些是 `active_pool` 或日线候选，不等于真实买点。
+
+
+---
+来源：codex:019ddce6-1b9c-7693-be0f-800531fb02b1#turn:019ddce7-bccb-77f1-aea8-42eb2d81f0b5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `launchd` 运行中，web、postmarket、quote_lane、signal_lane、workbench_lane、board_lane 都有进程。
+- `postmarket:2026-04-29`：`task_count=50`，`ok_tasks=50`。
+- 最新硬技术扫描：`5208` 个标的，`11521` 条技术信号，`failed=0`，日线/周线/30分钟覆盖 `100%`。
+- `terminal_realtime_pool` 最新 `13:42:48` 重算成功，下一次 `13:52:48`。
+- `signal_lane` 分钟预热/ready probe 正常，`not_ready=0`。
+- API `/api/workbench/shell` 返回：`buy_candidates=12`、`focus_stocks=33`、`risk_stocks=72`、`watch_stocks=120`。
+
+
+---
+来源：codex:019ddce6-1b9c-7693-be0f-800531fb02b1#turn:019ddce7-bccb-77f1-aea8-42eb2d81f0b5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+需要注意的一点：`strategy_snapshot` 的 `board/concept` 来源当前显示 `stale`，as_of 是 `2026-04-29`，所以策略简报的 source confidence 是 `0.72`，不是满分状态。核心真实买点池是 fresh，但策略候选里的板块/概念解释要打折看。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+1、检查一下网络数据源日志，为什么有16个报错，提出优化方案   2、检查目前chart的指标情况，为什么没有我自定义的回测信号指标，还有优化一下信号显示在chart上面的样式
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已推进完成 chart 信号解释/样式和布局适配，改动集中在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:387)。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+主要落地：
+- 左右栏改成 `clamp(...)` 响应式宽度，压缩侧栏和右侧任务区，给中间 chart 留更多空间。
+- 顶部缓存监控条压缩成 4 个紧凑状态块，网络源只展示真实 provider 状态，不再被 shard/task 数量撑大。
+- 自定义信号右侧解释拆成：`当前图可见`、`其它周期可用`、`关联标的信号`、`系统信号`。
+- 自定义回测 marker 增加“自定义”badge、周期 badge、竖线锚点；买卖/自定义和普通背离视觉上已区分。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果：
+- `npm run lint` 通过。
+- `npm run build:electron` 通过。
+- Electron 当前源码构建验证通过。
+- `SZ.002812 15min`：显示 `4自定义`，当前图可见 `2/4`，其它周期 `30M`。
+- `SZ.002812 30min`：当前图可见 `2/4`，其它周期 `15M`。
+- `SH.688802 30min`：API 返回 `custom_signal_count=2`、`visible_custom_signal_count=1`。
+- 指数/板块无直接自定义信号时，右侧明确显示“无直接自定义/关联入口”，不再像系统漏信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+注意：我验证的是当前源码编译出的 Electron，不是 `/Applications` 里的旧 packaged app。旧包要看到这些改动，需要后续执行安装/打包更新；我这轮没有做系统安装动作。临时 Electron 验证进程已停掉。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 低延时源恢复：`quote_snapshots` 最新状态 `ok`，94 个 live，0 error，耗时约 42s。
+- `stock_minute` 已从盘中 216 次调用降到 72 次调用，只跑 `5分钟`，tail 从 240 降到 80；最新 `stock_minute:A:_meta` 为 `ok`，0 error，约 74s。
+- provider cooldown 时间基准已统一成北京时间，`tencent/eastmoney/sina` 日线源都从 active cooldown 清成 `cooldown_expired`，不会再假性延长 8 小时。
+- 网络源卡已改成只统计真实 `provider_health` 问题，不再把 `stock_daily shard/task` 当成网络源报错。
+- 旧的 878 个 `provider_cooling_down` shard error 已按新语义迁移成 `deferred/cooling_down`，不再算作 error；`stock_daily` 聚合进度现在是 `5510/5510`、`100%`、`errors=0`、`deferred=878`。
+- `market_pools` orphaned 状态已手动触发一次清掉，最新为 `ok`。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已跑：
+- Signals 后端：`75 passed, 5 warnings`
+- Electron：`npm run lint` 通过
+- Runtime：web / quote / signal / workbench / board / postmarket 全部 running
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+主要改动落在：
+- [provider_limits.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/provider_limits.py)
+- [stock_minute.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/stock_minute.py)
+- [stock_daily.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/stock_daily.py)
+- [domain_pack.py](/Users/zhangqilong/github代码仓库/Signals/signals/domain_pack.py)
+- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+还剩下一块我会接着推进的是 chart 信号解释/样式和整体布局适配，当前这轮先把开盘后的数据源刷新、cooldown、网络源误报处理干净了。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 网络数据源缓存到 Mongo 提速与 cooldown 治理计划
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+当前根因不是 Mongo 写入慢，而是 `stock_daily` 高扇出抓取触发 provider 风控后，后续 shard 继续逐 symbol 尝试 Tencent/Eastmoney/Sina，产生大量 `provider_cooling_down` 和误报。现场数据也支持这一点：`sync_log` 已有 4477 个 `stock_daily` symbol 为 `ok`，其中 4459 个到 `2026-04-28`；`bars` 里 4468 个日线 symbol 已落到 `2026-04-28`。真正问题是后段 shard 被 provider cooldown 拖垮，且 aggregate progress 仍显示旧的 43% 状态。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+目标：保持高速落库，但不靠硬冲 provider。通过“限流更聪明、失败少重试、只补缺口、Mongo 批量写”来提高有效吞吐。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Provider 调度改为 endpoint 级 token bucket：
+  - `stock_daily` 仍保留 16 个逻辑 shard，但并发运行维持 2。
+  - Tencent 日线默认 `2 concurrent / ~2 req/s`，Eastmoney `1 concurrent / ~0.5 req/s`，Sina `1 concurrent / ~0.3 req/s`。
+  - cooldown 不再让每个 shard 独立重复撞 provider；provider 不可用时立即跳过该 provider。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 避免 cooldown 扩散：
+  - 如果单个 provider cooling down，只对该 provider 记录 `cooldown_hit`，继续尝试可用 provider。
+  - 如果所有日线 provider 都在 cooling down，当前 shard 剩余 symbol 直接标记 `deferred/cooling_down`，不继续逐个 symbol 生成 error。
+  - 保留 root error，比如 `RemoteDisconnected`、`429`、`403`、SSL EOF，`provider_cooling_down` 只作为派生状态。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- Mongo 落库提速：
+  - 先做 cache-first/delta-first：根据 `sync_log.last_dt` 和 `bars` 最新日期生成 missing symbol 集合，只补缺口。
+  - 正常 shard 内按 symbol 批量收集写入，按 chunk 写 Mongo，减少每 symbol 一次写入的开销。
+  - 暂不直接加唯一索引；先做重复审计。当前 `bars` 有 `(meta.symbol, meta.freq, dt)` 索引但不是 unique，贸然改索引有迁移风险。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Progress 与面板修正：
+  - run 结束或 shard 完成时，从 per-shard progress/task summary 重算 `stock_daily:progress:_meta`。
+  - 新增展示字段：`landing_rate`、`inserted_per_min`、`missing_symbols`、`deferred_symbols`、`provider_attempts/success/risk_error/cooldown_hit`。
+  - 网络源面板只显示真实 provider 健康状态；`stock_daily shard degraded` 放到“数据落库进度/补数任务”区域，不混进网络源数量。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 单测：
+  - provider cooling 时不会继续撞同 provider。
+  - all providers cooling 时 shard 剩余 symbol 进入 `deferred/cooling_down`，不计为大量 error。
+  - root error 不被 `provider_cooling_down` 覆盖。
+  - aggregate progress 能从 16 个 shard task/progress 正确重算。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 集成验证：
+  - 用 fake provider 模拟 `RemoteDisconnected/429`，确认不会出现 12 个 shard 级联 degraded。
+  - 跑一次 missing-only stock_daily 补数，确认只处理缺口 symbol。
+  - Mongo 验证：`sync_log` 最新日覆盖、`bars` 最新日覆盖、deferred symbol 数量、inserted_per_min。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- UI 验证：
+  - 网络源卡不再显示 16 个 shard 报错。
+  - 数据落库区域显示 stock_daily 真实进度、缺口数量和 deferred 数量。
+  - Electron 截图确认 13 寸和 27 寸布局下状态栏不挤压 chart。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 不直接关闭 cooldown。目标是让正常路径不触发 cooldown；异常时只暂停 provider，不拖垮所有 shard。
+- “高速”定义为有效 Mongo 落库速度高，而不是 provider 请求数高。
+- 先补缺口，再考虑全量重跑。
+- 唯一索引必须等重复数据审计后再决定。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+开盘了。低延时数据源是否有刷新，你监控一下开一个subagent研究如何优化
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d3-778e-7cd3-8acb-0c63760463ea
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+继续检查网络数据源缓存到mongo，研究一下合理并发情况下加快数据落地
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 63470265-5e40-43d2-85fb-865c07b07fc9.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/63470265-5e40-43d2-85fb-865c07b07fc9.png
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+新增一个待处理任务，优化一下布局各模块的比例。View的上半部分比例太大，监控页panel也太大。中间的chart比例太小。左侧的比例需要考虑滚动条在mac air 13和 27寸屏幕上的适配，右侧字体太大，比例也不统一。你用frontdesign来重新设计一下，包括Index状态栏也失衡。整体上的适配你也需要考虑mac air 13和 27寸屏幕上的适配
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你再新增一个任务，目前网络源缓存数据有16个报错，需要新增一个任务观察日志并且解决
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+这个问题：多个 stock_daily shard degraded 加上 provider 状态混在一起；真实 provider_health 只有 tencent/eastmoney/sina 这几个日线源在 cooldown 也需要新增一个任务解决
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你需要新增一个任务，解决的是为什么cooldown，我不希望cooldown我要一直保持高速
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Signals 后端：
+  - `stock_daily` 并发默认从 4 降到 2，provider cooldown 改成跨 shard 共享。
+  - Tencent primary 失败后不再重复打 Tencent fallback。
+  - cooldown 命中改为 `deferred/cooling_down`，不再直接扩大 error。
+  - provider cooldown 不再覆盖真实根因，新增保留 `cooldown_hit_type`；过期 cooldown 会被识别为 `cooldown_expired`。
+  - `cache_status` 不再把多个 `stock_daily` shard degraded 混算成 16 个网络源错误，shard 会聚合成一个 `stock_daily` 任务 blocker。
+  - web 概念成分股先走 Mongo `concept_constituents` 缓存，避免 Eastmoney 直连失败继续制造网络源噪音。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Chart / Electron：
+  - symbol API 增加自定义信号诊断字段。
+  - `SZ.002812 15min` 验证：当前图可见 2 个自定义信号，总自定义 4 个，频率 `15min/30min`。
+  - `SH.688802 30min` 验证：当前图可见 1 个，总自定义 2 个。
+  - `深证成指` 验证：`direct_custom_signal_count=0`，并返回关联自定义信号入口，当前 related=12、candidates=10。
+  - 右侧信号区拆成“当前图可见 / 其它周期可用 / 关联标的信号”。
+  - 自定义 marker 加了 `自定义`、周期、来源区分、买卖不同颜色、竖线锚点。
+  - 布局比例已压缩顶部监控和右侧字号，左右栏收窄，中间 chart 区放大。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `python3 -m py_compile ...` 通过。
+- `./.venv/bin/python -m pytest -q tests/test_provider_limits.py tests/test_postmarket_runner.py tests/test_stock_daily_progress.py tests/test_technical_signal_scan.py tests/test_workbench_watchlist_groups.py`：`26 passed`。
+- `npm run lint`：通过。
+- 源码 Electron 已启动验证过：开发版里网络源从旧的 `16` 降到 `2`，不再把 `stock_daily` shard 当网络源计数；布局已明显更紧凑，chart 区扩大。测试进程已关闭。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还没有把新版重新打包覆盖 `/Applications/隆小侠 Agent OS.app`，所以你常用的打包版入口仍可能显示旧 UI；源码开发版已经验证通过。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 拆解执行顺序：按 4 个小任务逐个解决
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Task 1：先修网络源 degraded 扩散
+目标：让 `stock_daily` cooldown 不再扩散成 12 个 shard 报错。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+改动：
+- `stock_daily` 并发从 4 降到 2。
+- provider cooldown 改成跨 shard 可共享。
+- Tencent primary 失败后不再重复走 Tencent fallback。
+- cooldown 命中时记录为 `deferred/cooling_down`，不要直接算大量 error。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- `shard_00-shard_15` 最终不再出现大面积 `provider_cooling_down`。
+- 网络源卡显示真实 provider 状态，不再把 16 shard 当 16 个网络源。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Task 2：修个股 chart 自定义信号缺失
+目标：个股有自定义回测信号时，chart 必须能看见。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改动：
+- symbol API 增加 `custom_signal_count`、`available_custom_signal_freqs`、`hidden_reasons`。
+- 当前周期有信号时直接 overlay。
+- 当前周期没有但其它周期有时，显示可切换周期入口。
+- 修正 `15分钟 / 15min / 30分钟 / 30m` 频率归一。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- `SZ.002812 15min` 显示 2 个自定义信号。
+- `SH.688802 30min` 显示自定义信号。
+- 同一只股票切到无信号周期时，提示“其它周期有自定义信号”。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Task 3：修指数/板块 chart 的信号解释
+目标：指数没有直接自定义信号时，不再让用户误以为系统没信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改动：
+- 指数 chart 明确返回 `direct_custom_signal_count=0`。
+- 展示关联候选股/成分股里的自定义信号入口。
+- 板块/概念热度图不硬叠个股信号；映射到 carrier 股票时显示 carrier 的自定义信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- `深证成指` 不再空白误导，显示“指数无直接自定义信号 + 关联个股信号”。
+- 概念映射到股票时，能看到对应 carrier 的信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Task 4：优化 chart 信号样式
+目标：自定义回测信号在图上足够醒目，且不和顶背/底背混在一起。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改动：
+- 自定义信号 marker 增加 `自定义` badge、周期 badge、来源 tooltip。
+- 买入/卖出信号分别使用不同颜色和位置。
+- 加竖线锚点到对应 K 线。
+- 右侧信号区拆成：`当前图可见`、`其它周期可用`、`关联标的信号`。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- 自定义信号一眼能区分于普通背离标签。
+- marker 不遮挡 K 线主体，不和 MA/MACD/背离标签冲突。
+- Electron 截图验证通过。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 执行默认顺序
+先做 Task 1，因为它影响数据稳定；再做 Task 2 和 Task 3，因为它们决定信号是否能被解释；最后做 Task 4，因为样式依赖前面的 payload 字段。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你开个subagent继续检查网络源报错和degrade问题，现在又产生新增了
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-e2f0-7422-b933-d29e62741dfb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还在 Plan Mode，我不能直接改文件、改配置、重启服务或触发补数任务。等切到执行模式后，我会按这个顺序实施：
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-e2f0-7422-b933-d29e62741dfb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 先处理 `Signals` 数据源稳定性：降低 `stock_daily` 并发、修 provider cooldown 跨 shard 共享、跳过重复 Tencent fallback、把 cooldown 状态改成 deferred 而不是批量 degraded。
+2. 再处理 chart 后端信号诊断：给 symbol API 增加 `custom_signal_count / hidden_reasons / available_custom_signal_freqs / related_custom_signals`。
+3. 再处理 Electron chart 展示：自定义信号独立 marker 样式、其它周期入口、指数/板块无直接信号时的明确说明。
+4. 最后跑 targeted tests 和本地 UI 验证，确认 `SZ.002812` 有自定义信号 marker，指数 chart 不再误导为空。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-00ff-7b01-b6b6-1e2e0e3dae27
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+2、你需要检查为什么别的指数数据或者个股数据chart上面也没有标识我的自定义信号 3、你需要优化chart上面信号的展示方式 这两个问题你没有涵盖
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+1、你需要分析网络源被degrade或者报错的原因 2、你需要检查为什么别的指数数据或者个股数据chart上面也没有标识我的自定义信号 3、你需要优化chart上面信号的展示方式
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+后 12 个 shard 在 provider cooling-down 状态下继续跑这个为什么会被cool down，你开个subagent研究一下，看看能不能恢复
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+先结论：能恢复，而且已经在恢复。`cool down` 是内部保护机制被触发，不是 12 个 shard 永久坏了。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `stock_daily` 被拆成 16 个 shard，postmarket 同时跑 4 个。
+2. 前一波 `shard_04-shard_07` 跑到 21:22 左右时，Eastmoney/Sina/Tencent 出现 `RemoteDisconnected`、`SSLError`、连接中断。
+3. `provider_limits.py` 把这些错误识别成高风险错误，然后给 provider 设置 `120-300s` cooldown。
+4. 后续 `shard_08-shard_15` 启动时没有真正打外部源，而是直接命中内部 cooldown，所以 0.2-0.3 秒就失败，表现成大量 `provider_cooling_down`。
+5. 到 21:32 自动重试后，`shard_04-shard_07` 已成功，`shard_08-shard_11` 正在无错误恢复，`shard_12-shard_15` 等当前 4 个跑完后继续调度。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前不建议手动清 cooldown，也不建议重启。让 postmarket 自动跑完最稳。真正要修的是后续策略：把 `stock_daily` 并发从 4 降到 1 或 2，或者把 16 shard 降到 8，并避免 Tencent primary 失败后 fallback 又重复打 Tencent。这样不会再把正常降级误放大成 12 个 shard 报错。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd447-5b12-7500-87a3-a649895df2dc
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 1a36e35e-708a-4b9a-96a1-9fdc232cf60d.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/1a36e35e-708a-4b9a-96a1-9fdc232cf60d.png
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd447-5b12-7500-87a3-a649895df2dc
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## My request for Codex:
+1、检查一下网络数据源日志，为什么有16个报错，提出优化方案   2、检查目前chart的指标情况，为什么没有我自定义的回测信号指标，还有优化一下信号显示在chart上面的样式
+
+
+---
+来源：codex:019dd44c-1949-7da3-ab35-b9cba746e6e5#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+可以。二维码刷新后只扫最新这一张，旧码作废是正常的。
+
+扫码并在手机微信确认登录后，等页面/终端显示登录成功；如果还卡住，我再帮你检查 WeClaw/微信桥接的运行日志和当前状态。
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+[$frontend-design](/Users/zhangqilong/.codex/skills/frontend-design/SKILL.md) 优化一下不同尺寸的屏幕UI/UX显示问题，优化个人金融交易台+交易员第二屏的设计语言。强调极致的交互和操作体验
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## edae012a-fdca-428e-9292-b3b0530eb844.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/edae012a-fdca-428e-9292-b3b0530eb844.png
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 766283d9-d246-4238-a8d1-b09b17503224.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/766283d9-d246-4238-a8d1-b09b17503224.png
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## My request for Codex:
+[$frontend-design](/Users/zhangqilong/.codex/skills/frontend-design/SKILL.md) 优化一下不同尺寸的屏幕UI/UX显示问题，优化个人金融交易台+交易员第二屏的设计语言。强调极致的交互和操作体验
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:267) 上继续优化，保留现有未提交逻辑，主要改了：
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 加了 `cinema / desk / balanced / focus` 四档响应式密度，左右栏和 K 线柱宽会随屏幕尺寸调整。
+- 顶栏搜索、周期按钮、刷新按钮重新排布，避免中等屏下被拉散或换行挤压。
+- 右侧“交易任务 / 信号与关键位 / 数据状态”短句化，长文本两行截断，交易员扫读负担更低。
+- 增加键盘操作：`[` 左栏、`]` 右栏、`f` 聚焦图表、`Esc` 展开、`r` 刷新、`1-5` 切换周期。
+- 小屏 `focus` 模式会自动先收起右侧任务栏，保证主图不被压扁。
+
+
+---
+来源：codex:019dce6f-9c53-7461-9445-74b8a30f8ee3#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `npm run lint` 通过
+- `npm run build:electron` 通过
+- Electron 实机启动验证通过，renderer 无错误日志；只看到 Electron dev CSP warning
+- 验证截图：`/tmp/longclaw-strategy-uiux-responsive-v2.png`
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我刚安装了openclaw，用了另外一个openai的账号进行oa auth，但是目前还是报错⚠️ Agent failed before reply: No API key found for provider "openai". You are authenticated with OpenAI Codex OAuth. Use openai/gpt-5.5 with the Codex OAuth profile, or set OPENAI_API_KEY for direct OpenAI API access. | No API key found for provider "openai". You are authenticated with OpenAI Codex OAuth。是不是因为我同时开了codex和weclaw cli导致的？因为我的认证走了不一样的
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+帮我优化目前已经连接好的channel。OpenClaw: access not configured.
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Your Telegram user id: 8201820721
+Pairing code:
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Ask the bot owner to approve with:
+openclaw pairing approve telegram GXU4UT4G
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+openclaw pairing approve telegram GXU4UT4G
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Telegram `default` channel 已启用、已配置、运行中、connected
+- bot 是 `@Longxiaoclaw_bot`
+- pending pairing 已清空
+- allowlist 已落盘到 `~/.openclaw/credentials/telegram-default-allowFrom.json`
+- 当前策略保持为更稳的配置：DM 走 pairing，群聊走 allowlist，群里需要 mention，避免被群消息误触发
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+根因是 OpenClaw 配置里默认模型原来是 `openai/gpt-5.5`，这会走普通 `openai` provider，普通 provider 需要 `OPENAI_API_KEY`。但你安装/登录的是 Codex OAuth profile，它在 OpenClaw 里对应的是 `openai-codex` provider，所以没匹配上。
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 把 [~/.openclaw/openclaw.json](/Users/zhangqilong/.openclaw/openclaw.json:10) 默认模型改成 `openai-codex/gpt-5.5`
+- 给 main agent 绑定了 `openai-codex` OAuth profile
+- 重启了 OpenClaw gateway
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `openclaw models status` 现在显示 `missingProvidersInUse: []`
+- gateway 日志显示当前 agent model 是 `openai-codex/gpt-5.5`
+- 最小调用返回了 `OK`，实际 provider 是 `openai-codex`，模型是 `gpt-5.5`
+
+
+---
+来源：codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+还剩一个独立问题：CLI 走 gateway 时提示 `scope upgrade pending approval`，这是设备权限审批，不是 API key/认证问题。我没有自动批准，因为它请求的 scope 包含较高权限。你先在 OpenClaw UI/Telegram/WebChat 里再试一次，原来的 “No API key found for provider openai” 应该已经消失。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+重新跑一下 npm build longclaw agent os项目，记录当前日志存在的问题，提出优化方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+继续优化完成一项关键链路：`quote_snapshots` 已接入东财 `push2delay` 直连实时接口。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+signals-sync / quote_snapshots
+-> active market_pools
+-> Eastmoney push2delay realtime quote
+-> quote_snapshots fresh
+-> 单标失败才 fallback bars_latest stale
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+quote_snapshots: 50
+source: eastmoney_push2delay 全覆盖
+data_freshness.quote: fresh
+live_count: 50
+stale_count: 0
+provider_health.eastmoney.push2delay: ok
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+SH.601958 金钼股份: fresh, price=19.67, change_pct=1.24
+SH.000300 沪深300: fresh, price=4769.37, change_pct=-0.35
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已更新问题清单：[signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一项我建议继续修 `bars` freshness：当前 active pool 已覆盖 50/50，但 `stock_daily` 仍记录 `errors=5`，需要把“部分失败但覆盖已满足”和“真实缺数据”拆开，否则健康面板会继续把 `bars` 标成 stale。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- MongoDB 已从 Homebrew launchd 切到统一服务：`com.zhangqilong.ai.mongodb`
+- `weguard status` 已显示：
+  - `mongodb` running，PID `72794`
+  - `signals-sync` running，PID `72803`
+- 旧的 `homebrew.mxcl.mongodb-community` label 已卸载。
+- `127.0.0.1:27017` 正常监听，`db.runCommand({ping:1})` 返回 ok。
+- `signals-sync` 已 kickstart，日志显示新 daemon 在 `2026-04-25 02:59:46` 启动。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+signals: fresh, latest_dt=2026-04-24
+index_bars: fresh, latest_dt=2026-04-24
+market_pools: fresh
+quote_snapshots: stale, latest_dt=2026-04-24
+bars: stale, latest_dt=2026-04-24
+```

@@ -1,0 +1,125 @@
+{
+  "id": "019e16ef-7aef-7951-a674-019926681b89",
+  "title": "定位加载时标的数据问题",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e16ef-7aef-7951-a674-019926681b89",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "624b9db10dd3e89f8502123e3410850b83d75bf7a57b6a805924d83be6a76bf5",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-11 上午5.15.47.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_53MPQ9/截屏2026-05-11 上午5.15.47.png"
+    },
+    {
+      "hash": "e1635adf1bdbbf695c4dedd7add5db81f832149b269cba585c92d4fcd3b95b05",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n你这个bug没修复完成，你需要跑一下computer use才能真实检查问题"
+    },
+    {
+      "hash": "fe6e56c0deb51ec37a0ba2a2612e496e88022cf50a65c8677e71bd174e1c7f54",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "先结论：这个 bug 的前端污染已经修掉并重新安装到 `/Applications/隆小侠 Agent OS.app` 了。根因是两个 fallback 写错了："
+    },
+    {
+      "hash": "e45a72cc0953253f768fbe990c1bd1486772b02427aa1514578e3de7baae9c14",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "1. [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:4468) 初始 target 在 shell 未加载时读取了旧 `dashboard.chart_context / buy_candidates`，所以加载等待阶段会回到 `SZ.300394 / 天孚通信`。\n2. [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:6017) `指数/板块` 为空时会 fallback 到 `legacy` 股票池，所以 UI 显示 `板块 0`，但下面却出现天孚通信、中际旭创、新易盛等旧股票数据。"
+    },
+    {
+      "hash": "fe3ec2ce30233bd69e48939c1381e30e74a4a66e222ff34b0df89dd1ff73fda6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "- shell 未加载时初始图固定为 `上证指数 / index / 30min`，不再读旧 dashboard 股票上下文。\n- 当前 tab 只展示自己的 group，不再让 `指数/板块` 回退到 `legacy` 股票池。"
+    },
+    {
+      "hash": "62ce130c841f0165e7c9eca8c1abf45e1e510aa7c23dca55546cf00c8be36de2",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "- `npm run lint` 通过。\n- `npm run electron:install:mac` 通过并已安装新 App。\n- 用 Computer Use 重启后真实检查 Strategy 页：搜索框是 `上证指数`，图表是 `INDEX 上证指数` 等待数据，左侧显示 `等待 Signals shell`，没有再出现天孚通信/中际旭创那批错误标的。"
+    },
+    {
+      "hash": "bb836da40fac98dde86f5f384c245114c1f00c9dacaaed2287cee8fd509cd31a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#recent",
+      "timestamp": null,
+      "verbatim": "另外复验时发现一个独立问题：Signals 后端现在虽然 launchd 已拉起且 `8011` 有监听，但 `/api/workbench/shell`、`/api/workbench/symbol` 在 8-12 秒内超时，所以当前只能验证“等待态不再污染”，还没法验证 shell 成功返回后的完整列表。这个属于 Signals web 响应阻塞/后台任务卡住的问题，和这次前端错误 fallback 是两件事。"
+    },
+    {
+      "hash": "0a264322f281fbf9c5ca447acf0c9d60e50b8bfd8ec4ceed4f86770c6e650253",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-11 上午5.07.27.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_9Ja8Vr/截屏2026-05-11 上午5.07.27.png"
+    },
+    {
+      "hash": "6897364f136a781e13ba14995432dea3d9a0d503c619ad2ad1ff7ab3034f65d4",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n为什么每次加载等待的时候，总会出现这些标的和数据？找到bug的原因"
+    },
+    {
+      "hash": "55ee4c587e9e33ed8b626b41ef8d19dfef28ceb4c3ce5399e134e11f0d753b4e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "先结论：这是前端加载态 fallback 逻辑的 bug，不是纯 mock 数据。"
+    },
+    {
+      "hash": "954280142aa1cd1d4db27ed9bb13ce83fad0b717b0eb299423d6ea452aa2c252",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "1. `StrategyChartTerminal` 初始化时先不用真实 `/api/workbench/shell`，而是直接用旧的 `dashboard.chart_context` 或 `dashboard.buy_candidates[0]` 当首屏标的。所以 shell 还没回来时，会先加载类似 `天孚通信 / SZ.300394` 这种旧 dashboard 标的。代码在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:6297) 调了 `initialTargetFrom(null, dashboard)`；而 `initialTargetFrom` 优先取 `dashboard.chart_context.symbol`，见 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:4472)。shell 回来后它只记录了 resolved target，没有真正切换过去。"
+    },
+    {
+      "hash": "e528627f94b2c84687bed68bf58e186d07767e92bb416d8093f6defa7f724797",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "2. 左侧列表更明显：当 `指数/板块` 当前分组为空时，前端会 fallback 到 `legacy` 行。也就是 tab 显示“板块 0”，但表格实际塞进了旧股票池/任务队列行，所以 tooltip 里会看到 `terminal_stock_pool.focus_stocks`，同时面板文案还写 `chain_heat_snapshots`。关键代码在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:6018)。"
+    },
+    {
+      "hash": "5b1ec2dd9c3e25b9a26a9eb422369ba667b61bb02ca71bab1583c333cf1bba44",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "我也验证了后端：`SZ.300394` 的 K 线接口返回的是 live 后端数据，最新到 `2026-05-11 15:00`，不是前端假数据。但 Mongo 里的 `terminal_stock_pool` 虽然文档更新时间是 `2026-05-11 16:28:50`，很多单票信号时间仍是 `2026-05-08`，所以会叠加出现“加载时看到旧 MACD/计算失败/旧池标的”的感觉。"
+    },
+    {
+      "hash": "eaa894ec6f2bd90e4504c8c59fbf29b32b5be6e907853df77269f8761d92f7da",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e16ef-7aef-7951-a674-019926681b89#turn:019e16ef-c62a-7693-88e9-ab0703ded66f",
+      "timestamp": null,
+      "verbatim": "修复方向很明确：加载态不要用 `dashboard` 里的旧股票做首屏 target；`sector_boards/macro_indices` 为空时不要 fallback 到 `legacy` 股票列表；后端再加一层 `event_latest_dt` 的新鲜度过滤，避免旧技术信号混入当前池展示。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

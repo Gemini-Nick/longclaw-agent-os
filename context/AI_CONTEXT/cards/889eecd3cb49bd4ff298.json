@@ -1,0 +1,45 @@
+{
+  "id": "019e78e0-9338-7002-bad8-665db13e8d43",
+  "title": "修复单多标的回测交互漂移",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e78e0-9338-7002-bad8-665db13e8d43",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "9819350c96b02ff21b10c37d54309da4d1b70274ec904818e71f9dff0d6b8afa",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e78e0-9338-7002-bad8-665db13e8d43#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n单标的回测和多标的回测的交互方式完全不一致，点击左侧信号k线图漂移"
+    },
+    {
+      "hash": "f06ea49c6de4db8325491e0ed733d3feeed5acb0dd42e6ec61f354de0572533d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e78e0-9338-7002-bad8-665db13e8d43#recent",
+      "timestamp": null,
+      "verbatim": "已修，并已安装到 `/Applications/隆小侠 Agent OS.app`。"
+    },
+    {
+      "hash": "17f52fc8f7c402adb454b7e92f24c7094d37aa737f1e97df921441379a1ba9e5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e78e0-9338-7002-bad8-665db13e8d43#recent",
+      "timestamp": null,
+      "verbatim": "这次把单标的回测的 K 线交互改成和多标的更一致：点击右侧信号/成交不再重载整段 K 线，也不再直接滚动导致漂移，而是用稳定的事件窗口聚焦；日期标签也改为同步主图区间，并在主图上保持对应标记。改动在 [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx)，测试补在 [BacktestWorkbench.test.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.test.tsx)。"
+    },
+    {
+      "hash": "7465f5cf596ca2f8a8c35e094086dd622e5027912c2639010efa9fcef422fe59",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e78e0-9338-7002-bad8-665db13e8d43#recent",
+      "timestamp": null,
+      "verbatim": "验证已跑完：`npm test -- electron/src/renderer/workspaces/BacktestWorkbench.test.tsx`、`npm run lint`、`npm run build:electron`、`npm run electron:install:mac` 全部通过。安装后我在真实 Agent OS 里复原 `300750`，连续点击 `2026-05-07`、`2026-05-06` 信号行，图表保持在局部稳定窗口；点击 `DeepSeek行情` 日期标签后，主图同步到该日期窗口，没有再出现左侧信号 K 线漂移。构建过程里有现存 npm/electron-builder warning，但命令退出码为 0，不影响安装结果。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

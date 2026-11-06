@@ -1,0 +1,823 @@
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 前门调用 contract
+- 新增产品级 canonical 输入：`LaunchIntent`
+- `LaunchIntent` 最小字段固定为：
+  - `source`
+  - `raw_text`
+  - `mentions`
+  - `requested_outcome`
+  - `session_context`
+  - `delivery_preference`
+- `Hermes` 负责把 `LaunchIntent` 编译成：
+  - `Task`
+  - `Run`
+  - `Work Item`
+- 规则固定：
+  - `@pack` -> pack run intent
+  - `@skill` -> workflow/behavior preset
+  - `@plugin` -> capability bundle or connector preset
+- 任何满足以下条件的任务都必须进入治理面：
+  - 有外部副作用
+  - 长时运行
+  - 需要 review
+  - 生成 evidence
+  - 触发 delivery fallback
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Product-Level UI Changes
+### 1. Home
+- 左主列为 `LaunchComposer`：
+  - 支持自然语言
+  - 支持 `@plugin / @skill / @pack`
+  - 显示 active capabilities
+  - 显示最近一次 launch 的状态
+- 右列或下列为 `Governance Snapshot`：
+  - priority work items
+  - recent failures
+  - pack health
+  - reviewed insight promotion state
+- `Home` 必须一眼看出：
+  - 现在能发什么
+  - 系统现在在跑什么
+  - 哪些事需要你介入
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. Runs / Work Items
+- 保持列表优先、抽屉驱动。
+- 新增从 launch 到治理的连通语言：
+  - 某次 launch 生成的 run 能被明确追踪
+  - 某次 launch 若失败，会明确出现在 work items
+- 不做“聊天记录中心化”的全页会话面。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. Packs
+- `Packs` 页继续是专业训练场入口。
+- `Signals` 和 `Due Diligence` 固定为旗舰 pack。
+- pack 页可以显示：
+  - pack-specific launch shortcuts
+  - recommended skills/presets
+  - 最近治理状态
+- 但不能长成第二个首页。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 4. Studio
+- `Studio` 是配置与训练入口，不是 marketplace 首页。
+- 固定包含：
+  - curated plugins
+  - curated skills
+  - flagship packs
+  - aliases
+  - presets
+  - last-used capabilities
+- Phase 1 不承诺完整 authoring / training / publishing 全流程。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Implementation Changes
+- 重写 `DESIGN.md`，把 Longclaw 定义为“Warm Industrial + cowork launch + governance console”的双层系统。
+- 重写 `ARCHITECTURE.md` 与 `REPO_MAP.md`，加入：
+  - `Home` 取代 `Overview`
+  - `Studio`
+  - `Capability Substrate`
+  - `Professional Grounds`
+  - `LaunchIntent`
+- Electron renderer 的信息架构要从“纯控制台”调整为“Home + Governance + Studio”。
+- Hermes 文档与接口说明要增加 `LaunchIntent -> Task/Run/WorkItem` 的 canonical 编译链。
+- WeClaw 文案与术语继续对齐 Electron，不新增第二套状态语言。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 首次进入 Electron 默认落在 `Home`，不是全屏聊天页，也不是 KPI 卡片墙。
+- `Home` 同时包含 `Cowork Launch` 与 `Governance Snapshot`。
+- 同一任务从 `Electron` 或 `WeClaw` 发起，都能进入同一 Hermes `LaunchIntent` 通路。
+- 任一 side-effectful / evidence-heavy 任务，都能在 `Runs` 或 `Work Items` 找到。
+- `Signals` 与 `due-diligence-core` 都保持旗舰专业训练场身份，不降级成普通 plugin 页。
+- `Studio` 可见 curated capabilities，但不会把 marketplace 变成产品主叙事。
+- `Obsidian` 模板和术语保持 `reviewed insight` 语义，不出现 raw chat/raw evidence。
+- `WeClaw` 的状态词与 Electron 一致：`work item / needs review / partial / delivery failed / reviewed insight`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Assumptions
+- 产品对象锁定为单人高杠杆操盘手，不扩到团队平台。
+- 视觉借鉴策略锁定为保守吸收，不改写 `Warm Industrial Command Center` 主方向。
+- Phase 1 优先吸收的外部优点是：
+  - 能力可见性
+  - 发起体验
+- 前门锁定为 `Electron + WeClaw` 双前门。
+- 旧的《Longclaw 设计系统与多表面落地执行计划》整体废弃，用这版替换。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+可以，而且这件事**很适合并行**。我刚才已经开了 3 个 subagent 做勘察，结论一致：当前 Longclaw 最适合拆成 **4 条并行 lane**，主线程只盯关键路径整合。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**并行结论**
+- `longclaw-agent-os` 不是没有 cowork 基础，`agentAPI + skills/plugin/cowork substrate` 已经在，只是还没和治理台接成一个产品。[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:26) [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:97)
+- `hermes-agent` 治理面骨架已经够了，真正缺的是前门 canonical intent 层，也就是 `LaunchIntent + Task lifecycle + /agent-os/launches`。[contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py:232) [api_server.py](/Users/zhangqilong/github代码仓库/hermes-agent/gateway/platforms/api_server.py:1968)
+- canonical docs 还锁在旧叙事里，必须整体替换，而不是零散修补。[DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md:3) [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md:32) [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md:7)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**推荐的 4 条并行 lane**
+1. `renderer shell + Home/Studio`
+- 归属：`longclaw-agent-os/electron/src/renderer/*`
+- 目标：把 `overview` 改成 `home`，新增 `studio`，落 `Cowork Launch + Governance Snapshot`
+- 可先用前端本地派生顶住，不等后端全齐
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. `Electron IPC + capability substrate`
+- 归属：`longclaw-agent-os/electron/src/{main,preload}.ts`
+- 目标：把 `agentAPI` 正式接进 renderer，拆出 `launch`、`skills/plugins summary`、`control plane` 三层接口
+- 这条和 renderer 并行，但写入面不同，适合单独一个 worker
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. `Hermes contracts/API`
+- 归属：`hermes-agent/agent_core/*`、`gateway/platforms/api_server.py`、tests
+- 目标：补 `LaunchIntent / LaunchMention / LaunchReceipt`，以及 `POST /agent-os/launches`、`GET /agent-os/tasks*`
+- 这是后续真正把 Electron 和 WeClaw 双前门统一起来的关键
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. `canonical docs + companion docs`
+- 归属：
+  - `hermes-agent/docs/longclaw/*`
+  - `longclaw-agent-os/docs/*`
+  - `weclaw/docs/*`
+  - `agent-collab-ops/README.md`
+- 目标：统一成新词表：
+  - `Home`
+  - `Cowork Front Door`
+  - `Governance Console`
+  - `Capability Substrate`
+  - `Professional Grounds`
+  - `remote cowork companion`
+  - `reviewed handoff / promotion`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**最优执行顺序**
+- 第 1 轮并行：
+  - Lane 1 `renderer shell`
+  - Lane 3 `Hermes contracts/API`
+  - Lane 4 `canonical docs`
+- 第 2 轮并行：
+  - Lane 2 `Electron IPC`
+  - Lane 4 的 companion docs 收尾
+- 主线程职责：
+  - 盯住词表和产品边界
+  - 防止 renderer 和 Hermes 各自发明第二套语义
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**建议的 subagent 配置**
+- 最多 `4` 个就够了，再多会开始互相踩语义
+- 角色分配：
+  - `Worker A`: renderer shell
+  - `Worker B`: Electron IPC/substrate
+  - `Worker C`: Hermes contract/API
+  - `Worker D`: docs/terminology
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这轮我已经验证过：**开多个 subagent 确实能提高效率，但前提是按写入面拆，不按“功能名”乱拆。**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da517-989d-77f0-aff7-77c680a9c5ec
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步就按这 4 条 lane 真开 worker，并把每个 worker 的写入范围锁死。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da50f-b094-7622-9906-bbdf25972c6f
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+Longclaw 设计系统与多表面落地执行计划 这个计划也需要重新制定
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Summary
+- 执行顺序固定为两段：
+  1. 先建立产品级 `DESIGN.md`，把 Longclaw 定义成一个 `个人作战中枢`，设计方向锁为 **Warm Industrial Command Center**。
+  2. 再按这套设计系统重构 `longclaw-agent-os` 控制面，并把 `weclaw / Signals / due-diligence-core / Obsidian` 的表面边界落实成一致的产品体验。
+- 设计参照系固定为以下高热 GitHub agent 项目，并只借语言不抄产品结构：
+  - `langflow-ai/langflow`，`147,422 stars / 8,854 forks`
+  - `open-webui/open-webui`，`132,183 stars / 18,914 forks`
+  - `browser-use/browser-use`，`88,269 stars / 10,137 forks`
+  - `All-Hands-AI/OpenHands`，`71,559 stars / 9,039 forks`
+  - `FlowiseAI/Flowise`，`52,013 stars / 24,211 forks`
+  - `danny-avila/LibreChat`，`35,777 stars / 7,347 forks`
+  - `RightNow-AI/openfang`，`13,976 stars / 1,755 forks`
+  - 以上计数按 GitHub API 于 `2026-04-19` 读取。
+- 设计风险档位已锁定为“按这版落地”，不再继续往更中性或更激进方向偏。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. Canonical Design System
+- 在 `hermes-agent/docs/longclaw/DESIGN.md` 建立产品级唯一设计源头。
+- 这份 `DESIGN.md` 必须完整写死：
+  - 产品定位：`个人作战中枢`
+  - 美学方向：`Warm Industrial Command Center`
+  - 字体系统：`Instrument Serif / Instrument Sans / IBM Plex Mono`
+  - 色彩 tokens：`Paper / Stone / Ink / Copper / Teal / semantic statuses`
+  - 密度与间距：`4px base`，紧凑工作台节奏
+  - 动效：`minimal-functional`
+  - 卡片使用禁令：禁止 KPI 卡片墙和通用 SaaS 拼盘
+  - 状态系统：`loading / empty / success / partial / failed / needs_review / degraded`
+  - companion surface 规则：`WeClaw` 只做 inbox，`Obsidian` 只做 reviewed knowledge
+- 在 `longclaw-agent-os/docs/ARCHITECTURE.md` 增加一段明确引用：
+  - UI 与视觉决策必须以 `hermes-agent/docs/longclaw/DESIGN.md` 为准
+  - `longclaw-agent-os` 不自行衍生第二套视觉规范
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. Electron 控制面重构
+- 在 `longclaw-agent-os/electron/src/renderer/` 先抽出可复用的 renderer design system 模块，而不是把样式继续塞回单个 `App.tsx`。
+- 具体结构固定为：
+  - `designSystem.ts`：颜色、字体、间距、圆角、状态色、阴影、动效 tokens
+  - `layout.ts` 或同级模块：shell 栅格、窄宽度退化规则、抽屉宽度、导航宽度
+  - `App.tsx` 只保留页面装配和状态逻辑
+- 顶层布局固定：
+  - 左导航 `264-288px`
+  - 中央主工作区
+  - 右侧详情抽屉 `360-420px`
+- `Overview` 固定改成运营工作面，不再强调 metric card 网格：
+  - 顶部只保留轻量 `status strip`
+  - 主体优先显示 `high-priority work items / recent failures / pack health`
+  - metrics 变成次级信息，不占首页主视觉
+- `Runs` 与 `Work Items` 统一为列表优先、抽屉驱动：
+  - 一行一个对象
+  - 主标题、次级元数据、状态 badge、可见下一动作
+  - 打开后统一进入右抽屉，不做全页跳转
+- `Packs` 页固定为深潜入口，不是第二首页：
+  - `Due Diligence` 展示 `Recent Runs / Manual Review Queue / Repair Cases / Site Health`
+  - `Signals` 展示 `Recent Runs / Review Runs / Backtest Backlog / Connector Health`
+- renderer 必须统一改掉当前的“浅色圆角卡片控制台”默认观感：
+  - 去掉 `Avenir Next / Helvetica` 默认栈
+  - 收紧圆角层级
+  - 降低大面积白底卡片感
+  - 提升列表、细线、信息密度和 mono 数据层存在感
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 多表面边界落地
+- `Hermes` 与 `due-diligence-core` 的云侧分层要在 UI 文案和交互里落实：
+  - `Hermes` 负责 run/session/status 的统一视图
+  - `due-diligence-core` 只作为尽调执行来源出现，不暴露成第二个 core 品牌
+- `Signals` 保持独立能力层，但 UI 上降为 Longclaw 体系内的 specialist workspace：
+  - 从 `Packs > Signals` 进入
+  - 深链支持 `review / backtest / chart / detail`
+  - 字体、颜色、状态 badge、抽屉交互都继承主系统
+- `WeClaw` companion surface 规则落地：
+  - 状态名、任务名、异常名必须与 `Electron` 一致
+  - 不在微信里伪装完整控制台
+  - delivery failure 默认导向 `Electron Work Items`
+- `Obsidian` companion surface 规则落地：
+  - 更新知识卡模板和命名约束，使其继承主设计语义
+  - 不允许 raw logs、未审核 evidence、delivery fallback 文案进入模板
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 4. 文档与约束同步
+- `hermes-agent/docs/longclaw/ARCHITECTURE.md` 与 `REPO_MAP.md` 补一段“Design Ownership”：
+  - `hermes-agent/docs/longclaw/DESIGN.md` 是唯一产品级视觉与交互规范
+  - `longclaw-agent-os` 是主工作面实现仓
+  - `Signals / WeClaw / Obsidian` 只能在该系统下做表面变体，不可自行分叉品牌语言
+- `agent-collab-ops` 的 Obsidian 模板和 AGENTS 约束补充两点：
+  - `Obsidian` 是 reviewed knowledge plane，不是运行态 UI
+  - companion surfaces 的术语必须对齐 Longclaw 设计系统里的状态命名
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Important Interfaces
+- 不新增新的 Agent OS wire protocol，优先复用现有：
+  - `overview / runs / work-items / pack dashboards / actions`
+  - `run artifacts / manual review queue / retry / review decision`
+- 新增的是“产品级 UI contract”，不是 API schema：
+  - `StatusBadge` 语义固定
+  - `QueueRow` 信息层级固定
+  - `DetailDrawer` 作为跨页统一详情容器
+  - `ArtifactPreview` 只内联预览小型文本类 artifact
+- `Signals` deep-link contract 要明确成 UI 级能力：
+  - `open signals review`
+  - `open signals backtest`
+  - `open signals chart/detail`
+- `WeClaw` 和 `Obsidian` 的术语 contract 要固定：
+  - `work item`
+  - `needs review`
+  - `partial`
+  - `delivery failed`
+  - `reviewed insight`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 设计系统：
+  - `DESIGN.md` 足够完整，能独立约束字体、颜色、密度、状态、组件和 companion surfaces
+  - `longclaw-agent-os` 不再使用默认系统字体栈和通用 SaaS 卡片语言
+- Electron：
+  - 首次进入默认落在 `Overview`
+  - `Overview` 主视觉不是 KPI 卡片墙
+  - `Runs`、`Work Items`、`Packs` 共享统一行级语法和详情抽屉
+  - 窄窗口下右抽屉可覆盖式展开，不把主工作流打断
+  - 键盘能完成导航、筛选、打开详情、执行 action、关闭抽屉
+- 多表面：
+  - 金融任务能走通 `微信 -> Electron summary -> Signals deep dive -> reviewed insight -> Obsidian`
+  - 尽调任务能走通 `微信 -> Hermes run -> due-diligence-core execution -> Electron evidence/review -> reviewed output`
+  - `WeClaw` 与 `Electron` 状态名一致
+  - `Obsidian` 模板不出现 raw WeChat 会话和未审核 evidence
+- 回归：
+  - `Signals` 不会在主导航和视觉权重上与 `Electron` 平级
+  - `due-diligence-core` 不会被 UI 叙事包装成第二个 cloud core
+  - `Chanless` 缺席主旅程时，不影响 phase 1 主产品流
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Assumptions
+- 这轮实现的 canonical 设计文档放在 `hermes-agent/docs/longclaw/DESIGN.md`，因为当前 Longclaw 的跨仓架构源头已经在 `hermes-agent/docs/longclaw/`。
+- `longclaw-agent-os` 是第一落地面，所以设计系统的第一批 UI 重构只进 Electron renderer，不先扩散到 `Signals` Web 全量页面。
+- Phase 1 只做 light-first 主主题，不额外做完整 dark mode 产品承诺；如果要预埋 dark tokens，只作为内部扩展位，不作为交付目标。
+- 当前 design binary 不可用，所以这一轮不依赖 AI mockups；实施时先交付 `DESIGN.md + Electron shell rewrite + companion surface alignment`。
+- 用户已经接受当前风险档位，不再继续做“更安全”或“更冒险”的风格分叉。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+有些产品的定位是把这个electron桌面端定位成一个，培养skills，然后通过对话@skills或者Plugin的方式，聊天式的coding agent，代表产品就是workbuddy这类cowork形态。你开一个subagent去研究这种形态和我们目前定位的差异，我们怎么融合会比较好
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论很明确：**Longclaw 不应该改成 WorkBuddy 那种“聊天即产品”，但应该吸收它的前门形态。**  
+截至 `2026-04-19`，这类产品的共性是把 chat 做成“能力编排入口”，不是把 chat 做得更像 IM。[Anthropic Claude Cowork](https://www.anthropic.com/product/claude-cowork) [WorkBuddy 产品介绍](https://www.codebuddy.cn/docs/workbuddy/From-Beginner-to-Expert-Guide/Product-Guide) [OpenHands skills](https://docs.openhands.dev/overview/skills)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+你现在仓里给 Longclaw 定的定位，其实已经很清楚了：它是一个 `personal agent operating system`，默认 home 是 Electron，核心对象是 `runs / evidence / review / work items`，`WeClaw` 是 inbox，`Obsidian` 是 reviewed knowledge，[DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md:4) [DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md:32) [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md:7)。这和 WorkBuddy/Cowork 的根本差异是：前者治理 `run/artifact/review`，后者治理 `intent/session/capability activation`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `WeClaw` 和未来桌面 chat 入口负责前门：用户用自然语言、`@skill`、`@plugin`、`@pack` 发起任务。
+- `Hermes` 负责把这些输入编译成 typed intent，再落成 canonical `Run / Artifact / Work Item`。
+- `Electron` 继续做主工作台：看状态、看证据、做 review、处理失败、执行 operator actions。
+- `Signals` 和 `due-diligence-core` 仍然是 specialist packs，不变成两个“可随便聊的 bot”。
+- “培养 skills / 定制 plugins”单独做成 `Capability Studio`，不要塞进主运营面，否则 Longclaw 会被插件市场心智带偏。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `Cowork Launch`
+   放在 Electron 顶部启动条或可展开面板，也可以由 `WeClaw` 远程触发。  
+   这里只做发起和轻量追问，不做主状态归属。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. `Operator Console`
+   还是你现在这套 `Overview / Runs / Work Items / Packs`。  
+   一切长时任务、有副作用任务、需要 review 的任务，必须沉淀到这里。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da502-dcef-7f21-8569-cf0304fd7194
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以直接把这个判断补进当前设计文档，形成一版正式规则：
+- 新增 `Cowork Launch` 作为前门
+- 保持 `Electron` 为默认 home
+- 单列 `Capability Studio`
+- 明确 `@skill/@plugin/@pack -> Hermes typed intent -> Run/WorkItem` 的产品 contract
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4e2-6c8e-7841-bdfb-1ffb73574850
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+先执行这个产品设计系统计划，然后再执行Longclaw Agent OS 多表面设计定稿
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4db-8477-7bc2-99bd-ca35fbe46afe
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+设计语言md包括风格可以借鉴一下github上面的agent项目？可以先搜索一下star和fork比较高的，先给我列好一个UI/UX计划来完善整个设计范式，必须是一个产品级别的设计系统
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw Agent OS 多表面设计定稿
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 设计结论：这不是多个平级产品并排摆着，而是一个 `Agent OS`，外加若干专用工作面。
+- `hermes-agent` 是唯一 `Agent Core（云侧）`，负责 `session / memory / skills / scheduler / delivery / approvals / eval`，也是跨 pack 的总编排中心。
+- `due-diligence-core` 也是云侧，但它不是第二个 core，而是 `Due Diligence Domain Runtime`。它负责尽调域的浏览器执行、site adapters、evidence、validation、repair、export。
+- 两者关系固定为：`hermes-agent` 编排，`due-diligence-core` 执行。前者拥有跨域状态和路由，后者拥有尽调执行细节。
+- `longclaw-agent-os` 是唯一默认 home，也是 phase 1 的主工作台。它负责总控、证据、复核、失败兜底、通知和 operator actions，不负责重浏览器执行。
+- `weclaw` 是主输入和异步 inbox，不是主工作台。
+- `Signals` 保持完整独立引擎和专业分析能力，但在产品信息架构里降为“金融深度工作面”，不是第二个默认首页。
+- `Obsidian` 只接 reviewed knowledge，不接 raw logs、不接 delivery fallback。
+- `Chanless` phase 1 保留 adapter 契约，但降为可选入口，不进入主旅程、主导航、主文案。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 表面归属
+- `WeClaw`
+  - 职责固定为：轻量输入、异步 dispatch、状态询问、移动端 fallback。
+  - 不承诺长流程规划，不承诺可靠后台推送。
+- `Electron`
+  - 顶层固定为 `Overview / Runs / Work Items / Packs`。
+  - UI 风格固定为 operator console，不做 KPI 卡片拼盘首页。
+  - 默认承担 `reliable_local`：任务结果、失败、manual review、evidence、local notification。
+- `Signals`
+  - 继续保留自己的专业 Web/研究/回测能力。
+  - 从产品导航上作为 `Packs > Signals` 的深度工作面进入。
+  - 默认旅程是 `Electron summary first -> deep link into Signals when needed`。
+- `Obsidian`
+  - 只做知识投影面：稳定知识卡、reviewed insight、playbook、最终决策。
+  - 不做运行态收件箱，不做未审核 evidence 仓库。
+- `Chanless`
+  - 保留为未来 multimodal/ambient capture 钩子。
+  - 不要求 phase 1 的主 UI、主流程、测试矩阵围绕它设计。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. 云侧分层
+- `hermes-agent` 固定为云侧总控层：
+  - 接 `weclaw` 入站
+  - 维护 canonical session/task/run
+  - 决定路由到哪个 pack
+  - 统一 delivery policy、review gate、memory promotion
+- `due-diligence-core` 固定为尽调专用执行层：
+  - 接收 Hermes 发起的尽调 run
+  - 执行多站点浏览器流程
+  - 产出 evidence、manual review、repair cases、export bundle
+- 两者通过 `Domain Pack` 契约连接：
+  - `Hermes -> DueDiligencePack` 发起 run、读取 artifacts、读取 review queue、执行 retry/review decision
+  - `due-diligence-core` 不拥有跨域 memory/delivery/session 语义
+  - `hermes-agent` 不重写尽调站点执行逻辑
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 关键用户流
+- 默认任务流：
+  - `weclaw ingress -> hermes routing/session -> domain pack run -> Electron summary/work item -> optional deep work -> reviewed promotion -> Obsidian`
+- 金融任务流：
+  - 用户从微信提需求后，先在 `Electron` 看到 summary、状态和动作。
+  - 只有需要图表、回测、结构深挖时才进入 `Signals`。
+- 尽调任务流：
+  - `Hermes` 生成尽调 run，并把执行委派给 `due-diligence-core`。
+  - `due-diligence-core` 云端执行浏览器任务。
+  - `Electron` 展示 `Recent Runs / Manual Review Queue / Repair Cases / Site Health`。
+  - 证据与复核在 `Electron` 完成，reviewed 输出再晋升到 `Obsidian`。
+- 失败送达流：
+  - 微信窗口失效时，不等待微信恢复。
+  - 默认落入 `Electron Work Items / Runs / local notification`。
+  - 不把未审核结果直接写入 `Obsidian`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 4. 设计和实现约束
+- 先补一个最小 `DESIGN.md`，再做正式控制面 UI。
+- 最小设计系统必须写死：
+  - 字体与颜色角色
+  - 信息密度原则
+  - 状态色语义
+  - 卡片允许出现的条件
+  - 导航层级
+- Beta 适配策略固定为 `desktop-first`：
+  - 要定义窄窗口退化规则
+  - 要定义键盘导航和焦点顺序
+  - 要定义 screen-reader landmarks
+  - 状态不能只靠颜色表达
+- `Electron` 的默认布局固定为：
+  - 左侧导航
+  - 中央主工作区
+  - 右侧详情抽屉
+  - 队列、证据、动作优先于装饰性统计卡
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Important Interfaces
+- 产品级 ownership contract：
+  - `hermes-agent = cloud-side state + routing + delivery + pack orchestration`
+  - `due-diligence-core = cloud-side due diligence execution runtime`
+  - `longclaw-agent-os = primary workspace + reliable local surface`
+  - `weclaw = ingress/inbox`
+  - `Signals = specialist workspace`
+  - `Obsidian = reviewed knowledge plane`
+- 必须保留的交互契约：
+  - `Electron -> Signals` 深链打开 review/backtest/chart/detail
+  - `Hermes -> Electron` 提供 `overview / runs / work-items / pack dashboards / actions`
+  - `Hermes -> due-diligence-core` 通过 remote pack API 发 run、取 artifacts、取 review queue、提交 retry/review decision
+  - `Hermes/pack -> Obsidian` 只允许 reviewed promotion，不允许 raw fallback
+- phase 1 不新增语音主入口契约，只保留 `Chanless` adapter hook。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 信息架构：
+  - 首次进入时，用户默认落在 `Electron`，而不是 `Signals` 或 `WeClaw` 深页。
+  - `Signals` 可以被进入，但不会在产品导航上与总控台平级。
+- 云侧分层：
+  - 一个尽调 run 由 `Hermes` 创建并拥有 canonical run/session 标识，再委派给 `due-diligence-core` 执行。
+  - `due-diligence-core` 返回的 artifacts、manual review、repair cases 能被 `Hermes` 统一暴露给 `Electron`。
+  - `due-diligence-core` 不直接写入 `Obsidian`，reviewed promotion 仍由 `Hermes` 控制。
+- 状态流：
+  - 微信窗口过期时，结果仍能在 `Electron Work Items` 找到。
+  - `manual review required`、`repair required`、`partial` 都有明确落点和下一动作。
+  - `due-diligence-core` 不可用时，`Hermes` 要暴露 degraded/failed state，而不是静默丢失任务。
+- 任务旅程：
+  - 一个金融任务能走通 `微信 -> Electron summary -> Signals deep dive -> reviewed insight -> Obsidian`。
+  - 一个尽调任务能走通 `微信 -> Hermes run -> due-diligence-core execution -> Electron evidence/review -> reviewed output`。
+- 设计约束：
+  - 控制面不是卡片拼盘首页。
+  - 窄窗口下详情抽屉和主队列仍可用。
+  - 键盘可完成筛选、打开详情、执行 action、返回列表。
+- 范围控制：
+  - 去掉 `Chanless` 后，phase 1 主旅程不受影响。
+  - `Obsidian` 中不出现 raw WeChat 会话或未审核 evidence。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d9-f13a-7ad1-8043-b93afa5d177d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- phase 1 产品楔子仍是“个人 Agent OS + Signals + Due Diligence 两个旗舰 pack”。
+- 云端执行平面是必需的，但当前只先承接 `due-diligence-core` 这类高价值浏览器任务，不把所有执行都塞进同一个“大 sandbox”叙事。
+- `Signals` 的独立性保留在能力层，不保留在默认产品入口层。
+- `due-diligence-core` 保持独立仓和独立运行时，不并回 `hermes-agent` 仓内实现。
+- 语音不是 phase 1 的主产品承诺。
+- 当前设计评分从 `6/10` 提升到可执行的 `9/10`，剩余 1 分主要取决于最小 `DESIGN.md` 是否补齐并被实现严格遵守。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d8-566b-7071-aaf7-101bf9c60e61
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+hermes-agent 如果是云侧，due-diligence-core 尽调任务也是云侧?这两者是什么关系呢
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d8-566b-7071-aaf7-101bf9c60e61
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `hermes-agent` 是云侧的 **Agent Core / 总控内核**
+  - 管 `session / routing / task / memory / delivery / approvals / eval`
+  - 负责“这次任务是谁发起的、该走哪个 pack、结果怎么回传、哪些内容进 Obsidian、哪些需要 review”
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d8-566b-7071-aaf7-101bf9c60e61
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `due-diligence-core` 自己暴露 `DueDiligencePack`，描述里明确写的是 `runtime: "cloud"`，是旗舰 domain pack
+- `hermes-agent` 里有 `RemoteDueDiligencePack`，通过 `LONGCLAW_DUE_DILIGENCE_API_URL` 去把它注册成远程 pack
+- `AgentOSService.from_env()` 会把这个 remote pack 挂进 Hermes 的 pack registry
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d8-566b-7071-aaf7-101bf9c60e61
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一步可以把这层关系直接补进当前计划，写成一句不会再歧义的 architecture rule。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d7-c622-7711-8cff-5454a3999e56
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 设计结论：这不是多个平级产品并排摆着，而是一个 `Agent OS`，外加若干专用工作面。
+- `hermes-agent` 是唯一 `Agent Core（云侧）`，负责 `session / memory / skills / scheduler / delivery / approvals / eval`。
+- `longclaw-agent-os` 是唯一默认 home，也是 phase 1 的主工作台。它负责总控、证据、复核、失败兜底、通知和 operator actions，不负责重浏览器执行。
+- `weclaw` 是主输入和异步 inbox，不是主工作台。
+- `due-diligence-core / 影刀替代 sandbox` 是 phase 1 云端必选执行平面，以远程 `Domain Pack` 运行。
+- `Signals` 保持完整独立引擎和专业分析能力，但在产品信息架构里降为“金融深度工作面”，不是第二个默认首页。
+- `Obsidian` 只接 reviewed knowledge，不接 raw logs、不接 delivery fallback。
+- `Chanless` phase 1 保留 adapter 契约，但降为可选入口，不进入主旅程、主导航、主文案。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d7-c622-7711-8cff-5454a3999e56
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. 关键用户流
+- 默认任务流：
+  - `weclaw ingress -> hermes routing/session -> domain pack run -> Electron summary/work item -> optional deep work -> reviewed promotion -> Obsidian`
+- 金融任务流：
+  - 用户从微信提需求后，先在 `Electron` 看到 summary、状态和动作。
+  - 只有需要图表、回测、结构深挖时才进入 `Signals`。
+- 尽调任务流：
+  - `due-diligence-core` 云端执行浏览器任务。
+  - `Electron` 展示 `Recent Runs / Manual Review Queue / Repair Cases / Site Health`。
+  - 证据与复核在 `Electron` 完成，reviewed 输出再晋升到 `Obsidian`。
+- 失败送达流：
+  - 微信窗口失效时，不等待微信恢复。
+  - 默认落入 `Electron Work Items / Runs / local notification`。
+  - 不把未审核结果直接写入 `Obsidian`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da4d7-c622-7711-8cff-5454a3999e56
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 设计和实现约束
+- 先补一个最小 `DESIGN.md`，再做正式控制面 UI。
+- 最小设计系统必须写死：
+  - 字体与颜色角色
+  - 信息密度原则
+  - 状态色语义
+  - 卡片允许出现的条件
+  - 导航层级
+- Beta 适配策略固定为 `desktop-first`：
+  - 要定义窄窗口退化规则
+  - 要定义键盘导航和焦点顺序
+  - 要定义 screen-reader landmarks
+  - 状态不能只靠颜色表达
+- `Electron` 的默认布局固定为：
+  - 左侧导航
+  - 中央主工作区
+  - 右侧详情抽屉
+  - 队列、证据、动作优先于装饰性统计卡

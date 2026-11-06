@@ -1,0 +1,45 @@
+{
+  "id": "019f1c9e-d97e-7ce2-99ab-cb0fbce26abb",
+  "title": "修复微信发送线程错误",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019f1c9e-d97e-7ce2-99ab-cb0fbce26abb",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "f3a7f51daef5e89b477bbfdd4b1668e94e3e1724e0dc99f55340c3540bf3b539",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019f1c9e-d97e-7ce2-99ab-cb0fbce26abb#first-request",
+      "timestamp": null,
+      "verbatim": "检查一下微信发送日志，目前提示error thread error，请修复"
+    },
+    {
+      "hash": "b94d7e45c94523a4ea149c1186fd5bb35b02e4e4dd9ae69f8a6acb05fd3e620b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f1c9e-d97e-7ce2-99ab-cb0fbce26abb#recent",
+      "timestamp": null,
+      "verbatim": "根因是 `/Users/zhangqilong/.codex/config.toml:11` 里 `service_tier = \"default\"`，当前 `codex-cli 0.142.4` 只接受 `fast` 或 `flex`，导致 WeClaw 调 Codex ACP 时 `thread/start` 失败。我已改成："
+    },
+    {
+      "hash": "2d1bf94d609110327f28d8241db6ef710a142b889dd22977607c3d7a16d84cf1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f1c9e-d97e-7ce2-99ab-cb0fbce26abb#recent",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- `weclaw restart` 成功，新 pid `47747`\n- `http://127.0.0.1:18011/health` 返回 `ok`\n- `/api/agents` 显示 `codex` 为默认 agent 且 `is_running: true`\n- 新日志显示 Codex ACP `initialized`，`default agent ready`\n- 独立本地探针跑了 `initialize` + `thread/start`，返回有效 thread id\n- 没有发送测试微信消息，避免打扰"
+    },
+    {
+      "hash": "e2d978fbb0537ddc81132555e49048c37b148ecd724d3680fbf1efb0867653a6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f1c9e-d97e-7ce2-99ab-cb0fbce26abb#recent",
+      "timestamp": null,
+      "verbatim": "日志里还看到 `Agent OS ingress` 的 `127.0.0.1:8642 connection refused`，但这不是本次用户侧 `thread error` 的根因，WeClaw 会继续走默认 Codex agent。"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

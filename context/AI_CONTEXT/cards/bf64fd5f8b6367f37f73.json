@@ -1,0 +1,21 @@
+{
+  "id": "019ef780-4fb8-73e3-be2d-c20cc9336bb4",
+  "title": "检查微信图片保存失败",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ef780-4fb8-73e3-be2d-c20cc9336bb4",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "ba37ce450b230940706ed68090bff0a6494b63895ee5271614a6ae11153b4fd4",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ef780-4fb8-73e3-be2d-c20cc9336bb4#first-request",
+      "timestamp": null,
+      "verbatim": "检查一下我微信发送的图片，微信返回报错信息failed to save image"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

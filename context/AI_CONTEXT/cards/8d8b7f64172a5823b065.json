@@ -1,0 +1,77 @@
+{
+  "id": "019eed3a-c1a9-7262-8bbb-bd62b9c20b45",
+  "title": "刷新全量数据并自动重连",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019eed3a-c1a9-7262-8bbb-bd62b9c20b45",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "9c81739183a6b09b583d05a1ffb8b0aa7892eb38b5b4aba3473625e58e48f079",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#first-request",
+      "timestamp": null,
+      "verbatim": "我希望点击agent刷新的时候，可以刷新所有标的、三池、行业热度等等。同时每隔一段时间，自动检测刷新频率和断点重连"
+    },
+    {
+      "hash": "70e4c78559dadcfef4c43b0fe62446eaf8dbf931dd6a87b8c8b7237ba3646110",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#recent",
+      "timestamp": null,
+      "verbatim": "已完成并安装到 `/Applications/隆小侠 Agent OS.app`。"
+    },
+    {
+      "hash": "7cfd9bfda7516ed5f14965eec91ab943fe2dcb26213b6130fc09e983da2a234e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#recent",
+      "timestamp": null,
+      "verbatim": "主要改动：\n- 点击刷新现在走 `pack:signals:refresh`，手动刷新会带 `force_live=true`、`force_postmarket=true`，覆盖标的、三池、行业/概念/产业链热度、strategy snapshot 和盘后断点恢复。\n- `run_live_once()` 从串行改成分阶段线程池并发：独立 live 模块先并发，依赖它们的 readiness/技术扫描/terminal pool 后跑，`strategy_snapshot` 最后生成。\n- 去掉同步模块通过全局 `os.environ` 传 lane/market，改成线程本地 `task_env`，避免多线程互相污染。\n- `/api/workbench/shell` 缓存 miss 不再同步跑慢 watermark 查询，先快速返回 placeholder，后台重建完整 shell。\n- 交易台内部“刷新”按钮也接入同一条全链路刷新，不再只刷新当前 shell/标的。"
+    },
+    {
+      "hash": "f1285ea6728b7bb2e4c8e47b2cf98ecdeb6ae607475db3d58d0c0ad1543d9408",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#recent",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- `/api/workbench/shell` 从之前 45s timeout 变成首次 `0.176s` 返回 `building`，命中后约 `0.11-0.15s`。\n- `POST /api/pack/refresh` `0.007s` 返回；当 watchdog 已在跑时正确返回 `refresh_already_running`，避免重复打爆同步线程。\n- 运行时日志已出现 `live stage=... workers=...`，确认并发调度生效。\n- 测试通过：Signals 221 tests、Electron/Vitest 53 tests、`npm run lint -- --pretty false`、两仓 `git diff --check`。\n- 已重新 `npm run electron:install:mac` 并重启安装版 App，当前安装版进程已启动。"
+    },
+    {
+      "hash": "c15c359dec34582e4e3eb333adbb3cd80828e9e7dff9451436a8604891855ba9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#recent",
+      "timestamp": null,
+      "verbatim": "Goal 已标记完成。用量：692,769 tokens，耗时约 17 分 34 秒。"
+    },
+    {
+      "hash": "3e7240dc6674e0a7880b20f89936287dc702ac47f701c0d3428360fbe2ac5cd0",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#turn:019eed3b-94a7-7d30-aff2-bfcb782749f9",
+      "timestamp": null,
+      "verbatim": "/goal 我希望点击agent刷新的时候，可以刷新所有标的、三池、行业热度等等。同时每隔一段时间，自动检测刷新频率和断点重连"
+    },
+    {
+      "hash": "dd9e6ad2f7f350d86116d044e5a65a70ce6cf507abc4e26f8a721fe6a14cf00d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#turn:019eed3b-94a7-7d30-aff2-bfcb782749f9",
+      "timestamp": null,
+      "verbatim": "主要改动：\n- Signals 新增 `POST /api/pack/refresh`，复用现有 live lanes + postmarket DAG，支持去重、节流、stale/running 任务释放、断点续跑。\n- Agent OS 策略页点击“刷新工作台”时会先触发 Signals 全链路刷新，再刷新 dashboard/shell。\n- 策略页新增 watchdog：当 cache-status 显示 live/postmarket 降级、partial、stale、blocker 时，按间隔自动触发 refresh，并由后端节流防重复。\n- Electron 本地 control-plane 已支持 `pack:signals:refresh` 直连 8011。"
+    },
+    {
+      "hash": "5e1bf2a7ee9102ffa8bbafee53ef685fac8c9c5d5c7800689d675c6e793b1ec3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019eed3a-c1a9-7262-8bbb-bd62b9c20b45#turn:019eed3b-94a7-7d30-aff2-bfcb782749f9",
+      "timestamp": null,
+      "verbatim": "验证已跑：\n- Signals: `tests/test_domain_pack.py` 17 passed\n- Signals: `tests/test_postmarket_runner.py` 32 passed\n- Signals: `tests/test_storage_model.py` 2 passed\n- Agent OS: `npm run lint -- --pretty false`\n- Agent OS: `npm test -- src/services/longclawControlPlane/client.test.ts` 11 passed\n- 两边 `git diff --check` 干净\n- 已执行 `npm run electron:install:mac`，并重启 `/Applications/隆小侠 Agent OS.app`\n- 已重启 Signals web 子进程，实机验证 `/api/pack/refresh` 返回 `200 refresh_started`，二次触发返回 `refresh_already_running`\n- 当前 8011 `cache-status`: `available=True`, `mode=mongo`, `recovery_state=terminal_ready`, `trade_date=2026-06-22`"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

@@ -1,0 +1,843 @@
+
+
+---
+来源：codex:019dbd35-f1a1-7843-8ffa-2353566988a6#turn:019dbd36-3d79-7880-a324-bacab4b144bd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 先删旧 IA 残留：移除 unused `SignalsPackView / SignalsPanel`，再判断旧 `TaskWorkspace` 是否完全替换，能删就删，不能删就明确标成 legacy。
+2. 补 renderer 合同测试：nav 主次分组、page -> dashboard pack 映射、`buildLaunchIntent` 不泄露 `strategy/backtest/execution/factory` 到 control-plane metadata。
+3. 补 surface 测试：现有测试只覆盖 strategy/backtest 和 WeChat links，还要加 execution/factory 的 smoke render。
+4. 做视觉验证：启动 Electron，逐页点击 `策略 / 回测 / 执行 / 微信 / 工厂`，保留桌面截图，重点看窄屏策略三栏和执行页跳转上下文。
+5. 最后再整理提交：IA renderer 一组，`main.ts` runtime probe 单独一组，`.gstack/` 不提交。
+
+
+---
+来源：codex:019dbd35-f1a1-7843-8ffa-2353566988a6#turn:019dbd36-3d79-7880-a324-bacab4b144bd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已完成：
+- `npm run lint`
+- `npm test -- electron/src/renderer/taskLaunchState.test.ts`
+- `npm test`
+- `npm run build:electron`
+- `git diff --check`
+
+
+---
+来源：codex:019dbd35-f1a1-7843-8ffa-2353566988a6#turn:019dbd36-3d79-7880-a324-bacab4b144bd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步优先：
+- Electron 可视点击验证，确认 5 个页面都能打开、无白屏、无重叠。
+- `rg` 断言：中文 IA 只存在于 renderer page/surface，不进入 `work_mode / interaction_surface / runtime_target`。
+- 窄屏截图验证策略页三栏是否需要响应式收起。
+
+
+---
+来源：codex:019dbd35-f1a1-7843-8ffa-2353566988a6#turn:019dbd36-3d79-7880-a324-bacab4b144bd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+STATUS: `DONE_WITH_CONCERNS`。计划可以继续，先收敛旧路径和补视觉验证。
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+1、检查目前已有的拉起来的web工程，后续给我一个解决方案我如何杀掉。2、给我一个完整的命令行，我可以直接通过命令行拉起来npm build electron工程
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：当前已经拉起来的本地 Web 工程有 3 个，其中真正的 Node/Next 是 `wb-2-runtime:3000`，另外两个是 `Signals` 的 Python Web 服务。
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+| 端口 | 工程 | 进程 | 启动来源 |
+|---|---|---|---|
+| `3000` | `/Users/zhangqilong/github代码仓库/wb-2-runtime` | `npm run dev --port 3000` / `next dev` | Next.js |
+| `6008` | `/Users/zhangqilong/github代码仓库/Signals` | `uvicorn signals.web2.app:app` | Signals Web2 |
+| `8011` | `/Users/zhangqilong/github代码仓库/Signals` | `python run.py --mode web --port 8011` | Signals Web |
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你指的是 `/Users/zhangqilong/github代码仓库/longclaw-agent-os`，它已经有现成脚本，直接跑：
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm install && npm run electron:dev
+```
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm install && npm run build:electron && ELECTRON_DEV=1 npx electron electron/dist/main.cjs
+```
+
+
+---
+来源：codex:019dbe49-468b-7171-aefd-f48e2cd1e0ba#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```bash
+cd /Users/zhangqilong/github代码仓库/aippt/presenton/electron && npm run setup:env && npm run build:electron && npm start
+```
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+重新build一下electron的工程，然后用computer use来修复页面布局和报错。目前的ui都是被折叠扭曲了
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw Electron 左侧侧边栏重构：微信 / 任务 / 扩展 / RPA / Signals
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 左侧主导航改成 5 项并完全替换现有结构：`微信`、`任务`、`扩展`、`RPA`、`Signals`。
+- 默认落地页改为 `任务`，不再保留独立 `首页`。
+- `任务` 吸收当前 `首页 + 记录 + 待办`，成为统一任务前门与任务中心。
+- `RPA` 吸收当前 `尽调` 页面；`Signals` 从现有 `专业` 拆出，收口成 TradingView 专页。
+- `扩展` 替换当前 `能力`，升级成真正的 `Skills + Plugins` 管理页，而不是只读清单。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Changes
+### 1. 信息架构与导航
+- `Page` 枚举重构为 5 个顶层页：`wechat`、`tasks`、`capabilities`、`rpa`、`signals`。
+- 当前 `packs` 双 tab 结构取消：
+  - `due_diligence` 内容迁入 `RPA`
+  - `signals` 内容迁入独立 `Signals`
+- 当前 `runs`、`work_items`、`home` 不再作为顶层导航存在，能力由 `任务` 页内部分区承接。
+- 左侧第二栏保留，但改为“随页切换的次级导航”：
+  - `微信`：会话来源状态、最近 session、过滤器
+  - `任务`：工作区、最近线程、优先队列
+  - `扩展`：分组、禁用项、额外 discovery roots
+  - `RPA`：成熟流程列表、运行健康
+  - `Signals`：TradingView 连接器、最近策略运行
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. 任务页
+- `任务` 页固定成为默认入口，首屏结构改成：
+  - 顶部：任务发起器
+  - 中段：统一任务流
+  - 下段：待处理/失败/最近完成摘要
+- 页内用分段筛选替代旧页面拆分：
+  - `全部`
+  - `运行中`
+  - `待处理`
+  - `失败`
+  - `已完成`
+- 任务流统一收敛当前 `launches + tasks + runs + work_items`，使用现有 shared detail drawer。
+- 现有首页的本机 seat 策略和云端发起器继续保留，但只出现在 `任务` 页，不再单独占一个 `首页`。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 3. 微信页
+- `微信` 页沿用当前只读 WeClaw session 数据源，不改成执行前门。
+- 页面固定包含：
+  - WeClaw session source 状态
+  - session 列表
+  - 只读详情抽屉
+  - canonical task/run 关联
+- 继续区分两种空状态：
+  - session 目录不存在
+  - session 目录存在但为空
+- 不新增回复、重发、重试或 launch 动作。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 4. 扩展页
+- `扩展` 页替代当前 `能力`，拆成 `Skills` 和 `Plugins` 两个主区，并提供真实管理能力。
+- 管理范围本期固定为：
+  - 启用/禁用某个 skill 或 plugin 的 UI 可见性与发起器暴露
+  - 查看来源、owner、path、最近使用
+  - 打开 source path / 打开配置文件 / 复制 mention
+  - 本地分组管理
+  - 管理额外 discovery roots
+- 不做 skill/plugin 文件内容编辑；“管理”只作用于 Electron 本地管理层和 discovery 配置。
+- 管理状态使用 Electron 本地设置持久化，作为 substrate summary 之上的本地 overlay。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 5. RPA 与 Signals
+- `RPA` 页吸收当前 `due_diligence` pack dashboard，产品语义改成“成熟工程自动化 / 成熟流程代码处理”。
+- `RPA` 页结构固定为：
+  - 成熟流程入口
+  - 最近运行
+  - 人工复核
+  - 修复案例
+  - 运行健康
+- 当前 `due_diligence` 作为 `RPA` 下的第一条成熟流程保留，不再作为顶层导航名。
+- `Signals` 页独立后只服务 TradingView 相关场景：
+  - review/backtest backlog
+  - recent runs
+  - connector health
+  - TradingView 语义文案
+- 不再让 `Signals` 和 `RPA/尽调` 共用一个 `专业` 页签。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Interfaces
+- Longclaw/Hermes/WeClaw 的 canonical task/run/work-item 接口不改；本次只重构 Electron renderer 与本地设置层。
+- 新增 Electron 本地管理设置接口，至少覆盖：
+  - `disabled_capabilities`
+  - `capability_groups`
+  - `extra_skill_roots`
+  - `extra_plugin_roots`
+- `capability-substrate` 继续是库存真源；渲染层叠加本地管理 overlay 后再展示。
+- 现有 WeClaw 只读 IPC 保留；新增扩展管理用的本地设置读写 IPC。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Test Plan
+- 导航验证：
+  - 左栏只有 `微信 / 任务 / 扩展 / RPA / Signals`
+  - 默认进入 `任务`
+  - 旧 `首页 / 记录 / 待办 / 专业 / 能力` 不再作为顶层导航出现
+- 任务页验证：
+  - 发起器仍可正常切本机/云端
+  - `launches + tasks + runs + work_items` 能被统一筛选和打开详情
+- 微信页验证：
+  - 真实 `.obsidian/sessions/*.json` 可见
+  - 目录缺失与空目录提示不同
+  - 详情只读且 canonical 关联仍可打开
+- 扩展页验证：
+  - skills/plugins 能分开展示
+  - 启用/禁用、分组、额外 roots 持久化后重启仍存在
+  - 被禁用项不会继续出现在任务发起器推荐区
+- RPA / Signals 验证：
+  - `RPA` 只承接原 `due_diligence`
+  - `Signals` 只展示 TradingView 相关模块与文案
+  - 两页数据和操作不会串页
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 顶层导航以你给的 5 项为准，不保留独立首页。
+- `任务` 是统一任务中心，而不是只看 runs 或只看待办。
+- `扩展` 页的“重管理”包含本地启停、分组、路径管理和打开配置，但不包含直接编辑 skill/plugin 源文件。
+- `Signals` 顶层页直接收口成 TradingView 专页。
+- 本次不改 Hermes/WeClaw 后端语义，只改 Electron 壳层、页面编排和本地管理配置。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+侧边栏重构已经落地到 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)、[main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)、[preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts) 和 [i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts)。左侧主导航现在固定为 `微信 / 任务 / 扩展 / RPA / Signals`，默认页改成 `任务`；`任务` 吸收了原来的首页、记录、待办；`RPA` 和 `Signals` 已拆成独立页；`微信` 保持只读会话入口；`扩展` 页已经能管理 skills/plugins 的可见性、分组、额外 discovery roots，并通过 Electron 本地设置持久化到 `~/.longclaw/runtime-v2/capability-manager.json`。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我补了本地 capability manager IPC 和 discovery overlay，被隐藏的 skill/plugin 不会继续出现在任务发起器推荐区。`Signals` 页点开白屏的问题也一起修了，原因是 dashboard 缺字段时没有兜底；现在这条渲染路径已经改成防御式读取。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已经做过：`cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run build:electron` 通过；随后用 Computer Use 实测了 `任务 / 微信 / 扩展 / RPA / Signals` 五页，导航结构、页面归位和 Signals 空白问题都已确认。当前还会看到的只有 Electron 开发态 CSP warning，这次壳层改造本身没有新的 renderer 报错。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa36-5157-7cb2-8899-4a48f59f315f
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+重新设计左侧侧边栏 1、微信 2、任务 3、skills+plugin(管理这些) 4、RPA（处理成熟的工程代码）5、signals(专门做tradingview)
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 三模式验证与开发机 ACP 接管方案
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 保持统一前门：所有可执行模式都固定为 `Electron -> Hermes/Agent OS -> 执行层`，不允许 Electron 绕过 Hermes 直打后端。
+- `local` 仍是一个 canonical `WorkMode`，但验证时拆成两个 seat：
+  - `local / ACP`
+  - `local / HTTP API`
+- 开发机特殊规则锁定：
+  - 如果本机存在 Claude Code / Codex 的 ACP，`local` 默认优先走 ACP
+  - 但必须提供显式 seat override，保证 `local / HTTP API` 仍可单独验证
+  - UI 要显式提示“当前开发机已接管到 ACP”
+- `cloud_sandbox` 固定为：
+  - `Electron -> 本机 Hermes/Agent OS -> LA VPS gateway -> VPS 上的 OpenAI-compatible API`
+- 微信不做执行前门，只做只读会话；入口从“记录页内部切换”提升为独立左导航 `微信会话`
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Changes
+### 1. 模式与 seat 规则
+- `local`
+  - 默认 seat 判定顺序固定为 `ACP > Local Runtime API > unavailable`
+  - 新增显式 override 能力，只影响验证和开发态，不改变 canonical `WorkMode`
+  - override 至少支持：
+    - `auto`
+    - `force_acp`
+    - `force_local_runtime_api`
+- `cloud_sandbox`
+  - 保持 `runtime_profile=cloud_managed_runtime`
+  - 保持 `runtime_target=cloud_runtime`
+  - 保持 `execution_plane=cloud_executor`
+  - Electron 不直接连 VPS API
+- `weclaw_dispatch`
+  - 保留 canonical 值，只用于历史来源语义
+  - 不作为首页可发起模式
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. 统一前门与执行层分工
+- `Hermes/Agent OS` 继续是唯一 canonical launch 前门：`POST /agent-os/launches`
+- OpenAI-compatible API 的角色固定为执行层，不是任务前门：
+  - `local / HTTP API` 时，作为本机 Local Runtime 或等价 HTTP seat 背后的执行接口
+  - `cloud_sandbox` 时，作为 VPS gateway 背后的执行接口
+- 开发机若检测到本地 Claude/Codex ACP：
+  - Hermes/Longclaw 的本机 agent 能力视为被 ACP 接管
+  - 但不影响 cloud path 的 canonical 编排
+- `能力` 页和 launch metadata 需要明确区分：
+  - 当前 `WorkMode`
+  - 当前 seat 来源
+  - 是否处于“开发机 ACP 接管”状态
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. Electron 信息架构
+- 左导航调整为 6 项，新增独立项 `微信会话`
+- `记录` 页只保留任务记录
+- `微信会话` 页只保留只读会话查看：
+  - 会话列表
+  - 消息时间线
+  - agent 回复
+  - 附件/转写
+  - `canonical_session_id`
+  - `canonical_user_id`
+  - `context_token`
+  - 打开本地附件
+- `微信会话` 空状态必须区分：
+  - session 目录不存在
+  - 目录存在但没有 session 文件
+- 首页和能力页显式展示开发机提示：
+  - 自动检测到 ACP 时，显示“当前本机优先走 ACP”
+  - 如果用户强制切到 API，也要显示当前 override 状态
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 4. 真实验证拓扑
+- `local / ACP`
+  - `Electron -> 本机 Hermes/Agent OS -> 本机 ACP`
+- `local / HTTP API`
+  - `Electron -> 本机 Hermes/Agent OS -> 本机 Local Runtime API / HTTP seat -> 本机 OpenAI-compatible API`
+- `cloud_sandbox`
+  - `Electron -> 本机 Hermes/Agent OS -> LA VPS gateway -> VPS OpenAI-compatible API`
+- `wechat_readonly`
+  - `Electron -> ~/.weclaw/config.json.save_dir -> WECLAW_SAVE_DIR -> ~/.weclaw/workspace -> .obsidian/sessions/*.json`
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 开发机 seat 规则
+  - 检测到 ACP 时默认落到 `local / ACP`
+  - 显式 override 到 API 后，`local` 发起必须改走 `local / HTTP API`
+  - override 取消后恢复 `ACP > API` 自动优先级
+- `local / ACP`
+  - 从 Electron 发起 `local`
+  - 验证 task/run 正常生成
+  - 验证 seat metadata 标记为 `acp_bridge`
+- `local / HTTP API`
+  - 本机启动 Local Runtime API 和背后的 OpenAI-compatible API
+  - 强制 seat override 到 API
+  - 验证 task/run 正常生成
+  - 验证 seat metadata 标记为 `local_runtime_api`
+- `cloud_sandbox`
+  - 本机 Hermes 可用
+  - `LONGCLAW_CLOUD_RUNTIME_BASE_URL` 指向 LA VPS gateway
+  - 验证 cloud metadata 正确
+  - 验证不改 LA VPS 现有 Clash Verge 主机级代理配置
+- `微信会话`
+  - 左导航可直接看到 `微信会话`
+  - 能读取本机真实 `.obsidian/sessions/*.json`
+  - 默认打开最新 session
+  - 缺目录和空目录状态都能正确提示
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Assumptions
+- 开发机特殊规则只作用于 `local` 的 seat 选择，不改变 canonical `WorkMode` 设计。
+- “Hermes/Longclaw agent 能力被 ACP 接管”在产品语义上按 seat 接管处理，不额外新增第四种模式。
+- OpenAI-compatible API 在本方案里只扮演执行层。
+- 微信会话的可发现性优先于“主导航固定 5 项”的旧约束，因此允许升到 6 项导航。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这版已经落到 Electron 前端和主进程了。核心改动在 [local-runtime-seat.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/local-runtime-seat.ts:1)、[main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:1)、[preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts:1)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1)、[i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts:1)。现在 `local` 已支持 `auto / force_acp / force_local_runtime_api` 显式 override，并把当前 seat、preference、ACP 接管状态写进 runtime status 和 launch metadata；首页发起器会直接显示这组策略，能力页也会单独展示“本机 seat 策略 / 开发机 ACP 接管”。`微信会话` 已从“记录”页里拆成独立左导航，读取来源固定走 WeClaw session 文件，并且能区分“session 目录缺失”和“目录存在但为空”。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我重新执行了 `npm run build:electron`，构建通过。随后用 Computer Use 做了桌面 smoke：左导航已经变成 6 项，`微信会话` 可直接进入；该页能读到你机器上的真实会话文件 `~/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json`，并展示消息、附件、文件路径和 canonical 关联；首页切到“本机处理”后，发起器里已经出现 `自动 / 强制 ACP / 强制本地 API` 三个按钮；能力页里也看到了 seat 策略和 ACP 接管状态。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa13-2738-7631-86b9-5b0e5d319238
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还没做 live 三链路发起验收。桌面 smoke 里本机 seat 仍然是不可用状态，页面显示的是“ACP 脚本路径存在，但桥接不可用，Local Runtime API 未配置”，所以 `local / ACP` 和 `local / HTTP API` 还不能直接跑真发起。要继续做真实验证，下一步就是把本机 ACP 或 `LONGCLAW_LOCAL_RUNTIME_API_URL` 拉起来，再把 `LONGCLAW_CLOUD_RUNTIME_BASE_URL` 指向你的 LA VPS gateway。Electron 现在已经开着，你可以直接看这版 UI。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa0c-bdb2-7e41-a9c2-14dbd0d9d0a0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+有一种情况是特殊的，当本地存在claude code或者codex的时候，longclaw或者hermes的agent能力就被替换了。相当于直接走acp了。这种主要是本开发机会遇到
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa06-9b5b-71b0-a393-169a142c1632
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+1、为什么真实路径不能直接跑验证呢？我想用本机的agent os分别模拟 2、微信现在session入口消失了，不知道在哪里可以查看
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019daa06-9b5b-71b0-a393-169a142c1632
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 之前“真实路径不能直接跑”，不是因为架构不支持，而是因为当时本机真实入口没起起来：`LONGCLAW_AGENT_OS_BASE_URL` 指向的 `http://127.0.0.1:8642` 没在监听，`LONGCLAW_LOCAL_RUNTIME_API_URL` 和 `LONGCLAW_CLOUD_RUNTIME_BASE_URL` 也没配。
+- 微信 session 数据源没丢。本机 `~/.weclaw/workspace/.obsidian/sessions/` 里现在就有真实会话文件。问题在于入口埋得太深，所以后续方案里我把它改成独立左导航，不再藏在“记录”页里。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9ed-b772-7663-b21f-91e0ee3159cd
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+/reload-plugins并且运用/andrej-karpathy-skills:karpathy-guidelines 来执行目前的任务
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9ed-b772-7663-b21f-91e0ee3159cd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`hermes-agent` 这边把 `cloud_sandbox` 的默认归一化改成了按 `work_mode` 推导，`cloud_sandbox` 现在会稳定落到 `cloud_managed_runtime / cloud_runtime / cloud_executor`，相关改动在 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py) 和 [test_service.py](/Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_service.py)。`weclaw` 这边把默认 `launch policy` 固定为 `off`，继续保留 ingress 和 session window 落盘，但不再自动提交 Agent OS launch；同时把 `canonical_session_id / canonical_user_id / context_token` 写进 session 文件，改动在 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go)、[config.go](/Users/zhangqilong/github代码仓库/weclaw/config/config.go)、[session.go](/Users/zhangqilong/github代码仓库/weclaw/obsidian/session.go)。`longclaw-agent-os` 这边把 Electron 首页发起器收敛成只保留 `local` 和 `cloud_sandbox`，并新增了微信只读会话 IPC 和记录页只读视图，改动在 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts)、[preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)、[i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts)。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9ed-b772-7663-b21f-91e0ee3159cd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果已经跑过：
+- `cd /Users/zhangqilong/github代码仓库/hermes-agent && python3 -m pytest -o addopts='' tests/agent_core/test_service.py tests/gateway/test_api_server_agent_os.py`，结果 `15 passed, 1 skipped`
+- `cd /Users/zhangqilong/github代码仓库/weclaw && go test ./api ./messaging ./obsidian ./config`，全部通过
+- `cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run build:electron`，通过
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9ed-b772-7663-b21f-91e0ee3159cd
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+真实环境 smoke 也补看了下：你这台机器当前只有 `LONGCLAW_AGENT_OS_BASE_URL=http://127.0.0.1:8642` 配了，但该地址现在 `connection refused`；`LONGCLAW_LOCAL_RUNTIME_API_URL` 和 `LONGCLAW_CLOUD_RUNTIME_BASE_URL` 目前都没配。所以这次已经把三种模式的代码路径和测试路径打通了，但“本机 local 真发起”和“LA VPS cloud 真发起”还没法在当前环境做 live 验收。微信只读的数据面是有真样本的，当前实际会话文件就在 `~/.weclaw/workspace/.obsidian/sessions/`。如果继续，我下一步会把 Hermes / local runtime / cloud runtime 实例拉起来，做三条 live smoke。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 三链路计划：本地 / 云端 / 微信只读（网络隔离版）
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 本期执行面固定为两条可发起链路加一条只读链路：
+  - `local` 本机处理
+  - `cloud_sandbox` 云端执行
+  - `wechat_readonly` 微信会话只读观察
+- `weclaw_dispatch` 不从 canonical 模型里删除，继续保留给历史数据和兼容层；但它不再作为 Electron 首页的可发起模式。
+- WeClaw 继续保留 ingress 上报能力，但本期默认停止自动向 Hermes 提交 launch。
+- 云端沙盒必须与 LA VPS 现有 `Clash Verge` 网络路径隔离，不能改动现有主机级代理与请求流量。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Changes
+### 本地模式
+- 继续沿用 Electron 端唯一 seat 判定：
+  - `acp_bridge`
+  - `local_runtime_api`
+  - `unavailable`
+- 判定顺序固定为 `ACP bridge > Local Runtime API > unavailable`，不把这套逻辑复制到 renderer、Hermes 或 WeClaw。
+- Local Runtime API 合同保持不变：
+  - `GET /health`
+  - `POST /launches`
+  - `Authorization: Bearer ${LONGCLAW_LOCAL_RUNTIME_API_KEY}`
+- 首页只显示一条短阻塞提示；seat 来源、health、失败原因统一下沉到 `能力` 页。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 云端沙盒
+- 云端执行固定走：
+  - `Electron -> Hermes /agent-os/launches -> LA VPS 上的 Cloud Runtime Gateway -> 远端 workspace/session`
+- 不做 `Electron -> SSH -> VPS` 直连。
+- 隔离模型固定为“按客户端隔离”：
+  - 每个客户端独立 `workspace_root`
+  - 每个客户端独立 session scope
+  - 同机共享 gateway 与宿主资源，但不共享 git/workspace 状态
+- 网络隔离固定为“任务级/服务级隔离”，不是“主机级改网”：
+  - 不修改 LA VPS 现有 `Clash Verge` 配置
+  - 不修改系统级 `http_proxy` / `https_proxy` / `all_proxy`
+  - 不改动宿主机默认路由、iptables、TUN、全局代理
+  - Cloud Runtime Gateway 用独立 service 或 container 运行
+  - 任务所需代理通过进程环境变量或独立 proxy profile 注入，只对该任务生效
+- Gateway 对外接口尽量贴近 Local Runtime API：
+  - `GET /health`
+  - `POST /launches`
+- Cloud metadata 固定补齐：
+  - `runtime_profile = cloud_managed_runtime`
+  - `runtime_target = cloud_runtime`
+  - `execution_plane = cloud_executor`
+  - 新增 `client_scope_id`
+  - 新增 `remote_session_id`
+  - 新增 `egress_profile`
+- 出口策略固定为 provider-aware：
+  - 中国本地模型或不敏感任务：`vps_direct`
+  - `Claude Code / Codex` 这类 IP 敏感任务：`us_residential_rear`
+- 需要 `us_residential_rear` 但后置家宽节点不可用时，任务必须显式失败或进入 `needs_review`，不允许静默降级。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 微信只读
+- `微信接力` 从首页发起器移除；首页只保留 `本机处理` 和 `云端执行`。
+- `记录` 页新增 `微信会话` 视图，用来展示只读微信 session。
+- `微信会话` 详情只允许：
+  - 看用户消息
+  - 看 agent 回复
+  - 看附件与转写
+  - 看时间戳、context token、canonical session 信息
+  - 打开本地附件文件
+- `微信会话` 详情不允许：
+  - 回复
+  - 重发
+  - 重试
+  - 人工动作执行
+  - 从会话面直接发起任务
+- 只读数据源固定为 WeClaw workspace session/sidecar 文件，不走 Hermes session API。
+- WeClaw workspace 路径解析固定为：
+  - `~/.weclaw/config.json` 中的 `save_dir`
+  - 否则 `WECLAW_SAVE_DIR`
+  - 否则 `~/.weclaw/workspace`
+- 读取对象固定为 `.obsidian/sessions/*.json`，需要时再用 sidecar/media 路径补充附件展示。
+- WeClaw 本期保留 ingress 上报到 Hermes，用于：
+  - adapter health
+  - raw memory
+  - last_ingest_at
+- WeClaw 本期新增 launch policy，并固定默认值为 `off`：
+  - `off`
+  - `explicit_only`
+  - `automatic`
+- 本期默认 `off`，意味着微信入站不会自动提交 `/agent-os/launches`。
+- WeClaw session window JSON 增加可选字段，供 Electron 做只读关联：
+  - `canonical_session_id`
+  - `canonical_user_id`
+  - `context_token`
+- Electron 若能匹配到 `canonical_session_id`，就在只读会话详情里展示关联 task/run；匹配不到也照常展示会话，不阻塞查看。
+- 现有 `work_mode = weclaw_dispatch` 的 task/run/work item 在 UI 中改按“微信来源/微信会话来源”呈现，不再暗示它是当前可发起模式。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Interfaces
+- 保持 canonical `WorkMode` 不变：
+  - `local`
+  - `cloud_sandbox`
+  - `weclaw_dispatch`
+- 新增 Cloud Runtime Gateway 合同：
+  - `GET /health`
+  - `POST /launches`
+  - 请求/响应尽量复用 Local Runtime API 核心字段，额外带上 `client_scope_id`、`egress_profile`、`remote_session_id`
+- Electron 新增只读 WeClaw 读取面：
+  - `listWeclawSessions()`
+  - `getWeclawSession(sessionId)`
+- WeClaw 新增配置：
+  - `agent_os_launch_policy = off | explicit_only | automatic`
+  - 环境变量覆盖：`WECLAW_AGENT_OS_LAUNCH_POLICY`
+- Cloud Runtime Gateway 新增任务级网络配置输入：
+  - `egress_profile`
+  - 可选 `proxy_profile`
+  - 明确禁止写入宿主机全局代理配置
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 本地模式
+  - 覆盖 `ACP only`
+  - 覆盖 `API only`
+  - 覆盖 `ACP + API` 时 ACP 优先
+  - 覆盖 API 配了但 `health` 失败
+  - 覆盖两者都缺失时 UI 禁用与失败语义
+- 云端沙盒
+  - Gateway `health/launches` 合同测试
+  - Hermes `cloud_sandbox -> cloud_runtime -> cloud_executor` 编排测试
+  - LA VPS 上双客户端隔离测试
+  - `vps_direct` 真实验收
+  - `us_residential_rear` 真实验收
+  - `需要家宽后置但后置不可用` 的失败/needs-review 测试
+  - 网络隔离测试：
+    - 启动 cloud task 前后，LA VPS 现有 `Clash Verge` 代理配置不变
+    - 启动 cloud task 前后，宿主机默认出口与系统代理环境变量不变
+    - cloud task 的代理只作用于该任务进程，不影响其他主机流量
+- 微信只读
+  - WeClaw 测试验证：session window 仍更新、ingress 仍上报、launch policy `off` 下不再自动提交 `/agent-os/launches`
+  - Electron 测试验证：会话列表可读、详情严格只读、附件可打开、旧 `weclaw_dispatch` 数据仍能正确显示
+  - 手工验收验证：发一条真实微信消息，确认 `.obsidian/sessions/*.json` 更新，Electron `记录 > 微信会话` 可见，同时 Hermes 不会新建 task
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- LA VPS 是 V1 唯一 cloud gateway 宿主机，但必须按多客户端接入设计。
+- 微信本期是观察通道，不是执行前门。
+- Hermes 本期不新增专门的微信 session API；只读会话以 WeClaw sidecar/session 文件为准。
+- LA VPS 现有 `Clash Verge` 路径属于受保护宿主环境；本项目只能做任务级网络隔离，不能碰主机级代理栈。
+- 如果美国家宽后置出口尚未部署完成，`us_residential_rear` 路径视为阻塞项，不做错误降级。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+三个仓都已提交并推送到各自的 `origin/main`，当前没有未提交残留。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-db99-7e02-acdf-39cf10df9fff
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`/Users/zhangqilong/github代码仓库/longclaw-agent-os` 推送到 `291971f`，提交信息是 `Update runtime orchestration`。  
+`/Users/zhangqilong/github代码仓库/weclaw` 推送到 `4c8f092`，提交信息是 `Expand message handling`。  
+`/Users/zhangqilong/github代码仓库/hermes-agent` 推送到 `47eb98a`，提交信息是 `Add Longclaw gateway support`。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9eb-49a8-7781-95f3-0f644709682f
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+还有一点不要影响LA的VPS目前建立的本机clash verge的网络请求，这个任务是隔离的
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9da-0c17-7841-940e-0ed02d1bea8f
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+微信接力这块先不做，只要把微信的session可以只读即可，这块改造我还没想明白
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da9cf-8926-7642-922f-c4fae358769f
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+需要制定一个计划，1、完整的测试三种不同模式的链接方式。其中本地链接需要判断是本地acp还是请求一个兼容的api 2、云端沙盒模式，需要远程到请求一台服务器。目前我有一台在LA的vps，具体可以参考完善服务器部署与固定美国家宽IP方案这个项目信息  3、微信接力，这个模式比较复杂。目前微信请求是直接到agent acp，中间的形态怎么设计需要讨论
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw Electron 前端重构方案：单人工作台、任务前门优先
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Summary
+基于当前仓库边界和你的选择，这次前端重构按这条主线落地：
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 产品对象固定为“单人高上下文工作台”，不是团队控制台，也不是演示壳。
+- 首页固定为“任务前门”，首屏只服务三件事：发起任务、查看最近任务回执、处理待办。
+- 主导航保留 5 项，但改成图标优先 + 极短中文标签；左栏不再承担状态墙和业务说明。
+- 所有 `Local Work / Cloud Sandbox / WeClaw Dispatch` 改成任务化中文；技术名只保留在说明、调试或元数据层。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Changes
+### 1. 壳层信息架构重组
+- 左侧主栏改成纯主导航骨架，只保留：
+  - `首页`
+  - `记录`
+  - `待办`
+  - `专业`
+  - `能力`
+- 主栏标签长度控制在 2-4 字；选中态、hover、tooltip 负责补充辨识，不再堆长文案。
+- 当前左栏里的运行态健康、Longclaw Core 地址、Signals 路径、本地运行座位等状态，全部从主栏移出。
+- 次级侧栏只保留“当前工作区 / 最近线程 / 待办摘要”三类与当前操作直接相关的信息。
+- 运行态健康与能力底座信息下沉到 `能力` 页，必要时在 `首页` 只显示单条异常提醒，不显示整面状态卡。

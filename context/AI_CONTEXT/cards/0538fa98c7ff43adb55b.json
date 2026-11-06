@@ -1,0 +1,93 @@
+{
+  "id": "019dc4b8-cc64-7960-95ce-6c6a48e648b8",
+  "title": "排查 OpenClaw 认证报错",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019dc4b8-cc64-7960-95ce-6c6a48e648b8",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "ff455b03a907123f463b782ea4452f2b8fb67be24a1bab2fd62599605d8e3214",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#first-request",
+      "timestamp": null,
+      "verbatim": "我刚安装了openclaw，用了另外一个openai的账号进行oa auth，但是目前还是报错⚠️ Agent failed before reply: No API key found for provider \"openai\". You are authenticated with OpenAI Codex OAuth. Use openai/gpt-5.5 with the Codex OAuth profile, or set OPENAI_API_KEY for direct OpenAI API access. | No API key found for provider \"openai\". You are authenticated with OpenAI Codex OAuth。是不是因为我同时开了codex和weclaw cli导致的？因为我的认证走了不一样的"
+    },
+    {
+      "hash": "debb5fac828a95bef50fabaddfc373824fc7064832f105319ef132e504f8b647",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent",
+      "timestamp": null,
+      "verbatim": "帮我优化目前已经连接好的channel。OpenClaw: access not configured."
+    },
+    {
+      "hash": "81a07c6c01ddc9774728ebd33b297ee59e1d64b40d98c4955e646ba20cbc19b5",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent",
+      "timestamp": null,
+      "verbatim": "Your Telegram user id: 8201820721\nPairing code:"
+    },
+    {
+      "hash": "5066e99b2c96b63183caffd847831f040e3f770179aade96994c3d702cca303f",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent",
+      "timestamp": null,
+      "verbatim": "Ask the bot owner to approve with:\nopenclaw pairing approve telegram GXU4UT4G"
+    },
+    {
+      "hash": "6867f9148626911ab4c411a2530068d3ad52fedc0b1a12de45b5b55aed28714c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent",
+      "timestamp": null,
+      "verbatim": "openclaw pairing approve telegram GXU4UT4G"
+    },
+    {
+      "hash": "7c9d1e95651bfd928c51faa9105f35b08810b3fb508842ad78bf5e4ad4777b15",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#recent",
+      "timestamp": null,
+      "verbatim": "- Telegram `default` channel 已启用、已配置、运行中、connected\n- bot 是 `@Longxiaoclaw_bot`\n- pending pairing 已清空\n- allowlist 已落盘到 `~/.openclaw/credentials/telegram-default-allowFrom.json`\n- 当前策略保持为更稳的配置：DM 走 pairing，群聊走 allowlist，群里需要 mention，避免被群消息误触发"
+    },
+    {
+      "hash": "45370090e3e37382979acb523cd20b29dc15505fa99ef6788844b9300bfd744e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627",
+      "timestamp": null,
+      "verbatim": "根因是 OpenClaw 配置里默认模型原来是 `openai/gpt-5.5`，这会走普通 `openai` provider，普通 provider 需要 `OPENAI_API_KEY`。但你安装/登录的是 Codex OAuth profile，它在 OpenClaw 里对应的是 `openai-codex` provider，所以没匹配上。"
+    },
+    {
+      "hash": "03820129bd87b57f0b1cb24619f866309b5ebf020636b5cc4fa38e98c7dea8c4",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627",
+      "timestamp": null,
+      "verbatim": "- 把 [~/.openclaw/openclaw.json](/Users/zhangqilong/.openclaw/openclaw.json:10) 默认模型改成 `openai-codex/gpt-5.5`\n- 给 main agent 绑定了 `openai-codex` OAuth profile\n- 重启了 OpenClaw gateway"
+    },
+    {
+      "hash": "23a94abd260cf6c7006b5acd4778d36b6feef5ecaeafb009c4a83c3a224736e9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627",
+      "timestamp": null,
+      "verbatim": "- `openclaw models status` 现在显示 `missingProvidersInUse: []`\n- gateway 日志显示当前 agent model 是 `openai-codex/gpt-5.5`\n- 最小调用返回了 `OK`，实际 provider 是 `openai-codex`，模型是 `gpt-5.5`"
+    },
+    {
+      "hash": "6d464d87de46ceb05c7e3e889348d20fc09b0d07b2bb036fe0518157e3173cee",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dc4b8-cc64-7960-95ce-6c6a48e648b8#turn:019dc4b9-b65c-7f32-b1e7-0bab5fd71627",
+      "timestamp": null,
+      "verbatim": "还剩一个独立问题：CLI 走 gateway 时提示 `scope upgrade pending approval`，这是设备权限审批，不是 API key/认证问题。我没有自动批准，因为它请求的 scope 包含较高权限。你先在 OpenClaw UI/Telegram/WebChat 里再试一次，原来的 “No API key found for provider openai” 应该已经消失。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

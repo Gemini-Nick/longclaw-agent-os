@@ -1,0 +1,768 @@
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这里 `quote_snapshots` 标 stale 是正确的：当前还是基于最新日线生成的 snapshot，不是真实盘中 quote。东财 `push2delay` 直连可通，下一步应该把它接进 `quote_snapshots` sync，让盘中 quote 变成 true realtime，而不是 bars_latest。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已更新问题清单和状态：[signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一项优先修：把东财 `push2delay` 实时 quote provider 接入 `signals/sync/modules/quote_snapshots.py`，只覆盖 `market_pools`，这样盘中交易链路的 realtime 输入才算闭环。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已按你刚才罗列的问题逐项记录并开始修。问题清单和每项方案在这里：[signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `stock_daily` 不再默认全市场长跑，改为活跃池补数；stale `running` 会自动释放为 `degraded/stale_running_timeout`。
+- `bars` 是 Mongo time-series collection，不能 upsert；已改成“查已存在 dt 后只 insert 缺失数据”。
+- 东财直连实测：`push2delay` 实时 quote 可通，`push2his` 历史 K 线仍 SSL failure。sync 里现在先走东财，失败后走 Sina 历史源写 canonical，runtime 不碰外部源。
+- `signal_pool` 已能基于 `market_pools + bars` 生成每日候选/预警，写入 Mongo `signals`。
+- `index_daily` 修了 yfinance MultiIndex/Series 问题，美股指数能写入 `index_bars`。
+- `/api/health/cache` 修了 `signals` 这类非 `dt` 集合 latest_dt 为空的问题。
+- `data_freshness` 统一回业务 domain，quote snapshot 明确标 `stale`，不再把 bars_latest 伪装成实时 fresh。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+signals=384，其中 generated_signals=13
+index_bars=3103
+quote_snapshots=50
+market_pools=2
+bars=29558
+active pool bars_covered=50/50
+active pool quote_covered=50/50
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- MongoDB 的 Longclaw launchd 服务已准备好，也已加入 `~/.weclaw/services.json`。
+- 现在 `weguard status` 会显示 `mongodb missing`，因为还没有执行 launchd 切换。
+- 当前 Mongo 仍由 `homebrew.mxcl.mongodb-community` 跑着；要切到 `com.zhangqilong.ai.mongodb`，需要先停 Homebrew label，否则会抢 `27017`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步需要你确认我执行 launchd 切换和 signals-sync kickstart。确认后我会执行切换、重启 sync daemon，让新代码进入常驻进程，然后再跑一次 `weguard status` 和 Mongo freshness 验证。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已把问题清单记录到 [signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- P0：MongoDB 没纳入 WeGuard/Longclaw 服务体系；`stock_daily` stale-running；`signals-sync` 需要重启加载新代码。
+- P1：最新交易日口径是 `2026-04-24`，但股票 bars/quote/signal pool 覆盖不完整；US 指数写入失败；Web1 默认启动旧引擎的问题已做代码修复但还要回归。
+- P2：freshness 命名重复、health latest_dt 解析不完整、Web2 兼容层后续还要继续下沉。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经准备好 P0-1 的文件级改动：`com.zhangqilong.ai.mongodb` LaunchAgent、`mongodb-service.sh`、`~/.weclaw/services.json` 的 mongodb 服务项，并完成 plist/json 校验。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步需要你确认，因为会改变本机 launchd 服务状态：停止 `homebrew.mxcl.mongodb-community`，启动 `com.zhangqilong.ai.mongodb`，再验证 WeGuard。Mongo 会短暂断开几秒钟。确认后我继续执行切换。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Signals 数据底座与 Web1/Web2 融合执行计划
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- Mongo 必须补齐 `signals/index_bars/quote_snapshots/market_pools`。
+- Runtime 只读缓存；外部 provider 只由 sync/backfill 调用。
+- Web1 成为唯一入口；Web2 只保留兼容 wrapper。
+- 回测/复盘走 historical；盘中监控/预警/cluster 走 realtime snapshots。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+1. 数据底座修复
+- 将 SQLite `.data/backtest.db.signal_records` 迁移到 Mongo `signals`，迁移脚本改为 idempotent upsert。
+- `index_daily/index_minute` 写入 `index_bars`，兼容期同步写 `bars`。
+- 新增 `market_pools` sync：从白名单、持仓、近期信号、板块成分股、近期请求标的生成活跃池。
+- 新增 `quote_snapshots` sync：只覆盖 `market_pools` 内标的，写短 TTL 实时快照。
+- 新增 `signal_pool` sync：基于 `bars/index_bars/market_pools` 生成候选/预警并写 `signals`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+2. Sync 健康口径
+- sync module 如果 `inserted=0` 且目标集合为空，状态记为 `degraded/error`，不能显示 ok。
+- `stock_daily` stale-running 超时后可重新触发。
+- `provider_health/data_freshness` 写入每个关键集合的 `fresh/stale/pending/empty`。
+- 移除 `board_ranking/concept_ranking` canonical TTL；source snapshots 保留短 TTL。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+3. Gateway 与 Contracts
+- `get_index_bars()` 优先读 `index_bars`，再兼容 `bars`。
+- 新增或补齐 `get_quote_snapshot()`、`get_market_pool()`、`get_signal_pool()`。
+- `contracts.py` 把 `web2.backtest/web2.chart` 改为 `signals.backtest/signals.chart`。
+- contracts 增加 `signals.signal_pool`、`signals.quote_snapshot`、`signals.market_pool`、`signals.index_bars`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+4. Web1/Web2 融合
+- 新增 `signals.services.backtest` 和 `signals.services.cluster`。
+- web1 backtest/workbench 改调 service，不再 import `signals.web2.api.*`。
+- web2 router 只保留兼容层，内部同样调 service。
+- web1 启动不再启动 web2 cluster scheduler；cluster 预热交给 sync。
+- Electron/pack/domain_pack 统一只暴露 web1 base URL，web2 deep link 作为 deprecated 兼容项。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Unit:
+  - migration upsert 重复运行不重复插入。
+  - `get_index_bars()` 优先 `index_bars`。
+  - realtime gateway 不调用 provider。
+  - sync `inserted=0` 不得标记 ok。
+  - web1 routes 不再 import web2 API。
+- Integration:
+  - 迁移后 `signals > 0`。
+  - sync 后 `index_bars/quote_snapshots/market_pools > 0`。
+  - backtest/chart 断网仍读 historical cache。
+  - cluster realtime 只读 snapshots。
+- Runtime:
+  - `bash scripts/python.sh -m pytest tests -q`
+  - `mongosh mongodb://127.0.0.1:27017/signals --eval 'db.signals.countDocuments(); db.index_bars.countDocuments(); db.quote_snapshots.countDocuments(); db.market_pools.countDocuments()'`
+  - `npm run build:electron`
+  - Computer Use 验证 Electron Signals 回测、Terminal cluster、health 状态。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- v1 不做全市场全历史仓库，只覆盖活跃交易池。
+- `bars` 继续作为股票 K 线 canonical；`index_bars` 专门放指数。
+- Web2 先兼容不删除，等 web1/Electron/WeClaw 全部稳定后再下线。
+- 东财继续只在 sync/backfill 直连调用，runtime 不依赖东财。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+目前的数据没有更新到最新的交易日，mongodb的system常驻服务没有生效
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32f-92aa-7d83-a4c7-908cd771a836
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前仍在 Plan Mode，我不能改文件或执行迁移。下面是可直接交给执行轮的实施计划。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+[$karpathy-guidelines](/Users/zhangqilong/.codex/skills/karpathy-guidelines/SKILL.md) 检查目前的数据源和mongodb情况，分析历史和实时数据，重构Signals Web1/Web2 功能整合方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**现状结论**
+MongoDB 是正常运行的，`signals-sync` 也在 launchd/weguard 下运行，但数据层还没达到交易系统要求。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Mongo：`mongodb://127.0.0.1:27017/signals` 可 ping，`DB_ENABLED=True`。
+- 服务：`mongod` PID 526，`signals-sync` PID 547，weguard 显示 `signals-sync running`。
+- Web：当前没有 Signals web/web2 端口在监听，只有 Mongo、Codex、WeClaw。
+- 关键集合：
+  - `bars=2804`，但只有 4 个 symbol：`399001/600000/600519/002759`。
+  - `index_bars=0`
+  - `quote_snapshots=0`
+  - `market_pools=0`
+  - `signals=0`
+  - SQLite `.data/backtest.db` 里 `signal_records=371`，还没迁入 Mongo。
+  - `board_ranking=1197`，latest `2026-04-24`
+  - `concept_ranking=1268`，latest `2026-04-24`
+  - `board_em/ths/sina`、`concept_em/ths/sina` 有实时源快照，latest `2026-04-24`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 历史收盘：
+  - `board_ranking/concept_ranking` 有 canonical 数据。
+  - 但 `board_ranking/concept_ranking` 现在带 90 天 TTL，这不符合“历史 canonical 不过期”的目标。
+  - `bars` 覆盖面太小，不能支撑回测/复盘/候选池。
+  - `index_bars` 为空，而 [index_daily.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/index_daily.py:26) 仍写 `bars`，不是 `index_bars`。
+- 实时/盘中：
+  - 板块/概念 source snapshots 有数据，且 7 天 TTL 合理。
+  - `quote_snapshots=0`，所以个股盘中交易链路没有实时价格输入。
+  - `market_pools=0`，所以盘中扫描不知道该扫哪些股票。
+  - `stock_minute` 也写 `bars`，不是 `quote_snapshots` 或明确的 minute snapshot；见 [stock_minute.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/stock_minute.py:81)。
+- Sync 健康：
+  - `index_daily` 日志显示 Sina/yfinance 全失败，但模块仍记录为 ok，且 `0 bars`。
+  - `stock_daily` 在 `sync_log` 中仍是 `running`，需要 stale-running 检测。
+  - `concept_ths` provider latency 约 104 秒，必须低频/硬超时，不能参与 runtime。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- web1 启动时直接启动 web2 cluster scheduler：[web/app.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/app.py:30) 和 [web/app.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/app.py:75)。
+- web2 自己也在 lifespan 里启动 scheduler：[web2/app.py](/Users/zhangqilong/github代码仓库/Signals/signals/web2/app.py:18)。
+- web1 workbench 直接 import web2 backtest/cluster：[workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:11)。
+- web1 backtest analyze/scan 仍是 web2 wrapper：[backtest.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/backtest.py:655)。
+- contracts 还写 `web2.backtest/web2.chart`：[contracts.py](/Users/zhangqilong/github代码仓库/Signals/signals/data/contracts.py:63)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**重构方案**
+1. 先修数据底座，不先修页面  
+   目标集合必须变成：
+   - historical canonical：`bars/index_bars/board_ranking/concept_ranking/signals`
+   - realtime snapshots：`quote_snapshots/board_em/board_ths/board_sina/concept_*`
+   - pool/meta：`market_pools/provider_health/data_freshness/sync_log`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. sync daemon 扩展为唯一写入者  
+   在 [sync/modules/__init__.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/__init__.py:12) 增加：
+   - `market_pools`
+   - `quote_snapshots`
+   - `signal_pool`
+   - `index_bars`
+   并把 `index_daily/index_minute` 改成写 `index_bars`，保留 `bars` 兼容一版。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 信号池先落地  
+   把 SQLite 371 条 `signal_records` 迁到 Mongo `signals`，但迁移脚本要从 `insert_many` 改成 upsert；当前脚本在 [migrate_signals_to_mongo.py](/Users/zhangqilong/github代码仓库/Signals/scripts/migrate_signals_to_mongo.py:39) 直接插入，不适合重复运行。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. Web1/Web2 服务化融合  
+   新建统一 service：
+   - `signals.services.backtest`
+   - `signals.services.cluster`
+   - `signals.services.signal_pool`
+   web1/web2 router 都只调用 service。web2 保留兼容路由，不再有独立 scheduler。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+5. 明确历史/实时规则  
+   - 回测、复盘、盘后分析：只读 historical canonical。
+   - 盘中监控、预警、cluster：只读 realtime snapshots。
+   - 缺数据返回 `pending/empty/stale + reason`，不再假装有兜底正常数据。
+   - 外部源只允许 sync/backfill 调用，runtime 不现场拉 provider。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc32c-11ad-70f1-af30-46e9298c8c7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验收标准**
+- `signals > 0`
+- `index_bars > 0`
+- `quote_snapshots > 0`
+- `market_pools > 0`
+- `bars` 至少覆盖活跃池，而不是 4 个 symbol。
+- `board_ranking/concept_ranking` canonical 去 TTL。
+- web1 不再 import `signals.web2.api.*`。
+- Electron/WeClaw 只连 web1 base URL。
+- sync 不能再出现“0 bars 但 ok”。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf7b-e88d-7e03-81b8-1008f6dab7ac
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+[$karpathy-guidelines](/Users/zhangqilong/.codex/skills/karpathy-guidelines/SKILL.md) 1、web1/web2 整合方案 2、signals 集合仍为空，候选/预警还没形成持久化信号池。
+quote_snapshots、index_bars、market_pools 仍为空，盘中交易链路还缺实时缓存输入。
+web2 现在只是被 web1 复用的内部实现，代码还没真正拆到统一 service 层。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6b-28d6-7ff3-b7a6-827762c3ab17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+本次修复：
+- Signals web1 新增 canonical 回测入口：`/api/backtest/analyze`、`/api/backtest/scan`，Electron 不再需要知道 web2。见 [backtest.py](</Users/zhangqilong/github代码仓库/Signals/signals/web/api/backtest.py:626>)。
+- Electron Backtest 只读 `LONGCLAW_SIGNALS_WEB_BASE_URL`，不再依赖 `LONGCLAW_SIGNALS_WEB2_BASE_URL`。见 [BacktestWorkbench.tsx](</Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:610>)。
+- 概念板块 NaN 不再静默变 0；脏数据会跳过并记录数量。见 [industry.py](</Users/zhangqilong/github代码仓库/Signals/signals/layers/industry.py:1856>)。
+- UI 残留 web2 文案已改为 `Signals/gateway`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6b-28d6-7ff3-b7a6-827762c3ab17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果：
+- `npm run build:electron` 通过。
+- `npm test -- electron/src/renderer/taskLaunchState.test.ts`：8 passed。
+- `bash scripts/python.sh -m pytest tests/test_web_smoke.py::TestBacktestAPI tests/test_data_gateway.py -q`：11 passed。
+- 直接 API 验证：`/api/backtest/analyze?code=002759&freq=daily` 返回 `bars / fresh / 484 bars / 55 signals / 27 sim_trades`。
+- Computer Use 验证 Electron Backtest：点击运行后页面显示 `55 signals / 24 trades / bars fresh`，不再 `Failed to fetch`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6b-28d6-7ff3-b7a6-827762c3ab17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+剩余交易系统问题仍然明确存在：
+- `signals` 集合仍为空，候选/预警还没形成持久化信号池。
+- `quote_snapshots`、`index_bars`、`market_pools` 仍为空，盘中交易链路还缺实时缓存输入。
+- web2 现在只是被 web1 复用的内部实现，代码还没真正拆到统一 service 层。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6b-28d6-7ff3-b7a6-827762c3ab17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+后续 web1/web2 整合方案我建议这样收：
+1. `web1` 定为唯一 canonical API/UI 入口。
+2. `web2` 的回测、scan、cluster 实现迁移到 `signals/trading/*` 或 `signals/services/*`。
+3. `web1 router`、Electron、run.py 都只调用 service/gateway。
+4. `web2 static/API` 进入兼容期，只转发到 canonical API。
+5. 等 Electron 和 web1 都稳定后，删除 web2 对外服务边界，只保留必要算法模块。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$karpathy-guidelines](/Users/zhangqilong/.codex/skills/karpathy-guidelines/SKILL.md) 是的。你需要先明确你的修复目标，核心是围绕整个交易系统来修复
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**修复目标**
+1. Electron 只消费一个 Signals canonical API。  
+   不再让 Electron 同时理解 `web1`、`web2`，也不做 Electron 层 fallback。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 数据缺失必须显式暴露。  
+   不能把 NaN、空集合、provider 未配置、web2 不存在静默兜底成“看起来能跑”。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. Runtime 只读缓存。  
+   Electron / web / run.py 不应该现场拉外部行情；sync/backfill 才能请求外部源。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**我刚才的问题**
+我把 `NaN` 清洗成 `0` 是错的。  
+这会掩盖数据质量问题，让交易评分看起来有效，但其实输入是坏的。下一步我会先撤掉这处改动，改成：坏记录被过滤或标记 `partial/error_reason`，而不是静默变成 0。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**本轮最小修复范围**
+1. 撤回我刚才在 `Signals/signals/layers/industry.py` 加的静默清洗。
+2. 在 Signals web1 补齐 canonical backtest API，例如：
+   `GET /api/backtest/analyze`
+3. 这个 API 内部可以复用现有 web2 逻辑，但对 Electron 暴露的是 Signals web1 契约。
+4. Electron Backtest 改成只走：
+   `LONGCLAW_SIGNALS_WEB_BASE_URL`
+5. 如果关键缓存缺失，API 返回明确状态：
+   `empty | pending | stale | partial`
+   并带 `reason`，不是 `Failed to fetch` 或空白。
+6. 交易系统先不扩展新策略，只保证现有信号/回测链路可用。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf6a-2d9a-7ef1-8b68-4be218bedf2b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验收标准**
+- `npm run build:electron` 通过。
+- Signals 测试通过，至少覆盖 canonical backtest API。
+- 启动 Signals web 后：
+  `GET /api/backtest/analyze?code=002759&freq=daily`
+  能返回 K 线、signals、kpi/sim_kpi 或明确的数据缺失原因。
+- Electron Backtest 点击运行不再 `Failed to fetch`。
+- Computer Use 验证：
+  Strategy 页面能加载；
+  Backtest 页面能运行；
+  数据缺失时页面显示业务原因，而不是网络错误。
+- 不引入 Electron 层 web2 fallback。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf68-fc22-71d1-bbcb-3bb7695949ca
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**核心边界**
+- Electron 只消费一个稳定的 Signals 业务契约。
+- Signals 内部决定数据链路，但不能静默 fallback 掩盖问题。
+- web2 如果保留，只能是 Signals 内部兼容实现，不应该暴露成 Electron 必须知道的第二个服务。
+- Runtime 不应该现场拉外部行情；sync/cache/gateway 才是数据入口。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf68-fc22-71d1-bbcb-3bb7695949ca
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+正确修复是把 Signals web1 补齐成 canonical 回测接口，内部复用已有 web2 逻辑也可以，但 Electron 不应该感知 web2。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf68-fc22-71d1-bbcb-3bb7695949ca
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**数据目标**
+- historical 回测只读 `bars/kline_cache/disk imported cache`
+- 实时交易只读 `quote_snapshots/index_bars/market_pools`
+- 数据缺失要返回 `empty/pending/stale + reason`
+- 不要把 NaN、空集合、未配置 provider 静默兜底成“看起来可用”
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf68-fc22-71d1-bbcb-3bb7695949ca
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我下一步会按这个方向修：先撤掉/调整刚才的 NaN 静默清洗思路，改成“识别脏字段 + 过滤或返回 partial reason”；然后补 Signals web1 canonical backtest API；最后让 Electron Backtest 只认 `LONGCLAW_SIGNALS_WEB_BASE_URL`。不再做 Electron 层 web1/web2 fallback。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+重新跑一下npm build，总结目前的数据和业务逻辑问题，包括交易系统，然后用computer use做一次测试验证
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+先结论：`npm run build:electron` 已重新跑通，它包含 `npm run build`。Electron 也用 Computer Use 打开验证了：`Strategy` 页面能加载 Signals 数据、K 线图和行业/概念摘要；但 `Backtest` 点击运行后报 `Failed to fetch`，所以当前还没有形成完整的“交易信号 -> 回测 -> 候选 -> 执行”闭环。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验证结果**
+- Build：通过  
+  `longclaw-agent-os/package.json` 里 `build:electron = npm run build && node electron/build.mjs`，本轮执行成功。
+- Electron 启动：`npm run electron:start` 成功，Computer Use 看到「隆小侠 Agent OS」主窗口。
+- Strategy 页面：通过  
+  能看到创业板指 K 线、状态「已就绪」、行业/概念摘要和候选面板。
+- Backtest 页面：失败  
+  输入 `002759` 后点击运行，页面进入 `error`，显示 `Failed to fetch`。
+- 临时启动的 Signals web 和 Electron 进程已清掉，`8011` 不再监听。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**当前数据问题**
+- Mongo 有核心缓存，但不完整：
+  - `bars=2804`
+  - `board_ranking=1197`
+  - `concept_ranking=1268`
+  - `board_em=496`
+  - `concept_sina=350`
+  - `data_freshness=12`
+  - `provider_health=12`
+  - `trades=18`
+  - `signals=0`
+- 空集合仍然影响交易系统：`index_bars`、`quote_snapshots`、`market_pools`、`rotation_history`、`cluster_history`、`refresh_requests` 都为空。
+- Futu 端口 `127.0.0.1:11111` 当前不通；dashboard 里 Tushare 也因为 token 未配置处于 degraded/critical。
+- 概念板块链路还有 bug：Signals web 日志出现 `cannot convert float NaN to integer`，定位在 [industry.py](</Users/zhangqilong/github代码仓库/Signals/signals/layers/industry.py:1868>)，`up_count/down_count` 遇到 NaN 直接 `int()` 会导致 L2 概念排行返回空。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**当前业务逻辑问题**
+- Strategy 页目前更像“行情/图表/板块观察面”，不是完整交易系统。因为 `signals=0`、backtest summary 总数为 0，所以买入候选、卖出预警、回测积压都为空。
+- Backtest 仍然强依赖 `LONGCLAW_SIGNALS_WEB2_BASE_URL`。代码入口在 [BacktestWorkbench.tsx](</Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:610>)，请求的是 `/api/backtest/analyze`，见 [BacktestWorkbench.tsx](</Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:671>)。本轮只启动了 Signals web `8011`，没有 web2 服务，所以点击运行失败。
+- Electron 主进程已经区分了 `LONGCLAW_SIGNALS_WEB_BASE_URL` 和 `LONGCLAW_SIGNALS_WEB2_BASE_URL`，见 [main.ts](</Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:1137>)。但业务上这会让 Strategy 走新 pack/dashboard，Backtest 仍走旧 web2，融合还没完成。
+- `electron:dev` 不是自包含脚本，它会加载 `localhost:5173`，没有 Vite dev server 时会白屏；`electron:start` 是本轮可用路径。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**优化优先级**
+1. P0：修 `NaN -> int`，否则 L2 概念链路会随机空白。
+2. P0：把 Electron Backtest 改成优先走 Signals 新 gateway/workbench API，或启动并显式配置 `LONGCLAW_SIGNALS_WEB2_BASE_URL`，否则回测按钮不可用。
+3. P0：补 `quote_snapshots`、`index_bars`、`market_pools`，否则盘中交易信号没有缓存化实时输入。
+4. P1：让 sync/backfill 生成或迁移 `signals` 集合，否则 trading candidates 永远是 0。
+5. P1：Futu OpenD 和 Tushare 健康状态要从“配置存在”升级成“端口/API 可用”，当前 Futu 实测端口没通。
+6. P1：把 UI 上 `web2 回测` 的旧表述收敛成 Signals 统一交易工作台，减少未来继续混淆。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf5b-f004-7c92-b0f9-8bfe976c5d25
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+本轮没有改代码；只做了 build、运行、Computer Use 验证和问题定位。longclaw-agent-os 当前还有既有未提交改动，我没有动它们。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf56-698c-7ef3-a1c3-500fcd3fac17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+Signals 新提交：
+`c581c2b Expose Signals pack dashboard contract`
+- 新增 `/api/pack/dashboard`
+- `SignalsPack.dashboard()` 现在返回 Electron `SignalsDashboardSchema` 所需完整 contract
+- dashboard 读取 gateway snapshot/cache，不触发外部源
+- backtest 摘要读取做了防御，避免 Mongo collection bool 异常导致 dashboard 500
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf56-698c-7ef3-a1c3-500fcd3fac17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+Electron 新提交：
+`64febe3 Prefer Signals pack dashboard contract`
+- `longclaw-agent-os` 优先请求 `LONGCLAW_SIGNALS_WEB_BASE_URL/api/pack/dashboard`
+- 如果 canonical dashboard 不可用，才回退旧的 web1/web2 拼装逻辑
+- `listPacks()` 也补上 Signals web/web2 URL metadata
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf56-698c-7ef3-a1c3-500fcd3fac17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证：
+- Signals: `33 passed`
+- Electron client test: `7 passed`
+- Electron build: `npm run build:electron` 通过，`Build complete`
+- 两个 repo 已 push：
+  - `signals main -> c581c2b0b9b6ed7afbfb0c1948c85ced985ad9ec`
+  - `longclaw-agent-os main -> 64febe3a03247611efd8272a4b20cacb16593917`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf56-698c-7ef3-a1c3-500fcd3fac17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+注意：`longclaw-agent-os` 工作区还有未提交的 WeChat/plugin-dev 相关改动和 `reports/`，我按边界没有碰它们。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf43-9d67-7241-a898-dc20b21985b6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**提交与 Push**
+- `Signals`: `d7adffe Refactor Signals runtime data gateway`
+  - 已推到 `Gemini-Nick/signals main`
+  - remote main: `d7adffe311f6ac4ede669c8320d256064f0fbfea`
+- `longclaw-agent-os`: 已把本地 7 个提交推到 GitHub
+  - remote main: `4808eb6edd5d7139f840d7ffba476d4d8f6c69e9`
+  - 工作区只剩 `?? reports/` 未跟踪目录，我没有提交它。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf43-9d67-7241-a898-dc20b21985b6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**subagent 确认后修掉的 P0**
+- `get_concept_rankings()` gateway miss 后不再走新浪/东财/THS 实时兜底。
+- `get_industry_representatives()` 不再做东财健康探测，不再调用 `stock_board_change_em()`。
+- L2 行业运行时改读 `market_pools` / gateway / Mongo / disk cache。
+- `get_industry_stocks()`、行业 K 线、名称映射改成 runtime cache-only。
+- `/api/backtest/health/push2his` 默认只读 `provider_health`，只有显式 `live=true` 才直连东财做人工诊断。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf43-9d67-7241-a898-dc20b21985b6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验证**
+- `bash scripts/python.sh -m pytest tests -q`
+  - `31 passed`
+  - 仅 FastAPI deprecation warnings。
+- `bash scripts/python.sh -m py_compile ...`
+  - 通过。
+- `git diff --check`
+  - 通过。
+- `npm run build:electron`
+  - `Build complete.`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf43-9d67-7241-a898-dc20b21985b6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前结论：Signals 数据链路已经按“runtime 只读缓存 / sync 负责外部源”提交；Electron 项目也已 build 并同步 GitHub。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf40-3ff1-7cc3-998d-d4971cb97b7f
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$autoplan](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-autoplan/SKILL.md) 这俩项目的关系要重新梳理一下，要不然你以后更会混乱，我希望最终达到的目标是融合在一起
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbf40-3ff1-7cc3-998d-d4971cb97b7f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `longclaw-agent-os` = Electron 主应用、控制台、治理、启动、编排、最终用户入口。
+- `Signals` = 金融数据与交易信号能力包，负责 data gateway、Mongo/cache、sync、review、backtest、cluster、chart。
+- 融合目标是：用户只从 Electron 进，Electron 只调 Signals 的稳定 API/Pack Contract，不再让两个 UI、两套 schema、两套启动逻辑并行抢主入口。

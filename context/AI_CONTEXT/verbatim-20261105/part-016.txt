@@ -1,0 +1,856 @@
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+~/.weclaw/services.json
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```json
+{
+  "label": "com.zhangqilong.ai.signals.sync",
+  "domain": "gui",
+  "uid": 501,
+  "restart_base_seconds": 60,
+  "max_backoff_seconds": 900,
+  "name": "signals-sync",
+  "service_type": "service"
+}
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 当前 `Signals` 本机 `DB_ENABLED=False`。
+- 必须让 launchd 脚本显式加载 `MONGO_URL`。
+- 否则 sync daemon 会启动即无效。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+`signals.sync` 从“旧集合写入器”升级为“数据预热器”。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- 盘中 job：更新 source snapshots。
+- 盘后 job：生成 canonical close snapshots。
+- 周末 job：更新成分股。
+- 每次写入 `sync_log/provider_health/data_freshness`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- `cluster_industries()` 实时模式读 `board_em/ths/sina`，历史模式读 `board_ranking`。
+- `get_industry_representatives()` 接收 `mode/as_of`，不再自己猜。
+- `get_concept_rankings()` 接收 `mode/as_of`，historical 优先 `concept_ranking`，realtime 才读 `concept_sina/em/ths`。
+- `board_cons` 使用最新 `board_ranking` 的 canonical 行业名，不再无日期过滤扫历史。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+```text
+DataRequest(domain=kline, mode=historical, purpose=backtest)
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 历史 chart 默认 historical。
+- 盘中 chart 如需要最新 30m，可显式 realtime。
+- 返回数据源和 stale 状态，前端显示“Mongo历史 / 实时新浪 / stale snapshot”。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+| Failure | Expected Behavior |
+|---|---|
+| 东财 push2his 挂 | historical 继续读 Mongo/disk/Sina |
+| 东财 board 302 | realtime 跟随 push2delay 或降级 THS/Sina |
+| Mongo 未配置 | launchd 启动失败并写清晰日志 |
+| Mongo stale | API 返回 stale reason，不静默当成最新 |
+| realtime 源失败 | 返回最近 snapshot + `is_stale=true` |
+| source snapshots 缺失 | cluster 降级 canonical，不空白 |
+| canonical 缺失 | sync 补收盘数据，前台显示 pending/degraded |
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- Unit:
+  - `IntentResolver`: `as_of < today` 必须 historical。
+  - `backtest` purpose 必须 historical。
+  - `today + market open + purpose=intraday` 必须 realtime。
+  - realtime 失败不写 canonical。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Integration:
+  - `get_kline(historical)` 断网仍能读 Mongo/disk。
+  - `get_concept_rank(historical)` 优先 `concept_ranking`。
+  - `get_concept_rank(realtime)` 优先 `concept_sina/em/ths`。
+  - `cluster_industries(realtime)` 多源 merge。
+  - `cluster_industries(historical)` canonical fallback。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+- Runtime:
+  - `launchctl print gui/$(id -u)/com.zhangqilong.ai.signals.sync`
+  - `~/.longclaw/runtime-v2/bin/weguard status`
+  - `tail -f /tmp/longclaw-guardian/signals.sync.launchd.log`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- CEO: 方向应从“修东财请求”升级为“数据平面产品化”。只修接口会继续反复坏。
+- Eng: 最大风险是 schema 分裂和隐式 mode 判断。必须先引入 `DataRequest` 和 gateway。
+- DX: 需要健康接口和明确错误信息，否则以后每次都是翻日志猜是哪条链路坏。
+- Design: 本次不是 UI 方案，跳过视觉设计审查。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+- 已确认核心前提：历史收盘数据缓存优先，实时行情请求才走实时源。
+- `board_ranking/concept_ranking` 是 historical canonical。
+- `board_em/ths/sina` 和 `concept_em/ths/sina` 是 realtime/source snapshot。
+- launchd 管的是 Signals sync daemon，不是 MongoDB 数据库进程本身。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+核心变更：
+- 新增统一网关：
+  - [models.py](/Users/zhangqilong/github代码仓库/Signals/signals/data/models.py)
+  - [gateway.py](/Users/zhangqilong/github代码仓库/Signals/signals/data/gateway.py)
+- `web / web2 backtest` 现在强制 `DataRequest(mode=historical, purpose=backtest)`，不走实时行情链路。
+- `industry / concept / cluster` 改为通过 gateway 区分 historical/realtime。
+- `board_ranking / concept_ranking` 作为 historical canonical。
+- `board_em/ths/sina`、`concept_em/ths/sina` 作为 realtime source snapshot。
+- 新增健康接口：
+  - `/api/health/cache`
+  - `/api/health/data-sources`
+- 新增 launchd：
+  - `/Users/zhangqilong/Library/LaunchAgents/com.zhangqilong.ai.signals.sync.plist`
+  - `/Users/zhangqilong/.longclaw/runtime-v2/bin/signals-sync.sh`
+- 已加入 `~/.weclaw/services.json`，`weguard status` 能看到 `signals-sync`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+东财直连已经改完：
+- [proxy.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/proxy.py) 里的 `em_proxy()` 现在不再注入代理，即使传了 `proxy_url` 也忽略。
+- 它会临时清掉 `HTTP_PROXY/HTTPS_PROXY/ALL_PROXY`，保证 sync 里的东财请求直连。
+- 实测 `ak.stock_board_concept_name_em()` 直连成功，返回 `491` 条概念板块。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果：
+- `bash scripts/python.sh -m pytest tests -q`：`24 passed`
+- `py_compile`：通过
+- `plutil -lint`：launchd plist 通过
+- Computer Use 浏览器验证：
+  - `http://127.0.0.1:18012/api/backtest/summary` 返回 `{"status":"ready","mode":"historical","data_source":"gateway"}`
+  - `http://127.0.0.1:18012/api/social/brief` 快速返回，不再卡在东财外部请求
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前唯一运行态阻塞：
+- `signals-sync` 已被 launchd 加载，也被 watchdog 识别，但现在是 `stopped LAST_EXIT=2`。
+- 原因明确：本机没有配置 `MONGO_URL`，日志在 `/tmp/longclaw-guardian/signals.sync.launchd.log`：
+  - `MONGO_URL is not configured...`
+- 我没有伪造 Mongo 配置；等 `Signals/.env` 或 `~/.signals.env` 写入 `MONGO_URL` 后，launchd 会自动拉起有效 sync daemon。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea8-e542-7e23-b93c-3ba95eba65d0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+另外注意：本机 `8011` 上还有一个旧的常驻 Signals Web Python 进程，没加载这次代码；我验证用的是临时 `18012`，验证后已关闭。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea4-4d02-78c3-a1b5-f452d55a3997
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你需要先区分是历史收盘数据还是实时行情数据，如果请求是实时行情走实时行情接口，如果请求是历史，应该优先走缓存
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea4-4d02-78c3-a1b5-f452d55a3997
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+对，这个分层必须放在最前面。现在的问题不是“哪个源优先”，而是代码没有先判断请求意图：`历史收盘数据` 和 `实时行情数据` 被混在一条 fallback 里了。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea4-4d02-78c3-a1b5-f452d55a3997
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$autoplan](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-autoplan/SKILL.md) 你需要重新梳理整个架构
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea4-4d02-78c3-a1b5-f452d55a3997
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已按 `/autoplan` 重新梳理。关键结论：Signals 不能继续用“一个 fallback 链处理所有数据”。必须先分 `historical close` 和 `realtime quote`，再分 `canonical` 和 `source snapshot`。这是整个架构的主轴。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbea2-1629-7b40-b36d-cf9605608598
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+你说得对。前一版我把行业/概念链路讲错了：它不是一个清晰的 `board_ranking/concept_ranking` 链路，而是两套历史模型混在一起，导致缓存、聚类、代表股、概念排行读的不是同一批数据。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe9f-0c36-70a1-a675-e11201c52891
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你需要做两件事1、singals mongodb做成launchd，和目前已有的 weclaw bridge，claude、codex等系统级别service一致，同时保持着受到watchdog守护  2、重新梳理已有的signals数据链路，并且提出系统级别的优化方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe9f-0c36-70a1-a675-e11201c52891
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前要做的不是“给现有 Mongo 加个 cron”这么简单，而是把 Signals 数据同步纳入你已有的 `launchd + weguard/watchdog` 体系，并补齐 `MONGO_URL` 配置。只读检查结果：本机已有 `weclaw/claude/codex/guardian/repo-scheduler` LaunchAgents，但没有 Signals；`Signals` 当前 `DB_ENABLED=False`，说明本机运行态没有读到 `MONGO_URL`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe9c-25c5-7812-9225-26b2cfd17fd3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 代码里有 `signals.sync` 同步引擎和 `deploy/cron/signals-cron` 模板。
+- 但本机当前没有注册 `signals` 相关 `crontab`，也没有 `launchd` 常驻任务。
+- 所以现在 Mongo 只是“被动缓存”：web/web2 请求或某些模块成功后顺手写入，不是稳定的预热数据层。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe97-f3d1-7b42-a799-d46d47074e48
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你列一下，目前signals项目各模块数据源的获取链路图。包括web/web2所有的数据源，分析一下有没有更好的解决方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe97-f3d1-7b42-a799-d46d47074e48
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+基于当前代码只读梳理，`signals` 现在不是一条统一数据链，而是 `web` 运行态分析、`web2` 交互分析、缓存/持久化三套链路并行，且有重复取数逻辑。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `push2.eastmoney.com` 板块/列表类接口：**能通**
+   - `17.push2.eastmoney.com` / `79.push2.eastmoney.com` 会先返回 `302`
+   - 跟随到 `push2delay.eastmoney.com` 后能拿到 JSON
+   - 所以这类接口的关键是：**必须 follow redirect**，或者直接请求 `push2delay` 域名
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. `push2his.eastmoney.com` K 线接口：**当前从这台机器/当前出口仍不通**
+   - 默认请求：TLS 成功，GET 后 `Empty reply from server`
+   - `--noproxy '*'`：一样失败
+   - 显式走 `127.0.0.1:7897`：一样失败
+   - 强制绑定物理网卡 `en0` + 真实 IP：一样失败
+   - Python `requests trust_env=True`：`ProxyError`
+   - Python `requests trust_env=False`：`SSLError`
+   - 加浏览器 UA、Referer、JSONP `cb`、HTTP 明文、先打开 quote 页面取 cookie，都没解决
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以：**虚拟网卡/TUN/fake-ip 参与了路径，但不是唯一原因，也不是必要原因。**  
+因为我绕过代理环境、绑定 `en0` 和真实 IP 后，`push2his` 仍然被服务端断开。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**当前网络证据**
+- 系统代理开着：`127.0.0.1:7897`
+- `push2his.eastmoney.com` 系统解析有 fake-ip：`198.18.0.5`
+- 真实 DNS 解析是：`101.226.30.221` / `61.129.129.199`
+- 默认路由命中：`utun1024 -> 198.18.0.1`
+- 但强制 `en0 + 真实 IP` 仍然失败
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**外部资料对照**
+- AkShare GitHub issue 里也有同类 `RemoteDisconnected: Remote end closed connection without response` 问题，不是本机独有：[akshare issue #6108](https://github.com/akfamily/akshare/issues/6108)
+- 有经验帖提到高频调用 `stock_zh_a_hist` 会被东财主动断开，甚至需要打开东财网页并登录后缓解：[博客园记录](https://www.cnblogs.com/snowlove67/p/19015348)
+- 常见示例会加 UA / Referer / `cb` / `ut` 参数，但我这轮实测这些对当前 `push2his` 断连无效：[示例参考](https://blog.csdn.net/Jarvan_I/article/details/136620713)
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `push2` 板块接口：改成自动 follow redirect 或直接走 `push2delay`，可以连通。
+- `push2his` K线接口：当前不是简单改请求头能连通，需要换“出口/会话/指纹”中的至少一个：
+  - 换网络出口验证，比如手机热点或不同代理节点；
+  - 用真实浏览器登录东财后复用 cookie/session 再测；
+  - 降低请求频率并做退避；
+  - 在代码里把 `push2his` 视为不稳定源，不作为唯一实时 K 线来源。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe93-8a21-7681-a4e2-2f561584008f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**对 Signals 的建议**
+- 不要用“东财健康”一个状态混合所有东财接口。
+- 拆成：
+  - `eastmoney_push2_board`: 当前可用，需 follow redirect
+  - `eastmoney_push2his_kline`: 当前 degraded
+- K线链路优先走：本地缓存 / Mongo / 新浪 / 其他源，`push2his` 只作为可选源。
+- `push2his` 失败时返回结构化降级原因，不要让回测直接 500。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+拆解一下东财的请求，是因为我目前使用虚拟网卡+规则的原因导致的么？不要依赖旧的日志信息
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：**不完全是“虚拟网卡 + 规则”导致，但它确实参与了路径；当前东财问题更像两类问题叠加。**
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 系统代理开启：`HTTP/HTTPS/SOCKS -> 127.0.0.1:7897`
+- 东财域名路由：`push2his.eastmoney.com -> utun1024 -> 198.18.0.1`
+- 系统 DNS 对 `push2his.eastmoney.com` 有时返回 fake-ip：`198.18.0.5`
+- 公共 DNS 查到真实 IP：`101.226.30.221` / `61.129.129.199`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**拆解结果**
+1. `push2his.eastmoney.com` K线接口现在坏：
+   - 默认路径：TLS 成功，GET 后 `Empty reply from server`
+   - `--noproxy '*'`：一样失败
+   - 强制代理 `127.0.0.1:7897`：一样失败
+   - 强制绑定 `en0` + 真实 IP：一样失败
+   - Python `requests trust_env=True`：`ProxyError`
+   - Python `requests trust_env=False`：`SSLError`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以：**TUN/规则会影响它，但不是唯一原因。即使绕过代理环境、绑定物理网卡，`push2his` 仍然断。**
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. `push2.eastmoney.com` 板块接口不是完全坏：
+   - `17.push2.eastmoney.com` / `79.push2.eastmoney.com` 当前返回 `302`
+   - 跟随到 `push2delay.eastmoney.com` 后能正常返回 JSON
+   - 这说明东财“板块类接口”当前可用，关键是要正确 follow redirect。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**判断**
+- 你的 Clash TUN/fake-ip 当前确实把东财流量纳入了虚拟网卡路径。
+- 但 `push2his` 的 K线失败不是单纯“规则走错”能解释，因为强制 `en0 + 真实 IP` 后仍失败。
+- 更可能是：`push2his` 对当前出口/TLS/连接特征不友好，Clash/TUN 又让 Python 报错表现更混乱。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**建议优化**
+1. Signals 里把东财拆成两个健康状态：
+   - `push2his_kline`: 当前不健康
+   - `push2_board_delay`: 当前健康
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 对板块接口：显式允许 `requests` follow redirect，或直接优先请求 `push2delay.eastmoney.com`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 对 K线接口：不要再把 `push2his` 当唯一实时源。优先级改成：
+   - 本地缓存 / Mongo
+   - 新浪
+   - 东财 `push2his`
+   - 如果 `push2his` 失败，返回结构化降级原因，不要 500
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe8f-467a-7033-983d-1a957b8253ba
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. 网络侧可以验证一轮：
+   - Clash 里给 `DOMAIN-SUFFIX,eastmoney.com,DIRECT`
+   - 同时排除 fake-ip 或加真实 DNS
+   - 再测 `push2his`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe7c-a83a-7660-8b21-3fa985feab37
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `Signals web` 现在是运行中的，但不是 launchd 级别的真正常驻服务。
+   - `8011`: `run.py --mode web --port 8011`，PID `16439`
+   - `6008`: `uvicorn signals.web2.app:app --port 6008`，PID `16425`
+   - 它们挂在两个 detached `screen` session 里：
+     - `16378.longclaw-signals-web-8011`
+     - `16375.longclaw-signals-web2-6008`
+   - 所以它们会持续跑到进程/screen 被杀或机器重启，但没有 launchd 自动拉起能力。`launchctl list` 里没有 Signals job。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe7c-a83a-7660-8b21-3fa985feab37
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 东财请求仍然有问题。
+   - 启动日志里东财健康探测 3 次 `TimeoutError`，然后触发全局熔断 300 秒。
+   - 当前直接访问 `push2his.eastmoney.com` 返回 `curl: (52) Empty reply from server`。
+   - Web2 回测 `399006 daily` 现在仍失败，返回：
+     `所有数据源均失败（Mongo bars/磁盘缓存/东财/新浪/MongoDB kline_cache）`
+   - 日志里东财具体错误是：
+     `HTTPSConnectionPool(host='push2his.eastmoney.com', port=443): Max retries exceeded`
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe7c-a83a-7660-8b21-3fa985feab37
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 不是所有功能都坏。
+   - `8011 /api/workbench/shell` 正常。
+   - `6008` 首页正常。
+   - `002759 daily` 回测正常，数据源是 `disk_cache`。
+   - `cluster/latest` 正常返回概念聚类，但行业部分显示 `行业数据加载中`，说明当前主要靠缓存/新浪/THS 兜底，不是东财完全恢复。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe7c-a83a-7660-8b21-3fa985feab37
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我建议下一步优先做两件事：把 Signals web/web2 做成 launchd 常驻服务；然后单独修东财链路，重点查 Clash/TUN/no_proxy 与 `push2his.eastmoney.com` 的直连策略。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe74-2a2e-7ea2-a00b-8edd87ff430f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：这次 Electron 运行验证通过。窗口真实渲染，非白屏；策略、微信、工厂、回测、执行页都能点击切换；回测页点 `运行` 后返回并绘制结果。Observation 统计是 `events=60`、`api_timings=39`、`error_events=0`、`failed_api=0`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe74-2a2e-7ea2-a00b-8edd87ff430f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Electron runtime 有 dev-only CSP 安全警告：renderer 没有 CSP 或用了 `unsafe-eval`。
+- Electron 有 `console-message` 参数弃用警告，需要迁移到新的 `WebContentsConsoleMessageEventParams` 事件对象。
+- 执行页显示 `due-diligence runtime fetch failed / 降级`，这是下游服务状态暴露，不是 Electron 崩溃。
+- 一条 macOS 输入法相关日志：`IMKCFRunLoopWakeUpReliable`，这次不影响渲染和点击。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe74-2a2e-7ea2-a00b-8edd87ff430f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证证据已经补进报告：[build-assessment-2026-04-24.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/build-assessment-2026-04-24.md)
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe74-2a2e-7ea2-a00b-8edd87ff430f
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+运行态 observation 在这里：[observation.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/product-observations/20260424t074635z-codex-computer-use-build-runtime-test/observation.md)
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe72-4db5-73b2-850a-5c410f2cec26
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `npm run build`：通过，无 TypeScript 编译错误。
+- `npm run build:electron`：通过，Electron main/preload/renderer 三段 bundle 都成功。
+- 完整日志已落到：
+  - [npm-build-2026-04-24.log](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/npm-build-2026-04-24.log)
+  - [npm-build-electron-2026-04-24.log](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/npm-build-electron-2026-04-24.log)
+- 我补了一份汇总报告：
+  - [build-assessment-2026-04-24.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/reports/build-assessment-2026-04-24.md)
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe72-4db5-73b2-850a-5c410f2cec26
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+优化建议我记录成 5 条：加 build report wrapper、增强 `electron/build.mjs` 输出、按需启用 esbuild metafile、增加 Electron smoke test、增加一条本地/CI 综合校验命令。当前产物快照：`dist` 58M，`electron/dist` 2.0M，`renderer/main.js` 1.4M。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dbe72-4db5-73b2-850a-5c410f2cec26
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+另外说明一下：`reports/` 现在在 git 里是未跟踪状态；两个 `.log` 文件显示为 ignored。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我从微信收到这个Longclaw Runtime 摘要
+时间: 2026-04-13T05:39:53.626346-07:00
+整体: 当前有 6 个待处理问题，最高风险 ⚠️
+主备: codex (primary=codex, backup=claude)
+送达模式: summary=background_summary, conversation=reply, reliable_local
+最值得盯: knowledge-base/environment_missing: Missing path: CLAUDE.md
+阻塞/待审阅: 3/2
+微信任务队列: pending=0, running=0
+下一步: knowledge-base: 人工审阅 environment_missing  是什么意思，可以解决么？需要我做什么？
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+帮我评估一下，我怎么把这个用起来？因为知识库是需要我在微信里面输入的，很难自动loop吧？
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`knowledge-base` 在你这套 Longclaw 里，具体作用是“被 runtime 当成一个可巡检、可检索、可整理的本地知识库项目”。不是抽象概念，是一个被正式注册进 harness 的本地对象，根目录配置为 `/Users/zhangqilong/Desktop/知识库`。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 存放知识内容本身  
+  目录设计里至少有 `10 Inbox/WeChat`、`20 Knowledge`、`00 Dashboard`，说明它既接收微信/收件箱笔记，也沉淀整理后的知识，还产出 dashboard 类汇总。
+- 提供知识库工具链  
+  它预期有 `search.py`、`promote.py`、`rebuild_index.py`，分别对应“搜索”“把 inbox 笔记提升为正式知识”“重建索引”。
+- 做知识库质量检查  
+  `lint_notes.py` 和 `eval_notes.py` 说明 runtime 会把它当成一个可评估系统，检查笔记格式、结构、内容质量或规则一致性。
+- 做低风险自动整理  
+  `autofix_notes.py` 和 `autorefactor knowledge-base` 说明系统允许对知识条目做有限、可回滚的结构修复，而不是随便改任何内容。
+- 给 Longclaw Runtime 提供知识面板/输入源  
+  你的 runtime 还有 `00 Dashboard/Longclaw Runtime.md` 这类输出，说明这个知识库很可能也是 Longclaw 状态、周报、知识沉淀的落点之一。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在的问题不是它“坏了”，而是它“被注册为应该存在，但实际还没初始化完成”。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一条可以继续帮你判断：
+- 这东西对你现在是不是必要
+- 如果不要，最干净的停用方式是什么
+- 如果要，最小可用版本该补哪些文件才够用
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`Longclaw Runtime` 正在把你登记过的几个本地项目当成“可巡检对象”做健康检查。  
+`knowledge-base/environment_missing` 的意思是：它期望某个本地知识库目录具备一套最小可用环境，但检查时发现缺文件，所以把它标成“需要人工审阅”。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `knowledge-base` 被注册成目录 `/Users/zhangqilong/Desktop/知识库`
+- 这套检查要求它至少存在：
+  - `CLAUDE.md`
+  - `tools/lint_notes.py`
+  - `tools/eval_notes.py`
+  - `tools/autofix_notes.py`
+  - `tools/search.py`
+  - `tools/promote.py`
+  - `tools/rebuild_index.py`
+- 现在这些文件都不存在，不只是 `CLAUDE.md`
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 如果你根本没有在维护 `/Users/zhangqilong/Desktop/知识库`，这更像是“陈旧注册项”
+- 如果你本来就想让它成为微信/知识整理的正式知识库，那这是“未初始化项目”
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我建议按最小成本理解：
+这条通知本质上是在提醒你“有一个被系统当真了的知识库项目，其实还没落地完成”。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一步可以直接给你一个决策完整的处理方案，分成两条：
+- `保留 knowledge-base 并补齐`
+- `停用 knowledge-base 并清理告警`
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你看一下目前系统常驻的system service日志，是不是运行正常，有什么优化的方案？
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我是不是需要重新weclaw login和weclaw start呢？
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+不需要 `weclaw start`，已经在跑了。当前 `weclaw.bridge` 正常监听 `127.0.0.1:18011`，而且我已经重启过一次。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`weclaw login` 值得做，原因是现在失败已经收敛到上游 `sendmessage ret=-2`，不像本地进程没起来，更像账号会话/发送权限/上下文状态异常。日志里之前也出现过 `If this persists, run weclaw login to re-authenticate.`
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：
+- `weclaw start`：不用。
+- `weclaw login`：建议现在执行一次。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 常驻服务与微信送达修复方案
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+`guardian.monitor` 负责巡检和保活  
+`weclaw.bridge` 负责本机微信桥接与 API 入口  
+`repo.scheduler` 负责定时生成“最近情况”和本地循环状态  
+`codex.appserver` 提供 Codex 本地 app-server 能力  
+`claude.worker` 提供 Claude 可用性/备援检测
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+1. 发送策略层面，定时摘要被硬编码为“只有 `windowed_proactive` 才允许发送”，当前一直退化为 `reply`，所以每轮都被跳过。证据在 `runtime-wechat-control.py` 第 192 行附近，`delivery_mode != "windowed_proactive"` 直接写入 `skipped_window_unavailable`。  
+2. ingress 状态层面，`.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json` 已损坏，`runtime-roadmap-sync.py` 无法可靠解析会话窗口，导致“窗口是否打开”长期停留在旧时间戳。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+在此基础上，`weclaw.bridge` 自身还存在 TUN 下的网络不稳定问题，但这不是“为什么完全没收到”的第一原因。第一原因是产品逻辑先把发送关掉了。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## 关键职责与现状
+- `guardian.monitor`
+  - 启动 `weclaw-guardian monitor --config ~/.weclaw/services.json --uid 501`
+  - 作用是按 `services.json` 每 30 秒巡检 `codex.appserver`、`claude.worker`、`repo.scheduler`、`weclaw.bridge`，并执行保活/重启退避
+  - 目前状态正常，主要是总控，不直接负责发微信
+- `weclaw.bridge`
+  - 通过 `weclaw-real start -f` 以前台方式被 `launchd` 常驻
+  - 作用是维持本机微信桥接、监听本地端口 `18011`、承接 `weclaw send` 和任务派发 API
+  - 目前“进程活着但上游不稳”，日志里有 `no such host`、`TLS handshake timeout`、`EOF`、`context deadline exceeded`
+  - 在你要求下，必须继续工作在 TUN 模式，不能靠简单改成直连规避
+- `claude.worker`
+  - 当前实际走 `weclaw-guardian claude-worker`
+  - 作用是 Claude 通道健康检查和备援能力维持，不参与微信摘要发送
+  - 当前路由状态里 Claude 是 `not_logged_in`，因此只是备份不可用，不是本次微信送达失败的根因
+- `codex.appserver`
+  - 通过 `codex app-server --listen ws://127.0.0.1:45678`
+  - 作用是给本地 runtime 暴露 Codex 服务能力，供主链路调用
+  - 当前状态正常
+- `repo.scheduler`
+  - 每 4 小时执行一次 `repo-scheduler-service.sh`
+  - 负责工作区扫描、cloud sync、dependency update、routing reconcile、harness tick、roadmap sync、wechat summary、queued task dispatch
+  - “最近情况”就是它在生成，日志中可见它每轮都产出 `roadmap-queue.json` 和 `wechat-notification-state.json`
+  - 当前真正的问题是：它生成了摘要，但发送逻辑被 delivery policy 阻断

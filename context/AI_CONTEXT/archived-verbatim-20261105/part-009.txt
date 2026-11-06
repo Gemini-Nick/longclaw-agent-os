@@ -1,0 +1,954 @@
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. 调度与清理设计
+- 继续复用 `repo-scheduler-service.sh`，增加两个子任务：
+  - `sync_pending_media_to_obsidian`
+  - `cleanup_wechat_cache`
+- 规则固定为：
+  - `active` 且超过 `7 天`：从 workspace 删除
+  - `pending_obsidian`：尝试写入 Obsidian
+  - 写入成功：sidecar 变 `archived_obsidian`，删除 workspace 原件
+  - 写入失败：sidecar 变 `failed_obsidian`，原件保留，后续重试
+  - `archived_obsidian` 若 workspace 仍残留：清掉残留
+- 只有发生实际归档或清理时，才通过微信发摘要
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 安装与调试流程
+- 安装阶段：
+  - 安装 Obsidian Desktop
+  - 创建 `~/Documents/LongclawVault`
+  - 创建 `Inbox/WeChat` 与 `Assets/WeChat`
+  - 写入默认配置到 `~/.weclaw/config.json`
+  - 保留 `obsidian://` 打开能力检测
+- 调试阶段：
+  - 人工放一张测试图片/文件到 workspace 或通过微信实际发一张图
+  - 显式标记为 `pending_obsidian`
+  - 手动触发归档器或 scheduler
+  - 验证 note 与 asset 在 vault 内落位
+  - 验证 workspace 原件按状态清理
+  - 验证 `obsidian://` 能正确打开目标 note
+- 不要求首版必须安装 MCP server；把 MCP 接入定义为第二阶段增强
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 配置新增：
+  - `obsidian_enabled`
+  - `obsidian_vault_dir`
+  - `obsidian_vault_name`
+  - `obsidian_notes_dir`
+  - `obsidian_assets_dir`
+  - `obsidian_open_after_archive`
+- sidecar 新增：
+  - `archive_state`
+  - `obsidian_note_path`
+  - `obsidian_asset_path`
+  - 以及来源/创建时间/类型等字段
+- 新增显式归档入口：
+  - 语义固定为“把某个微信媒体加入 Obsidian 知识库”
+- vault 固定目录结构：
+  - `Inbox/WeChat/`
+  - `Assets/WeChat/`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 新环境安装：
+  - Obsidian app 可启动
+  - `~/Documents/LongclawVault` 创建成功
+  - 默认目录结构存在
+- 图片归档：
+  - 微信图片保存到 workspace
+  - sidecar 初始为 `active`
+  - 标记后变为 `pending_obsidian`
+  - 归档后 vault 中出现 note 与 asset
+  - sidecar 变为 `archived_obsidian`
+  - workspace 原图删除
+- 文件归档：
+  - 与图片同样流程，验证文件 link 可用
+- 失败重试：
+  - vault 路径不存在或不可写时，状态变 `failed_obsidian`
+  - workspace 原件保留
+  - 恢复后可再次重试成功
+- 自动清理：
+  - `active` 超过 `7 天` 的缓存会被删
+  - `archived_obsidian` 的残留 workspace 文件会被清理
+- URI 调试：
+  - `obsidian://` 可打开 vault
+  - 若开启 `obsidian_open_after_archive`，归档后能打开目标 note
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 首版明确不走 MCP 主链路，直接走文件系统/URI
+- 默认新建标准 vault：`~/Documents/LongclawVault`
+- 微信媒体知识库归档必须显式触发，不做自动语义猜测
+- `~/.weclaw/workspace` 只做缓存层，不承担长期存储
+- 未来若接 Obsidian MCP，只替换“归档器写入实现”，不改 sidecar 状态机和 scheduler 规则
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+Obsidian 已安装到 `/Applications/Obsidian.app`，默认 vault 已创建在 `/Users/zhangqilong/Documents/LongclawVault`，目录结构也建好了：
+- `/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat`
+- `/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+运行时也已经接上 Obsidian 配置，当前 `~/.weclaw/config.json` 里是：
+- `obsidian_enabled=true`
+- `obsidian_vault_dir=/Users/zhangqilong/Documents/LongclawVault`
+- `obsidian_vault_name=LongclawVault`
+- `obsidian_notes_dir=Inbox/WeChat`
+- `obsidian_assets_dir=Assets/WeChat`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+实现上我加了三块：
+- `weclaw` 里新增了 Obsidian 归档模块和命令入口，见 [archive.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian/archive.go) 和 [obsidian.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/cmd/obsidian.go)
+- 微信图片/文件保存时会写更完整的 sidecar，见 [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)
+- `longclaw-agent-os` 的安装和 scheduler 已接入默认 vault 初始化与 `obsidian maintain`，见 [install-v2.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh) 和 [repo-scheduler-service.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+真实调试我已经跑通了一次：
+1. 把现有微信图片 `/Users/zhangqilong/.weclaw/workspace/20260406-185831.jpg` 标记为 `pending_obsidian`
+2. 执行 `~/.weclaw/bin/weclaw obsidian maintain`
+3. 成功写入了 note 和 asset：
+   - [微信图片测试.md](/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat/微信图片测试.md)
+   - [20260406-185831.jpg](/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat/20260406-185831.jpg)
+4. workspace 里的原图已经被清理
+5. `obsidian://open?...` 也实际调用成功了
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这轮还顺手补了一个兼容点：你之前旧格式的 sidecar 只有 `id`，最初会导致 `mark` 报 `unsupported source ""`。现在已经兼容，旧图片也能直接归档，不需要重新保存一次。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证结果：
+- `go test ./obsidian ./messaging` 通过
+- `weguard status` 当前正常
+- 真实 `mark -> maintain -> vault 落盘 -> workspace 清理 -> URI 打开` 已验证通过
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前还没替你提交 Git。工作区现状是：
+- `weclaw` 有本次相关改动待提交
+- `longclaw-agent-os` 也有本次相关改动待提交
+- 两边还各自带着一些你之前就存在的未跟踪文件，我没有动它们
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以直接把这次 Obsidian 对接改动分别整理成两次 commit。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65af-a5c2-7551-96b5-7ebde11f0291
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+帮我设计一个可以直接对接Obsidian MCP或者cli的方案，并且直接安装调试
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ad-9660-76c1-a158-9aca93436312
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+归档我未来打算对接obsidian，不是单独存在一个文件夹里面。你考虑未来这个对接方案的可行性
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a9-104f-7b20-a3f7-db205fe2e043
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`longclaw-agent-os`：
+- `2a1fb42` `fix(runtime): surface weclaw health and harden scheduler runtime`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a9-104f-7b20-a3f7-db205fe2e043
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`weclaw`：
+- `de7e7a0` `feat(messaging): brand replies and improve media save feedback`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a9-104f-7b20-a3f7-db205fe2e043
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这两次提交只包含我这轮实际改动的文件，没有把你原来那些未跟踪目录一起塞进去。当前仍然有未提交内容留在工作区，我没动它们：
+- [scripts/guardian/install-v2.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh)
+- [apps/runtime/guardian-daemon.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/guardian-daemon.sh)
+- [apps/runtime/personas](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/personas)
+- [scripts/guardian/scheduler.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/scripts/guardian/scheduler.sh)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a9-104f-7b20-a3f7-db205fe2e043
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在运行态已经更新到新版本。你再发一张图片，我继续看：
+- 回执是不是新的中文文案
+- 日志里有没有 `agent completed` 和 `delivered reply to`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a9-104f-7b20-a3f7-db205fe2e043
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+::git-stage{cwd="/Users/zhangqilong/Desktop/github代码仓库/weclaw"}
+::git-commit{cwd="/Users/zhangqilong/Desktop/github代码仓库/weclaw"}
+::git-stage{cwd="/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os"}
+::git-commit{cwd="/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os"}
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a7-0a02-7111-b743-778551109215
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我已经：
+- 改了图片/文件保存回执文案，不再是 `Saved: ...`
+- 补了 agent 完成态日志
+- 重建并替换了本机的 [weclaw-real](/Users/zhangqilong/.weclaw/bin/weclaw-real)
+- 重启了 `weclaw.bridge`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a7-0a02-7111-b743-778551109215
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前验证点：
+- `weguard status` 正常，`weclaw` 是 `running`
+- 新二进制里已经包含：
+  - `已收到图片`
+  - `agent completed`
+  - `delivered reply to`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a7-0a02-7111-b743-778551109215
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你刚才那张图片还是旧版本处理的，日志里看到的还是旧回执：
+- `OpenAI｜小德总回执： Saved: ...`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a7-0a02-7111-b743-778551109215
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在请你再发一张图片。我会马上看两类新信号：
+- 回执是否变成新的中文汇报式文案
+- 日志里是否出现 `agent completed (...)` 和 `delivered reply to ...` 的完整闭环
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a6-a4b3-7542-95a1-77916f3515f6
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `18:55:01` 收到你的图片消息
+- `18:55:01` 识别为图片 item：`type:2 text:false image:true`
+- `18:55:04` 已保存到 [20260406-185504.jpg](/Users/zhangqilong/.weclaw/workspace/20260406-185504.jpg)
+- sidecar 也生成了：[20260406-185504.jpg.sidecar.md](/Users/zhangqilong/.weclaw/workspace/20260406-185504.jpg.sidecar.md)
+- `18:55:06` 已经回了微信回执：
+  `OpenAI｜小德总回执： Saved: 20260406-185504...`
+- `18:55:06` 之后开始把这张图继续派发给 `codex`
+- `18:55:08` typing indicator 已发送
+- `18:55:09` 新 thread 已创建，说明 agent 接单成功
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a6-a4b3-7542-95a1-77916f3515f6
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以目前结论是：
+- 图片接收：正常
+- 图片保存：正常
+- 微信回执：正常
+- 继续转给 `codex`：正常开始了
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a6-a4b3-7542-95a1-77916f3515f6
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 回执文案还是太技术化  
+现在还是 `Saved: ...`，这就是你前面嫌“太傻”的那个问题。它已经不是链路 bug，而是文案层问题，应该把图片/文件回执统一改成你要的那套品牌化文本。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a6-a4b3-7542-95a1-77916f3515f6
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `codex` 后续处理日志不够可见  
+当前能看到“已 dispatch 给 agent”，但从 bridge 日志里还看不到这张图片后续有没有产出文本回复。建议再补一层 agent 完成态日志，比如：
+- 收到多少字回复
+- 是否附带附件
+- 最终是否成功发回微信
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65a6-a4b3-7542-95a1-77916f3515f6
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以直接继续做第 2 轮优化：
+- 把图片/文件回执改成更像“汇报”的文案
+- 把 `codex` 处理图片后的完成态日志补全
+- 然后你再发一张图，我继续帮你盯完整闭环
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6599-81c5-72e1-82fb-46d2229a0415
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `codex` 正常
+- `claude` 正常
+- `weclaw` 正常，`weguard status` 现在返回 `EXIT:0`
+- `repo-scheduler` 在 `weguard status` 里仍显示 `stopped / last_exit=0`，但这对 scheduled 类型是可接受的；我手工触发了一次，它已完成并且成功发出了微信摘要
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6599-81c5-72e1-82fb-46d2229a0415
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这次改了 3 个点：
+- [main.go](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/guardian/cmd/weclaw-guardian/main.go)
+- [weclaw-bridge.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/bin/weclaw-bridge.sh)
+- [repo-scheduler-service.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6599-81c5-72e1-82fb-46d2229a0415
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结果上，关键修复已经生效：
+- `weguard status` 不再把“进程活着”误判成健康，现在会按链路状态判断
+- `weclaw.bridge` 启动前会做 TLS 预检
+- `repo-scheduler` 不再依赖 `rg`
+- 旧 TLS 失败日志不会在 bridge 重启后持续误报
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6599-81c5-72e1-82fb-46d2229a0415
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我验证到的关键信号：
+- `/tmp/longclaw-guardian/weclaw-bridge.log` 出现了 `TLS preflight passed`
+- `weclaw.bridge` 已经重启到新进程 `PID 11365`
+- `scheduler.task.log` 里有 `summary sent to ...@im.wechat`
+- 所以出站微信链路现在是通的
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6599-81c5-72e1-82fb-46d2229a0415
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还有一个细节：`/tmp/longclaw-guardian/repo.scheduler.launchd.log` 里还保留着旧的 `rg: command not found` 历史行，但这是旧日志残留，不是新脚本还在报错。新脚本的手工运行没有再出现这个问题。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6599-81c5-72e1-82fb-46d2229a0415
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我还没替你提交 Git，因为真实仓库里本来就有未提交的其他改动。你现在最值得做的下一步是直接从微信发一条文本给机器人，我再帮你盯一次入站日志，确认“收消息”这半边也恢复了。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 当前服务恢复与健康优化计划
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 先把当前环境恢复到“微信链路真实可用”
+- 再把服务健康判定修到能区分“进程活着”和“消息链路可用”
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前默认判断是：企业网络曾经短时拦截过微信 iLink TLS，但此刻 shell 直连已经恢复正常，因此首要恢复动作应围绕 `weclaw.bridge` 重启与链路复核展开，而不是继续怀疑账号或应用逻辑。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 运行态恢复流程
+- 对当前 `weclaw.bridge` 执行一次干净重启，清掉这轮卡在旧 TLS 失败状态里的 bridge 进程
+- 重启后立即复核三项：
+  - `weguard status`
+  - `weclaw.bridge` 最新日志是否还出现 `securelogin.arubanetworks.com`
+  - 微信入站消息是否恢复
+- 若重启后恢复，则本次问题定性为“网络短时拦截后 bridge 未恢复”
+- 若重启后仍复现同样 TLS 错误，则定性为“公司网对该链路持续拦截”
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. `weclaw` 健康判定改成链路级
+- 在 guardian 的 `detectWeclawHealth()` 中新增近期日志判定，识别：
+  - `poll_tls_failed`
+  - `poll_network_failed`
+  - `session_expired`
+  - `running`
+- `weguard status` 对 `weclaw` 只要不是 `running`，整体退出码就应失败
+- 状态输出里直接展示最近一次高价值根因，不再只显示空白 `ERROR`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. 增加微信链路预检与恢复提示
+- 在 `weclaw.bridge` 启动前增加一个轻量 TLS 预检：
+  - 检查 `ilinkai.weixin.qq.com` 实际证书主体
+  - 若证书主体不是目标域或校验失败，直接报“网络拦截/门户登录/证书代理”
+- 不做“跳过 TLS 校验”的不安全兜底
+- 日志里新增：
+  - 最近一次成功轮询时间
+  - 最近一次失败原因
+  - 连续失败计数
+- 当网络恢复但 bridge 还卡在旧失败循环时，日志能明确指出建议重启 bridge
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. `repo-scheduler` 稳定性修补
+- 去掉 `repo-scheduler-service.sh` 对 `rg` 的硬依赖，改成 launchd 环境可稳定执行的实现
+- 对 scheduled 类型服务保留“`stopped + last_exit=0` 可接受”的展示逻辑
+- 但脚本本身不能再因为命令缺失报错
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 当前机器恢复验证：
+  - 重启 `weclaw.bridge` 后日志不再出现 `securelogin.arubanetworks.com`
+  - `weguard status` 中 `weclaw` 无错误状态
+  - 微信入站消息恢复
+- TLS 劫持仿真：
+  - 日志出现证书错误时，`weguard status` 显示 `poll_tls_failed`
+  - 退出码非 0
+- 进程假活验证：
+  - 监听端口存在但轮询失败时，状态仍判 unhealthy
+- `repo-scheduler` 回归：
+  - 在 launchd 默认 PATH 下不再报 `rg: command not found`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6596-dca9-7901-83d1-de0f87569401
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 当前 shell 直连 TLS 成功，说明问题不再是“此刻全局网络彻底不可用”
+- 当前最合理的恢复动作是重启 `weclaw.bridge`，不是重新登录微信
+- 不接受通过关闭 TLS 校验来掩盖公司网络拦截问题
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-afac-7db1-8ca2-d8b939a5a6c3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在结论更精确了：不一定是“你当前还处在不安全 Wi‑Fi 下”，而是 `weclaw.bridge` 这轮运行中，确实曾经遭遇过企业网关/门户式 TLS 干扰；但你当前 shell 直接访问微信域名时，TLS 已经恢复正常。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-afac-7db1-8ca2-d8b939a5a6c3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 现在 shell 里 `curl -Iv https://ilinkai.weixin.qq.com` 成功
+- 证书是腾讯 `weixin.qq.com` + DigiCert，校验通过
+- 没发现显式 `HTTP_PROXY/HTTPS_PROXY`
+- 但当前运行中的 `weclaw.bridge` 日志最后一次更新停在 `2026-04-06 18:22:23`
+- 它之前连续报的是：
+  - `tls: failed to verify certificate: x509: "securelogin.arubanetworks.com" certificate is not trusted`
+- 现在 `weguard status` 仍把 `weclaw` 显示成 `running`，只是因为 guardian 只看进程和监听端口，没有把轮询失败判成 unhealthy
+- `repo-scheduler` 还有一个独立缺陷：
+  - launchd 环境里找不到 `rg`，所以脚本会报 `command not found`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-afac-7db1-8ca2-d8b939a5a6c3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以当前最可能的运行态是：
+- `codex`、`claude` 进程层面正常
+- `weclaw` 端口还在监听，但这轮 bridge 很可能已经“假活着”
+- 网络层面此刻看起来正常，说明最直接的恢复动作会是重启 `weclaw.bridge`
+- 真正需要修的是“状态判定”和“网络异常恢复能力”，否则以后还会再次误判
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-0638-7d72-8441-86094d3c0298
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 门户已认证，但某些出口流量仍经过企业网关的 HTTPS 检查
+  结果就是访问 `ilinkai.weixin.qq.com` 时，证书链不再是微信原站的证书，而是被中间设备替换或重签。
+- 企业网络做了域名级限制
+  有些公司网允许常规网页，但会拦截不在白名单里的 API 域名、长连接或机器人接口。
+- 长轮询比普通网页更容易暴露问题
+  你浏览器能正常开网页，不代表 `weclaw` 这种持续 `getupdates` 的链路也稳定。
+- 代理 / 根证书策略不一致
+  浏览器可能信任公司下发的证书，但 Go 的 TLS 校验链、launchd 环境、CLI 进程未必按同样方式工作。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-0638-7d72-8441-86094d3c0298
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 你的公司网络可能在合法地做中间检查
+- 但这会让 `weclaw` 到微信 iLink 的 TLS 链路失真，导致服务表面运行、实际不可收消息
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-0638-7d72-8441-86094d3c0298
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` 访问 `ilinkai.weixin.qq.com` 时看到的证书是不是目标站自己的
+- 轮询能不能持续成功，而不是间歇性被门户或网关改写
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6594-0638-7d72-8441-86094d3c0298
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以给你列一个很短的排查计划，专门区分这到底是：
+1. 公司网的证书代理  
+2. 域名白名单限制  
+3. launchd/CLI 环境和浏览器证书链不一致
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6592-46ee-7892-80b1-cfc71b081d76
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `tls: failed to verify certificate: x509: "securelogin.arubanetworks.com" certificate is not trusted`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6592-46ee-7892-80b1-cfc71b081d76
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果 TLS 证书里冒出来的却是 `securelogin.arubanetworks.com`，通常说明当前网络做了下面其中一种事：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6592-46ee-7892-80b1-cfc71b081d76
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 你连的是带门户认证的公共或企业 Wi‑Fi，还没完成网页登录
+- 网络网关把你的 HTTPS 请求先拦到它自己的登录页
+- 某个代理/安全设备在中间插证书，做了流量检查或劫持
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6592-46ee-7892-80b1-cfc71b081d76
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 不是 `weclaw` 程序自己坏了
+- 是你当前这张网，对外 HTTPS 链路不干净
+- `weclaw.bridge` 进程虽然在跑，但它连微信 iLink 服务时被中间网络拦住了
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6592-46ee-7892-80b1-cfc71b081d76
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 用手机热点试一下同样的微信链路。
+2. 在当前 Wi‑Fi 下浏览器打开任意网站，看会不会跳到 Aruba/Portal 登录页。
+3. 如果是公司/酒店/校园网，先完成门户登录，再重试。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6592-46ee-7892-80b1-cfc71b081d76
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一步可以继续帮你做一个只读检查，确认当前机器现在是不是正被这个 Aruba 门户网络拦截。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d658f-d3b0-7c61-b4e6-c062cb565bd1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `codex`：进程在跑
+- `claude`：进程在跑
+- `weclaw.bridge`：进程在跑，但微信长轮询不健康
+- `repo-scheduler`：未运行，且当前脚本在 launchd 环境下会因为 `rg` 不在 `PATH` 报错
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d658f-d3b0-7c61-b4e6-c062cb565bd1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`weclaw` 的核心问题已经很明确，不是服务没启动，而是网络链路被 TLS 校验拦住了。日志里持续出现：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d658f-d3b0-7c61-b4e6-c062cb565bd1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这通常意味着当前网络存在 Aruba 门户/代理证书劫持，`weclaw` 轮询 `https://ilinkai.weixin.qq.com/ilink/bot/getupdates` 时被重定向或中间人拦截了。结果就是：
+- `weguard status` 还能显示 `weclaw` 是 `running`
+- 但实际上入站微信消息轮询已经不可用
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d658f-d3b0-7c61-b4e6-c062cb565bd1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw-guardian` 的 `status` 现在只把 `state != running` 视为不健康；即使 `weclaw` 的错误列已经有健康异常，也不会让命令返回失败
+- `repo-scheduler-service.sh` 依赖 `rg`，但 launchd 环境里当前找不到它，所以这个服务就算设计上是“可停可起”，实现上也不够稳
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6346-0e12-7323-aef5-172ac7029d1c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我按你给的 `Claude/OpenAI` 参考图，把前缀收成了品牌词主导的形式：
+- `OpenAI｜小德总汇报： ...`
+- `Claude｜小克总状态播报： ...`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6346-0e12-7323-aef5-172ac7029d1c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+重点是两点：
+- 不再用我自己造的大块 icon/分隔线
+- 前缀直接和正文融合在同一行开头，更像消息头，不像单独标题卡
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6346-0e12-7323-aef5-172ac7029d1c
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+代码上已经改好并测过，`go test ./messaging` 通过；本机运行时也已经替换完成，当前 `weclaw`、`codex`、`claude` 都是 `running`。  
+你现在直接再发一条微信消息，我就能根据真实效果继续收字重、间距感和前缀文案。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## claude-text.svg: /Users/zhangqilong/Downloads/claude-text.svg
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## openai.svg: /Users/zhangqilong/Downloads/openai.svg
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## claude.webp: /Users/zhangqilong/Downloads/claude.webp
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## My request for Codex:
+你参考一下这些icon
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现有协议下，不能把你给的 `openai.svg` / `claude-text.svg` 真正嵌进同一条微信文本气泡里。我如果不“自己创造”文本符号，就只剩两种可行方式：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 单独发送你提供的图标图片  
+2. 纯文本，不加任何自造 icon，只保留品牌称呼和版式
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6343-5437-7e91-9847-42daee04ca16
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在只差你定一个方向：  
+你要我改成“只用纯文本品牌前缀”，还是“恢复为单独发送你提供的真实 icon 图片”？
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 微信文本前缀品牌化重做计划
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+目标是撤掉当前“单独发角色图 + 单独发总结 + 再发正文”的方案，改成单条文本消息内的品牌化排版。原因已经确认：当前 `iLink/weclaw` 协议只支持 `Text/Image/Voice/File/Video` 五种 item，没有可在同一条文本气泡里内嵌 icon/富文本图文混排的结构，所以不能做真正的“文本内嵌图片 icon”。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+新的交互目标固定为：
+- 不再单独发送 icon 图片
+- 不再额外发送“总结消息”
+- 每条回复只发一条正文文本
+- 在正文开头用更好看的文本前缀做品牌化排版
+- `Codex = 小德总`
+- `Claude Code = 小克总`
+- 用户身份文案基准为“隆小虾（隆小侠）是他们的领导”
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 回退并替换当前 persona 图片方案
+- 移除或停用当前首屏图片发送逻辑，不再在回复前单独发送角色图
+- 移除“摘要 + 详情”双文本发送逻辑，统一恢复为单条正文输出
+- 保留现有素材目录和配置接口作为后备资产能力，但默认不在微信主回复中使用
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. 把回复包装改成单条文本前缀
+- 在 `weclaw` 统一回复出口把所有回复包装成一条文本
+- 前缀样式不走图片，改为 Unicode + 分隔线 + 标题式排版，参考你给的样例：
+  - 有标题感
+  - 有层次分隔
+  - 第一眼能识别是谁在回复
+- 默认文案结构固定为：
+  - 第一行：agent 身份标题
+  - 第二行：分隔线或视觉分段符
+  - 第三行起：正文内容
+- 不再区分“首屏总结”和“详情正文”；正文就是最终回复内容本身
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. 按 agent 和消息类型生成不同前缀
+- `codex` 回复前缀固定使用“小德总”
+- `claude` 回复前缀固定使用“小克总”
+- 可按消息类型套不同标题模板：
+  - 普通回复：`小德总汇报` / `小克总汇报`
+  - 保存回执：`小德总回执` / `小克总回执`
+  - 错误场景：`小德总异常提示` / `小克总异常提示`
+  - 状态/帮助：`小德总状态播报` / `小克总状态播报`
+- 若默认 agent 不是 `codex` 或 `claude`，则回退为普通无昵称品牌前缀或纯正文；默认选普通品牌前缀，不再走图片
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. 文案风格改成“领导汇报式”
+- 回复口吻统一为“给隆小虾汇报”的职业化助手风格，不做幼稚拟人化
+- 不再额外生成“总结文本”；而是直接把原回复内容包装成更像汇报的成品文案
+- 只做轻量文本重排，不改回复事实，不压缩关键信息，不新增与正文无关的表演性句子
+- 长回复允许按段落保留，但只在最开头放一次前缀，不在每段重复
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 覆盖范围与运行时行为
+- 统一覆盖所有微信文本回复：
+  - agent 正常回复
+  - 图片/文件保存回执
+  - 错误提示
+  - `/info`、`/help`、`/cwd`、切换默认 agent 等系统消息
+- 附件、markdown 图片、本地文件发送链路保持不变：
+  - 仍然是媒体单独发送
+  - 只是文本说明从“朴素原文”改成“品牌化前缀正文”
+- runtime 不再依赖 `persona_dir` 作为主链路能力；可保留配置但不默认触发图片发送
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 微信端行为变更：
+  - 从“图片 + 摘要 + 正文”改为“单条品牌化正文文本”
+- 不新增新命令
+- 文案命名固定：
+  - `codex -> 小德总`
+  - `claude -> 小克总`
+- 运行时可以保留素材配置，但默认关闭图片 persona 发送
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `codex` 普通回复：
+  - 只发一条文本消息
+  - 文本开头带“小德总”品牌前缀
+  - 不再单独发图片
+- `claude` 普通回复：
+  - 只发一条文本消息
+  - 文本开头带“小克总”品牌前缀
+- 图片/文件保存回执：
+  - 只发一条品牌化回执文本
+  - 不再先发角色图
+- 错误场景：
+  - 文本前缀切到异常提示模板
+  - 正文保留完整错误信息
+- 系统命令：
+  - `/help`、`/info`、默认 agent 切换都使用同一套品牌化文本模板
+- 回归：
+  - markdown 图片、本地附件、文件发送逻辑保持不变
+  - 不因前缀包装影响正文内容和媒体发送顺序
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6340-e9ba-75e2-874c-3ce1ae96f140
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 当前协议下不再尝试“文本内嵌图片 icon”或隐藏富文本字段
+- 品牌化目标改为“好看的文本排版”，不是图片 persona
+- `隆小虾（隆小侠）是他们的领导` 作为文案语气背景，不需要在每条消息里重复明写
+- 当前 persona 图片素材与 `persona_dir` 不作为主交互方案，但可以保留以备后续别的场景使用

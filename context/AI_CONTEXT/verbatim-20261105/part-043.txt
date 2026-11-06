@@ -1,0 +1,244 @@
+
+
+---
+来源：codex:019d5c94-90d7-7282-a41c-aac676a68d10#turn:019d5c95-e2ae-74a0-a2f9-528399cea9d7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**与 Anthropic 要求相关的风险点**
+- Anthropic 文档/帮助中心强调仅支持特定地区，且会用 IP 做地区判定与反滥用；若流量绕过代理，可能触发风控或合规问题。
+- 你当前规则里虽有 `anthropic.com/claude.ai/claude.com -> Claude-Proxy`（见 [`clash-verge.yaml:176`](/Users/zhangqilong/Library/Application%20Support/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml:176)），但 `tun=false` 时仍可能被“非代理感知应用/异常回退路径”绕开。
+- `Auto-Fallback` 含 `DIRECT`（[`clash-verge.yaml:156`](/Users/zhangqilong/Library/Application%20Support/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml:156)），在代理异常时有失败回直连风险。
+- `skip-cert-verify: true` 出现在部分节点（[`clash-verge.yaml:117`](/Users/zhangqilong/Library/Application%20Support/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml:117)），有中间人风险（虽不一定用于 Claude 流量）。
+
+
+---
+来源：codex:019d5c94-90d7-7282-a41c-aac676a68d10#turn:019d5c95-e2ae-74a0-a2f9-528399cea9d7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**建议（按优先级）**
+1. 开启 `TUN`（全局接管）并保持 `dns-hijack`，这是消除 DNS 泄漏面的关键。  
+2. 对 Claude/Anthropic 相关策略设“禁止 DIRECT 回退”的独立代理组。  
+3. 将敏感域名 DNS 上游改为你信任的解析器，并尽量走代理链路。  
+4. 将节点 `skip-cert-verify` 改为 `false`（可行时）。
+
+
+---
+来源：codex:019d5c94-90d7-7282-a41c-aac676a68d10#turn:019d5c95-e2ae-74a0-a2f9-528399cea9d7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**参考（官方）**
+- Supported regions（API）：https://platform.claude.com/docs/en/api/supported-regions  
+- Consumer Terms（含需遵守 Supported Regions Policy）：https://www.anthropic.com/legal/consumer-terms  
+- Claude 是否使用位置（IP 用于安全与合规）：https://privacy.claude.com/en/articles/11186740-does-claude-use-my-location  
+- Pro 订阅支持地区说明（需 physically located）：https://support.claude.com/en/articles/8325609-how-do-i-sign-up-for-the-pro-plan  
+- 区域限制更新公告（2025-09-04）：https://www.anthropic.com/news/updating-restrictions-of-sales-to-unsupported-regions?subjects=announcements
+
+
+---
+来源：codex:019d5c94-90d7-7282-a41c-aac676a68d10#turn:019d5c95-e2ae-74a0-a2f9-528399cea9d7
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我可以直接给你一版“低泄漏/低违规风险”的 Clash 配置补丁。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我想继续优化一下微信-weclaw-cc/codex双冷备启动agent。我希望实现agent的自修复，你检查一下之前weclaw的日志，看看压力测试和之前的corner case是否完全被修复了
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已暂停监控，实时 `tail` 已停止。  
+当前 `weclaw` 进程仍在监听 `127.0.0.1:18011`，需要时我可以随时继续观察日志。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53d6-e10c-74d0-a5ed-f0e06aa0fcb6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我改了 [session-watchdog.sh](/Users/zhangqilong/.weclaw/session-watchdog.sh) 这几个关键点：
+1. 新增 `usage/429/quota` 专项识别与处理：`is_usage_exhausted_line`、`handle_usage_exhausted`（见 [session-watchdog.sh:292](/Users/zhangqilong/.weclaw/session-watchdog.sh:292)、[session-watchdog.sh:345](/Users/zhangqilong/.weclaw/session-watchdog.sh:345)）。
+2. 新增 agent 配额冷却窗口：`usage_exhaust_cooldown_sec`（默认 1800s），并记录 `claude/codex exhausted_until`（见 [session-watchdog.sh:39](/Users/zhangqilong/.weclaw/session-watchdog.sh:39)、[session-watchdog.sh:104](/Users/zhangqilong/.weclaw/session-watchdog.sh:104)、[session-watchdog.sh:179](/Users/zhangqilong/.weclaw/session-watchdog.sh:179)）。
+3. failover 前增加“备用引擎可用性”检查，避免 codex 已耗尽还硬切（见 [session-watchdog.sh:534](/Users/zhangqilong/.weclaw/session-watchdog.sh:534)）。
+4. recovery 增加“主引擎耗尽时跳过探测”，避免无效回切（见 [session-watchdog.sh:608](/Users/zhangqilong/.weclaw/session-watchdog.sh:608)）。
+5. 日志分支接入 usage 处理：`[handler] agent error`、`failed to start codex/claude` 三处（见 [session-watchdog.sh:833](/Users/zhangqilong/.weclaw/session-watchdog.sh:833)、[session-watchdog.sh:869](/Users/zhangqilong/.weclaw/session-watchdog.sh:869)、[session-watchdog.sh:878](/Users/zhangqilong/.weclaw/session-watchdog.sh:878)）。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53d6-e10c-74d0-a5ed-f0e06aa0fcb6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+10 个新场景测试结果（修复后仿真）：
+- N1 backup 活跃时 usage limit -> 切回 claude: PASS  
+- N2 primary usage limit -> 切到 codex: PASS  
+- N3 primary usage + codex 已耗尽 -> 双耗尽保护: PASS  
+- N4 read_loop + broken_pipe 仍可正常 failover: PASS  
+- N5 backup 已耗尽时 failover 被阻断: PASS  
+- N6 failover 期间主引擎耗尽 -> recovery skip: PASS  
+- N7 codex 启动失败且 usage -> 切回 claude: PASS  
+- N8 claude 启动失败且 usage -> 切到 codex: PASS  
+- N9 codex 冷却到期后可再次 failover: PASS  
+- N10 未识别 agent 的 usage 行 -> 按 current_default 处理: PASS
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53d6-e10c-74d0-a5ed-f0e06aa0fcb6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+补充说明：我已做 `bash -n` 语法检查通过，但当前 `weclaw` 处于 `not running (stale pid file)`，所以这轮是脚本级仿真验证，不是在线微信实流量注入。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53c1-79d2-7710-9830-8071ef5b6c72
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+不只是这一个场景的模拟，我希望你根据日志再模拟10个场景，保持整个工程的鲁棒性。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53c1-79d2-7710-9830-8071ef5b6c72
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已按你要求基于现有日志做了 10 个场景仿真（按 `session-watchdog` 当前规则跑），结果是 `7 个通过 / 2 个需观察 / 1 个明确缺口`。另外当前 `weclaw` 进程不在运行态（`weclaw is not running (stale pid file)`），所以这轮是“日志驱动仿真”，不是线上注入。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53c1-79d2-7710-9830-8071ef5b6c72
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+| 场景 | 日志依据 | 仿真结果 | 结论 |
+|---|---|---|---|
+| S1 read loop ended | [weclaw.log:41](/Users/zhangqilong/.weclaw/weclaw.log:41) | `restart:read_loop_ended` | 通过 |
+| S2 read loop + broken pipe | [weclaw.log:46](/Users/zhangqilong/.weclaw/weclaw.log:46), [session-watchdog.log:200](/Users/zhangqilong/.weclaw/session-watchdog.log:200) | 达到 `2/2` 后 `claude -> codex` + 重启 | 通过 |
+| S3 context canceled | [weclaw.log:66](/Users/zhangqilong/.weclaw/weclaw.log:66) | `restart:context_canceled` | 通过 |
+| S4 API 端口冲突 | [weclaw.log:56](/Users/zhangqilong/.weclaw/weclaw.log:56) | `restart:api_bind_conflict` | 通过 |
+| S5 codex 启动失败 | [weclaw.log:651](/Users/zhangqilong/.weclaw/weclaw.log:651) | `restart:backup_start_failed` | 需观察（仅重启，无立即切回主引擎） |
+| S6 claude 启动失败 | [weclaw.log:680](/Users/zhangqilong/.weclaw/weclaw.log:680) | `restart:primary_start_failed` | 通过 |
+| S7 网络连续错误 | [weclaw.log:865](/Users/zhangqilong/.weclaw/weclaw.log:865), [session-watchdog.sh:376](/Users/zhangqilong/.weclaw/session-watchdog.sh:376) | 连续 5 次后进入 `network_degraded` | 通过 |
+| S8 网络恢复退出降级 | [session-watchdog.sh:397](/Users/zhangqilong/.weclaw/session-watchdog.sh:397), [session-watchdog.sh:690](/Users/zhangqilong/.weclaw/session-watchdog.sh:690) | 2 次成功 I/O 后退出降级 | 需观察（逻辑存在，日志中未形成完整闭环样本） |
+| S9 多实例收敛 | [session-watchdog.log:20](/Users/zhangqilong/.weclaw/session-watchdog.log:20), [session-watchdog.sh:599](/Users/zhangqilong/.weclaw/session-watchdog.sh:599) | 触发 `restart:multi_instance` | 通过 |
+| S10 codex usage limit（重点） | [codex-tui.log:6977](/Users/zhangqilong/.codex/log/codex-tui.log:6977), [codex-tui.log:7158](/Users/zhangqilong/.codex/log/codex-tui.log:7158), [session-watchdog.sh:710](/Users/zhangqilong/.weclaw/session-watchdog.sh:710) | 被归类为通用 `agent_error`，会重启/抖动，不会做“配额耗尽专用切换” | 缺口（需要修） |
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53c1-79d2-7710-9830-8071ef5b6c72
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+关键结论：双 agent 故障切换链路是工作的，但“`usage limit` 专项处理”确实缺失，这会直接影响你最关心的 `cc/codex` 配额耗尽切换鲁棒性。  
+如果你确认，我下一步就直接补这个分支（`usage_exhausted` 检测 + 冷却窗口 + 定向切回可用引擎）并再跑一轮同样 10 场景回归。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我是希望你测试的场景时微信-weclaw-双agent，而不是仅仅是agent本身
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论先说：`claude -> codex` 的故障切换和回切是通的，但“某 agent usage 用完”在 `weclaw` 里没有专门分支，当前会被当成泛错误处理。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+证据：
+1. 双 agent 切换已发生（`claude` 故障后默认切到 `codex`）：[weclaw.log](/Users/zhangqilong/.weclaw/weclaw.log:91)、[session-watchdog.log](/Users/zhangqilong/.weclaw/session-watchdog.log:200)  
+2. 回切恢复已发生（恢复探测后切回 `claude`）：[session-watchdog.log](/Users/zhangqilong/.weclaw/session-watchdog.log:210)  
+3. `codex` 侧确实有“usage 用完”真实报错（2026-04-02/03）：[codex-tui.log](/Users/zhangqilong/.codex/log/codex-tui.log:6977)、[codex-tui.log](/Users/zhangqilong/.codex/log/codex-tui.log:7158)  
+4. 但 watchdog 没有 `usage limit/429/quota` 识别逻辑，只会落到 generic `agent_error` 或 `backup_start_failed`： [session-watchdog.sh](/Users/zhangqilong/.weclaw/session-watchdog.sh:710)、[session-watchdog.sh](/Users/zhangqilong/.weclaw/session-watchdog.sh:724)
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+你问的“usage 用完怎么切换和修复”，按 weclaw 应该这样落地：
+1. 在 watchdog 增加 `usage_exhausted` 专门匹配（`You've hit your usage limit|Upgrade to Plus|429|Rate limited`）。  
+2. 若当前是 `codex` 且命中 `usage_exhausted`，立即切回 `claude`，并给 `codex` 加冷却窗口（避免重启风暴）。  
+3. 若当前是 `claude` 且命中配额/限流，切到 `codex`，同样加冷却与恢复探测。  
+4. 切换时保留一次用户提示，但不重复刷屏（沿用现有 notify cooldown）。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你同意，我下一步就直接改 [session-watchdog.sh](/Users/zhangqilong/.weclaw/session-watchdog.sh) 并给你跑一轮 weclaw 双 agent 的 corner case 演练清单（含通过/失败判定）。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+可以进行corner case的测试么？我希望完整的过一遍他的修复能力，包括cc和codex切换。例如当某个agent usage用完的时候，怎么处理切换和修复呢？
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已确认的真实错误：
+1. `codex` 配额耗尽（硬失败）在 2026-04-02 和 2026-04-03 都出现过，且切到 `gpt-5.1-codex-mini` 仍失败，说明是账号/产品层限制，不是单模型问题。见 [codex-tui.log](/Users/zhangqilong/.codex/log/codex-tui.log:6977) 和 [codex-tui.log](/Users/zhangqilong/.codex/log/codex-tui.log:7158)  
+2. `cc` 出现过 `429 Rate limited`（更像瞬时限流）。见 [684e6a74...txt](/Users/zhangqilong/.claude/debug/684e6a74-e2b3-496b-9cfe-585ffe72c3bc.txt:82)
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+建议的“切换+修复”判定与动作：
+1. 命中 `You've hit your usage limit`：立即停止同平台重试，直接切换到另一 agent（`codex -> cc` 或 `cc -> codex`）。
+2. 命中 `429/overloaded`：先退避重试（10s/30s/60s），再决定是否切换。
+3. 切换时必须带状态包：目标、当前分支、已改文件、失败命令和原始报错、下一步待办，避免修复中断。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+完整 corner-case 测试矩阵（你要的“过一遍修复能力”）：
+1. `codex` 硬配额耗尽 -> 60 秒内切到 `cc`，并继续同一修复任务。  
+2. `codex` 换模型仍失败 -> 验证“防抖策略”不死循环切模型。  
+3. `cc` 429 -> 退避后恢复同任务。  
+4. 切换发生在“已改未提交”状态 -> patch 不丢失、diff 可继续。  
+5. 子 agent 失败/超时 -> 主 agent 接管并完成修复。  
+6. 切换后修复质量 -> 测试通过、回归点关闭、日志留痕完整。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以直接给你一份可执行的 `runbook`（含每条 case 的命令、预期输出、通过/失败判定）。

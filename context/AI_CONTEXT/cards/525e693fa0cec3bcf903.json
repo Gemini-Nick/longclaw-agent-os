@@ -1,0 +1,253 @@
+{
+  "id": "019e0adf-4496-73e3-a2fc-bae34d48f2ea",
+  "title": "解释板块排序原因",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e0adf-4496-73e3-a2fc-bae34d48f2ea",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "c66392bdd81be01d5149a7eb15a40aeaeab8b8cd1068a6ed52314a3e8b94245f",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#first-request",
+      "timestamp": null,
+      "verbatim": "这三个行业是为啥排序那么靠前呢？我看几个龙头涨幅都不大，是不是因为里面的概念板块涨幅大呢？目前你这个板块内容完全是行业为主？概念没区分么？"
+    },
+    {
+      "hash": "ead098c7006607167f014279bcac27b707684230c2204100ddc34f3e803fda2a",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 下午9.42.26.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_lR259e/截屏2026-05-08 下午9.42.26.png"
+    },
+    {
+      "hash": "e5b1d3aaff4ded04e9ce770bb231c25a20bb501100be2b85e75b513786da76ab",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n上面产业链六宫格没有变化"
+    },
+    {
+      "hash": "00d1d679aff678b9de8ded7b59b6dd64cccbc49cd603b7737c8ef084bb0f9fe3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent",
+      "timestamp": null,
+      "verbatim": "已修好，并且已经装进 `/Applications/隆小侠 Agent OS.app` 验证过了。"
+    },
+    {
+      "hash": "e2839f65f00e08789bb8a5df8605a9025cab6defa38b369949acd405a03129b3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent",
+      "timestamp": null,
+      "verbatim": "1. 打包 App 从 Finder 启动时拿不到 `LONGCLAW_SIGNALS_WEB_BASE_URL`，会走降级/旧数据链路。  \n   我加了本机默认 `http://127.0.0.1:8011` 兜底。"
+    },
+    {
+      "hash": "7f55566efab026f0b449783f089a1b24351866e2a07f6c8ebea13138879572e7",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent",
+      "timestamp": null,
+      "verbatim": "- 商业航天/卫星互联网：`产业链确认`，链主/弹性包含中国卫通、航天发展、航天动力；不再被交通运输吞掉。\n- 家电/照明：`源强链弱`，标题直接显示 `其他家电Ⅲ/虚拟现实/养老概念`。\n- 纺织/轻工：`源强链弱`，标题直接显示 `印染/机器人执行器/人形机器人`。\n- CPO：`弹性补涨`，表格直接写“链主不强，先看弹性标的和三线扩散”。\n- 次新股：独立为 `主题热度 · 次新股`，大普微-UW 这类不再被硬塞进行业链。"
+    },
+    {
+      "hash": "bf2a3ec1c22a674cd1eb0031a62111ac010b3d16b6ad977e497d2876ae836b47",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent",
+      "timestamp": null,
+      "verbatim": "- `Signals` 回归：`118 passed`\n- `longclaw-agent-os`：`npm run lint` 通过\n- Electron 重新打包、安装、打开验证通过\n- live API `/api/workbench/shell` 已返回新语义\n- 桌面 App 六宫格和表格可见 UI 已确认不是旧“升温”口径"
+    },
+    {
+      "hash": "50ce8ac0854ec105d35eba5597afcb9dc63d691a99c414db6a12d8638c9ba739",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 下午9.20.45.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_8JG5tu/截屏2026-05-08 下午9.20.45.png"
+    },
+    {
+      "hash": "1f4f8a929f751466b0dbee1ec435a1d2175ca81fef89d5ec23d3a23ac6756384",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n1、UI上面体现不明显，都是升温 2、家电和纺织标题上要直接显示（和哪些概念的关联，本质不是行业的热度）3、cpo是分化，龙头不强，三线补涨？还是什么原因？ 4、商业航天为什么没入围？航天发展和航天动力都是涨停  5、大普微这种次新股涨幅也很好，也没有标记出来次新的热度"
+    },
+    {
+      "hash": "bb45878b31ec51f064ade65949255dbd1df5e99ce0ec47b2f4bc169529ffdc6f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189",
+      "timestamp": null,
+      "verbatim": "- 商业航天已经排第一：`产业链确认`，主驱动是 `[行业] 航天装备Ⅲ +8.23%`，并带 `航天航空/北斗导航/卫星互联网` 等叠加。\n- 家电现在会显示：`源强链弱`，主驱动是 `其他家电Ⅲ +5.64%`，叠加概念包括 `虚拟现实/养老概念/智能家居`，不会误读成美的、格力带动行业。\n- 纺织现在会显示：`源强链弱`，主驱动是 `印染 +5.46%`，叠加概念包括 `机器人执行器/人形机器人/PEEK材料`，这才是富春染织那条线的真实解释。\n- CPO 现在不再显示普通升温，而是 `弹性补涨`：中际旭创、新易盛、天孚通信不强，光迅科技这种弹性股在补涨。\n- 新增 `主题热度 · 次新股` 独立行，接口里已标出 `大普微-UW +16.68%`。我也查了外部资料确认大普微是 `301666`，2026-04 创业板上市，确实应归到次新维度：[新浪财经](https://finance.sina.com.cn/stock/relnews/cn/2026-04-16/doc-inhusraa2814752.shtml)、[中财网](https://www.cfi.net.cn/p20260410002955.html)。"
+    },
+    {
+      "hash": "868735fea52bef1892285219b6766f27e7b811c9d309f8d55eb7c4c900b9f241",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189",
+      "timestamp": null,
+      "verbatim": "- [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py)：新增概念叠加、主题叠加、源强链弱、弹性补涨、次新股独立主题行。\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)：标题改成节点/主题优先，副标题直接显示状态、源行业/概念、叠加概念/主题。\n- [industry_chains.yaml](/Users/zhangqilong/github代码仓库/Signals/signals/core/industry_chains.yaml)：把通用航空/低空经济归到军工商业航天链，避免跑到交通运输。"
+    },
+    {
+      "hash": "4d9b5f19e0ba2fb9a93229cea8811f8dadbfbc6d7b59dac1fac9c99f09a3598e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189",
+      "timestamp": null,
+      "verbatim": "- `Signals` 相关测试：`118 passed`\n- `longclaw-agent-os` TypeScript：`npm run lint` 通过\n- 已重启 Signals runtime\n- `/api/workbench/shell` 实测前十已出现：商业航天第一、次新股第二、家电/纺织为源强链弱、CPO 为弹性补涨。"
+    },
+    {
+      "hash": "f8512574b20c805abf6078628d0277322476d8c0f0bbb672f5f7f19f7335b320",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf",
+      "timestamp": null,
+      "verbatim": "还有一个任务就是，你需要研究清楚主驱动[行业] 其他家电Ⅲ +5.64% 涨的是什么。包括纺织？印染 +5.46%，还有 印刷 +3.16%、综合包装 +2.97"
+    },
+    {
+      "hash": "8a1f2037eb3a1f50d03de74e5ff8225e75f0da67075963eb25a9711e99c20ae9",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf",
+      "timestamp": null,
+      "verbatim": "我既需要显示行业，也需要显示概念。特别是当链主或者龙头明显不涨的时候，肯定是细分行业的某些概念蹭到了热门赛道"
+    },
+    {
+      "hash": "945cfbd02fce343c1eb4f61a4be027879120d2889c7c0a4de2a79076e6934ced",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf",
+      "timestamp": null,
+      "verbatim": "- 终端列名从 `板块` 改成 `产业链`，第三列改成 `源行业/概念`。\n- 后端新增：\n  - `source_driver`：主驱动源行业/概念。\n  - `source_events`：该产业链下所有源行业/概念。\n  - `chain_confirmation`：产业链确认 / 链内分化 / 源强链弱。\n  - `source_concept_overlays`：源板块成分股命中的热门概念。\n  - `source_event_concept_overlays`：按每个源行业分组解释“到底蹭了什么概念”。\n- `通用航空/低空经济` 已改路由到 `军工装备产业链 / 商业航天/卫星互联网`，不再因为“航空”两个字误进交通运输。"
+    },
+    {
+      "hash": "a0ab015c7ff37e2639c23a07cec5a6383e51c929d1bb122b96b3d22b0abe0c26",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf",
+      "timestamp": null,
+      "verbatim": "- `家电家居产业链` 现在标成 `源强链弱`\n  - 源行业：`其他家电Ⅲ +5.64%`\n  - 实际涨的是：`融捷健康 +13.27%`、`奥佳华 +1.94%`、`荣泰健康 +1.32%`\n  - 概念叠加：`养老概念`、`智能家居`、`互联医疗`、`虚拟现实`、`鸿蒙概念`\n  - 这不是美的/格力主线。"
+    },
+    {
+      "hash": "ccfbe5ae3210cb3b4aac41d31b208e77abe3aea5990be2001f36fe3d206a3687",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf",
+      "timestamp": null,
+      "verbatim": "- `纺织轻工产业链` 现在标成 `源强链弱`\n  - `印染`：迎丰股份、富春染织；概念叠加 `机器人执行器`、`人形机器人`、`PEEK材料`\n  - `印刷`：盛通股份、强邦新材、东港股份、鸿博股份；概念叠加 `包装材料`、`造纸印刷`、`鸿蒙概念`\n  - `综合包装`：康欣新材、海顺新材、新通联、天元股份；概念叠加 `包装材料`、`造纸印刷`、`跨境电商`"
+    },
+    {
+      "hash": "4478b41ef21227ac553ed2ecaaa4ec86ea4dafdc01e9cce54b4250cfd92d1d1f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf",
+      "timestamp": null,
+      "verbatim": "- `Signals`: `117 passed`\n- `longclaw-agent-os`: `npm run lint` 通过\n- 已重启 `com.zhangqilong.ai.signals.runtime`\n- `/api/workbench/shell` 已读到新的分源概念字段"
+    },
+    {
+      "hash": "6b5a3eab893df9c40e5fcf24f693fda45a8e88132a2e890e1dea16a4bc54f985",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea",
+      "timestamp": null,
+      "verbatim": "1. `融捷健康` 拉 `其他家电`，不等于美的、格力代表的家电主线在走。\n2. `印染/综合包装` 涨，不等于纺织轻工链条整体有强逻辑。\n3. 排序分数吃了源板块涨幅、上涨家数、领涨股涨幅，但没有强制要求链主/代表股确认，所以你看到“龙头不涨但行业排很前”。"
+    },
+    {
+      "hash": "362c7a21b6160ac70f32fdd8a913e43323e37a1e8ccab717defe9a25f1a1cfbd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea",
+      "timestamp": null,
+      "verbatim": "- 第一层叫：`源板块异动`\n  例如：`其他家电Ⅲ +5.64% -> 映射到 家电家居产业链`\n- 第二层叫：`产业链确认`\n  只有代表股、链主、弹性股也同步走强，才标 `产业链确认`。\n- 如果源板块强但代表股弱，显示：\n  `细分异动 / 链主未确认`\n  并且排序降权。\n- 概念和行业要显式区分：\n  `[行业] 其他家电Ⅲ`\n  `[概念] 通用航空`\n  `[产业链] 家电家居`"
+    },
+    {
+      "hash": "7892b60e81a6380bf17a600e50a4d038c70fb172a091531b2d7b090550ae1a6c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea",
+      "timestamp": null,
+      "verbatim": "所以结论是：底层“用细分板块做热度探针”可以保留；当前“排序和展示方式”不合理，会误导交易判断。下一步应该改 UI 和排序，把“源板块涨”与“产业链确认”拆开。"
+    },
+    {
+      "hash": "658d00e88de520460eb5ffad645830856a536f137d315c3eced0ad0fe6e6887f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea",
+      "timestamp": null,
+      "verbatim": "- `商业航天` 现在会进 `军工装备产业链 / 商业航天/卫星互联网`，这个是对的。\n- `航天航空` 会优先进 `军工装备产业链`，弱匹配到 `交通运输` 会被分数过滤掉，也基本对。\n- 但 `通用航空` 现在只因为命中“航空”两个字，被路由到 `交通运输产业链 / 航空/航运/轨交`，这个不合理。"
+    },
+    {
+      "hash": "bdf379834903e4d1eb9a0d671bf941040348a6fe0ae9f780f91e0d0da2faf391",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea",
+      "timestamp": null,
+      "verbatim": "1. `交通运输产业链` 只保留：航运、港口、物流、快递、铁路、公路货运、航空运输。\n2. `通用航空` 不再走交通运输，改到 `军工装备产业链 / 商业航天/卫星互联网`，或者更准确地新增一个 `低空经济/通用航空` 节点。\n3. UI 上显示源：`[概念] 通用航空 -> 低空/航空装备`，不要显示成 `交通运输`。\n4. 排序上，如果一个源只是弱命中“航空”这种泛词，不允许把整条交通运输链顶上去。"
+    },
+    {
+      "hash": "61b571588aea0249f2bc41537b63e13ab396e259b2818f56d0a8a24c212d4871",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 下午8.54.21.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_o3vJAJ/截屏2026-05-08 下午8.54.21.png"
+    },
+    {
+      "hash": "94331eea0c3ce3abe8fd184c9755cfea9d1cc5a8e8b0dc3b4fee84e902e84736",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n这三个行业是为啥排序那么靠前呢？我看几个龙头涨幅都不大，是不是因为里面的概念板块涨幅大呢？目前你这个板块内容完全是行业为主？概念没区分么？"
+    },
+    {
+      "hash": "751122b0235662aca098dd768dbf9384ce903d688ebb00838d7e12af157ba776",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "先结论：这三个排前，不是因为链主股涨得大；右侧 `+5.64 / +5.46 / +2.60` 是“主驱动行业/概念涨幅”，不是美的、格力、南航、中远海控这些代表股涨幅。"
+    },
+    {
+      "hash": "503ace7ccb847bad5ca70d9d42a5db18305fe666f5d250a2f122f2312ad0fb63",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "- 家电家居产业链 排名 2：主驱动是 `其他家电Ⅲ/Ⅱ +5.64%`，领涨 `融捷健康 +13.74%`；但代表股里 `美的 +0.78%`、`格力 +0.05%`、`三雄极光 +0.33%`。\n- 纺织轻工产业链 排名 4：主驱动是 `印染 +5.46%`，还有 `印刷 +3.16%`、`综合包装 +2.97%`；代表股 `华升 +1.62%`、`晨鸣 +0.40%`、`佛塑 -4.83%`。\n- 交通运输产业链 排名 6：主驱动是 `航运 +2.60%`、`仓储物流 +2.47%`、`航运港口 +2.22%`；概念里也有 `通用航空 +2.18%`、`海洋经济 +1.49%`；代表股 `南航 +1.60%`、`中远海控 -0.28%`、`中国中车 -0.84%`。"
+    },
+    {
+      "hash": "10aec2843f07930c88761590c58a8255cf51d7da3846635645f575600765de24",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "所以你看龙头涨幅不大是对的。当前排序看的是“链条热度”，不是“链主涨幅”。排序逻辑在 [chain_heat.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/chain_heat.py:115)：大致是 `板块涨幅 * 8 + 上涨家数宽度 * 12 + 排名分 + 领涨股涨幅 * 0.7`，再按产业链聚合后排序。也就是细分板块涨、上涨家数多、领涨股强，就会把产业链顶上去。"
+    },
+    {
+      "hash": "f87fed5ac0635d244ea33bee713a6f5a3de5c8a4a7f730532639828744f7f517",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "目前这块不是纯行业，也不是纯概念。后端会同时读 `industry` 和 `concept`，映射进 `chain_heat_snapshots`，代码在 [chain_heat.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/chain_heat.py:193)。但 UI 上确实混在一个“板块”列表里，只显示“主驱动”，没有明显打出“行业驱动 / 概念驱动”的区分。这个展示会误导你以为它是行业榜。"
+    },
+    {
+      "hash": "e87163762ede71cb126e11bcd5a4760f0f4b233d41a7ff312fa293ba6d007f25",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5",
+      "timestamp": null,
+      "verbatim": "再进一步可以拆两个过滤：`行业驱动` / `概念驱动` / `产业链聚合`。当前数据结构已经有 `primary_domain.kind`，主要是前端没有把它显性展示出来。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

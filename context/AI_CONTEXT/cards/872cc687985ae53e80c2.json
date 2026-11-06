@@ -1,0 +1,157 @@
+{
+  "id": "019d7588-288c-78c1-8066-edebbe69c5be",
+  "title": "检查常驻 system service 日志",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019d7588-288c-78c1-8066-edebbe69c5be",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "f6c77ebeeb888837f2e9ea3966bdbcacd1b7299abf671f9eeb076505b7e0e3da",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#first-request",
+      "timestamp": null,
+      "verbatim": "你看一下目前系统常驻的system service日志，是不是运行正常，有什么优化的方案？"
+    },
+    {
+      "hash": "677a70f4038a0bf19de640abcf76a18f6d4ffecca514e6e2a6d18ddc97a0dbfa",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#recent",
+      "timestamp": null,
+      "verbatim": "我是不是需要重新weclaw login和weclaw start呢？"
+    },
+    {
+      "hash": "5e794fa3ccf19d6b5fb01c552da53c40faba8d1e70ff5a3c0d063f89d2497a0d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#recent",
+      "timestamp": null,
+      "verbatim": "不需要 `weclaw start`，已经在跑了。当前 `weclaw.bridge` 正常监听 `127.0.0.1:18011`，而且我已经重启过一次。"
+    },
+    {
+      "hash": "941457cd850116c7fe772979c2a042eeb1c3bb9bcd1c9aaede72403ec2393f06",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#recent",
+      "timestamp": null,
+      "verbatim": "`weclaw login` 值得做，原因是现在失败已经收敛到上游 `sendmessage ret=-2`，不像本地进程没起来，更像账号会话/发送权限/上下文状态异常。日志里之前也出现过 `If this persists, run weclaw login to re-authenticate.`"
+    },
+    {
+      "hash": "6816b3564c419f801ab05763d21b995d3e03be30f45759cc526dd972329451a8",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#recent",
+      "timestamp": null,
+      "verbatim": "结论：\n- `weclaw start`：不用。\n- `weclaw login`：建议现在执行一次。"
+    },
+    {
+      "hash": "6340b68edf394544d6a9b7bc778217874f50ed825b85c08e41ea2ce182a176af",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "PLEASE IMPLEMENT THIS PLAN:\n# Longclaw 常驻服务与微信送达修复方案"
+    },
+    {
+      "hash": "de75c7e5e32d2703e49cea1734ab267ec6d0a591c571eedf3e4446f75a46da1a",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "`guardian.monitor` 负责巡检和保活  \n`weclaw.bridge` 负责本机微信桥接与 API 入口  \n`repo.scheduler` 负责定时生成“最近情况”和本地循环状态  \n`codex.appserver` 提供 Codex 本地 app-server 能力  \n`claude.worker` 提供 Claude 可用性/备援检测"
+    },
+    {
+      "hash": "90ee55226c72ec7cf542c325aff99d837fba90e90ecad933c30f18fece3f27e9",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "1. 发送策略层面，定时摘要被硬编码为“只有 `windowed_proactive` 才允许发送”，当前一直退化为 `reply`，所以每轮都被跳过。证据在 `runtime-wechat-control.py` 第 192 行附近，`delivery_mode != \"windowed_proactive\"` 直接写入 `skipped_window_unavailable`。  \n2. ingress 状态层面，`.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json` 已损坏，`runtime-roadmap-sync.py` 无法可靠解析会话窗口，导致“窗口是否打开”长期停留在旧时间戳。"
+    },
+    {
+      "hash": "c5cceb76bcd6a296044ad23c15bef677164844ace44ceab8c3ecee28f0509c1a",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "在此基础上，`weclaw.bridge` 自身还存在 TUN 下的网络不稳定问题，但这不是“为什么完全没收到”的第一原因。第一原因是产品逻辑先把发送关掉了。"
+    },
+    {
+      "hash": "0889fffd1d3ce1b2afa920456dbfddf403418b29c693aef60594861951162b26",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "## 关键职责与现状\n- `guardian.monitor`\n  - 启动 `weclaw-guardian monitor --config ~/.weclaw/services.json --uid 501`\n  - 作用是按 `services.json` 每 30 秒巡检 `codex.appserver`、`claude.worker`、`repo.scheduler`、`weclaw.bridge`，并执行保活/重启退避\n  - 目前状态正常，主要是总控，不直接负责发微信\n- `weclaw.bridge`\n  - 通过 `weclaw-real start -f` 以前台方式被 `launchd` 常驻\n  - 作用是维持本机微信桥接、监听本地端口 `18011`、承接 `weclaw send` 和任务派发 API\n  - 目前“进程活着但上游不稳”，日志里有 `no such host`、`TLS handshake timeout`、`EOF`、`context deadline exceeded`\n  - 在你要求下，必须继续工作在 TUN 模式，不能靠简单改成直连规避\n- `claude.worker`\n  - 当前实际走 `weclaw-guardian claude-worker`\n  - 作用是 Claude 通道健康检查和备援能力维持，不参与微信摘要发送\n  - 当前路由状态里 Claude 是 `not_logged_in`，因此只是备份不可用，不是本次微信送达失败的根因\n- `codex.appserver`\n  - 通过 `codex app-server --listen ws://127.0.0.1:45678`\n  - 作用是给本地 runtime 暴露 Codex 服务能力，供主链路调用\n  - 当前状态正常\n- `repo.scheduler`\n  - 每 4 小时执行一次 `repo-scheduler-service.sh`\n  - 负责工作区扫描、cloud sync、dependency update、routing reconcile、harness tick、roadmap sync、wechat summary、queued task dispatch\n  - “最近情况”就是它在生成，日志中可见它每轮都产出 `roadmap-queue.json` 和 `wechat-notification-state.json`\n  - 当前真正的问题是：它生成了摘要，但发送逻辑被 delivery policy 阻断"
+    },
+    {
+      "hash": "ee1c77750a8bac7575ae67459c518403b0a1e26afae74d45dfc268f76d5ba549",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "## 需要实施的变更\n- 调整微信摘要送达策略\n  - 采用“后台摘要直推”策略，保留会话窗口机制给对话类消息，但将 `repo.scheduler` 的定时摘要从 `windowed_proactive` 解耦\n  - `runtime-wechat-control.py` 中把 `send-summary` 的发送条件改为：\n    - 定时摘要允许在 `reply` 模式下发送\n    - 对话内主动插话仍继续受窗口限制\n  - `delivery_policy` 中增加区分字段，例如：\n    - `conversation_delivery_mode`\n    - `summary_delivery_mode`\n  - `summary_delivery_mode` 默认在存在合法 target user、bridge 可用时允许发送，不依赖最近 15 分钟互动\n- 修复 ingress 会话状态损坏\n  - 清理或修复损坏的 session window 文件 `o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json`\n  - 在写入 session window 的生产路径上改成原子写，避免尾部脏数据导致 JSON 被拼接坏\n  - `runtime-roadmap-sync.py` 在读取 session 文件时，单文件损坏应降级忽略该文件而不是让整个窗口状态长期失真\n- 保持 TUN 模式下的 `weclaw` 连通性\n  - 不改成直连模式，不绕开 TUN\n  - 为 `ilinkai.weixin.qq.com` 在 Clash/TUN 规则中指定稳定出口策略，避免当前解析到 `198.18.x.x` 后的异常 TLS/EOF 链路\n  - 优先在 TUN 规则层做“可信代理组/稳定出口”绑定，而不是简单全局代理或全局直连\n  - 给 `weclaw.bridge` 增加启动自检和运行中健康探针：\n    - DNS 解析结果\n    - TLS 握手是否可达\n    - 连续失败计数\n    - 最近一次成功时间\n- 明确服务边界并补 observability\n  - `guardian.monitor` 只负责服务存活与重启，不负责业务成功语义\n  - `repo.scheduler` 负责“状态生成”和“摘要发送触发”\n  - `weclaw.bridge` 负责“真正出站送达”和“任务分发 API”\n  - 增加统一状态快照，至少包含：\n    - bridge `listener_up`\n    - bridge `upstream_reachable`\n    - scheduler `last_summary_generated_at`\n    - scheduler `last_summary_send_attempt_at`\n    - scheduler `last_summary_send_result`\n    - ingress `last_seen_message_at`\n    - ingress `session_window_valid`\n- 修正当前“最近情况”相关的误导状态\n  - 现在 `runtime-status` 显示 `summary_delivery_status: skipped_window_unavailable`，这在后台摘要语义下是错误的\n  - 调整为分别展示：\n    - 会话主动推送状态\n    - 定时摘要推送状态\n  - 避免未来再次把“策略性跳过”误判成“网络故障”或“服务未运行”"
+    },
+    {
+      "hash": "b90bb9b527d75257376ec94f5361c926db58bce3fbc0543bd60ca17007a7ea6a",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "## 测试与验收\n- 服务职责验收\n  - `guardian.monitor` 能继续保活 4 个常驻服务，且不因业务失败误重启\n  - `repo.scheduler` 每轮正常生成 `roadmap-queue.json`\n  - `weclaw.bridge` 监听端口 `18011`，且对上游有成功请求记录\n- 送达策略验收\n  - 在没有最近 15 分钟微信互动的情况下，`repo.scheduler` 仍能发出一条“最近情况”摘要\n  - `runtime-wechat-control.py send-summary` 在 `reply` 模式下不再返回 `skipped_window_unavailable`\n  - 对话类主动插话仍维持窗口限制，不扩大到所有消息\n- ingress 稳定性验收\n  - 损坏的 session window 文件修复后，不再出现 `session_window_parse_failures`\n  - `latest_activity` 中 `session_window_at`、`seen_message_at`、`context_token_updated_at` 能正常随新消息推进\n- TUN 连通性验收\n  - `weclaw.bridge` 在 TUN 模式下连续运行 24 小时，不再出现持续性的 `no such host`、`TLS handshake timeout`、`EOF` 风暴\n  - 若偶发失败，日志中能看到连续失败计数、退避和恢复点\n- 用户体验验收\n  - `wechat-notification-state.json` 中 `last_sent_at` 能在新的 scheduler 周期后推进\n  - 你能在微信里重新收到“最近情况”摘要\n  - 若发送失败，状态文件明确记录失败原因而不是仅保留 `window_unavailable`"
+    },
+    {
+      "hash": "a1a39a14d8f0dd5afedcf76367e45ccda6118a77b0a1578434203940027cd68f",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "## 默认假设\n- 你要求保留 `weclaw` 在 TUN 模式下运行，因此方案不会采用“为微信桥接单独直连绕过 TUN”。\n- 已选择“后台摘要直推”作为默认策略。\n- 仅将“定时摘要”从窗口约束中解耦，不放开所有主动消息。\n- 现阶段不调整 `claude.worker`/`codex.appserver` 的功能，只补它们在状态快照中的可观测性。"
+    },
+    {
+      "hash": "394da8651cbeac13c69009353d43396f5fd71a6a5833617f293f4885b7a62ab9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "已实现并同步到运行态。核心改动在 [runtime-wechat-control.py](/Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-wechat-control.py), [runtime-roadmap-sync.py](/Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-roadmap-sync.py), [runtime-status](/Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-status), [weclaw-bridge.sh](/Users/zhangqilong/.longclaw/runtime-v2/bin/weclaw-bridge.sh) 和新增的 [weclaw-bridge-health.py](/Users/zhangqilong/.longclaw/runtime-v2/bin/weclaw-bridge-health.py)。源码副本也同步更新到了 [runtime-wechat-control.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-wechat-control.py) 等对应路径。"
+    },
+    {
+      "hash": "21fa26b83bfc2f760da366a37d6c20553c784d762083a2f7dfae43b7c3a2668a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "现在系统行为已经变成：\n`summary_delivery_mode=background_summary`，不再被 `reply/window` 策略直接跳过；`conversation_delivery_mode` 仍保持 `reply`。`runtime-status` 也拆开显示了 conversation/summary 两套状态，并新增 bridge/scheduler/ingress 健康快照。损坏的 session 文件 [o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json) 已被自动修复，当前 `archive_status=healthy`、`session_windows_invalid=0`。"
+    },
+    {
+      "hash": "2f7c87b471cb8afef4debc5bb725886b00733db676363ec5889d189c41082ba1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "我已经重启了 `weclaw.bridge`，健康监控在跑，状态文件是 [weclaw-bridge-health.json](/Users/zhangqilong/.longclaw/runtime-v2/state/weclaw-bridge-health.json)。当前 bridge 探针显示 `listener_up=true`、`upstream_reachable=true`。但实际微信摘要发送仍失败，已经从“策略阻断”收敛成“上游 sendmessage 业务失败”：`ret=-2`。通知状态在 [wechat-notification-state.json](/Users/zhangqilong/.longclaw/runtime-v2/state/wechat-notification-state.json) 里，当前 `last_send_status=failed`，且已记录 `last_send_transport=direct_ilink_no_context`，说明我连无上下文兜底也试过了，仍被上游拒绝。"
+    },
+    {
+      "hash": "c6ca4eef64b31dcc65a8b4757cdcf6b39cf311bbfe65e6e1653af37eebde24e1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1",
+      "timestamp": null,
+      "verbatim": "验证已做：`py_compile` 通过；`runtime-roadmap-sync.py` 跑通；`weclaw.bridge` 已 kickstart；`send-summary` 已实际触发发送分支多次。当前剩余阻塞不是本地常驻服务逻辑，而是 `weclaw/iLink` 的发送语义或账号侧状态。下一步如果你要我继续，我会直接追 `weclaw send` / `sendmessage` 的 `ret=-2` 根因。"
+    },
+    {
+      "hash": "129114335dd610151b736a8d084a053850bce647fd64035477a1e404afc239f8",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758b-19f2-7d82-a183-86e41847d5e5",
+      "timestamp": null,
+      "verbatim": "guardian.monitor、weclaw.bridge、claude.worker、codex.appserver、repo.scheduler这几个自定义服务深度分析。目前各自承担什么职能，为什么我微信一直没有收到最近的情况。weclaw需要保持在tun模式下的连接"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

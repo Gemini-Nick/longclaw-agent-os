@@ -1,0 +1,941 @@
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a78-e031-7281-aa10-12c5baf7fd88
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+Codex Automation 不做“检查系统有没有活着”的低价值 QA。
+它做“交易员今天该看什么、为什么看、什么时候放弃”的策略提醒。
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a73-d966-7ef1-9e0a-0cb5213ff564
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$andrej-karpathy-skills:karpathy-guidelines](/Users/zhangqilong/.codex/plugins/cache/local-plugins/andrej-karpathy-skills/1.0.0/skills/karpathy-guidelines/SKILL.md) 你进行全面检查singals和agent os，把所有功能都考虑清楚。哪些给launchd，哪些给codex自动化，哪些需要微信推送给我。然后重构整个方案
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你用小学生也能听得懂的话解释一下，Codex automation 更适合什么？launchd更适合什么，未来我的signals/agentos项目和codex自动化怎么配合
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 看日志，判断为什么失败
+- 检查 Signals 数据是不是新鲜
+- 总结今天 A 股池子刷新结果
+- 发现异常后告诉你“哪里坏了、下一步怎么修”
+- 盘后生成一份中文复盘
+- 每天/每周检查 AgentOS 和 Signals 的状态
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+未来你的 `Signals / AgentOS / Codex automation` 应该这样配合：
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+5. 需要“解释原因”的时候交给 Codex
+   比如“为什么池子没更新”“为什么某个股票 K 线错了”“为什么盘后 DAG 没跑完”。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `launchd`：保证 `Signals runtime` 一直活着，挂了自动重启。
+- `Signals`：真的去跑数据模块，写 Mongo。
+- `AgentOS`：展示最新池子、买点、盯盘、风险票。
+- `Codex automation`：不要负责每 5 分钟刷新，只负责检查“刷新是否正常”。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+每 30 分钟检查一次：
+- signals.runtime 是否 running
+- quote_lane / signal_lane / workbench_lane / board_lane 是否 running
+- terminal_stock_pool.updated_at 是否在 10 分钟内
+- strategy_snapshots.updated_at 是否在 10 分钟内
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+正常：DONT_NOTIFY
+异常：NOTIFY：A股池子超过10分钟未刷新，workbench_lane 正常/异常，最新日志是什么
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+每天 23:30 检查：
+- postmarket run_id 是不是今天
+- sync_tasks 有没有 failed / partial
+- terminal_stock_pool 是否刷新
+- strategy_snapshots 是否生成
+- AgentOS 首页需要的数据是否齐全
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+盘后任务完成：
+- run_id: postmarket:2026-05-09
+- terminal_stock_pool: 已刷新
+- strategy_snapshot: 已生成
+- failed_tasks: 0
+- 明天开盘可用
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+盘后任务异常：
+- stock_daily: shard_12 partial
+- board_cons: concept failed
+- terminal_stock_pool 未刷新
+建议：先恢复 board_cons，再补跑 terminal_realtime_pool 和 strategy_snapshot
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+每天开盘前检查 AgentOS：
+- /api/pack/dashboard 能不能返回
+- 首页池子是不是空
+- 买点候选是否有数据
+- K线接口是否能读到最新 bar
+- 板块热度是否有最新交易日
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+AgentOS 数据不完整：
+- terminal_stock_pool 有数据
+- strategy_snapshot 为空
+- 买点候选为空
+下一步：补跑 strategy_snapshot
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+1. launchd 服务有没有活着
+2. Signals runtime 子进程有没有挂
+3. Mongo 能不能连
+4. 最新日志有没有报错
+5. 哪个 sync module 最后失败
+6. 数据卡在哪个 collection
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+故障原因：
+不是 AgentOS 前端问题，是 workbench_lane 超过 18 分钟没有写入。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+证据：
+- signals.runtime: running
+- workbench_lane: running
+- terminal_stock_pool.updated_at: 18分钟前
+- 最新日志：provider cooldown / Eastmoney timeout
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+建议：
+先观察下一个 tick；如果 10 分钟后仍未恢复，重启 workbench lane。
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+A股池子异常：
+terminal_stock_pool 已 17 分钟未刷新。
+signals.runtime 仍在运行，疑似 workbench_lane 卡住。
+建议：重启 workbench lane。
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+每 30 分钟或每天检查：
+- Signals 有没有未提交改动
+- AgentOS 有没有未提交改动
+- 本地 main 和 GitHub main 是否一致
+- 测试是否失败
+- launchd runtime 和 repo 源码是否漂移
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+Codex automation：检查、判断、报告
+Longclaw scheduler：执行安全提交/推送
+人工 Codex 会话：真正修复杂问题
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. signals-postmarket-review
+   每天盘后检查 postmarket DAG 是否完成。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. signals-market-brief
+   盘后生成中文市场简报：今日池子变化、强势板块、风险票。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a71-d252-7e80-a5d7-5f721be3ecfa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+6. failure-triage
+   发现异常后读取日志，判断根因，给出下一步修复命令。
+```
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+为什么automation 子会话里不能稳定调用 automation_update？自己不能暂停自己？
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+先结论：按当前 Codex Desktop 的 automation 运行方式，**automation 子会话不能可靠地调用 `automation_update`，也不应该设计成“自己暂停自己”**。这次 `a-5` 的证据很明确：模块和 Mongo 校验都成功，失败点反复是 `pause_attempt: blocked_automation_update_unavailable`，run 摘要也写着“暂停失败需 automation_update 可用后重试”。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. **`automation_update` 是宿主控制面工具，不是 automation worker 内部能力**
+   我在交互式 Codex 会话里能调用 `codex_app.automation_update`，因为这是 Desktop 宿主暴露给当前会话的工具。但 automation 后台子会话是一个独立任务运行环境，实际没有这个工具。prompt 里写“使用 automation_update”不会自动让它变成可调用工具；如果它当 shell 命令试，就会变成类似 `automation_update: command not found`。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. **自修改调度状态本身容易和 scheduler 写状态竞争**
+   automation 正在运行时，调度器同时要写 `last_run_at`、`next_run_at`、run status、inbox 状态。让任务在结束前改自己的 `status=PAUSED`，会出现先后顺序问题：任务以为暂停了，但 scheduler 可能已经算好下一次；或者 scheduler 最后写回覆盖一部分状态。平台通常会把“任务执行面”和“任务管理面”隔开，避免后台任务随意改自己或其他任务。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. **分钟级 cron 不是 Codex automation 的强项**
+   你这个 `a-5` 是 `FREQ=MINUTELY;INTERVAL=5`，又要求盘中高频运行、收盘补跑、然后自暂停。这类逻辑更像 daemon/state machine，不像智能任务。Codex automation 更适合“检查、解释、报告、失败归因”，不适合当 5 分钟生产调度器。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以回答“自己不能暂停自己？”：**在当前这套运行环境里，应该按“不能”处理。** 它可以输出“我需要被暂停”，可以写状态或发通知，但真正 pause/resume 应该由外部控制面做：交互式 Codex、Desktop UI、或者 launchd/Signals runtime 自己的状态机。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6f-c0cb-7d60-9a19-af611a546e53
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+正确模式是：`launchd + Signals runtime` 自己判断交易时段和停启，不需要暂停 Codex automation；Codex automation 只读检查 runtime、Mongo freshness 和日志，异常时通知。这样就不会再卡在“后台 automation 想调用宿主 automation_update”这个边界上。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a6b-685a-72d2-a3fd-19501847f5e7
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你结合这个已有的Plan（Codex Automation 与 Mac Launchd 搭配方案），看看Launchd和codex自动化怎么配合
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a65-9596-7aa2-9f68-8d6441f9d763
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+结论：你的判断方向是对的，但失败点在 Codex automation 控制面，不在 Signals 三个模块。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a65-9596-7aa2-9f68-8d6441f9d763
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`A股池子5分钟刷新` 实际跑成功了，Mongo 也验证成功；失败在最后一步自我暂停。自动化子会话里 `automation_update` 不可用，日志里明确出现 `automation_update not found`，所以每次都只能输出 `BLOCKER: unable_to_pause_automation`，`a-5` 一直保持 `ACTIVE`，导致周末仍继续 5 分钟触发。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a65-9596-7aa2-9f68-8d6441f9d763
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`A股池子5分钟恢复检查` 那次在北京时间 `2026-05-09 09:29` 触发，但当时 `a-5` 还没暂停，所以没有真正可恢复对象；会话只有 `session_meta/task_started`，随后被自动归档，没有执行出有效恢复结果。后续即使 `a-5` 是 PAUSED，它大概率也会碰到同类问题：恢复动作也依赖 `automation_update`。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a65-9596-7aa2-9f68-8d6441f9d763
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经做了止血：用当前主会话可用的 `automation_update` 把 `a-5` 手动置为 `PAUSED`。已验证：
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a65-9596-7aa2-9f68-8d6441f9d763
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `a-5`: `PAUSED`，`next_run_at` 为空，不会继续 5 分钟触发。
+- `a-5-2`: 仍为 `ACTIVE`。
+- 刚才已启动的最后一条 `a-5` 已完成，仍复现同一个暂停失败原因。
+
+
+---
+来源：codex:019e0a63-f795-7721-93fb-d6d178e729c3#turn:019e0a65-9596-7aa2-9f68-8d6441f9d763
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+还要修的点：不要让定时任务内部依赖 `automation_update` 自己改自己。更稳的方案是把 5 分钟刷新放到 `launchd/Signals runtime` 这类本地调度器里，Codex automation 只做日级守护/审阅；或者写一个外部 guardian 任务，由它在主控环境里改 automation 状态。`FREQ=MINUTELY;INTERVAL=5` 对 Codex cron 也不是稳定受支持的形态，这个是第二个隐患。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+这三个行业是为啥排序那么靠前呢？我看几个龙头涨幅都不大，是不是因为里面的概念板块涨幅大呢？目前你这个板块内容完全是行业为主？概念没区分么？
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 截屏2026-05-08 下午9.42.26.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_lR259e/截屏2026-05-08 下午9.42.26.png
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## My request for Codex:
+上面产业链六宫格没有变化
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已修好，并且已经装进 `/Applications/隆小侠 Agent OS.app` 验证过了。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 打包 App 从 Finder 启动时拿不到 `LONGCLAW_SIGNALS_WEB_BASE_URL`，会走降级/旧数据链路。  
+   我加了本机默认 `http://127.0.0.1:8011` 兜底。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 商业航天/卫星互联网：`产业链确认`，链主/弹性包含中国卫通、航天发展、航天动力；不再被交通运输吞掉。
+- 家电/照明：`源强链弱`，标题直接显示 `其他家电Ⅲ/虚拟现实/养老概念`。
+- 纺织/轻工：`源强链弱`，标题直接显示 `印染/机器人执行器/人形机器人`。
+- CPO：`弹性补涨`，表格直接写“链主不强，先看弹性标的和三线扩散”。
+- 次新股：独立为 `主题热度 · 次新股`，大普微-UW 这类不再被硬塞进行业链。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Signals` 回归：`118 passed`
+- `longclaw-agent-os`：`npm run lint` 通过
+- Electron 重新打包、安装、打开验证通过
+- live API `/api/workbench/shell` 已返回新语义
+- 桌面 App 六宫格和表格可见 UI 已确认不是旧“升温”口径
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 截屏2026-05-08 下午9.20.45.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_8JG5tu/截屏2026-05-08 下午9.20.45.png
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+1、UI上面体现不明显，都是升温 2、家电和纺织标题上要直接显示（和哪些概念的关联，本质不是行业的热度）3、cpo是分化，龙头不强，三线补涨？还是什么原因？ 4、商业航天为什么没入围？航天发展和航天动力都是涨停  5、大普微这种次新股涨幅也很好，也没有标记出来次新的热度
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 商业航天已经排第一：`产业链确认`，主驱动是 `[行业] 航天装备Ⅲ +8.23%`，并带 `航天航空/北斗导航/卫星互联网` 等叠加。
+- 家电现在会显示：`源强链弱`，主驱动是 `其他家电Ⅲ +5.64%`，叠加概念包括 `虚拟现实/养老概念/智能家居`，不会误读成美的、格力带动行业。
+- 纺织现在会显示：`源强链弱`，主驱动是 `印染 +5.46%`，叠加概念包括 `机器人执行器/人形机器人/PEEK材料`，这才是富春染织那条线的真实解释。
+- CPO 现在不再显示普通升温，而是 `弹性补涨`：中际旭创、新易盛、天孚通信不强，光迅科技这种弹性股在补涨。
+- 新增 `主题热度 · 次新股` 独立行，接口里已标出 `大普微-UW +16.68%`。我也查了外部资料确认大普微是 `301666`，2026-04 创业板上市，确实应归到次新维度：[新浪财经](https://finance.sina.com.cn/stock/relnews/cn/2026-04-16/doc-inhusraa2814752.shtml)、[中财网](https://www.cfi.net.cn/p20260410002955.html)。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py)：新增概念叠加、主题叠加、源强链弱、弹性补涨、次新股独立主题行。
+- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)：标题改成节点/主题优先，副标题直接显示状态、源行业/概念、叠加概念/主题。
+- [industry_chains.yaml](/Users/zhangqilong/github代码仓库/Signals/signals/core/industry_chains.yaml)：把通用航空/低空经济归到军工商业航天链，避免跑到交通运输。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0af9-8c30-7100-9279-466b5bc1e189
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Signals` 相关测试：`118 passed`
+- `longclaw-agent-os` TypeScript：`npm run lint` 通过
+- 已重启 Signals runtime
+- `/api/workbench/shell` 实测前十已出现：商业航天第一、次新股第二、家电/纺织为源强链弱、CPO 为弹性补涨。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+还有一个任务就是，你需要研究清楚主驱动[行业] 其他家电Ⅲ +5.64% 涨的是什么。包括纺织？印染 +5.46%，还有 印刷 +3.16%、综合包装 +2.97
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我既需要显示行业，也需要显示概念。特别是当链主或者龙头明显不涨的时候，肯定是细分行业的某些概念蹭到了热门赛道
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 终端列名从 `板块` 改成 `产业链`，第三列改成 `源行业/概念`。
+- 后端新增：
+  - `source_driver`：主驱动源行业/概念。
+  - `source_events`：该产业链下所有源行业/概念。
+  - `chain_confirmation`：产业链确认 / 链内分化 / 源强链弱。
+  - `source_concept_overlays`：源板块成分股命中的热门概念。
+  - `source_event_concept_overlays`：按每个源行业分组解释“到底蹭了什么概念”。
+- `通用航空/低空经济` 已改路由到 `军工装备产业链 / 商业航天/卫星互联网`，不再因为“航空”两个字误进交通运输。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `家电家居产业链` 现在标成 `源强链弱`
+  - 源行业：`其他家电Ⅲ +5.64%`
+  - 实际涨的是：`融捷健康 +13.27%`、`奥佳华 +1.94%`、`荣泰健康 +1.32%`
+  - 概念叠加：`养老概念`、`智能家居`、`互联医疗`、`虚拟现实`、`鸿蒙概念`
+  - 这不是美的/格力主线。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `纺织轻工产业链` 现在标成 `源强链弱`
+  - `印染`：迎丰股份、富春染织；概念叠加 `机器人执行器`、`人形机器人`、`PEEK材料`
+  - `印刷`：盛通股份、强邦新材、东港股份、鸿博股份；概念叠加 `包装材料`、`造纸印刷`、`鸿蒙概念`
+  - `综合包装`：康欣新材、海顺新材、新通联、天元股份；概念叠加 `包装材料`、`造纸印刷`、`跨境电商`
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae4-ec56-7991-bec7-30851144a1cf
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `Signals`: `117 passed`
+- `longclaw-agent-os`: `npm run lint` 通过
+- 已重启 `com.zhangqilong.ai.signals.runtime`
+- `/api/workbench/shell` 已读到新的分源概念字段
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `融捷健康` 拉 `其他家电`，不等于美的、格力代表的家电主线在走。
+2. `印染/综合包装` 涨，不等于纺织轻工链条整体有强逻辑。
+3. 排序分数吃了源板块涨幅、上涨家数、领涨股涨幅，但没有强制要求链主/代表股确认，所以你看到“龙头不涨但行业排很前”。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 第一层叫：`源板块异动`
+  例如：`其他家电Ⅲ +5.64% -> 映射到 家电家居产业链`
+- 第二层叫：`产业链确认`
+  只有代表股、链主、弹性股也同步走强，才标 `产业链确认`。
+- 如果源板块强但代表股弱，显示：
+  `细分异动 / 链主未确认`
+  并且排序降权。
+- 概念和行业要显式区分：
+  `[行业] 其他家电Ⅲ`
+  `[概念] 通用航空`
+  `[产业链] 家电家居`
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以结论是：底层“用细分板块做热度探针”可以保留；当前“排序和展示方式”不合理，会误导交易判断。下一步应该改 UI 和排序，把“源板块涨”与“产业链确认”拆开。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `商业航天` 现在会进 `军工装备产业链 / 商业航天/卫星互联网`，这个是对的。
+- `航天航空` 会优先进 `军工装备产业链`，弱匹配到 `交通运输` 会被分数过滤掉，也基本对。
+- 但 `通用航空` 现在只因为命中“航空”两个字，被路由到 `交通运输产业链 / 航空/航运/轨交`，这个不合理。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0ae3-cd70-7892-b0d9-2e27ca92bcea
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `交通运输产业链` 只保留：航运、港口、物流、快递、铁路、公路货运、航空运输。
+2. `通用航空` 不再走交通运输，改到 `军工装备产业链 / 商业航天/卫星互联网`，或者更准确地新增一个 `低空经济/通用航空` 节点。
+3. UI 上显示源：`[概念] 通用航空 -> 低空/航空装备`，不要显示成 `交通运输`。
+4. 排序上，如果一个源只是弱命中“航空”这种泛词，不允许把整条交通运输链顶上去。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 截屏2026-05-08 下午8.54.21.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_o3vJAJ/截屏2026-05-08 下午8.54.21.png
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+这三个行业是为啥排序那么靠前呢？我看几个龙头涨幅都不大，是不是因为里面的概念板块涨幅大呢？目前你这个板块内容完全是行业为主？概念没区分么？
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+先结论：这三个排前，不是因为链主股涨得大；右侧 `+5.64 / +5.46 / +2.60` 是“主驱动行业/概念涨幅”，不是美的、格力、南航、中远海控这些代表股涨幅。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 家电家居产业链 排名 2：主驱动是 `其他家电Ⅲ/Ⅱ +5.64%`，领涨 `融捷健康 +13.74%`；但代表股里 `美的 +0.78%`、`格力 +0.05%`、`三雄极光 +0.33%`。
+- 纺织轻工产业链 排名 4：主驱动是 `印染 +5.46%`，还有 `印刷 +3.16%`、`综合包装 +2.97%`；代表股 `华升 +1.62%`、`晨鸣 +0.40%`、`佛塑 -4.83%`。
+- 交通运输产业链 排名 6：主驱动是 `航运 +2.60%`、`仓储物流 +2.47%`、`航运港口 +2.22%`；概念里也有 `通用航空 +2.18%`、`海洋经济 +1.49%`；代表股 `南航 +1.60%`、`中远海控 -0.28%`、`中国中车 -0.84%`。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以你看龙头涨幅不大是对的。当前排序看的是“链条热度”，不是“链主涨幅”。排序逻辑在 [chain_heat.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/chain_heat.py:115)：大致是 `板块涨幅 * 8 + 上涨家数宽度 * 12 + 排名分 + 领涨股涨幅 * 0.7`，再按产业链聚合后排序。也就是细分板块涨、上涨家数多、领涨股强，就会把产业链顶上去。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+目前这块不是纯行业，也不是纯概念。后端会同时读 `industry` 和 `concept`，映射进 `chain_heat_snapshots`，代码在 [chain_heat.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/chain_heat.py:193)。但 UI 上确实混在一个“板块”列表里，只显示“主驱动”，没有明显打出“行业驱动 / 概念驱动”的区分。这个展示会误导你以为它是行业榜。
+
+
+---
+来源：codex:019e0adf-4496-73e3-a2fc-bae34d48f2ea#turn:019e0adf-dc89-71e3-9746-a9bbb91917c5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+再进一步可以拆两个过滤：`行业驱动` / `概念驱动` / `产业链聚合`。当前数据结构已经有 `primary_domain.kind`，主要是前端没有把它显性展示出来。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+帮我整理出5月8号创200日新高的股票名单，包含他们价格和行业板块和过去5日涨幅和量比等
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 截屏2026-05-08 下午9.30.18.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_ByKj4N/截屏2026-05-08 下午9.30.18.png
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+标的下面的介绍/动作都是雷同的，没有个性化描述。盯盘池也是类似，UI布局也聚集一起看不清。你需要优化
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已优化并装进正在用的 AgentOS 应用里了。真实入口在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)，不是 Signals 那个静态 `workbench.js`。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Signals 后端现在给池子输出个性化字段：`display_summary`、`display_action`、`display_badges`、`display_breakout`。
+- 买点池/盯盘池不再只显示雷同的“右侧进攻 + 主线宽松”模板，而是按个股展示 200 日新高突破幅度、5 日涨幅、量比、缺失确认、风险标记、链条/板块。
+- UI 行布局拆成“名称/标签/摘要/上下文/动作”，动作区单独展示，视觉上不再全挤在一行。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 重新扫描池子：`focus=24, watch=48, clue=24, risk=0`
+- 后端测试：`tests/test_terminal_stock_pool.py` 52 passed，`tests/test_workbench_watchlist_groups.py` 89 passed
+- AgentOS 类型检查：`npm run lint` passed
+- Electron 打包安装：`npm run electron:install:mac` 成功
+- 已重启 `/Applications/隆小侠 Agent OS.app`
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+视觉复核也看过了：买点池里例如绿的谐波会显示“进攻买点 / 右侧进攻 / 200日新高 / 机器人链”，并带突破、5日涨幅、量比；盯盘池里金螳螂会显示“等5m/15m确认”，并保留“缺口卖:衰竭”这类风险标记，不直接过滤。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在仍然是交易终端式高密度布局，但已经从“雷同文案”改成“个股证据 + 动作差异”。下一步如果继续压视觉问题，应该做左侧池子宽度/行密度开关，而不是再堆更多文字。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+开个subagent买点池帮我调整权整，再开一个subagent思考一下盯盘池怎么处理比较好
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. **风险只标记，不硬过滤**
+   - 有买点理由的票，即使同时有卖点/风险/周期冲突，也继续按买点或盯盘路径进入池子。
+   - 行上保留：`risk_marked`、`risk_marker`、`risk_marker_reason_type`、`risk_level`、`top_risk_reason`、`risk_signal_reasons`。
+   - 只有“纯风险、没有买点理由”的票才进入 `risk_stocks`。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我还补了一刀：`周期冲突` 也不再直接变成 `skip_now`，现在会合成 `周期冲突` 风险标记，但不阻断买点路径。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `py_compile` 通过
+- `tests/test_terminal_stock_pool.py`：`52 passed`
+- 已用当前信号重建真实 `terminal_stock_pool`
+  - 买点池：24
+  - 盯盘池：48
+  - 风险池：0
+  - 买点池中带风险标记：5
+  - 盯盘池中带风险标记：14
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`risk_stocks=0` 是这次语义调整后的结果：当前这些风险票大多同时有买点理由，所以被保留在买点池/盯盘池并打风险标记；不是被吞掉。纯风险票仍会进风险池。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+盯盘池 subagent 的结论也很清楚：下一步应该先做 `watch_lane`，不要再让盯盘池用一个总分混排。建议第一阶段加四类 lane：`等下单确认`、`等30m买点`、`低吸承接`、`新高突破观察`。这个我还没动代码，避免和买点池改动混在一起。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af4-3942-7143-b9ba-b97738e43e77
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+主要改动文件：
+- [terminal_pool.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/terminal_pool.py:2743)
+- [test_terminal_stock_pool.py](/Users/zhangqilong/github代码仓库/Signals/tests/test_terminal_stock_pool.py:1543)
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+买点池有右侧进攻的意思了，主要问题可能是入池的排序上要考虑权重的分配。盯盘池的问题比较大，也很难界定
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+买点池现在已经有“右侧进攻”的味道了，问题不是方向，而是**权重不要被 200 日新高单因子带偏**。我建议买点池改成这个权重结构：
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `风险过滤`：先做 gate，不参与加分；有明确风险信号直接降级/进风险池
+- `30m 交易周期买点`：最高权重，决定能不能进买点池
+- `5m/15m 下单确认`：第二权重，决定排序靠前还是等待
+- `日线/周线趋势背景`：中高权重，只做背景加成
+- `200日新高/突破动量`：加分项，不应该单独决定入买点池
+- `均线确认/Fibonacci 支撑`：稳定性加分
+- `产业链/主线`：同分排序加分，不替代技术触发
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+也就是说：`200日新高` 可以把一个已有右侧结构的票往前推，但不能让一个只有日线新高、没有 30m/5m 买点确认的票直接变成买点池核心。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. **买点等待池**：有日线/30m 背景，但还差 5m/15m 确认。
+2. **强势观察池**：200 日新高、放量突破、主线强化，但买点还没出现。
+3. **线索/主题池**：产业链、板块、消息或人工线索驱动，技术只是弱确认。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这三类不应该放在同一个排序逻辑里。我的建议是把盯盘池拆成内部三条 lane，UI 上可以仍叫“盯盘池”，但排序分别算：
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `watch_entry_waiting`：准买点，按“离买点还差什么”排序
+- `watch_momentum`：强势突破，按 200 日新高、量比、5 日涨幅、回撤风险排序
+- `watch_clue`：题材/产业链线索，按主线强度和是否出现技术靠近排序
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0af3-7a4e-7a41-959d-d59605022f70
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步我建议直接改排序模型：买点池先调整权重；盯盘池先不强行一个总分排序，而是拆 lane，否则“盯盘”会越来越像垃圾桶，什么都能放进去但不好决策。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你重新扫描一下盯盘池和买点池，哪些公司因为这个指标新增而加入筛选了，你评估一下
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已重扫。按 2026-05-08 数据口径，本次全市场 A 股扫描 5533 只，失败 0；发现 `200日新高突破` 技术信号 332 条。重建池子后，因这个指标进入买点/盯盘筛选的有 50 只：买点池 9 只，盯盘池 41 只；另有 4 只虽然触发新高，但被风险池拦截。
+
+
+---
+来源：codex:019e0ace-47aa-7e22-9280-9340f0b40e93#turn:019e0ae7-ef36-7022-b4a9-4ce1e4f10e17
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**买点池新增 9 只**
+| 排名 | 公司 | 板块/链条 | 价格 | 5日涨幅 | 量比 | 突破幅度 | 评价 |
+|---:|---|---|---:|---:|---:|---:|---|
+| 4 | 炬光科技 | 半导体/晶圆制造 | 434.64 | 18.69% | 1.55 | 3.46% | 强势但已较高，适合复核承接 |
+| 5 | 长龄液压 | 机器人/自动化 | 126.51 | 27.47% | 1.75 | 2.78% | 量价健康，买点池质量较高 |
+| 6 | 腾远钴业 | 锂资源 | 91.00 | 10.84% | 1.06 | 1.60% | 新高质量一般，更多看板块延续 |
+| 8 | 卡倍亿 | 汽车零部件/智能车 | 63.95 | 9.22% | 2.80 | 2.94% | 放量不错，优先看回踩不破 |
+| 9 | 四方股份 | 电网/储能 | 64.20 | 22.96% | 1.17 | 4.12% | 趋势强，追高风险略高 |
+| 10 | 震裕科技 | 电池 | 237.25 | 11.92% | 0.86 | 0.86% | 缩量新高，确认度偏弱 |
+| 11 | 美腾科技 | AI应用/人工智能 | 28.48 | 12.57% | 0.62 | 0.56% | 缩量新高，先观察持续性 |
+| 12 | 绿的谐波 | 机器人/人形机器人 | 262.99 | 26.65% | 2.75 | 9.09% | 最值得重点复核，动量和板块都强 |
+| 19 | 飞凯材料 | 半导体材料 | 35.27 | 11.79% | 1.53 | 0.75% | 新高幅度小，适合低吸观察 |

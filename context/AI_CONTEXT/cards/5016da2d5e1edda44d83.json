@@ -1,0 +1,149 @@
+{
+  "id": "019e77d9-3488-75b2-8507-d5a15e5033e9",
+  "title": "优化回测历史记录",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e77d9-3488-75b2-8507-d5a15e5033e9",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "a10b230971cd005f27d95f3ef5d2e6bd95013c30f0427a54c532f9306ac8f0e2",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#first-request",
+      "timestamp": null,
+      "verbatim": "这个是回测历史记录，需要可以复原和删除。你把整个这个历史数据做一个优化方案"
+    },
+    {
+      "hash": "366aa052a17d00efa248fc1b086b1898b6ad1fca5f30e8073b71a34deeaafe2c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-30 上午5.33.10.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_gw2xiF/截屏2026-05-30 上午5.33.10.png"
+    },
+    {
+      "hash": "833f77d77697761c4aedb19c1acfa9ab048f6cf7280f6cb0caece27dde61a2b6",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n卡片交互不友好，文字犯错"
+    },
+    {
+      "hash": "217b710d8e56fdf2dae62af6f04a245c7506d252d71efb03ef1949f1e65c6842",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#recent",
+      "timestamp": null,
+      "verbatim": "已修掉历史卡片这轮问题，并重新安装到 `/Applications/隆小侠 Agent OS.app`。"
+    },
+    {
+      "hash": "cc422a84f03f0bab95fb096df99bf952c57eb3917318f4b1168303407098ffde",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#recent",
+      "timestamp": null,
+      "verbatim": "改动集中在 [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:6118)：多标的标题现在固定显示 `多标的回测`，数量单独作为 `18只` 徽标；元信息拆成不拆字 token，避免 `成交` 这种中文被断行；标的 chip 收紧为前 2 个加 `+N`；“复原”和垃圾桶删除按钮也改成独立操作区。新增测试在 [BacktestWorkbench.test.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.test.tsx:406) 覆盖 18 标的窄卡片文本。"
+    },
+    {
+      "hash": "9b3ffbf636a942ef7b57a448e2e84246edda04837b30fcb4cb3eb868782f7cfa",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#recent",
+      "timestamp": null,
+      "verbatim": "验证已跑：\n- `npm test -- electron/src/renderer/workspaces/BacktestWorkbench.test.tsx`：19 passed\n- `npm run lint -- --pretty false`：通过\n- `npm run electron:install:mac`：最终成功安装；打包日志仍有现存 npm extraneous/invalid dependency 警告，但没有阻断第二次安装成功。"
+    },
+    {
+      "hash": "fcb81f51506b54c94ceb2be24175ae43583a5337acd23db467bc87afd23d0604",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "PLEASE IMPLEMENT THIS PLAN:\n# 回测历史数据优化方案"
+    },
+    {
+      "hash": "06946e7cb8832f70fb996106fb5ffa8205d278826ee869d36dde661511f4fef9",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "## Summary\n把当前“回测记录”从前端 `localStorage` 临时列表升级为可管理的“回测快照历史”。目标是：历史记录能精确复原旧的单票/多标的图形结果，也能单条删除，并且不再把 `strategy-snapshot-*` 这类每日策略快照混进可复原回测记录。"
+    },
+    {
+      "hash": "17533d61a0d2e73df6d614e09228ef5db1a7244723955d09c997ba64935c0a31",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "## Key Changes\n- **数据归属**：Signals 做 canonical 历史存储，Agent OS 只负责展示、复原和本地降级缓存。新增版本化历史模型 `backtest-history.v2`，保存：\n  - `id/schema_version/mode/title/codes/freq/signalType/simParams/createdAt/deletedAt`\n  - 列表摘要：标的数、信号数、成交数、收益/回撤、数据质量、展示标题\n  - 复原 payload：`result` 或 `batchResult`，以及必要的 renderer state，如当前 tab、日期标签、选中标的\n- **接口**：在 Signals 增加历史 API：\n  - `GET /api/backtest/history?limit=50`\n  - `GET /api/backtest/history/{id}`\n  - `POST /api/backtest/history`\n  - `DELETE /api/backtest/history/{id}`\n  删除默认做软删除：列表隐藏，保留 tombstone，避免本地旧缓存或 dashboard merge 后重新出现。\n- **前端行为**：改造 [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx)：\n  - 运行单票/多标的回测成功后写入 Signals 历史 API；API 不可用时继续写本地缓存。\n  - 首次连接成功时迁移现有 `longclaw.backtestWorkbench.history.v1`，迁移后继续兼容读取。\n  - 复原时不重跑 API，直接恢复保存的 payload、标的篮子、频率、信号类型、交易参数、图表/表格状态。\n  - 删除按钮独立于复原点击区，删除后立即从列表移除；如果删除的是当前展示记录，不清空当前图表，只移除历史入口。\n- **UI 优化**：\n  - 标题去重：`300394 300394` 改为 `300394 天孚通信`；多标的显示 `多标的回测 · 4只`。\n  - 元信息统一：`4标的 · 138信号 · 71成交 · 日线 · 05-30 07:44`。\n  - 每行保留“复原”主操作，增加垃圾桶删除图标和 hover tooltip。\n  - 多标的记录显示前 3 个标的 chip，加 `+N`，避免列表拥挤。"
+    },
+    {
+      "hash": "c8f8762c4aafeb794564efd1b4cdde5916ed328cbc68b9436aa3ad38cd97f0fb",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "## Test Plan\n- TS 单测：覆盖 v1 本地历史解析、v2 生成、软删除 tombstone、单票/多标的复原、`strategy-snapshot-*` 不进入可复原列表。\n- Python 单测：覆盖 Signals 历史 store 的 create/list/get/delete、坏 id 防路径穿越、deleted 记录默认不返回。\n- 集成验证：运行一次多标的回测，刷新后仍可复原完整排名/K线/信号/成交；删除后刷新不再出现。\n- 桌面验收：重新打包/安装 `/Applications/隆小侠 Agent OS.app`，在真实回测页确认复原和删除都符合截图场景。"
+    },
+    {
+      "hash": "a198881df7926669c0ff75384dfe66699d982871e3c08e241add6dff57f21140",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "## Assumptions\n- “删除”指删除历史入口，不删除原始行情、策略快照或当前已展示的回测结果。\n- “复原”优先复原当时保存的完整结果，不根据最新行情重新计算。\n- 历史默认保留最近 50 条；UI 首屏展示紧凑列表，后续可再加筛选/搜索。"
+    },
+    {
+      "hash": "7581eebbd4b21e4561c7f248249da1a7fd1d259e00f86f583ae0bb752afb8091",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "- Signals 新增 canonical 回测历史 store 和 API：`GET/POST/DELETE /api/backtest/history`，软删除会写 tombstone。\n- Agent OS 回测面板改为远端历史优先、本地 `localStorage` 降级，并会迁移 v1 本地历史。\n- 复原现在恢复保存的 `result/batchResult`、标的篮子、频率、信号类型、交易参数和 renderer state，不重跑回测。\n- 历史列表增加独立删除按钮，标题去重，多标的显示 compact chips。\n- 新增 Python/TS 单测覆盖 store、软删除、v1 兼容、复原状态和 `strategy-snapshot-*` 排除。"
+    },
+    {
+      "hash": "fcff72d8a6cb802df1a69a345a08866ed9b5fe943b88250160cec8092bb43d38",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "主要文件：\n- [backtest_history.py](/Users/zhangqilong/github代码仓库/Signals/signals/core/backtest_history.py)\n- [backtest.py](/Users/zhangqilong/github代码仓库/Signals/signals/web2/api/backtest.py)\n- [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx)"
+    },
+    {
+      "hash": "be65f2c12454b72350fd41cbea864db6dc28c9f1533906c630f45ef1e68c9ebc",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "验证已跑：\n- `bash scripts/python.sh -m pytest tests/test_backtest_history.py tests/test_backtest_report.py -q`：14 passed\n- `npm run lint -- --pretty false`：passed\n- `npm test -- electron/src/renderer/workspaces/BacktestWorkbench.test.tsx`：17 passed\n- `npm run electron:install:mac`：成功安装到 `/Applications/隆小侠 Agent OS.app`"
+    },
+    {
+      "hash": "e5d57b770101edd7aea3a59f620623d1da005d61ceb75a9ac8155c35ff70d407",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77e4-89e1-7172-8680-46feeb61db66",
+      "timestamp": null,
+      "verbatim": "说明：Electron 打包时仍有现有 `npm extraneous/invalid` 依赖警告，但构建、签名和安装都完成了；工作树里还有一些本轮前已存在的其他修改，我没有回滚或整理它们。"
+    },
+    {
+      "hash": "4da1d25b2cab51b61514cea7bf1371cf77312f4134048975df523dc1f812c19e",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77d9-8294-7c91-ac6d-af0b35bb3a13",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-30 上午12.46.20.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_56Hcny/截屏2026-05-30 上午12.46.20.png"
+    },
+    {
+      "hash": "c9dc57435c8f6c2f9185ffbe9913a159bd1c148976b5c5fb658f9ec2f27bebf3",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e77d9-3488-75b2-8507-d5a15e5033e9#turn:019e77d9-8294-7c91-ac6d-af0b35bb3a13",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n这个是回测历史记录，需要可以复原和删除。你把整个这个历史数据做一个优化方案"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

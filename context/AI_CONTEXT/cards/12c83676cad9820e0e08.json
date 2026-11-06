@@ -1,0 +1,45 @@
+{
+  "id": "019f361e-489d-7fb2-8696-92647e9a4ce4",
+  "title": "检查微信盘中复盘发送日志",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019f361e-489d-7fb2-8696-92647e9a4ce4",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "c02cf5ad6f4fb93448c8545e21e3f7790914f9f703c20160fc74faad468deec1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f361e-489d-7fb2-8696-92647e9a4ce4#recent",
+      "timestamp": null,
+      "verbatim": "1. `09:15`、`09:45` 两个自动化线程启动了，但没有任何命令调用、没有门禁输出、没有最终回复，等于 Codex 自动化宿主启动后空跑完成了。不是 WeChat 发送失败，因为根本没走到发送步骤。"
+    },
+    {
+      "hash": "4b1ed03065feff3572760d34309b9899bcd7e11f64d1b943283f9342dcef68f3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f361e-489d-7fb2-8696-92647e9a4ce4#recent",
+      "timestamp": null,
+      "verbatim": "2. `11:15`、`13:45` 都正常跑出 `NOTIFY`，MCP 渲染也返回 `status=NOTIFY` 且正文非空，但 `$HOME/.weclaw/bin/weclaw send` 都失败：\n`send text failed: send message failed: ret=-2 errmsg=`"
+    },
+    {
+      "hash": "f98bce7b8cae4ea370993a9613ce596d341a44adfde7236eb651b18475d2e47f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f361e-489d-7fb2-8696-92647e9a4ce4#recent",
+      "timestamp": null,
+      "verbatim": "3. WeClaw 表面是 running，pid `81795`，但桥日志从本机 `18:37` 起持续 `GetUpdates EOF / DNS no host / timeout`，context token 还是 `2026-07-03T00:58:32Z` 的旧 token。这个状态会出现“进程还活着，但 iLink/微信会话不可投递”。"
+    },
+    {
+      "hash": "a9fddc3d227ad9aee3a40937183a6404fef78a72954728f7b8f5bfa512195fe7",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f361e-489d-7fb2-8696-92647e9a4ce4#recent",
+      "timestamp": null,
+      "verbatim": "截至我检查时 `2026-07-05 23:32 PDT / 2026-07-06 14:32 CST`，还没看到独立的 `14:30` 尾盘自动化 rollout。下一步应先刷新 WeClaw 会话，通常是 `weclaw restart` 或重新 `weclaw login`，必要时先给机器人发一条新的微信消息，再补发今天 11:15 和 13:45 的正文。"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

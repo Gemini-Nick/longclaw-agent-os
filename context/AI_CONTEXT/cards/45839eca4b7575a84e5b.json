@@ -1,0 +1,21 @@
+{
+  "id": "019d4c8e-999b-7142-b85b-f6aca67c6eb8",
+  "title": "我也需要验证一下，那个切换就是那个备份切换的那个，包括报错这些我都想测一下",
+  "source_backend": "codex-archived",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "room": "archived-evidence-20261105",
+  "source_scope": "codex-archived-thread:019d4c8e-999b-7142-b85b-f6aca67c6eb8",
+  "review_status": "archived source; not restored or blanket fact verified",
+  "quotes": [
+    {
+      "hash": "a24e9358b17e6bb36f5dddf41be800ed6033b8f08da43f9ad4828584a944ff55",
+      "role": "user",
+      "kind": "归档聊天原文；用户历史要求或代理当时报告，非当前事实复验",
+      "source": "codex:019d4c8e-999b-7142-b85b-f6aca67c6eb8#turn:019d4c8e-99c3-7330-8d94-3117a9cacd81",
+      "timestamp": null,
+      "verbatim": "我也需要验证一下，那个切换就是那个备份切换的那个，包括报错这些我都想测一下"
+    }
+  ]
+}

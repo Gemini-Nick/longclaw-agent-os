@@ -1,0 +1,173 @@
+{
+  "id": "019e0744-5d90-7213-8788-9927f482e807",
+  "title": "调整 13/27寸 列宽布局",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e0744-5d90-7213-8788-9927f482e807",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "5aa017ff32761ecd645c2ec2dceb31f9d1930d8877e747fb50be6ba9552ef29d",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#first-request",
+      "timestamp": null,
+      "verbatim": "可以把第一列收窄，然后压缩一下列宽在27和13寸的屏幕下，我希望默认可以直接显示2026年以来，可以适当放宽左侧。你控制好整体比例在13寸和27寸的屏幕布局"
+    },
+    {
+      "hash": "9e776e71f1a0bd14347d5ef6aaf6ebb8c33139614b78776cdd76d9733022fc85",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07ff-2522-7b03-8e9d-9aeab6ffd94d",
+      "timestamp": null,
+      "verbatim": "抽样对比结论：不是所有标的都有问题，问题集中在个别标的的本地历史日 K 复权口径。"
+    },
+    {
+      "hash": "f5be1810c19fcdaccbc8a5fc34e0bac32ffe0ceecc47543e7dc09bcd8f8dcced",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07ff-2522-7b03-8e9d-9aeab6ffd94d",
+      "timestamp": null,
+      "verbatim": "| 标的 | 结论 |\n|---|---|\n| `SZ.300571 平治信息` | `ytd/1w/1m/3m/2026-01-14` 全部一致 |\n| `SH.603629 利通电子` | 全部一致 |\n| `SZ.002640 跨境通` | 全部一致 |\n| `SZ.002898 *ST赛隆` | 外部源与本地 carry-forward 逻辑一致，`1w=0.00%` |\n| `SZ.002709 天赐材料` | 不一致，外部源比当前 shell 高约 `0.69-1.03` 个百分点 |"
+    },
+    {
+      "hash": "8b3c85eeb4ebeea5f040f32d511e818962ca1c274649df35906628e2850379e0",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07ff-2522-7b03-8e9d-9aeab6ffd94d",
+      "timestamp": null,
+      "verbatim": "| 区间 | 当前 shell | Tencent | Sina |\n|---|---:|---:|---:|\n| `2026年以来` | `21.71%` | `22.47%` | `22.40%` |\n| `最近一周` | `-8.73%` | `-8.73%` | `-8.73%` |\n| `最近一个月` | `29.86%` | `30.73%` | `30.58%` |\n| `最近三个月` | `41.26%` | `42.29%` | `42.05%` |\n| `2026-01-14` | `35.68%` | `36.63%` | `36.44%` |"
+    },
+    {
+      "hash": "36032bb607c3cfedd0407c8ed7a29ff90fd4277a0c2e171d5767a69f0efc521c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07ff-2522-7b03-8e9d-9aeab6ffd94d",
+      "timestamp": null,
+      "verbatim": "原因也查到了：`SZ.002709` 本地 `bars` 里的早期前复权收盘价偏高，比如："
+    },
+    {
+      "hash": "99d0392367575ccb4d30c8955b05029b9dce9a8d30cc99a970c7564f12c4d76e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07ff-2522-7b03-8e9d-9aeab6ffd94d",
+      "timestamp": null,
+      "verbatim": "所以公式没错，前端切换也没错；`天赐材料` 这类是本地历史日 K 复权缓存不准，导致长区间涨幅被低估。下一步应该修 `bars` 的日线复权缓存刷新逻辑，至少先对 watchlist 当前池子做一次外部源校验/重写。"
+    },
+    {
+      "hash": "8b70ae3708d8f00d6195eb21d833856125fd25d76425d1dea085b9029c737383",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07f1-d8d4-7bd1-b2c7-94f9cac3ac38",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 上午7.15.29.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_V8CqB5/截屏2026-05-08 上午7.15.29.png"
+    },
+    {
+      "hash": "ca33d24300a1d797f808f5719f8364c71707e845957aa244d86c12d0e6ef4b5e",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07f1-d8d4-7bd1-b2c7-94f9cac3ac38",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n我切换以后，col 名称变化了，但是数据没变化。不知道是前端渲染还是后端请求的问题"
+    },
+    {
+      "hash": "0977b8218bf448fbe8966e318d7a8ee9e3d698090e724f7293b1928f8364beb2",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07f1-d8d4-7bd1-b2c7-94f9cac3ac38",
+      "timestamp": null,
+      "verbatim": "结论：这次是“前端旧渲染兜底 + 后端区间收益缺计算”两个问题叠在一起。"
+    },
+    {
+      "hash": "472c29493ca15c37e676b7f8332a23d73e92fd7cf7a2edd17ab3abf4a55f5c16",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07f1-d8d4-7bd1-b2c7-94f9cac3ac38",
+      "timestamp": null,
+      "verbatim": "- 后端 [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:1303)：`terminal_stock_pool` 轻量行现在必须从日 K 计算完整 `range_returns`，不再信 Mongo 里旧的 `range_returns`。\n- 后端 [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:1245)：对 `*ST赛隆` 这种当前快照无成交、价格为空、成交量 0、但有昨收的 no-trade 票，显式用当前快照昨收做 carry-forward 计算，来源会标成 `current_no_trade=...`。\n- 前端 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:5135)：区间值缺失时不再回退成日涨幅，股票行会显示 `计算失败`，避免假数据。\n- 已重新打包覆盖 `/Applications/隆小侠 Agent OS.app`，并重启了 `com.zhangqilong.ai.signals.runtime` 和桌面 App。"
+    },
+    {
+      "hash": "796006287d5fbd7f4e1c39456da81b2c8c7a817ab6b4ec86cf1d42f9f3fac8b6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07f1-d8d4-7bd1-b2c7-94f9cac3ac38",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- `tests/test_workbench_watchlist_groups.py`：86 passed\n- `npm run lint` / `npm run build:electron` / `npm run electron:install:mac`：通过\n- 运行态 `/api/workbench/shell` 已确认同一行 `day/ytd/1w/1m` 都是不同值；第二次请求走 shell cache 约 0.45s。"
+    },
+    {
+      "hash": "69cba34bdd48ba5b20e5b872237f42717aaafd24648af68f8030613ffeca1404",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07c2-d041-71c3-813d-18905582bd0c",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 上午6.23.57.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_zhArw4/截屏2026-05-08 上午6.23.57.png"
+    },
+    {
+      "hash": "720e30c4934a09d264d88d1ad3f652f1ac65b9669eced97ac582546c9fe32782",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07c2-d041-71c3-813d-18905582bd0c",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n我调整这个时间区间以后，col里面的涨跌幅没有刷新，我怀疑是mongodb没有加载计算"
+    },
+    {
+      "hash": "99390bd4a31bc1ddc67d9d4ebd6d69a7fe7d381b5128af7aff6d9657eb01762a",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07c2-d041-71c3-813d-18905582bd0c",
+      "timestamp": null,
+      "verbatim": "- [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:1245)：新增强制区间收益计算，必须从日 K 算出所有区间列。\n- [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:2053)：轻量股票行不再读取 Mongo 里的 `range_returns` 当答案，直接计算。\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:5135)：前端不再把缺失区间值回退成日涨幅；股票行缺值会显示 `计算失败`。\n- [test_workbench_watchlist_groups.py](/Users/zhangqilong/github代码仓库/Signals/tests/test_workbench_watchlist_groups.py:67)：加了测试，确认即使 Mongo 行里有旧 `range_returns`，也会被新计算结果覆盖。"
+    },
+    {
+      "hash": "7aca63c238dd70981c4aac6386d4c205209af6e8719f68bf5ffe1cdb06e38d83",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e07c2-d041-71c3-813d-18905582bd0c",
+      "timestamp": null,
+      "verbatim": "验证：\n- `bash scripts/python.sh -m pytest tests/test_workbench_watchlist_groups.py`：83 passed\n- `npm run lint`：通过\n- 用当前真实 Mongo `terminal_stock_pool` 抽了 focus/watch/clue 各前 5 只，所有必需区间列都计算成功，`missing []`，来源是 `bars`。"
+    },
+    {
+      "hash": "590b712b108907fbeb43b7e4806c8d0c2913158966b82ecaed8aa61f28cedee9",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e0745-de4f-7d51-b330-f01f669ee694",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-08 上午4.06.17.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_liOtma/截屏2026-05-08 上午4.06.17.png"
+    },
+    {
+      "hash": "c0b5c8cd16ee4f283c9e4767cb5546899b6d661a3b5907733d62f1debdafe214",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e0745-de4f-7d51-b330-f01f669ee694",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n可以把第一列收窄，然后压缩一下列宽在27和13寸的屏幕下，我希望默认可以直接显示2026年以来，可以适当放宽左侧。你控制好整体比例在13寸和27寸的屏幕布局"
+    },
+    {
+      "hash": "0a5f4e881656f3eb19c3110b88d139afddd0a690cb4f794d7262b4fe22355f49",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e0745-de4f-7d51-b330-f01f669ee694",
+      "timestamp": null,
+      "verbatim": "改动点：\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:545)：左侧栏在 13 寸/27 寸下都放宽，但右侧栏同步收窄，中心图表不会被过度挤压。\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:1031)：第一列、最新价、涨幅、背景列整体压缩；YTD 区间列给到 68px，默认能显示 `2026年以来`。\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:8366)：兼容旧接口里的 `2026今年以来`，前端会显示成 `2026年以来`。\n- [workbench.py](/Users/zhangqilong/github代码仓库/Signals/signals/web/api/workbench.py:1169)：后端源头也改成返回 `2026年以来`。"
+    },
+    {
+      "hash": "cf1916a5328ed0f0ef76e57a443d40a1f3b0fb1e584e6275696ba391600b99c4",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e0745-de4f-7d51-b330-f01f669ee694",
+      "timestamp": null,
+      "verbatim": "验证已过：\n- `npm run lint`\n- `bash scripts/python.sh -m pytest tests/test_workbench_watchlist_groups.py`，82 passed\n- 两个文件都跑了 `git diff --check`"
+    },
+    {
+      "hash": "4c67e38f9db2653a2214fd88899c8a9eb7fbe42a975ac1f9a2e77deb137215ec",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0744-5d90-7213-8788-9927f482e807#turn:019e0745-de4f-7d51-b330-f01f669ee694",
+      "timestamp": null,
+      "verbatim": "注意：这两个文件本来就有较多未提交改动，所以 `git diff --stat` 很大；我没有回滚或整理那些已有改动，只在现有基础上做了这次列宽/标签调整。当前运行中的 Electron 如果不是热更新模式，需要重启或重新打包后看到效果。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

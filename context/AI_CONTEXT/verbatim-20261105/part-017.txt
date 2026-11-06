@@ -1,0 +1,740 @@
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## 需要实施的变更
+- 调整微信摘要送达策略
+  - 采用“后台摘要直推”策略，保留会话窗口机制给对话类消息，但将 `repo.scheduler` 的定时摘要从 `windowed_proactive` 解耦
+  - `runtime-wechat-control.py` 中把 `send-summary` 的发送条件改为：
+    - 定时摘要允许在 `reply` 模式下发送
+    - 对话内主动插话仍继续受窗口限制
+  - `delivery_policy` 中增加区分字段，例如：
+    - `conversation_delivery_mode`
+    - `summary_delivery_mode`
+  - `summary_delivery_mode` 默认在存在合法 target user、bridge 可用时允许发送，不依赖最近 15 分钟互动
+- 修复 ingress 会话状态损坏
+  - 清理或修复损坏的 session window 文件 `o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json`
+  - 在写入 session window 的生产路径上改成原子写，避免尾部脏数据导致 JSON 被拼接坏
+  - `runtime-roadmap-sync.py` 在读取 session 文件时，单文件损坏应降级忽略该文件而不是让整个窗口状态长期失真
+- 保持 TUN 模式下的 `weclaw` 连通性
+  - 不改成直连模式，不绕开 TUN
+  - 为 `ilinkai.weixin.qq.com` 在 Clash/TUN 规则中指定稳定出口策略，避免当前解析到 `198.18.x.x` 后的异常 TLS/EOF 链路
+  - 优先在 TUN 规则层做“可信代理组/稳定出口”绑定，而不是简单全局代理或全局直连
+  - 给 `weclaw.bridge` 增加启动自检和运行中健康探针：
+    - DNS 解析结果
+    - TLS 握手是否可达
+    - 连续失败计数
+    - 最近一次成功时间
+- 明确服务边界并补 observability
+  - `guardian.monitor` 只负责服务存活与重启，不负责业务成功语义
+  - `repo.scheduler` 负责“状态生成”和“摘要发送触发”
+  - `weclaw.bridge` 负责“真正出站送达”和“任务分发 API”
+  - 增加统一状态快照，至少包含：
+    - bridge `listener_up`
+    - bridge `upstream_reachable`
+    - scheduler `last_summary_generated_at`
+    - scheduler `last_summary_send_attempt_at`
+    - scheduler `last_summary_send_result`
+    - ingress `last_seen_message_at`
+    - ingress `session_window_valid`
+- 修正当前“最近情况”相关的误导状态
+  - 现在 `runtime-status` 显示 `summary_delivery_status: skipped_window_unavailable`，这在后台摘要语义下是错误的
+  - 调整为分别展示：
+    - 会话主动推送状态
+    - 定时摘要推送状态
+  - 避免未来再次把“策略性跳过”误判成“网络故障”或“服务未运行”
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## 测试与验收
+- 服务职责验收
+  - `guardian.monitor` 能继续保活 4 个常驻服务，且不因业务失败误重启
+  - `repo.scheduler` 每轮正常生成 `roadmap-queue.json`
+  - `weclaw.bridge` 监听端口 `18011`，且对上游有成功请求记录
+- 送达策略验收
+  - 在没有最近 15 分钟微信互动的情况下，`repo.scheduler` 仍能发出一条“最近情况”摘要
+  - `runtime-wechat-control.py send-summary` 在 `reply` 模式下不再返回 `skipped_window_unavailable`
+  - 对话类主动插话仍维持窗口限制，不扩大到所有消息
+- ingress 稳定性验收
+  - 损坏的 session window 文件修复后，不再出现 `session_window_parse_failures`
+  - `latest_activity` 中 `session_window_at`、`seen_message_at`、`context_token_updated_at` 能正常随新消息推进
+- TUN 连通性验收
+  - `weclaw.bridge` 在 TUN 模式下连续运行 24 小时，不再出现持续性的 `no such host`、`TLS handshake timeout`、`EOF` 风暴
+  - 若偶发失败，日志中能看到连续失败计数、退避和恢复点
+- 用户体验验收
+  - `wechat-notification-state.json` 中 `last_sent_at` 能在新的 scheduler 周期后推进
+  - 你能在微信里重新收到“最近情况”摘要
+  - 若发送失败，状态文件明确记录失败原因而不是仅保留 `window_unavailable`
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 默认假设
+- 你要求保留 `weclaw` 在 TUN 模式下运行，因此方案不会采用“为微信桥接单独直连绕过 TUN”。
+- 已选择“后台摘要直推”作为默认策略。
+- 仅将“定时摘要”从窗口约束中解耦，不放开所有主动消息。
+- 现阶段不调整 `claude.worker`/`codex.appserver` 的功能，只补它们在状态快照中的可观测性。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已实现并同步到运行态。核心改动在 [runtime-wechat-control.py](/Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-wechat-control.py), [runtime-roadmap-sync.py](/Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-roadmap-sync.py), [runtime-status](/Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-status), [weclaw-bridge.sh](/Users/zhangqilong/.longclaw/runtime-v2/bin/weclaw-bridge.sh) 和新增的 [weclaw-bridge-health.py](/Users/zhangqilong/.longclaw/runtime-v2/bin/weclaw-bridge-health.py)。源码副本也同步更新到了 [runtime-wechat-control.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-wechat-control.py) 等对应路径。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在系统行为已经变成：
+`summary_delivery_mode=background_summary`，不再被 `reply/window` 策略直接跳过；`conversation_delivery_mode` 仍保持 `reply`。`runtime-status` 也拆开显示了 conversation/summary 两套状态，并新增 bridge/scheduler/ingress 健康快照。损坏的 session 文件 [o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json) 已被自动修复，当前 `archive_status=healthy`、`session_windows_invalid=0`。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经重启了 `weclaw.bridge`，健康监控在跑，状态文件是 [weclaw-bridge-health.json](/Users/zhangqilong/.longclaw/runtime-v2/state/weclaw-bridge-health.json)。当前 bridge 探针显示 `listener_up=true`、`upstream_reachable=true`。但实际微信摘要发送仍失败，已经从“策略阻断”收敛成“上游 sendmessage 业务失败”：`ret=-2`。通知状态在 [wechat-notification-state.json](/Users/zhangqilong/.longclaw/runtime-v2/state/wechat-notification-state.json) 里，当前 `last_send_status=failed`，且已记录 `last_send_transport=direct_ilink_no_context`，说明我连无上下文兜底也试过了，仍被上游拒绝。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758e-0b60-7e92-8a31-fae21e39a3a1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证已做：`py_compile` 通过；`runtime-roadmap-sync.py` 跑通；`weclaw.bridge` 已 kickstart；`send-summary` 已实际触发发送分支多次。当前剩余阻塞不是本地常驻服务逻辑，而是 `weclaw/iLink` 的发送语义或账号侧状态。下一步如果你要我继续，我会直接追 `weclaw send` / `sendmessage` 的 `ret=-2` 根因。
+
+
+---
+来源：codex:019d7588-288c-78c1-8066-edebbe69c5be#turn:019d758b-19f2-7d82-a183-86e41847d5e5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+guardian.monitor、weclaw.bridge、claude.worker、codex.appserver、repo.scheduler这几个自定义服务深度分析。目前各自承担什么职能，为什么我微信一直没有收到最近的情况。weclaw需要保持在tun模式下的连接
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+看一下目前这两个计划，我希望继续清理目前的常驻的system service，优化harness工程
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 路径本身没坏
+- [`/Users/zhangqilong/Desktop/知识库`](</Users/zhangqilong/Desktop/知识库>) 及其子目录权限位是正常的。
+- 我在当前交互 shell 里直接用 Python 读 [`/Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat`](</Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat>)，是能读到的。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 阻塞确实发生过，而且发生在机器侧 scheduler 轮次里
+- 日志在 [`/tmp/longclaw-guardian/scheduler.task.log`](</tmp/longclaw-guardian/scheduler.task.log>) 里很明确：
+  - `PermissionError: [Errno 1] Operation not permitted: '/Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat'`
+  - 还有对 [`/Users/zhangqilong/Desktop/知识库/00 Dashboard/Longclaw Runtime.md`](</Users/zhangqilong/Desktop/知识库/00 Dashboard/Longclaw Runtime.md>) 的写入失败
+- 这说明报错不是我猜的，是 `repo.scheduler -> runtime-roadmap-sync.py` 真打出来的。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 这更像 macOS 的隐私/TCC 限制，不是普通文件权限
+- `Desktop` 是 macOS 的受保护目录。
+- 这些目录上也能看到额外访问控制痕迹，比如 `+` ACL 和 `com.apple.macl` 扩展属性。
+- `repo.scheduler` 是通过 launchd 跑的 [`com.zhangqilong.ai.repo.scheduler`](</Users/zhangqilong/Library/LaunchAgents/com.zhangqilong.ai.repo.scheduler.plist>)，不是你当前这个交互终端会话本身。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **同一个用户 `zhangqilong`，在不同进程上下文里，对 `Desktop` 的访问权限并不等价。**
+- 当前交互 shell/Codex 这条链路能读。
+- launchd 拉起来的后台脚本链路，有时会被 macOS 拒绝访问 `Desktop/知识库`。
+- 这属于 **运行环境权限边界**，不是 repo 代码逻辑错误。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **现在最新 queue 已经恢复正常**，说明我后来在交互上下文里重跑时成功了。
+- 但这不代表问题彻底消失。
+- 真正的风险是：**无人值守的 scheduler 轮次仍可能再次撞上这个 TCC 拒绝。**
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要继续，我下一步可以给你一版很清楚的治理方案，对比两条路：
+- 给当前机器侧调度链补稳定的 Desktop/知识库访问权限
+- 或者把机器真源/投影目录从 `Desktop` 迁到一个不受 TCC 卡脖子的路径
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 产品与路径重规划优化方案
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 把 Longclaw 重新定义成一个 `Self-improving personal agent system`，而不是“默认能长期后台主动给你发微信”的产品。
+- 架构继续沿用四层：
+  - `Client Runtime（端侧）`
+  - `Agent Core（云侧）`
+  - `Interaction Adapter Layer（通道侧）`
+  - `Knowledge Review Plane（知识侧）`
+- 新的关键现实约束必须写进产品定义：`weclaw / WeChat` 目前是 `windowed proactive messaging`，不是 `true background push`。
+- 近期产品目标从“强行打通微信后台推送”改为“先把本地闭环做成可靠产品”，即：
+  - WeChat 负责 ingress、实时会话、显式任务接入
+  - Mac 负责可靠提醒、runtime host、自动化宿主
+  - `Agent Core（云侧）` 方向先抽状态契约和 improvement loop，不急着先上云
+- 产品路径改成三段：
+  1. `Local Reliable Loop`
+  2. `Portable Core Extraction`
+  3. `Distributed Product Runtime`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 重写产品承诺
+- Longclaw 的主承诺改成：
+  - 跨会话记忆
+  - 双 agent failover
+  - 可审阅知识沉淀
+  - 任务排队与自动化迭代
+  - `Harness Engineering Loop` 驱动的持续改进
+- Longclaw 不再把“任意时刻稳定主动微信播报”作为当前版本承诺。
+- `WeChat` 的正式能力边界改成：
+  - 可靠：入站消息、会话内回复、`任务:` 入队、`/runtime` 或等价状态拉取
+  - 条件性可靠：在最近 live context window 内的主动摘要
+  - 不承诺：长时间空闲后的后台主动推送
+- 可靠告警与状态交付默认转移到 `Client Runtime（端侧）`：
+  - Dashboard
+  - 本地通知
+  - runtime state
+  - review note
+- 若未来需要真正 push，作为后续 `Delivery Channel` 能力建设处理，不继续让 WeChat 承担错误职责。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. 收紧四层边界
+- `Client Runtime（端侧）`
+  - 负责本机 runtime host、通知、launchd、guardian、scheduler、路由协调、本地恢复
+  - 成为当前阶段唯一可靠 delivery host
+- `Interaction Adapter Layer（通道侧）`
+  - `weclaw` 只负责 WeChat protocol、identity、context token、media/archive contract、task ingress
+  - 不再被视为可靠后台通知系统
+- `Agent Core（云侧）`
+  - 近期先固定 portable contracts：
+    - `session`
+    - `routing`
+    - `task queue`
+    - `memory`
+    - `delivery policy`
+    - `Harness Engineering Loop`
+  - 当前可以继续落在本地 runtime state 中，但语义按未来 core 设计
+- `Knowledge Review Plane（知识侧）`
+  - 继续做人类可读投影、审阅、干预、证据追踪
+  - 不承担 machine canonical state
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 3. 把产品主链改成“Push Optional, Pull Reliable”
+- 当前本地产品主链固定为：
+  - `WeChat ingress`
+  - `Routing Controller`
+  - `Primary/Backup agent execution`
+  - `Runtime state persistence`
+  - `Knowledge projection`
+  - `Runtime summary generation`
+  - `Delivery policy`
+- `Delivery policy` 明确三档：
+  - `reply`: 对 live 会话即时回复
+  - `windowed_proactive`: 仅在有效 WeChat context window 内发送摘要
+  - `reliable_local`: 永远写 runtime state、dashboard、本地提醒
+- 所有 scheduler 摘要、health alert、review signal 先写 `reliable_local`，再按条件尝试 `windowed_proactive`。
+- 用户交互面增加明确的拉取式入口：
+  - `任务: xxx`
+  - `/runtime`
+  - 后续可扩展 `/review`、`/queue`
+- 这样产品体验从“赌后台 push”变成“状态永不丢，微信尽量快，必要时用户可主动拉取”。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Interfaces
+- `~/.weclaw/runtime/active-agent.json`
+  - 保持 routing canonical state
+  - 必须继续暴露 `effective_agent`、`preferred_primary`、`preferred_backup`、health snapshot
+- 新的 delivery contract 必须进入 runtime state，至少包含：
+  - `wechat_delivery_mode = reply | windowed_proactive | unavailable`
+  - `last_inbound_at`
+  - `last_context_token_at`
+  - `most_worth_watching`
+  - `summary_delivery_result`
+- `~/.longclaw/runtime-v2/state/wechat-task-queue.json`
+  - 继续作为微信任务 canonical queue
+- `runtime-status` 与 roadmap sync
+  - 必须明确区分“本轮状态已生成”与“本轮微信已送达”
+- 总库文档需统一更新在：
+  - [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md)
+  - [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)
+  - [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)
+- 文档里要把 WeChat 正式改写成 `windowed proactive adapter`，避免继续按 true push 叙事规划产品。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Product Path
+1. `Phase A: Local Reliable Loop`
+- 完成 `WeChat -> weclaw -> Mac runtime -> dual-agent -> runtime state -> knowledge` 的可靠闭环。
+- 让 `任务:`、`/runtime` 成为正式产品入口。
+- 所有自动摘要先保证本地可见，再按条件尝试微信发送。
+- 成功标准是“状态与任务永不丢”，不是“每次都能后台微信推送”。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+2. `Phase B: Portable Core Extraction`
+- 从当前本地实现里抽出 `session / routing / task queue / memory / delivery policy / Harness Engineering Loop` 的统一 contract。
+- `watchdog`、`harness` 的可移植逻辑向 `Agent Core（云侧）` 收敛。
+- `longclaw-agent-os` 继续做 `Client Runtime（端侧）`，但逐步变薄。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+3. `Phase C: Distributed Product Runtime`
+- 引入真正可托管的 `Agent Core（云侧）`。
+- 多端共享 session、memory、skills、scheduler。
+- 可靠 push 改由真正适合 push 的交付层承担；WeChat 继续保留为通道入口，而不是 delivery backbone。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 新入站消息后 1 分钟内，WeChat 主动摘要可以成功发送。
+- 长时间空闲后，WeChat 主动摘要失败时，scheduler 不失败，runtime state 和 dashboard 仍完整更新。
+- `任务: xxx` 只入队，不抢占当前轮，并能回写状态与结果。
+- `/runtime` 在 live context 内能稳定返回当前状态摘要。
+- `active-agent.json`、runtime queue、dashboard、review note 对同一轮 routing/result 保持一致。
+- roadmap automation 产出必须明确标注：
+  - 状态是否生成成功
+  - 微信是否送达成功
+  - 当前 delivery mode 是什么
+- 文档、runtime state、知识侧描述必须统一，不再把 WeChat 描述为无条件后台 push。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 当前阶段继续是单用户、本地优先产品验证。
+- WeChat 仍是最重要的 `Interaction Adapter Layer（通道侧）`，但不是可靠后台通知主通道。
+- `repo.scheduler` 继续作为唯一自动化宿主，不新增新的常驻 service。
+- `Knowledge Review Plane（知识侧）` 继续保留 Obsidian/dashboard 形态。
+- 真正的产品北极星仍是 `Hermes-like Agent Core（云侧）`，但近期优化重点是先把“本地可靠闭环”做对。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+产品真源文档已经改写在 [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md), [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md), [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)。现在正式把 Longclaw 定义成 `Self-improving personal agent system`，并把路径收成 `Local Reliable Loop -> Portable Core Extraction -> Distributed Product Runtime`，同时把 WeChat 明确定义成 `windowed proactive adapter`，不再按 `true background push` 叙事规划产品。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+运行时这边已经落地到 [runtime-roadmap-sync.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-roadmap-sync.py), [runtime-status](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-status), [runtime-wechat-control.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-wechat-control.py), [repo-scheduler-service.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh)。`roadmap-queue.json` 现在会产出 `delivery_policy`，包含 `wechat_delivery_mode`、`last_inbound_at`、`last_context_token_at`、`summary_delivery_result`；scheduler 会先保证 `reliable_local`，只有在 live context window 内才尝试微信摘要。`weclaw` 也补了 `/runtime` 拉取入口，代码在 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go)，测试在 [handler_test.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler_test.go)。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经把安装态同步到 `~/.longclaw/runtime-v2/bin`，并验证过：`verify-v2.sh` 通过，`go test ./messaging ./api ./cmd` 通过，Python 脚本和 scheduler shell 语法通过。当前真实运行态也已经能看到新的 delivery contract；[`roadmap-queue.json`](</Users/zhangqilong/.longclaw/runtime-v2/state/roadmap-queue.json>) 里现在有 `delivery_policy`，[`runtime-status`](</Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-status>) 会显示 `wechat_delivery_mode` 和 `summary_delivery_status`，而且本轮摘要已经在有效窗口内成功发送过。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还剩一个环境级阻塞：知识库路径在机器侧仍然有 `Operation not permitted`，所以 [`knowledge-projection.json`](</Users/zhangqilong/.longclaw/runtime-v2/state/knowledge-projection.json>) 会降级成 `pending`，`reliable_local` 里的 queue 和 hermes status 正常，但 Dashboard/Review 写入会受影响。下一步最应该处理的是这个知识库权限问题。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bda-f4cf-7202-abc7-214195275c50
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 在没有新入站消息的情况下复测主动发送：
+  - `context_tokens.json` 里这个会话最近一次更新时间是 **2026-04-07 16:06:56 PDT**
+  - 我在 **2026-04-07 晚上** 再次执行 `weclaw send`
+  - 结果仍然是 `ret=-2`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bda-f4cf-7202-abc7-214195275c50
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 你刚发了一条新的 WeChat 消息后，我立刻复测：
+  - 新入站把 token 刷新到 **2026-04-07 23:52:04 PDT**
+  - 我在 **2026-04-07 23:52:12 PDT** 立刻执行：
+    - `~/.weclaw/bin/weclaw send --to ... --text 'Longclaw live-context validation ping after fresh inbound'`
+  - 结果：**成功**
+  - CLI 返回：`Text sent`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bda-f4cf-7202-abc7-214195275c50
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 定时摘要不能再默认当成“可靠主动推送”
+2. 微信侧更稳的模式应该改成：
+   - `用户先触发`
+   - 机器在当前 live context 里回复
+3. 如果还要保留后台摘要，只能把它当“尽力而为”，并且依赖最近活跃窗口
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bda-f4cf-7202-abc7-214195275c50
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一轮可以继续只做规划，不改代码，直接把这件事收敛成一版正式策略：
+- 哪些消息走“主动推”
+- 哪些能力改成 `/runtime`、`任务:` 这种“用户触发再回复”
+- 怎样在 roadmap 里把 WeChat 通道能力标成“windowed proactive messaging” rather than true push
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd8-ddd6-7982-9f41-6b4ffc4b0f55
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+他已经在这里fix了https://github.com/fastclaw-ai/weclaw/commit/b48cc9737319d77724d3f65f1ce4cd4d1370a1f6，看看能不能解决问题
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd8-ddd6-7982-9f41-6b4ffc4b0f55
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我看了这个 commit，也核对了你本地 `weclaw` 的实际代码。结论很明确：
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd8-ddd6-7982-9f41-6b4ffc4b0f55
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**`b48cc9737319d77724d3f65f1ce4cd4d1370a1f6` 不能直接解决你现在的 `ret=-2`。**
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd8-ddd6-7982-9f41-6b4ffc4b0f55
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**依据**
+- 这个 commit 本身改的是 [`ilink/monitor.go`](/Users/zhangqilong/github代码仓库/weclaw/ilink/monitor.go) 以及 `agent/*`、`config/*`、`cmd/start.go`，核心作用是：
+  - 检测连续失败
+  - 提示可能是 WeChat session 过期
+  - 提示需要重新 `weclaw login`
+- 它**没有改主动发送链路**，也就是没动这些地方：
+  - [`cmd/send.go`](/Users/zhangqilong/github代码仓库/weclaw/cmd/send.go)
+  - [`api/server.go`](/Users/zhangqilong/github代码仓库/weclaw/api/server.go)
+  - [`messaging/sender.go`](/Users/zhangqilong/github代码仓库/weclaw/messaging/sender.go)
+  - [`ilink/client.go`](/Users/zhangqilong/github代码仓库/weclaw/ilink/client.go)
+- upstream 原作者确实公开说过支持主动发送：
+  - [README](https://github.com/fastclaw-ai/weclaw/blob/main/README.md)
+  - 这个能力最早是 [1c4be32f](https://github.com/fastclaw-ai/weclaw/commit/1c4be32ff993f0cecf368bdf84b5c686bd6cece3) 引入的
+- 但 upstream 也有同样报错的公开 issue：
+  - [Issue #33](https://github.com/fastclaw-ai/weclaw/issues/33)
+  - 现象就是运行一段时间后 `send message failed: ret=-2`，同时伴随 `session timeout`
+  - 我没看到原作者在这个 issue 里给出正式修复说明
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd8-ddd6-7982-9f41-6b4ffc4b0f55
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**推断**
+- 这个 commit 更像是“补诊断和告警”，不是“修主动发送”。
+- 现在最像的根因仍然是：
+  - `iLink / WeChat session` 过期，或者
+  - `context window / context_token` 失效
+- 所以更准确的说法不是“这个通道完全不支持主动 push”，而是：
+  - **它大概率不支持脱离有效 session / live context window 的后台主动 push。**
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd8-ddd6-7982-9f41-6b4ffc4b0f55
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果继续往下查，最有价值的是做 3 组验证：
+1. 刚收到一条 WeChat 入站消息后，立刻主动发一条  
+2. 重新 `weclaw login` 后，立即主动发一条  
+3. 等一段时间后再发，观察是否重新退化成 `ret=-2`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd5-f54f-7381-be17-ee0ef819f1e5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你先研究一下是不是通道不允许主动push，再看看weclaw github上面原作者是怎么说的
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd5-f54f-7381-be17-ee0ef819f1e5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 上游文档确实把它写成支持主动发送  
+原作者在 upstream README 里明确写了 `Proactive Messaging`，说可以“不等用户先发消息”直接 `weclaw send` 或调用 `/api/send`。  
+来源：
+- [upstream README](https://github.com/fastclaw-ai/weclaw/blob/main/README.md)
+- [upstream README_CN](https://github.com/fastclaw-ai/weclaw/blob/main/README_CN.md)
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd5-f54f-7381-be17-ee0ef819f1e5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 但上游已经有人报过和你一模一样的 `ret=-2`  
+2026-03-28 的 issue #33 里，用户报告“刚开始正常，运行一段时间后发不出消息”，报错就是 `send message failed: ret=-2`，同时还看到 `getupdates` 相关的 `session timeout`。  
+来源：
+- [Issue #33](https://github.com/fastclaw-ai/weclaw/issues/33)
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd5-f54f-7381-be17-ee0ef819f1e5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 从接口形状看，发送本身就像“上下文回复”，不像真正独立 push  
+在 `weclaw` 的 iLink 类型里，`sendmessage` 的 payload 里强制带 `context_token`；`getconfig` 也吃这个 token。这个设计本身更像“在某个会话上下文里回复”，不像长期有效的 outbound credential。  
+代码参考：
+- [client.go](/Users/zhangqilong/github代码仓库/weclaw/ilink/client.go)
+- [types.go](/Users/zhangqilong/github代码仓库/weclaw/ilink/types.go)
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd5-f54f-7381-be17-ee0ef819f1e5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 原作者**公开说法**：支持主动发送。
+- 原作者 **GitHub 公开证据**：没有看到他对 `ret=-2` 给出正式解释或修复说明。
+- 我基于源码和 issue 的**推断**：这条通道更像“有时间窗口/上下文约束的主动回复”，不是无条件后台 push。  
+  一旦会话上下文失效、`context_token` 过期，或者 iLink 那边的 session 窗口断掉，就会落到 `ret=-2`。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd5-f54f-7381-be17-ee0ef819f1e5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一步可以继续只做研究，不改代码：  
+我会专门设计一组最小实验，把 `ret=-2` 进一步区分成：
+- `context_token` 过期
+- iLink session timeout
+- 该通道根本不支持后台主动发
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd1-7df8-7073-a315-3a0972e860f2
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+我建议下一步直接做一件事：把 ret=-2 这条 WeChat 主动发送限制单独攻掉，或者加一个 WeChat 侧的 /runtime 拉取命令作为 fallback。这是什么原因造成的呢
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd1-7df8-7073-a315-3a0972e860f2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 正常回复和主动发送走的是同一个接口：[`client.go`](/Users/zhangqilong/github代码仓库/weclaw/ilink/client.go) 里的 `/ilink/bot/sendmessage`。
+- 正常回复之所以能发出去，是因为它用的是**当前入站消息自带的 live `msg.ContextToken`**，路径在 [`handler.go`](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go)。
+- 主动发送 `weclaw send` / `/api/send` 用的不是 live token，而是从 [`context_tokens.json`](</Users/zhangqilong/.weclaw/runtime/context_tokens.json>) 里读出来的**持久化 token**，路径在 [`sender.go`](/Users/zhangqilong/github代码仓库/weclaw/messaging/sender.go) 和 [`server.go`](/Users/zhangqilong/github代码仓库/weclaw/api/server.go)。
+- 我已经用**最小文本**直接测试过：
+  - `~/.weclaw/bin/weclaw send --to o9cq...@im.wechat --text 'Longclaw runtime test ping'`
+  - 仍然返回 `ret=-2`
+- 所以这基本排除了：
+  - 不是摘要内容太长
+  - 不是 scheduler 拼接错了
+  - 不是 wrapper 参数传坏了
+  - 不是没有 user id / 没有 token
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd1-7df8-7073-a315-3a0972e860f2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+还有一个旁证：[`types.go`](/Users/zhangqilong/github代码仓库/weclaw/ilink/types.go) 里 `SendMsg` 强制带 `context_token`，这本身就很像“回复上下文票据”，不像真正的长期 push credential。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bd1-7df8-7073-a315-3a0972e860f2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以专门给你出一个很短的排查计划，专打这件事：
+- 先验证 `ret=-2` 到底是“token 过期”还是“通道不允许主动 push”
+- 再决定是继续攻主动发送，还是直接把 `/runtime` 做成正式 fallback
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bba-ba77-7e70-87d3-7b6853283a27
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 机器侧持续写状态 + 微信摘要 + 微信任务接管计划
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bba-ba77-7e70-87d3-7b6853283a27
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Summary
+- 保持当前 `repo.scheduler` 作为唯一自动化宿主，不新增新的常驻 service，也不依赖聊天线程常驻。
+- 机器侧继续把本地闭环状态写入 `runtime state`，并在每个 4 小时调度轮次结束后，通过 WeChat 给你的个人主会话发送一条摘要。
+- 摘要里固定包含一条“最值得盯”的事项；完整细节仍写入 runtime state、dashboard 和 review note。
+- 你通过 WeChat 回复带显式前缀的任务消息，机器侧只入队，不打断当前轮；当前轮结束后再执行下一条排队任务。
+- 第一版默认“每轮都发摘要”，等运行稳定后再切到“只发关键信息警告”。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bba-ba77-7e70-87d3-7b6853283a27
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 运行态状态与微信摘要
+- 继续以 `runtime state` 作为机器真源，沿用现有 `routing -> harness -> roadmap sync -> knowledge projection` 链路，不把 WeChat 发送逻辑混进 `weclaw` 的业务处理主路径。
+- 在 scheduler 末尾增加一个 `wechat summary` 步骤，统一读取 runtime queue、routing state、harness summary、knowledge projection，生成一条本轮摘要。
+- 摘要结构固定为：
+  - 本轮整体状态
+  - 当前 effective agent / backup agent
+  - 最值得盯的问题
+  - 当前 pending review / blocked item 数量
+  - 如有任务队列，附带队列摘要
+- 微信发送失败不能让 scheduler 整体失败；失败只写入 runtime state，并在下一轮摘要里反映。
+- 新增独立通知状态文件，用来记录最近一次发送内容、发送时间、发送结果，为后续从“每轮都发”切换到“只发关键告警”预留去重和降噪能力。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bba-ba77-7e70-87d3-7b6853283a27
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. WeChat 任务接管
+- 在 `weclaw` 入站消息处理里增加显式任务前缀识别，第一版默认前缀为 `任务:`。
+- 只有带此前缀的消息才会被当作“执行任务”；普通回复、闲聊、追问都不自动入任务队列。
+- WeChat 任务入站后只做三件事：
+  - 标准化任务内容
+  - 写入 runtime task queue
+  - 给你返回一条简短确认，说明任务已排队
+- 第一版不做即时抢占；任务只会在当前自我修复/调度轮结束后被拾取执行。
+- 每条任务都保存来源元数据，至少包含：消息时间、会话标识、原始消息、标准化任务文本、当前状态、最近一次执行结果。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6bba-ba77-7e70-87d3-7b6853283a27
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 任务队列与执行顺序
+- 新增 runtime task queue，作为微信任务的 canonical queue，不直接依赖聊天线程。
+- `repo.scheduler` 每一轮执行顺序固定为：
+  - workspace maintenance
+  - routing reconcile
+  - harness tick
+  - roadmap sync
+  - knowledge projection
+  - WeChat summary send
+  - queue dispatch（只在当前轮结束后处理）
+- 第一版每轮最多接一条用户任务，避免本地闭环和自我修复被任务洪峰打乱。
+- 任务执行结果必须回写 runtime state，并更新 dashboard/review；可选地在 WeChat 发一条结果回执。
+- 如果任务执行失败，保留失败状态和错误摘要，不自动无限重试；是否重试由后续轮次和新任务决定。

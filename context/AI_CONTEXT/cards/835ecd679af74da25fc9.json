@@ -1,0 +1,61 @@
+{
+  "id": "019e7d4d-1ea6-7092-9d6c-4a5e10662211",
+  "title": "修复这个问题",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e7d4d-1ea6-7092-9d6c-4a5e10662211",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "454644c0cfc3e435c6d627d13d35069dea77f0715bfa806aafdb52f1000637af",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e7d4d-1ea6-7092-9d6c-4a5e10662211#recent",
+      "timestamp": null,
+      "verbatim": "<appshot app=\"隆小侠 Agent OS\" bundle-identifier=\"com.zhangqilong.longclaw.agentos\" window-title=\"隆小侠 Agent OS\" image=\"隆小侠 Agent OS Appshot 2026-05-31T09-11-04.637Z.png\">\nWindow: \"隆小侠 Agent OS\", App: 隆小侠 Agent OS.\n标准窗口 隆小侠 Agent OS\n\tcontainer (settable, string) 隆小侠 Agent OS\n\t\tcontainer (settable, string)\n\t\t\tHTML 内容 Longclaw Trading Desk, URL: file:///Applications/%E9%9A%86%E5%B0%8F%E4%BE%A0%20Agent%20OS.app/Contents/Resources/app.asar/electron/dist/renderer/index.html\n\t\t\t\tcontainer\n\t\t\t\t\ttext Renderer recovered 交易终端渲染异常，已阻止黑屏 请保留这个窗口状态，Electron 日志里已经记录了异常堆栈。可以刷新或重新打开应用继续验证。 Minified React error #310; visit https://react.dev/errors/310 for the full message or use the non-minified dev environment for full errors and additional helpful warnings."
+    },
+    {
+      "hash": "0eaa2684e9ff31e74f2ba4f4a6310fb8db84d493929cb7029dd5fb8e4dca29ab",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e7d4d-1ea6-7092-9d6c-4a5e10662211#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n出现这种情况，请修复"
+    },
+    {
+      "hash": "0ccb459779d0ac28969d3b5779777d5746870cab46c4eae37307fac188f54765",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7d4d-1ea6-7092-9d6c-4a5e10662211#recent",
+      "timestamp": null,
+      "verbatim": "已修复并安装到本机 `/Applications/隆小侠 Agent OS.app`。"
+    },
+    {
+      "hash": "25684065420c2127d9277d2d968669ba5c809be075fb3cbd58316af521e3f1e6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7d4d-1ea6-7092-9d6c-4a5e10662211#recent",
+      "timestamp": null,
+      "verbatim": "根因是 [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:5454) 里的 `MultiBacktestReport`：首次没有 `terminal` 时提前返回，批量回测结果回来后才继续调用 `useMemo/useCallback`，导致 React hook 数量变化，触发 `Minified React error #310`。我把相关 hooks 移到空状态返回之前，保证每次 render hook 顺序一致。"
+    },
+    {
+      "hash": "d5e1d8d77788c6337c7cf88a5ea56cf8d48b8ef063a377654e054605d5d1fc86",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7d4d-1ea6-7092-9d6c-4a5e10662211#recent",
+      "timestamp": null,
+      "verbatim": "加了回归测试 [BacktestWorkbench.test.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.test.tsx:241)，覆盖“空 terminal -> 批量 terminal 到达”的更新路径。"
+    },
+    {
+      "hash": "8980b6bcb58a63addec5991fef59c1426408fb35f5084dfe12895eb2265f5576",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7d4d-1ea6-7092-9d6c-4a5e10662211#recent",
+      "timestamp": null,
+      "verbatim": "- `npm test -- electron/src/renderer/workspaces/BacktestWorkbench.test.tsx`\n- `npm run lint`\n- `npm run build:electron`\n- `npm run electron:install:mac`\n- 启动安装后的 App，恢复并重新运行 `002371,688012` 批量回测，页面正常显示“半导体设备回测”\n- `~/Library/Logs/Longclaw/electron-current.log` 没有再出现 `Renderer recovered` / `React error` / `render crash`"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

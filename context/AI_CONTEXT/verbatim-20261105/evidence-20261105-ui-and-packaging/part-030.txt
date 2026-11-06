@@ -1,0 +1,744 @@
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## What Already Exists
+- `longclaw-agent-os` 已经明确是端侧 runtime，已经有 guardian、安装升级、runtime policy 注入。
+- `weclaw` 已经明确是微信桥核心，边界很清楚，且已有 CLI / HTTP / task-dispatch 面。
+- `Signals` 已经是成熟垂直能力域，具备 CLI、多模式执行、WeChat 接入。
+- `due-diligence-core` 已经是影刀替代的云侧核心，具备 site spec、adapter、validation、shadow compare、输出兼容链路。
+- `hermes-agent` 已经写明自己是未来统一 core 的候选底座，目标对象已经是 `session / memory / skills / scheduler / user model`。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Target Architecture
+```text
+Adapters: weclaw / Chanless / future channels
+        |
+        v
+hermes-agent = Agent Core
+  session | task bus | scheduler | routing | delivery policy
+  approvals | memory ingress | knowledge promotion | eval gate
+        |
+        +------------------+-------------------+-----------------+
+        |                  |                   |
+   SignalsPack      DueDiligencePack      future Domain Packs
+        |
+        v
+longclaw-agent-os = desktop shell + control plane + evidence/review UI
+```
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Current -> This plan -> 12-month ideal
+- Current: 多仓边界大体正确，但没有一个统一 runtime contract
+- This plan: 一个共享 core contract，两个旗舰 domain pack，一个统一控制面，一套记忆/交付/评测模型
+- Ideal: 一个可移植 Agent Core，能同时服务 Mac、微信、语音、未来移动端/云端，而不用重写业务逻辑
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Key Interfaces
+- 在 `hermes-agent` 定义核心类型：`Session`、`Task`、`Run`、`Artifact`、`Approval`、`DeliveryPolicy`、`MemoryRecord`、`ReviewDecision`、`DomainPackDescriptor`
+- 定义 `DomainPack` 契约：`describe()`、`health()`、`capabilities()`、`run(request)`、`list_artifacts(run_id)`、`review_actions(run_id)`、`eval_suite()`
+- 定义 Adapter 契约：输入统一 inbound event，输出遵守 delivery policy；不在 adapter 层做业务编排
+- 定义控制面契约：列出 runs、读取 artifacts、打开 evidence、提交 manual review、触发 operator actions
+- 定义记忆契约：原始/逐字 memory 进 MemPalace，reviewed knowledge 进 Obsidian，promotion 和 user model 状态由 core 持有
+- 定义交付契约：WeChat 负责 live reply + 条件性 proactive，语音负责 ingress，桌面通知做可靠兜底
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Implementation Plan
+1. 边界冻结
+- 发一份唯一可信的 repo map，停止不同仓各自描述不同架构。
+- 明确哪些东西不迁移：`weclaw` 消息语义、`Signals` 引擎逻辑、`due-diligence-core` 站点执行逻辑。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+2. 抽核心
+- 以 `hermes-agent` 作为 portable core 的代码归宿，不以 `longclaw-agent-os` 继续膨胀。
+- 先落 `session / task / artifact / delivery / memory / eval` 共享 contract，再迁业务域。
+- 先做 Domain Pack 注册层和 Adapter 注册层，再做迁移。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+3. 统一通道层
+- 保持 `weclaw` 只做微信桥、媒体、context token、task dispatch。
+- 保持 `Chanless` 只做语音入口，并迁到同样的 inbound-event / delivery-policy 契约。
+- 明确通道保证：微信是 `windowed proactive`，不是永远可靠的后台推送。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+4. 升级两个旗舰域
+- 把 `Signals` 包成 `SignalsPack`，保留现有 CLI / WeChat 流程，只把外部入口换成统一 contract。
+- 把 `due-diligence-core` 包成 `DueDiligencePack`，保留 site adapter、challenge framework、validation、export parity。
+- `aippt` 不进 phase 1，但 phase 1 必须把 Domain Pack SDK 抽好，保证 phase 2 接它时不用再改 core。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+5. 重做统一控制面
+- 把 `longclaw-agent-os` 收紧成桌面控制面：Runs、Evidence、Shadow Compare Queue、Manual Review Queue、Runtime Health、Operator Actions。
+- 只消费 core API，不在桌面 repo 里重新写 Signals 或尽调状态机。
+- 首批页面就围绕“看任务、看证据、看复核、看健康”四件事展开。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+6. 统一记忆、交付、质量门禁
+- 把 `mempalace-sync` 升成 raw memory ingestion 路径。
+- 保持 Obsidian 只存 reviewed knowledge。
+- 把 harness、shadow compare、runtime health、domain regression 合成正式 promotion gate。
+- `gstack` / `harness` / domain validation 继续做内部 release workflow，不做最终产品 runtime 依赖。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Not In Scope
+- 把所有仓直接并成一个 monorepo
+- 把 `weclaw` 语义搬进 desktop app 或 core
+- 把 `Signals` 重写成 runtime 内核
+- 把 `due-diligence-core` adapter/challenge 逻辑搬进桌面端
+- phase 1 就做多租户通用 SaaS 平台
+- phase 1 就把 `aippt` 做成首批旗舰域
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Test Plan
+- Adapter ingress：同一个请求从微信或语音进入，都能落到同一个 canonical session
+- Domain SDK：`SignalsPack` 和 `DueDiligencePack` 通过同一套 contract test
+- Control plane：core 里新建的 run 能在 `longclaw-agent-os` 里看到，并能读取 artifact、执行 manual review
+- Delivery policy：微信窗口内回复正常，窗口外自动走桌面/本地通知兜底
+- Memory plane：raw data 进 MemPalace，reviewed promotion 进 Obsidian，且能追溯到 run/session
+- Eval gate：domain regression、shadow compare failure、runtime health drift 任一触发都能阻止 promotion
+- Failure drills：domain pack unavailable、partial evidence bundle、manual-review-required、remote worker unavailable、channel delivery denied
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Assumptions
+- 第一阶段产品楔子是“个人 Agent OS + 金融分析/尽调两个旗舰域”
+- 默认部署形态是“本地壳子 + 远端工作核”
+- `hermes-agent` 是 future core 的代码归宿，不新开第三个 core repo
+- 本次已接受的扩展项：统一控制面、Domain Pack SDK、统一评测/晋升门禁、统一记忆平面、统一交付策略
+- 浏览器/agent 执行层的外部参考： [Stagehand](https://docs.browserbase.com/welcome/quickstarts/stagehand), [Browser Use](https://docs.browser-use.com/open-source/introduction), [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright), [OpenClaw browser automation](https://openclawdoc.com/docs/agents/browser-automation/)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**已实现**
+- `hermes-agent` 现在有统一的 Agent OS contract 和 registry：`Session / Task / Run / Artifact / Approval / DeliveryPolicy / MemoryRecord / ReviewDecision`，以及 `DomainPack`、`InteractionAdapter`、`DomainPackRegistry`、`AdapterRegistry`。见 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py:1)、[gateway/__init__.py](/Users/zhangqilong/github代码仓库/hermes-agent/gateway/__init__.py:1)、[pyproject.toml](/Users/zhangqilong/github代码仓库/hermes-agent/pyproject.toml:95)。
+- `due-diligence-core` 被包成了可复用的 `DueDiligencePack`，并补了控制面需要的 `list_runs`、`manual_review_queue`、`/runs`、`/manual-review-queue`。见 [domain_pack.py](/Users/zhangqilong/github代码仓库/due-diligence-core/src/due_diligence_core/domain_pack.py:12)、[service.py](/Users/zhangqilong/github代码仓库/due-diligence-core/src/due_diligence_core/orchestration/service.py:134)、[app.py](/Users/zhangqilong/github代码仓库/due-diligence-core/src/due_diligence_core/api/app.py:77)。
+- `Signals` 被包成了 `SignalsPack`，保留现有 `run.py`，新增了 pack 描述、health、capabilities、本地 run ledger、artifact 暴露。见 [domain_pack.py](/Users/zhangqilong/github代码仓库/Signals/signals/domain_pack.py:28)、[__init__.py](/Users/zhangqilong/github代码仓库/Signals/signals/__init__.py:18)。
+- `longclaw-agent-os` 新增了最小控制面数据层，能统一读取 due-diligence 的远端运行态和 Signals 的本地 ledger，并标准化成 packs/runs/artifacts/manual review/runtime health 视图。见 [models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts:1)、[client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts:25)。
+- Canonical repo map 也更新成这次整合方案的唯一可信版本。见 [REPO_MAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/REPO_MAP.md:1)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**验证**
+- 通过：`python3 -m pytest -o addopts='' /Users/zhangqilong/github代码仓库/hermes-agent/tests/agent_core/test_contracts.py`
+- 通过：`python3 -m pytest /Users/zhangqilong/github代码仓库/due-diligence-core/tests/test_orchestration_api.py /Users/zhangqilong/github代码仓库/due-diligence-core/tests/test_domain_pack.py`
+- 通过：`python3 -m py_compile` 检查新增的 `hermes-agent` contract、`due-diligence-core` pack、`Signals` pack
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**还没做完的部分**
+- 这次是“可工程化的第一层骨架”，还没把 `longclaw-agent-os` 真正接成 UI 页面，也还没把 `weclaw / Chanless` 改成统一 inbound-event contract。
+- `longclaw-agent-os` 这边本机没有 `node_modules`，`tsc` 不能跑，所以 TS 部分我做了代码级收敛，但没法在这台机器上完成正式类型编译验证。
+- 还缺真正的跨仓运行接线：`hermes-agent` 作为中心注册 pack/adapter、微信/语音入口真正落到 canonical session、promotion gate 串上 harness/shadow compare/runtime health。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da430-637e-7833-b90d-0043a06bc498
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要继续，我建议下一步直接做两件事之一：把 `weclaw/Chanless` 接到新的 inbound contract，或者把 `longclaw-agent-os` 的 Runs/Review/Health 三个页面真正挂到这个新数据层上。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da389-84a4-7ce0-a093-f5700b0ab2e1
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+可以先看看原文，然后把把这几个项目的整合骨架和决策点跑清楚。我之前也写过一些plan，你也可以看看
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+我从微信收到这个Longclaw Runtime 摘要
+时间: 2026-04-13T05:39:53.626346-07:00
+整体: 当前有 6 个待处理问题，最高风险 ⚠️
+主备: codex (primary=codex, backup=claude)
+送达模式: summary=background_summary, conversation=reply, reliable_local
+最值得盯: knowledge-base/environment_missing: Missing path: CLAUDE.md
+阻塞/待审阅: 3/2
+微信任务队列: pending=0, running=0
+下一步: knowledge-base: 人工审阅 environment_missing  是什么意思，可以解决么？需要我做什么？
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#recent
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+帮我评估一下，我怎么把这个用起来？因为知识库是需要我在微信里面输入的，很难自动loop吧？
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`knowledge-base` 在你这套 Longclaw 里，具体作用是“被 runtime 当成一个可巡检、可检索、可整理的本地知识库项目”。不是抽象概念，是一个被正式注册进 harness 的本地对象，根目录配置为 `/Users/zhangqilong/Desktop/知识库`。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 存放知识内容本身  
+  目录设计里至少有 `10 Inbox/WeChat`、`20 Knowledge`、`00 Dashboard`，说明它既接收微信/收件箱笔记，也沉淀整理后的知识，还产出 dashboard 类汇总。
+- 提供知识库工具链  
+  它预期有 `search.py`、`promote.py`、`rebuild_index.py`，分别对应“搜索”“把 inbox 笔记提升为正式知识”“重建索引”。
+- 做知识库质量检查  
+  `lint_notes.py` 和 `eval_notes.py` 说明 runtime 会把它当成一个可评估系统，检查笔记格式、结构、内容质量或规则一致性。
+- 做低风险自动整理  
+  `autofix_notes.py` 和 `autorefactor knowledge-base` 说明系统允许对知识条目做有限、可回滚的结构修复，而不是随便改任何内容。
+- 给 Longclaw Runtime 提供知识面板/输入源  
+  你的 runtime 还有 `00 Dashboard/Longclaw Runtime.md` 这类输出，说明这个知识库很可能也是 Longclaw 状态、周报、知识沉淀的落点之一。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在的问题不是它“坏了”，而是它“被注册为应该存在，但实际还没初始化完成”。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一条可以继续帮你判断：
+- 这东西对你现在是不是必要
+- 如果不要，最干净的停用方式是什么
+- 如果要，最小可用版本该补哪些文件才够用
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`Longclaw Runtime` 正在把你登记过的几个本地项目当成“可巡检对象”做健康检查。  
+`knowledge-base/environment_missing` 的意思是：它期望某个本地知识库目录具备一套最小可用环境，但检查时发现缺文件，所以把它标成“需要人工审阅”。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `knowledge-base` 被注册成目录 `/Users/zhangqilong/Desktop/知识库`
+- 这套检查要求它至少存在：
+  - `CLAUDE.md`
+  - `tools/lint_notes.py`
+  - `tools/eval_notes.py`
+  - `tools/autofix_notes.py`
+  - `tools/search.py`
+  - `tools/promote.py`
+  - `tools/rebuild_index.py`
+- 现在这些文件都不存在，不只是 `CLAUDE.md`
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 如果你根本没有在维护 `/Users/zhangqilong/Desktop/知识库`，这更像是“陈旧注册项”
+- 如果你本来就想让它成为微信/知识整理的正式知识库，那这是“未初始化项目”
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我建议按最小成本理解：
+这条通知本质上是在提醒你“有一个被系统当真了的知识库项目，其实还没落地完成”。
+
+
+---
+来源：codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你愿意，我下一步可以直接给你一个决策完整的处理方案，分成两条：
+- `保留 knowledge-base 并补齐`
+- `停用 knowledge-base 并清理告警`
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+Longclaw Runtime 摘要 时间: 2026-04-10T06:28:40.888075-07:00 整体: 当前有 5 个待处理问题，最高风险 ⚠️ 主备: codex (primary=codex, backup=claude) 送达模式: summary=background_summary, conversation=reply, reliable_local 最值得盯: knowledge-base/environment_missing: Missing path: CLAUDE.md 阻塞/待审阅: 3/2 微信任务队列: pending=0, running=0 下一步: knowledge-base: 人工审阅 environment_missing   这个runtime是什么意思呢？对我来说怎么去解决
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 当前运行面还有 `5` 个待处理问题
+- 最高优先级问题是 `knowledge-base/environment_missing`
+- 具体缺失项是 `CLAUDE.md`
+- 主 agent 现在是 `codex`，备份是 `claude`
+- `3/2` 表示大概有 3 个阻塞项、2 个待人工审阅项
+- “下一步: 人工审阅 environment_missing” 的意思是：系统判断这个问题更像“配置/知识缺口”，需要你确认或补齐，而不是自动修复
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+`knowledge-base/environment_missing: Missing path: CLAUDE.md`
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我核实了当前工作区根目录 `/Users/zhangqilong/github代码仓库`，这里确实没有根级 `CLAUDE.md`，但很多子项目里有，比如 `Chanless/CLAUDE.md`、`gstack/CLAUDE.md`、`superpowers/CLAUDE.md`。而 `longclaw-agent-os` 里也明确把项目根目录 `CLAUDE.md` 当成 onboarding/项目说明是否齐备的标志，见 [projectOnboardingState.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/projectOnboardingState.ts#L18) 和 [README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md)。
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 如果你当前是把整个 `/Users/zhangqilong/github代码仓库` 当成一个统一工作区来跑 runtime，那么它希望这个工作区根目录也有一份 `CLAUDE.md`，用来说明“这个总工作区是什么、有哪些子仓库、默认工作方式是什么”。
+- 如果你实际是分别进入各个子项目工作，那这个告警更像“根工作区没有总说明文件”，不一定会影响每个子项目内的正常使用，只是 runtime 会持续提示这个环境上下文不完整。
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 你把这个大目录当总工作区用  
+在 `/Users/zhangqilong/github代码仓库/CLAUDE.md` 补一份根级说明。内容不需要长，重点写：
+- 这是多仓库工作区
+- 常用项目有哪些
+- 默认应先进入具体子项目再执行开发任务
+- 哪些目录是产品代码，哪些只是资料/配置
+- 共享约束，比如语言、测试、提交习惯
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 你不想把大目录当项目  
+那就不要从这个总目录启动/绑定 runtime，改成从具体项目目录启动，比如：
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os`
+- `/Users/zhangqilong/github代码仓库/Chanless`
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这样 runtime 会去看具体项目自己的 `CLAUDE.md`，告警通常就不会再指向总目录缺文件。
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我的建议是选第 1 种，成本最低。因为你这个目录明显是一个多项目工作台，补一个根级 `CLAUDE.md` 能把这类“environment_missing”长期压下去，而且对 agent 理解你的工作区结构也有帮助。
+
+
+---
+来源：codex:019d779d-efeb-7750-91d7-027184fd32ed#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以直接给你一份适合这个目录的根级 `CLAUDE.md` 内容草稿。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+看一下目前这两个计划，我希望继续清理目前的常驻的system service，优化harness工程
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 路径本身没坏
+- [`/Users/zhangqilong/Desktop/知识库`](</Users/zhangqilong/Desktop/知识库>) 及其子目录权限位是正常的。
+- 我在当前交互 shell 里直接用 Python 读 [`/Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat`](</Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat>)，是能读到的。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. 阻塞确实发生过，而且发生在机器侧 scheduler 轮次里
+- 日志在 [`/tmp/longclaw-guardian/scheduler.task.log`](</tmp/longclaw-guardian/scheduler.task.log>) 里很明确：
+  - `PermissionError: [Errno 1] Operation not permitted: '/Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat'`
+  - 还有对 [`/Users/zhangqilong/Desktop/知识库/00 Dashboard/Longclaw Runtime.md`](</Users/zhangqilong/Desktop/知识库/00 Dashboard/Longclaw Runtime.md>) 的写入失败
+- 这说明报错不是我猜的，是 `repo.scheduler -> runtime-roadmap-sync.py` 真打出来的。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+3. 这更像 macOS 的隐私/TCC 限制，不是普通文件权限
+- `Desktop` 是 macOS 的受保护目录。
+- 这些目录上也能看到额外访问控制痕迹，比如 `+` ACL 和 `com.apple.macl` 扩展属性。
+- `repo.scheduler` 是通过 launchd 跑的 [`com.zhangqilong.ai.repo.scheduler`](</Users/zhangqilong/Library/LaunchAgents/com.zhangqilong.ai.repo.scheduler.plist>)，不是你当前这个交互终端会话本身。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **同一个用户 `zhangqilong`，在不同进程上下文里，对 `Desktop` 的访问权限并不等价。**
+- 当前交互 shell/Codex 这条链路能读。
+- launchd 拉起来的后台脚本链路，有时会被 macOS 拒绝访问 `Desktop/知识库`。
+- 这属于 **运行环境权限边界**，不是 repo 代码逻辑错误。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **现在最新 queue 已经恢复正常**，说明我后来在交互上下文里重跑时成功了。
+- 但这不代表问题彻底消失。
+- 真正的风险是：**无人值守的 scheduler 轮次仍可能再次撞上这个 TCC 拒绝。**
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要继续，我下一步可以给你一版很清楚的治理方案，对比两条路：
+- 给当前机器侧调度链补稳定的 Desktop/知识库访问权限
+- 或者把机器真源/投影目录从 `Desktop` 迁到一个不受 TCC 卡脖子的路径
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 产品与路径重规划优化方案
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 把 Longclaw 重新定义成一个 `Self-improving personal agent system`，而不是“默认能长期后台主动给你发微信”的产品。
+- 架构继续沿用四层：
+  - `Client Runtime（端侧）`
+  - `Agent Core（云侧）`
+  - `Interaction Adapter Layer（通道侧）`
+  - `Knowledge Review Plane（知识侧）`
+- 新的关键现实约束必须写进产品定义：`weclaw / WeChat` 目前是 `windowed proactive messaging`，不是 `true background push`。
+- 近期产品目标从“强行打通微信后台推送”改为“先把本地闭环做成可靠产品”，即：
+  - WeChat 负责 ingress、实时会话、显式任务接入
+  - Mac 负责可靠提醒、runtime host、自动化宿主
+  - `Agent Core（云侧）` 方向先抽状态契约和 improvement loop，不急着先上云
+- 产品路径改成三段：
+  1. `Local Reliable Loop`
+  2. `Portable Core Extraction`
+  3. `Distributed Product Runtime`
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 重写产品承诺
+- Longclaw 的主承诺改成：
+  - 跨会话记忆
+  - 双 agent failover
+  - 可审阅知识沉淀
+  - 任务排队与自动化迭代
+  - `Harness Engineering Loop` 驱动的持续改进
+- Longclaw 不再把“任意时刻稳定主动微信播报”作为当前版本承诺。
+- `WeChat` 的正式能力边界改成：
+  - 可靠：入站消息、会话内回复、`任务:` 入队、`/runtime` 或等价状态拉取
+  - 条件性可靠：在最近 live context window 内的主动摘要
+  - 不承诺：长时间空闲后的后台主动推送
+- 可靠告警与状态交付默认转移到 `Client Runtime（端侧）`：
+  - Dashboard
+  - 本地通知
+  - runtime state
+  - review note
+- 若未来需要真正 push，作为后续 `Delivery Channel` 能力建设处理，不继续让 WeChat 承担错误职责。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. 收紧四层边界
+- `Client Runtime（端侧）`
+  - 负责本机 runtime host、通知、launchd、guardian、scheduler、路由协调、本地恢复
+  - 成为当前阶段唯一可靠 delivery host
+- `Interaction Adapter Layer（通道侧）`
+  - `weclaw` 只负责 WeChat protocol、identity、context token、media/archive contract、task ingress
+  - 不再被视为可靠后台通知系统
+- `Agent Core（云侧）`
+  - 近期先固定 portable contracts：
+    - `session`
+    - `routing`
+    - `task queue`
+    - `memory`
+    - `delivery policy`
+    - `Harness Engineering Loop`
+  - 当前可以继续落在本地 runtime state 中，但语义按未来 core 设计
+- `Knowledge Review Plane（知识侧）`
+  - 继续做人类可读投影、审阅、干预、证据追踪
+  - 不承担 machine canonical state
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 3. 把产品主链改成“Push Optional, Pull Reliable”
+- 当前本地产品主链固定为：
+  - `WeChat ingress`
+  - `Routing Controller`
+  - `Primary/Backup agent execution`
+  - `Runtime state persistence`
+  - `Knowledge projection`
+  - `Runtime summary generation`
+  - `Delivery policy`
+- `Delivery policy` 明确三档：
+  - `reply`: 对 live 会话即时回复
+  - `windowed_proactive`: 仅在有效 WeChat context window 内发送摘要
+  - `reliable_local`: 永远写 runtime state、dashboard、本地提醒
+- 所有 scheduler 摘要、health alert、review signal 先写 `reliable_local`，再按条件尝试 `windowed_proactive`。
+- 用户交互面增加明确的拉取式入口：
+  - `任务: xxx`
+  - `/runtime`
+  - 后续可扩展 `/review`、`/queue`
+- 这样产品体验从“赌后台 push”变成“状态永不丢，微信尽量快，必要时用户可主动拉取”。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Interfaces
+- `~/.weclaw/runtime/active-agent.json`
+  - 保持 routing canonical state
+  - 必须继续暴露 `effective_agent`、`preferred_primary`、`preferred_backup`、health snapshot
+- 新的 delivery contract 必须进入 runtime state，至少包含：
+  - `wechat_delivery_mode = reply | windowed_proactive | unavailable`
+  - `last_inbound_at`
+  - `last_context_token_at`
+  - `most_worth_watching`
+  - `summary_delivery_result`
+- `~/.longclaw/runtime-v2/state/wechat-task-queue.json`
+  - 继续作为微信任务 canonical queue
+- `runtime-status` 与 roadmap sync
+  - 必须明确区分“本轮状态已生成”与“本轮微信已送达”
+- 总库文档需统一更新在：
+  - [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md)
+  - [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md)
+  - [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)
+- 文档里要把 WeChat 正式改写成 `windowed proactive adapter`，避免继续按 true push 叙事规划产品。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Product Path
+1. `Phase A: Local Reliable Loop`
+- 完成 `WeChat -> weclaw -> Mac runtime -> dual-agent -> runtime state -> knowledge` 的可靠闭环。
+- 让 `任务:`、`/runtime` 成为正式产品入口。
+- 所有自动摘要先保证本地可见，再按条件尝试微信发送。
+- 成功标准是“状态与任务永不丢”，不是“每次都能后台微信推送”。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+2. `Phase B: Portable Core Extraction`
+- 从当前本地实现里抽出 `session / routing / task queue / memory / delivery policy / Harness Engineering Loop` 的统一 contract。
+- `watchdog`、`harness` 的可移植逻辑向 `Agent Core（云侧）` 收敛。
+- `longclaw-agent-os` 继续做 `Client Runtime（端侧）`，但逐步变薄。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+3. `Phase C: Distributed Product Runtime`
+- 引入真正可托管的 `Agent Core（云侧）`。
+- 多端共享 session、memory、skills、scheduler。
+- 可靠 push 改由真正适合 push 的交付层承担；WeChat 继续保留为通道入口，而不是 delivery backbone。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 新入站消息后 1 分钟内，WeChat 主动摘要可以成功发送。
+- 长时间空闲后，WeChat 主动摘要失败时，scheduler 不失败，runtime state 和 dashboard 仍完整更新。
+- `任务: xxx` 只入队，不抢占当前轮，并能回写状态与结果。
+- `/runtime` 在 live context 内能稳定返回当前状态摘要。
+- `active-agent.json`、runtime queue、dashboard、review note 对同一轮 routing/result 保持一致。
+- roadmap automation 产出必须明确标注：
+  - 状态是否生成成功
+  - 微信是否送达成功
+  - 当前 delivery mode 是什么
+- 文档、runtime state、知识侧描述必须统一，不再把 WeChat 描述为无条件后台 push。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 当前阶段继续是单用户、本地优先产品验证。
+- WeChat 仍是最重要的 `Interaction Adapter Layer（通道侧）`，但不是可靠后台通知主通道。
+- `repo.scheduler` 继续作为唯一自动化宿主，不新增新的常驻 service。
+- `Knowledge Review Plane（知识侧）` 继续保留 Obsidian/dashboard 形态。
+- 真正的产品北极星仍是 `Hermes-like Agent Core（云侧）`，但近期优化重点是先把“本地可靠闭环”做对。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+产品真源文档已经改写在 [README.md](/Users/zhangqilong/github代码仓库/hermes-agent/README.md), [ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ARCHITECTURE.md), [ROADMAP.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/ROADMAP.md)。现在正式把 Longclaw 定义成 `Self-improving personal agent system`，并把路径收成 `Local Reliable Loop -> Portable Core Extraction -> Distributed Product Runtime`，同时把 WeChat 明确定义成 `windowed proactive adapter`，不再按 `true background push` 叙事规划产品。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+运行时这边已经落地到 [runtime-roadmap-sync.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-roadmap-sync.py), [runtime-status](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-status), [runtime-wechat-control.py](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/runtime-wechat-control.py), [repo-scheduler-service.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh)。`roadmap-queue.json` 现在会产出 `delivery_policy`，包含 `wechat_delivery_mode`、`last_inbound_at`、`last_context_token_at`、`summary_delivery_result`；scheduler 会先保证 `reliable_local`，只有在 live context window 内才尝试微信摘要。`weclaw` 也补了 `/runtime` 拉取入口，代码在 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go)，测试在 [handler_test.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler_test.go)。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经把安装态同步到 `~/.longclaw/runtime-v2/bin`，并验证过：`verify-v2.sh` 通过，`go test ./messaging ./api ./cmd` 通过，Python 脚本和 scheduler shell 语法通过。当前真实运行态也已经能看到新的 delivery contract；[`roadmap-queue.json`](</Users/zhangqilong/.longclaw/runtime-v2/state/roadmap-queue.json>) 里现在有 `delivery_policy`，[`runtime-status`](</Users/zhangqilong/.longclaw/runtime-v2/bin/runtime-status>) 会显示 `wechat_delivery_mode` 和 `summary_delivery_status`，而且本轮摘要已经在有效窗口内成功发送过。
+
+
+---
+来源：codex:019d6ae8-f3d1-7f10-804a-797d14d08898#turn:019d6be0-dde4-7f61-b699-80b9db374eb5
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还剩一个环境级阻塞：知识库路径在机器侧仍然有 `Operation not permitted`，所以 [`knowledge-projection.json`](</Users/zhangqilong/.longclaw/runtime-v2/state/knowledge-projection.json>) 会降级成 `pending`，`reliable_local` 里的 queue 和 hermes status 正常，但 Dashboard/Review 写入会受影响。下一步最应该处理的是这个知识库权限问题。

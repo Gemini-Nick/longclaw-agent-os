@@ -1,0 +1,53 @@
+{
+  "id": "019e0599-14a3-7690-8270-9828a20bbf64",
+  "title": "修复删除确认延迟",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e0599-14a3-7690-8270-9828a20bbf64",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "444cebd740dff9be7db3ae97d99392cfbb924982df8bba1ecd34e9d54f36b33b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0599-14a3-7690-8270-9828a20bbf64#recent",
+      "timestamp": null,
+      "verbatim": "做了三件事：\n- 重新打包并覆盖安装到 `/Applications/隆小侠 Agent OS.app`\n- 启动新的 App\n- 验证运行进程来自 `/Applications/隆小侠 Agent OS.app`，主进程 PID 是 `78637`"
+    },
+    {
+      "hash": "f5662895b395c9631a0955f1b5a2026fb2f33d9d6f25b5acbefccc051e387b13",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0599-14a3-7690-8270-9828a20bbf64#recent",
+      "timestamp": null,
+      "verbatim": "另外我确认了安装后的 `app.asar` 里已经包含这次的 `optimisticDeletedManualClueKeys` 删除延迟修复。构建过程有 electron-builder 的依赖噪音警告，但命令退出码是 `0`，安装和启动都成功。"
+    },
+    {
+      "hash": "97c40a9bc4e4899e33b729602869c957e5510d11dc2118af63c5c2584be42c4c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0599-14a3-7690-8270-9828a20bbf64#turn:019e0599-4970-79d2-be52-4b518df0ad5d",
+      "timestamp": null,
+      "verbatim": "原因是确认删除后前端一直等 DELETE 和 `/api/workbench/shell` 刷新完成，列表项才消失；后端或刷新慢时就会看起来卡 5 秒。现在改成乐观删除：第二次点击“确认”后立即把该临时线索从列表里隐藏，后台再完成 DELETE 和刷新；如果接口失败，会自动恢复该行并显示错误。"
+    },
+    {
+      "hash": "7b6937ac40216a5bf4841831b0a7723751c68993d30d8f697ae918836a2e6b16",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0599-14a3-7690-8270-9828a20bbf64#turn:019e0599-4970-79d2-be52-4b518df0ad5d",
+      "timestamp": null,
+      "verbatim": "改动在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:5229)。"
+    },
+    {
+      "hash": "2ce8df9719372e6236ab1e3d4d227c950338416329c624e6266988f6d37cd703",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e0599-14a3-7690-8270-9828a20bbf64#turn:019e0599-4970-79d2-be52-4b518df0ad5d",
+      "timestamp": null,
+      "verbatim": "验证已通过：\n`npm run lint`\n`npm run build:electron`"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

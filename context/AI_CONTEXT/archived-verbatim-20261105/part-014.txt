@@ -1,0 +1,868 @@
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6289-0406-7231-bb5c-79b8b567e23e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+下一步我建议直接继续修这一点：把 `weclaw.bridge` 改成真正持有前台进程，而不是让它启动一个后台 `weclaw-real` 后自己退出。这样才能把最后一个不稳定点收掉。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6288-9530-7f42-b2b0-56fceb3b0f8b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `claude-worker` 重启刷错：已经定位为安装脚本装了旧 `weclaw-guardian`，不是逻辑本身没写好。
+- `weclaw status` 误判：已经定位为 `weclaw` 上游二进制只看 pid 文件，不看 `18011` 监听态。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6288-9530-7f42-b2b0-56fceb3b0f8b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我刚才已经把这两处修进新的安装链路了，但因为我不能直接写你的 `~/.weclaw` 和 `~/.longclaw`，你还需要再执行一次：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6288-9530-7f42-b2b0-56fceb3b0f8b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你执行完我就继续做 live 验证，重点只看这三项：
+- `~/.weclaw/bin/weclaw status` 是否恢复正常
+- `claude-worker.log` 是否停止 `fails=3/3` 和 `exiting for launchd restart`
+- `weclaw-bridge.log` 是否不再高频刷 session expired
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+有一个问题，每次weclaw login都需要用户进行扫码认证，你这个是怎么解决常驻服务？
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`weclaw` 常驻服务能解决的是“进程常驻”和“登录成功后的持续在线”，解决不了“替你绕过微信扫码登录”。微信扫码登录本身还是一次人工动作，这部分不能靠后台服务替代。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw bridge` 作为 `LaunchAgent` 常驻
+- 如果微信会话仍有效，服务自动恢复并持续在线
+- 如果微信会话过期，服务进入 `session_expired` 已知状态
+- 这时不反复报错、不影响 `scheduler` 同步、不影响 `codex`/`guardian`
+- 你手工执行一次 `weclaw login` 扫码后，后续常驻服务继续接管
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在遇到的场景其实很正常：
+- 以前 `weclaw` 没常驻，所以你觉得“不 start 就不发消息”
+- 现在我们把它做成常驻后，问题从“没启动”变成“会话失效”
+- 这已经是更合理的状态了，因为服务层面是稳定的，剩下只是微信登录态过期
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果要进一步减少你手工扫码的频率，只能做这几类优化，但都不是“免扫码”：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 保证 `~/.weclaw/accounts` 和凭据文件不被清理
+- 避免重装/清理时误删登录态
+- 这能减少无谓重新扫码
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `weclaw` 进程不要频繁重启
+- 某些桥接实现如果反复重启，可能更容易触发会话失效
+- 这也是我一直在收敛 `weclaw bridge` 和旧 watchdog 残留的原因
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. 会话过期后静默降级
+- 不再刷屏
+- 不把整个系统拖崩
+- 只在你真正需要恢复微信通知时再执行一次 `weclaw login`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+4. 降级通知通道
+- 如果你希望“即使 weclaw 过期也能收到报告”，那就要增加第二条通知链路，比如邮件、企业微信机器人、Telegram、飞书 webhook 等
+- 这样微信扫码过期不会等于通知完全中断
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以结论很直接：
+- “常驻服务”解决的是在线维持和自动恢复进程
+- “扫码认证”仍然必须由你人工完成
+- 这个方案不是绕过登录，而是把未登录状态变成一个稳定、可观测、不会扰乱系统的已知状态
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6286-d46e-7000-9f7e-e0ad70de60d7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一步可以继续帮你设计一版：
+- `weclaw` 失效时自动切到备用通知通道
+- 这样你就不需要把“微信扫码是否过期”当成唯一告警链路了
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6280-2c64-7661-9e9b-4bf46d133465
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+根因确认：
+- `claude-worker` 一直重启，不是源码没改，而是安装脚本一直在复制旧的 `[/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/weclaw-guardian](/Users/zhangqilong/github代码仓库/longclaw-agent-os/apps/runtime/bin/weclaw-guardian)`；你新编译出来的是 `apps/runtime/guardian/weclaw-guardian`，之前根本没被装上。
+- `weclaw status` 的误判来自 upstream `weclaw` 自己只看 `weclaw.pid`，不看 `127.0.0.1:18011` 的真实监听态。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6280-2c64-7661-9e9b-4bf46d133465
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我已经在工作区镜像里改了这几处：
+- [apply-live.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/apply-live.sh)
+- [install-v2.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/install-v2.sh)
+- [weclaw](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw)
+- [weclaw-bridge.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw-bridge.sh)
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6280-2c64-7661-9e9b-4bf46d133465
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在的行为变成：
+- `apply-live.sh` 会把 `weclaw-guardian` 直接编译到 `apps/runtime/bin/weclaw-guardian`，安装时不再误装旧二进制。
+- `install-v2.sh` 会优先安装新编译产物，并把原始 `~/.weclaw/bin/weclaw` 备份成 `weclaw-real`，再装一个薄包装层。
+- 新的 `weclaw` 包装层会修正 `status` 语义：即使 pid 文件丢了，只要 `18011` 在监听，也会显示 running。
+- `weclaw-bridge.sh` 会对重复的 session expired warning 做节流，避免 bridge 日志每几秒刷一条。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6280-2c64-7661-9e9b-4bf46d133465
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我已经做了静态验证：
+- `bash -n` 通过
+- 新 `weclaw` 包装层的最小 fake 测试通过
+- 新编译的 `weclaw-guardian` 二进制包含 `claude auth unavailable; entering idle mode` 这段逻辑
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6280-2c64-7661-9e9b-4bf46d133465
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+跑完后告诉我，我继续替你做 live 验证，重点看这三项：
+- `~/.weclaw/bin/weclaw status` 是否已和 `lsof -iTCP:18011` 一致
+- `claude-worker.log` 是否停止出现 `fails=3/3` 和 `exiting for launchd restart`
+- `weclaw-bridge.log` 是否不再每 5 秒刷一次 session expired warning
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627f-4ca4-7130-8e82-7dd35c45e701
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经修好的：
+- 历史残留基本清掉了。`~/.weclaw` 里已经没有：
+  - `session-watchdog.sh`
+  - `watchdog.log`
+  - `watchdog.launchd.out.log`
+  - `watchdog.launchd.err.log`
+  - `weclaw.pid`
+- 旧运行态冲突也清掉了一次。`weclaw-bridge.log` 明确记录了：
+  - 找到旧的 `weclaw` 监听 `pid=84211`
+  - 已终止它
+  - 然后重新启动了新的 bridge
+- 现在端口层面是干净的：
+  - `127.0.0.1:18011` 只有一个 `weclaw` 在监听，PID `53796`
+  - `127.0.0.1:45678` 只有一个 `codex` 在监听
+- guardian 视角是正常的：
+  - `codex`、`claude`、`weclaw`、`repo-scheduler` 都是 `running`
+  - `active-agent.json` 仍稳定是 `codex`
+- 新 scheduler 链路继续正常：
+  - `04:13:09` 又触发了一次
+  - 触发类型已正确写成 `interval`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627f-4ca4-7130-8e82-7dd35c45e701
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `weclaw status` 仍然不对
+- 现在真实情况是 `18011` 上有 `weclaw`
+- 但 `~/.weclaw/bin/weclaw status` 还是返回 `weclaw is not running`
+- 这说明问题不在 bridge，而在 `weclaw` 二进制自己的 `status` 实现
+- 也就是说：
+  - 运行态已经正常
+  - 但 CLI 的状态判断逻辑还是老语义，没把“监听中但没有 pid 文件”识别成 running
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627f-4ca4-7130-8e82-7dd35c45e701
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `claude` 仍然在按旧逻辑重启
+- `claude-worker.log` 还是继续出现：
+  - `fails=3/3`
+  - `claude worker exiting for launchd restart`
+- 说明你 live 环境里实际生效的 `claude` 静默逻辑还没真正改到运行链路上
+- 从现象看，更像是：
+  - `launchd -> claude-worker.sh -> weclaw-guardian claude-worker`
+  - 真正在跑的是 `weclaw-guardian` 子命令内部的旧逻辑，而不是我修改后的那版
+- 也就是 live 上的 `weclaw-guardian` 二进制内容仍没对齐
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627f-4ca4-7130-8e82-7dd35c45e701
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论：
+- “清理历史残留”和“weclaw bridge 冲突清理”已经成功。
+- 现在只剩两处真正的根问题：
+  - `weclaw` 二进制的 `status` 语义需要修
+  - live 上的 `weclaw-guardian` 二进制需要确认是否已被新源码重新编译并覆盖
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627f-4ca4-7130-8e82-7dd35c45e701
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步建议直接针对这两点继续做一轮定向修复计划：
+- 优先修 `weclaw status`
+- 然后核查并强制重编 `weclaw-guardian`
+- 最后再复验 `claude` 是否停止重启刷错
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 清理历史残留并修复后台服务稳定性
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 概要
+- 目标分两部分一起做：
+  - 清理历史 `weclaw` / `guardian` / `watchdog` 的僵尸进程、陈旧 pid、废弃脚本和无效日志残留。
+  - 修复当前新链路的三个问题：`weclaw status` 与真实运行态不一致、`claude` 未认证仍在重启刷错、`weclaw` 会话过期日志持续刷屏。
+- 当前已确认的事实：
+  - 旧 `LaunchAgent` 已基本退役，`~/Library/LaunchAgents` 里只剩新的 5 个服务。
+  - `18011` 端口上有真实 `weclaw` 进程监听，但 `~/.weclaw/bin/weclaw status` 仍报告 `stale pid file`，说明运行态判断与真实进程状态脱节。
+  - `~/.weclaw/session-watchdog.sh`、`~/.weclaw/watchdog.log`、旧 `weclaw.pid` 等历史残留仍在。
+  - `repo-scheduler` 新链路已生效，`RunAtLoad=true`、`StartInterval=14400`，并已发出一条新的“🔄 Watchdog 自动化报告”。
+  - `claude-worker` 仍在按旧逻辑每 2 分钟失败一次并触发 `launchd` 重启，静默降级没有真正落地。
+  - `weclaw` 当前微信会话已过期，且每 5 秒左右持续刷同一类 warning。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 关键改动
+- 历史残留清理
+  - 停掉所有与历史 `weclaw/watchdog/guardian` 相关的旧进程，只保留新服务体系需要的：
+    - `com.zhangqilong.ai.guardian.monitor`
+    - `com.zhangqilong.ai.codex.appserver`
+    - `com.zhangqilong.ai.claude.worker`
+    - `com.zhangqilong.ai.weclaw.bridge`
+    - `com.zhangqilong.ai.repo.scheduler`
+  - 直接删除历史残留文件：
+    - `~/.weclaw/session-watchdog.sh`
+    - `~/.weclaw/watchdog.log`
+    - `~/.weclaw/watchdog.launchd.out.log`
+    - `~/.weclaw/watchdog.launchd.err.log`
+    - 无效/陈旧的 `~/.weclaw/weclaw.pid`
+  - 清理运行时冲突源：
+    - 如果 `18011` 已被旧 `weclaw` 实例占用，先以端口和命令路径为准识别真实进程，再停止旧实例，避免新 `weclaw.bridge` 抢占失败。
+    - 删除 stale pid 后统一由 `LaunchAgent` 重启 bridge，不再保留手工启动实例。
+- `weclaw` 常驻服务修正
+  - 修正 `weclaw-bridge` 的启动与状态判断：
+    - 启动逻辑继续走 `weclaw start -f`
+    - 健康判断改为“端口/API/进程实际状态优先”，不能再只依赖 pid 文件
+  - 修复 `weclaw status` 与真实监听态不一致的问题：
+    - 若能修改 `weclaw` 二进制源码，则在状态判断里增加：
+      - pid 文件有效则用 pid
+      - pid 文件无效但 `127.0.0.1:18011` 正在监听，视为 bridge 运行中
+    - 若不能改 `weclaw` 本体，则在 guardian / bridge wrapper 中增加兼容状态检查，避免控制面误判
+  - 将 `weclaw` 的微信会话过期识别为稳定状态 `session_expired`，而不是无休止地打同类 warning
+- `claude` 静默降级修正
+  - 以实际安装路径 `~/.longclaw/runtime-v2/bin/claude-worker.sh` 和当前 `weclaw-guardian` 二进制为准排查：
+    - 到底是 `claude-worker.sh` fallback 逻辑在跑
+    - 还是 `weclaw-guardian claude-worker` 子命令内部仍保留旧失败重启语义
+  - 统一改成：
+    - `claude auth status` 返回未登录时，记录为 `unauthenticated` / `not_logged_in`
+    - 不再累计失败到 `3/3` 后 `exit 1`
+    - 不再触发 `launchd` 重启风暴
+    - `active-agent` 稳定保持 `codex`
+    - 只在状态变化时记录一次摘要，后续降为低频心跳
+- `weclaw` 会话过期日志降噪
+  - 对 `WeChat session expired and cannot be auto-recovered` 做重复抑制：
+    - 首次记录完整 warning
+    - 后续同状态只按固定低频摘要记录，例如每 10-30 分钟一条
+    - 若登录恢复，再记录状态恢复事件
+  - `scheduler` 在 `weclaw` 会话过期时仍继续同步仓库，但摘要发送结果明确记为 `notify_skipped_session_expired`
+- `scheduler` 保持已生效配置
+  - 保留：
+    - 登录后立即执行一次
+    - 每 4 小时执行一次
+  - 强化异常路径：
+    - 同步失败时继续生成摘要，但结果显示为异常摘要
+    - 不因 `weclaw` 通知失败把整个调度判定为同步失败
+  - 继续保留当前新格式“🔄 Watchdog 自动化报告”
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 接口与行为
+- 保留的后台服务集合
+  - `codex`
+  - `claude`
+  - `weclaw`
+  - `repo-scheduler`
+  - `guardian`
+- 需要更新的行为接口
+  - `weclaw status`
+    - 语义改为“实际 bridge 是否存活”，不再单纯依赖 pid 文件
+  - `weclaw-guardian status`
+    - `weclaw` 服务应能显示 `running`、`session_expired`、`not_running`
+  - `claude-worker`
+    - 未认证时状态为 `unauthenticated`
+    - 不再用退出码 1 驱动重启
+- 需要清理的历史路径
+  - `~/.weclaw/session-watchdog.sh`
+  - `~/.weclaw/watchdog*.log`
+  - 陈旧 `~/.weclaw/weclaw.pid`
+  - 任何仍引用旧 `com.weclaw.*`、`com.longclaw.*`、`session-watchdog` 的遗留启动逻辑
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 测试与验收
+- 清理验证
+  - `~/Library/LaunchAgents` 中不再存在旧 watchdog/legacy guardian 项
+  - `launchctl` 中只剩新的 5 个服务
+  - `~/.weclaw` 下旧 `watchdog` 脚本和日志已删除
+- `weclaw` 验证
+  - `127.0.0.1:18011` 有且只有一个 `weclaw` 监听者
+  - `weclaw status` 与 `lsof -iTCP:18011 -sTCP:LISTEN` 结果一致
+  - `weclaw.bridge` 重启后不再出现“端口已被占用但 status 仍 stale”的矛盾态
+  - 微信会话过期时，状态可见但日志不刷屏
+- `claude` 验证
+  - 在未登录情况下，`claude-worker.log` 不再出现 `fails=3/3` 和 `exiting for launchd restart`
+  - `launchctl print gui/.../com.zhangqilong.ai.claude.worker` 的 `runs` 不再持续增加
+  - `active-agent.json` 稳定显示 `codex` 为 active agent
+- `scheduler` 验证
+  - 手动 `kickstart` 后正常同步并生成 Watchdog 摘要
+  - `RunAtLoad=true`、`StartInterval=14400` 保持不变
+  - `weclaw` 可用时成功发微信
+  - `weclaw` 会话过期时只记录“通知跳过”，不影响同步本身
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 假设
+- 历史残留按你的要求直接删除，不做归档。
+- 这次优化不改动 `scheduler` 的 4 小时周期和当前摘要文案。
+- `weclaw` 微信会话恢复仍通过你手工执行 `weclaw login` 完成，不在本次自动化范围内。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+实现已经补完到工作区镜像，并把“清理历史残留 + 修复当前稳定性问题”的落地脚本一起更新了。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这次新增/更新的核心内容：
+- [weclaw-bridge.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/weclaw-bridge.sh)
+  - 启动前删除旧 `watchdog` 残留
+  - 清理 stale `weclaw.pid`
+  - 若 `18011` 已被旧 `weclaw` 占用，会先杀掉孤儿监听再干净启动
+- [repo-scheduler-service.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/bin/repo-scheduler-service.sh)
+  - 不再依赖 `weclaw status`
+  - 直接按 `18011` 监听态判断 bridge 是否可用
+  - `send` 失败时会区分 `notify_skipped_session_expired`
+- [main.go](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/apps/runtime/guardian/cmd/weclaw-guardian/main.go)
+  - `weclaw` 健康检查优先看真实监听态
+  - `claude` 未登录时进入 idle，不再因为 `auth status` 非 0 直接累计到重启
+- [cleanup-legacy-runtime.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/cleanup-legacy-runtime.sh)
+  - 直接清理旧 `watchdog` / `weclaw` / legacy launch agent 残留
+- [install-v2.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/longclaw-agent-os/scripts/guardian/install-v2.sh)
+  - 安装时自动删旧残留
+  - 重装前主动停掉端口 `18011` 上的旧 `weclaw`
+- [apply-live.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/apply-live.sh)
+  - 现在会先执行 `cleanup-legacy-runtime.sh`，再安装新 runtime
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证结果：
+- shell 脚本语法检查通过
+- `go build ./cmd/weclaw-guardian` 通过
+- `scheduler` 的脚本级模拟验证通过，仍能正常产出并发送 `🔄 Watchdog 自动化报告`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前限制还是一样：我不能直接改你真实的 `~/.weclaw`、`~/.longclaw`、`~/github代码仓库/...`，所以这版还没有自动部署到 live 环境。你现在只需要重新执行一次：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d627c-7449-7a91-a96d-91bd15463a09
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+然后我可以继续帮你做第二轮 live 验证，重点确认三件事：
+- `18011` 上只剩一个 `weclaw`
+- `weclaw status` 不再是 stale pid 误判
+- `claude-worker.log` 不再出现 `fails=3/3` 和 `exiting for launchd restart`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6278-e650-7dd1-816c-7506b2149111
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1、清理一下历史的wecalw、guardian、包括watchdog等僵尸进程和废弃的进程 2、优化你上述所说的问题
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6273-e656-79b1-bd01-024337757357
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经成功的：
+- 新服务已装上。`weclaw-guardian status` 看到 4 个核心服务都在：
+  - `codex` 运行中
+  - `claude` 运行中
+  - `weclaw` 运行中
+  - `repo-scheduler` 为定时任务，当前停止且 `last_exit=0`，这是正常状态
+- `scheduler` 周期已改对。`~/Library/LaunchAgents/com.zhangqilong.ai.repo.scheduler.plist` 显示：
+  - `RunAtLoad => true`
+  - `StartInterval => 14400`
+- 新链路已经实际跑通一次。`/tmp/longclaw-guardian/scheduler.task.log` 显示：
+  - `2026-04-06 04:00:17` 以 `trigger=run_at_load` 执行
+  - 所有仓库同步完成
+  - `2026-04-06 04:00:40` 已发送摘要到微信用户
+- 状态文件也正确写了：
+  - `last_run_at=2026-04-06T04:00:40-0700`
+  - `last_trigger=run_at_load`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6273-e656-79b1-bd01-024337757357
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还存在的问题：
+- `weclaw` bridge 还不稳定。
+  - [weclaw-bridge.log](/tmp/longclaw-guardian/weclaw-bridge.log) 里有 `listen tcp 127.0.0.1:18011: bind: address already in use`
+  - 随后 `~/.weclaw/bin/weclaw status` 返回 `weclaw is not running (stale pid file)`
+  - 说明 bridge 启动时端口冲突，导致常驻状态没稳住
+- 微信会话仍然过期。
+  - [weclaw.log](/Users/zhangqilong/.weclaw/weclaw.log) 持续刷 `WeChat session expired ... Run weclaw login`
+  - 所以虽然 04:00 那次摘要发出去了，但当前会话状态仍不健康
+- `claude` 的静默降级没有真正生效。
+  - [claude-worker.log](/tmp/longclaw-guardian/claude-worker.log) 还在持续 `fails=3/3` 然后 `exiting for launchd restart`
+  - `active-agent.json` 里 `claude_status` 还是 `auth_status_failed`，不是预期的更平稳状态
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6273-e656-79b1-bd01-024337757357
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论：
+- “历史 Watchdog 报告迁到新 scheduler 链路”这件事已经成功，且已实际发出一条新报告。
+- 但“weclaw 常驻稳定”和“claude 未认证静默化”这两块还没完全达标。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6273-e656-79b1-bd01-024337757357
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+下一步最应该处理的是这两项：
+1. 清理 `weclaw` 现有占用/陈旧 pid，重建稳定的 bridge 常驻。
+2. 重新核对你真实安装后的 `claude-worker` 二进制/脚本是否拿到了我改过的静默逻辑。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+launchctl list | rg 'com\.zhangqilong\.ai\.(guardian\.monitor|codex\.appserver|claude\.worker|weclaw\.bridge|repo\.scheduler)'
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+launchctl print gui/$(id -u)/com.zhangqilong.ai.guardian.monitor | sed -n '1,80p'
+launchctl print gui/$(id -u)/com.zhangqilong.ai.codex.appserver | sed -n '1,80p'
+launchctl print gui/$(id -u)/com.zhangqilong.ai.claude.worker | sed -n '1,80p'
+launchctl print gui/$(id -u)/com.zhangqilong.ai.weclaw.bridge | sed -n '1,80p'
+launchctl print gui/$(id -u)/com.zhangqilong.ai.repo.scheduler | sed -n '1,80p'
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+~/.longclaw/runtime-v2/bin/weclaw-guardian status --config ~/.weclaw/services.json --uid $(id -u)
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+cat ~/.weclaw/runtime/active-agent.json
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+plutil -p ~/Library/LaunchAgents/com.zhangqilong.ai.repo.scheduler.plist | rg 'StartInterval|RunAtLoad'
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+tail -n 80 /tmp/longclaw-guardian/weclaw-bridge.log
+tail -n 80 ~/.weclaw/weclaw.log
+~/.weclaw/bin/weclaw status
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+看 `scheduler` 最近一次是否执行、是否生成 Watchdog 报告：
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+tail -n 120 /tmp/longclaw-guardian/scheduler.task.log
+cat /tmp/longclaw-guardian/repo-scheduler.state
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+launchctl kickstart -k gui/$(id -u)/com.zhangqilong.ai.repo.scheduler
+sleep 3
+tail -n 120 /tmp/longclaw-guardian/scheduler.task.log
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果想立刻验证微信摘要发送链路，重点看这两处：
+- `scheduler.task.log` 里是否有 `summary sent to ...`
+- `~/.weclaw/weclaw.log` 里是否还有 `WeChat session expired`
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```bash
+launchctl kickstart -k gui/$(id -u)/com.zhangqilong.ai.weclaw.bridge
+```
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-f8ee-7891-b4f4-4db3d6eed23a
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，等你跑完这些命令，把输出贴给我，我可以直接帮你做第二轮判读。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-990f-7933-ac17-a5550bbc8971
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+不能直接改你真实的那些路径，不是你没授权，而是这次会话的运行环境限制死了。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-990f-7933-ac17-a5550bbc8971
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前限制是：
+- 只能写工作区 `/Users/zhangqilong/Documents/Playground`、`/tmp` 等可写目录
+- 你真实要改的目录在：
+  - `~/github代码仓库/longclaw-agent-os`
+  - `~/.weclaw`
+  - `~/Library/LaunchAgents`
+- 这些路径我能读，但写入会被沙箱直接拒绝，我刚才已经验证过了
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-990f-7933-ac17-a5550bbc8971
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以我现在能做的最接近“直接执行”的是：
+- 我已经把完整实现放到 [watchdog-migration](/Users/zhangqilong/Documents/Playground/watchdog-migration)
+- 并生成了 [apply-live.sh](/Users/zhangqilong/Documents/Playground/watchdog-migration/apply-live.sh)
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-990f-7933-ac17-a5550bbc8971
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+它会做这些事：
+- 同步修改到 `~/github代码仓库/longclaw-agent-os`
+- 重新编译 `weclaw-guardian`
+- 执行 `scripts/guardian/install-v2.sh`
+- 重装 launch agents
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d6271-990f-7933-ac17-a5550bbc8971
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，我下一条可以直接给你一份“执行后立即验证”的命令清单，确保 `weclaw`、`scheduler`、`guardian`、`codex` 都按新方案跑起来。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Watchdog 历史链路迁移到新服务体系方案
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 概要
+- 目标不是只补一个微信发送，而是把你之前收到的“🔄 Watchdog 自动化报告”整条历史链路完整迁移到新的常驻服务体系里。
+- 新体系统一由 guardian 管理这些后台服务：
+  - `codex`
+  - `claude`
+  - `weclaw`
+  - `repo-scheduler`
+- 最终效果：
+  - 登录进入桌面后，`weclaw` 自动启动并保持在线
+  - `scheduler` 登录后立即执行一次，之后每 4 小时执行一次
+  - 每次调度完成后，生成并发送与历史一致风格的“Watchdog 自动化报告”
+  - `claude` 未认证、`weclaw` 微信会话过期都进入“已知状态”，不再无限刷错误
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 关键改动
+- 新增 `weclaw` 常驻服务
+  - 增加 `com.zhangqilong.ai.weclaw.bridge` 的 `LaunchAgent`
+  - 启动命令使用 `weclaw start`
+  - 纳入 `~/.weclaw/services.json`，让 guardian 统一监控
+  - 健康检查至少覆盖：进程存在、桥接已启动、微信会话是否有效
+- 迁移历史 Watchdog 报告链路
+  - 旧的 `session-watchdog.sh` 和旧 `watchdog` 进程不再承担报告职责
+  - 将“Watchdog 自动化报告”生成逻辑收敛到新的 `repo-scheduler` 执行链路
+  - 保留历史消息格式和语义，兼容你原来的阅读习惯
+  - 报告内容默认包含：
+    - 仓库总数
+    - 依赖更新数
+    - 自动提交数
+    - 云端同步数
+    - 云端推送数
+    - 总体结果摘要
+  - 若某些字段在新链路当前还没有真实实现，先明确记为 `0` 或 `未启用`，不要伪造
+- `scheduler` 调度更新
+  - 保留 `RunAtLoad=true`
+  - `StartInterval` 改为 `14400`
+  - 每次运行标记触发来源：`run_at_load` 或 `interval`
+  - 每次执行结束生成一份结构化本地摘要，再交给 `weclaw` 发送
+- 报告发送机制
+  - 统一通过新的 `weclaw` 常驻服务发送微信，不再依赖旧 watchdog 链路
+  - `scheduler` 负责“产出报告”
+  - `weclaw` 负责“投递报告”
+  - 两者职责分开，避免以后再出现“同步执行了但没消息”的模糊状态
+- 已知异常状态静默化
+  - `claude` 未认证时记录为 `unauthenticated`，不再重复重启和刷错
+  - `weclaw` 微信会话失效时记录为 `session_expired`
+  - 这两类状态都要写入 guardian 摘要，但不应高频重复打印同样错误
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 接口与行为
+- `~/Library/LaunchAgents`
+  - 新增 `com.zhangqilong.ai.weclaw.bridge.plist`
+  - 更新 `com.zhangqilong.ai.repo.scheduler.plist` 为每 4 小时执行
+- `~/.weclaw/services.json`
+  - 增加 `weclaw` 服务定义
+  - 保留 `codex`、`claude`、`repo-scheduler`
+- 日志与状态
+  - `scheduler.task.log`：记录任务执行与报告生成结果
+  - `weclaw-bridge.log`：记录消息桥启动、登录态、消息发送结果
+  - `guardian-core.log`：记录统一服务状态与 active agent/failover 摘要
+- 消息格式
+  - 继续使用“🔄 Watchdog 自动化报告”作为标题
+  - 保持原有摘要风格，不改成另一套通知文案
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 测试与验收
+- 登录进入桌面后：
+  - `weclaw` 自动启动
+  - `scheduler` 自动执行一次
+  - 执行完成后收到一条“🔄 Watchdog 自动化报告”
+- 定时执行：
+  - 后续每 4 小时收到一次报告
+  - 报告中的仓库同步数量与实际拉取仓库数一致
+- 异常场景：
+  - `claude` 未认证时不会刷重复错误，系统仍稳定使用 `codex`
+  - `weclaw` 会话过期时，`scheduler` 仍正常执行，但报告发送失败会被清晰记录
+  - `weclaw login` 恢复后，后续报告自动恢复发送
+- 兼容性：
+  - 旧 watchdog 逻辑退出后，不应再与新链路重复发同一类报告
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## 假设
+- 历史“Watchdog 自动化报告”是你要保留的产品形态，不只是临时通知文本。
+- 新链路以“guardian 管理的常驻 LaunchAgent”作为统一后台模型，不改成 macOS `LaunchDaemon`。
+- 当前优先迁移你明确依赖的报告能力；如果旧链路还有额外自动化字段来源，迁移时按真实实现逐项接回，不做伪等价。
+
+
+---
+来源：codex:019d625d-72e9-7e12-9245-b845a35046ca#turn:019d626a-9fe9-74a3-92b0-9ae3663d13d0
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+实现已经完成，但受当前沙箱限制，我不能直接写你真实的 `~/github代码仓库/longclaw-agent-os`、`~/.weclaw` 和 `~/Library/LaunchAgents`。所以我把完整实现落在了工作区镜像里，并生成了可同步到真实环境的应用脚本。

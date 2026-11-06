@@ -1,0 +1,910 @@
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 63470265-5e40-43d2-85fb-865c07b07fc9.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/63470265-5e40-43d2-85fb-865c07b07fc9.png
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+新增一个待处理任务，优化一下布局各模块的比例。View的上半部分比例太大，监控页panel也太大。中间的chart比例太小。左侧的比例需要考虑滚动条在mac air 13和 27寸屏幕上的适配，右侧字体太大，比例也不统一。你用frontdesign来重新设计一下，包括Index状态栏也失衡。整体上的适配你也需要考虑mac air 13和 27寸屏幕上的适配
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你再新增一个任务，目前网络源缓存数据有16个报错，需要新增一个任务观察日志并且解决
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+这个问题：多个 stock_daily shard degraded 加上 provider 状态混在一起；真实 provider_health 只有 tencent/eastmoney/sina 这几个日线源在 cooldown 也需要新增一个任务解决
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+你需要新增一个任务，解决的是为什么cooldown，我不希望cooldown我要一直保持高速
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Signals 后端：
+  - `stock_daily` 并发默认从 4 降到 2，provider cooldown 改成跨 shard 共享。
+  - Tencent primary 失败后不再重复打 Tencent fallback。
+  - cooldown 命中改为 `deferred/cooling_down`，不再直接扩大 error。
+  - provider cooldown 不再覆盖真实根因，新增保留 `cooldown_hit_type`；过期 cooldown 会被识别为 `cooldown_expired`。
+  - `cache_status` 不再把多个 `stock_daily` shard degraded 混算成 16 个网络源错误，shard 会聚合成一个 `stock_daily` 任务 blocker。
+  - web 概念成分股先走 Mongo `concept_constituents` 缓存，避免 Eastmoney 直连失败继续制造网络源噪音。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- Chart / Electron：
+  - symbol API 增加自定义信号诊断字段。
+  - `SZ.002812 15min` 验证：当前图可见 2 个自定义信号，总自定义 4 个，频率 `15min/30min`。
+  - `SH.688802 30min` 验证：当前图可见 1 个，总自定义 2 个。
+  - `深证成指` 验证：`direct_custom_signal_count=0`，并返回关联自定义信号入口，当前 related=12、candidates=10。
+  - 右侧信号区拆成“当前图可见 / 其它周期可用 / 关联标的信号”。
+  - 自定义 marker 加了 `自定义`、周期、来源区分、买卖不同颜色、竖线锚点。
+  - 布局比例已压缩顶部监控和右侧字号，左右栏收窄，中间 chart 区放大。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `python3 -m py_compile ...` 通过。
+- `./.venv/bin/python -m pytest -q tests/test_provider_limits.py tests/test_postmarket_runner.py tests/test_stock_daily_progress.py tests/test_technical_signal_scan.py tests/test_workbench_watchlist_groups.py`：`26 passed`。
+- `npm run lint`：通过。
+- 源码 Electron 已启动验证过：开发版里网络源从旧的 `16` 降到 `2`，不再把 `stock_daily` shard 当网络源计数；布局已明显更紧凑，chart 区扩大。测试进程已关闭。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还没有把新版重新打包覆盖 `/Applications/隆小侠 Agent OS.app`，所以你常用的打包版入口仍可能显示旧 UI；源码开发版已经验证通过。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 拆解执行顺序：按 4 个小任务逐个解决
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Task 1：先修网络源 degraded 扩散
+目标：让 `stock_daily` cooldown 不再扩散成 12 个 shard 报错。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+改动：
+- `stock_daily` 并发从 4 降到 2。
+- provider cooldown 改成跨 shard 可共享。
+- Tencent primary 失败后不再重复走 Tencent fallback。
+- cooldown 命中时记录为 `deferred/cooling_down`，不要直接算大量 error。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- `shard_00-shard_15` 最终不再出现大面积 `provider_cooling_down`。
+- 网络源卡显示真实 provider 状态，不再把 16 shard 当 16 个网络源。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Task 2：修个股 chart 自定义信号缺失
+目标：个股有自定义回测信号时，chart 必须能看见。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改动：
+- symbol API 增加 `custom_signal_count`、`available_custom_signal_freqs`、`hidden_reasons`。
+- 当前周期有信号时直接 overlay。
+- 当前周期没有但其它周期有时，显示可切换周期入口。
+- 修正 `15分钟 / 15min / 30分钟 / 30m` 频率归一。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- `SZ.002812 15min` 显示 2 个自定义信号。
+- `SH.688802 30min` 显示自定义信号。
+- 同一只股票切到无信号周期时，提示“其它周期有自定义信号”。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Task 3：修指数/板块 chart 的信号解释
+目标：指数没有直接自定义信号时，不再让用户误以为系统没信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改动：
+- 指数 chart 明确返回 `direct_custom_signal_count=0`。
+- 展示关联候选股/成分股里的自定义信号入口。
+- 板块/概念热度图不硬叠个股信号；映射到 carrier 股票时显示 carrier 的自定义信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- `深证成指` 不再空白误导，显示“指数无直接自定义信号 + 关联个股信号”。
+- 概念映射到股票时，能看到对应 carrier 的信号。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Task 4：优化 chart 信号样式
+目标：自定义回测信号在图上足够醒目，且不和顶背/底背混在一起。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+改动：
+- 自定义信号 marker 增加 `自定义` badge、周期 badge、来源 tooltip。
+- 买入/卖出信号分别使用不同颜色和位置。
+- 加竖线锚点到对应 K 线。
+- 右侧信号区拆成：`当前图可见`、`其它周期可用`、`关联标的信号`。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+验收：
+- 自定义信号一眼能区分于普通背离标签。
+- marker 不遮挡 K 线主体，不和 MA/MACD/背离标签冲突。
+- Electron 截图验证通过。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 执行默认顺序
+先做 Task 1，因为它影响数据稳定；再做 Task 2 和 Task 3，因为它们决定信号是否能被解释；最后做 Task 4，因为样式依赖前面的 payload 字段。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+你开个subagent继续检查网络源报错和degrade问题，现在又产生新增了
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-e2f0-7422-b933-d29e62741dfb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前还在 Plan Mode，我不能直接改文件、改配置、重启服务或触发补数任务。等切到执行模式后，我会按这个顺序实施：
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-e2f0-7422-b933-d29e62741dfb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. 先处理 `Signals` 数据源稳定性：降低 `stock_daily` 并发、修 provider cooldown 跨 shard 共享、跳过重复 Tencent fallback、把 cooldown 状态改成 deferred 而不是批量 degraded。
+2. 再处理 chart 后端信号诊断：给 symbol API 增加 `custom_signal_count / hidden_reasons / available_custom_signal_freqs / related_custom_signals`。
+3. 再处理 Electron chart 展示：自定义信号独立 marker 样式、其它周期入口、指数/板块无直接信号时的明确说明。
+4. 最后跑 targeted tests 和本地 UI 验证，确认 `SZ.002812` 有自定义信号 marker，指数 chart 不再误导为空。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-00ff-7b01-b6b6-1e2e0e3dae27
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+2、你需要检查为什么别的指数数据或者个股数据chart上面也没有标识我的自定义信号 3、你需要优化chart上面信号的展示方式 这两个问题你没有涵盖
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+1、你需要分析网络源被degrade或者报错的原因 2、你需要检查为什么别的指数数据或者个股数据chart上面也没有标识我的自定义信号 3、你需要优化chart上面信号的展示方式
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+后 12 个 shard 在 provider cooling-down 状态下继续跑这个为什么会被cool down，你开个subagent研究一下，看看能不能恢复
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+先结论：能恢复，而且已经在恢复。`cool down` 是内部保护机制被触发，不是 12 个 shard 永久坏了。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. `stock_daily` 被拆成 16 个 shard，postmarket 同时跑 4 个。
+2. 前一波 `shard_04-shard_07` 跑到 21:22 左右时，Eastmoney/Sina/Tencent 出现 `RemoteDisconnected`、`SSLError`、连接中断。
+3. `provider_limits.py` 把这些错误识别成高风险错误，然后给 provider 设置 `120-300s` cooldown。
+4. 后续 `shard_08-shard_15` 启动时没有真正打外部源，而是直接命中内部 cooldown，所以 0.2-0.3 秒就失败，表现成大量 `provider_cooling_down`。
+5. 到 21:32 自动重试后，`shard_04-shard_07` 已成功，`shard_08-shard_11` 正在无错误恢复，`shard_12-shard_15` 等当前 4 个跑完后继续调度。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前不建议手动清 cooldown，也不建议重启。让 postmarket 自动跑完最稳。真正要修的是后续策略：把 `stock_daily` 并发从 4 降到 1 或 2，或者把 16 shard 降到 8，并避免 Tencent primary 失败后 fallback 又重复打 Tencent。这样不会再把正常降级误放大成 12 个 shard 报错。
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd447-5b12-7500-87a3-a649895df2dc
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 1a36e35e-708a-4b9a-96a1-9fdc232cf60d.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/1a36e35e-708a-4b9a-96a1-9fdc232cf60d.png
+
+
+---
+来源：codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd447-5b12-7500-87a3-a649895df2dc
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## My request for Codex:
+1、检查一下网络数据源日志，为什么有16个报错，提出优化方案   2、检查目前chart的指标情况，为什么没有我自定义的回测信号指标，还有优化一下信号显示在chart上面的样式
+
+
+---
+来源：codex:019dd44c-1949-7da3-ab35-b9cba746e6e5#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+可以。二维码刷新后只扫最新这一张，旧码作废是正常的。
+
+扫码并在手机微信确认登录后，等页面/终端显示登录成功；如果还卡住，我再帮你检查 WeClaw/微信桥接的运行日志和当前状态。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260427-201841.183.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+具体看，本质是资金在做切换。前期最猛的小票、科创、半导体这一批，已经完成补涨甚至透支，开始出现明显的见顶和派发信号（跌5日线、冲高回落、跳空转弱）。而另一边，上证50、超大盘、银行、周期这些开始接力走强，本质是资金在往低波动、确定性更强的方向迁移。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+危险点不在于市场马上大跌，而在于你如果还在用“牛市思维”去拿高弹性科技股，这个阶段会非常容易被反复收割——很多标的要么继续创新高，要么直接-30%甚至-50%，分化会非常极端。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+现在的市场更像一个成熟市场的典型阶段：先用权重稳住指数，再用科技拉情绪，把人吸引进来，最后通过剧烈波动把情绪榨干。你看到的各种跳空、高开低走、来回打脸，其实都是这个机制。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+所以关键不在于判断涨跌，而在于取舍：你是要确定性，还是要赌弹性。前者赚慢钱但能拿住，后者波动大，很容易赚到也吐回去
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd421-34db-70f2-ae02-5bcd06fd0192
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+新增主库笔记：[2026-04-28道长观点：超大盘修复、科技波动与确定性机会.md](</Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat/2026-04/2026-04-28道长观点：超大盘修复、科技波动与确定性机会.md:1>)
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd421-34db-70f2-ae02-5bcd06fd0192
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 原图已复制到：`/Users/zhangqilong/Desktop/知识库/Assets/WeChat/2026-04/20260428-054554.766.jpg`
+- 更新 sidecar：`/Users/zhangqilong/.weclaw/workspace/20260428-054554.766.jpg.sidecar.md`
+- 更新道长框架页：[道长-市场框架.md](</Users/zhangqilong/Desktop/知识库/10 Knowledge/道长-市场框架.md:21>)
+- 更新道长证据索引：[道长核心材料索引.md](</Users/zhangqilong/Desktop/知识库/20 Sources/道长核心材料索引.md:20>)
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd421-34db-70f2-ae02-5bcd06fd0192
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+沉淀规则是：**短期复盘不能只看沪指，要同时看国证2000、创业板、科创50和超大盘；超大盘修复不等于小票/科技全面转强。弹性机会必须动态评估，真正能拿住的是确定性、容量、信心和回撤承受能力都匹配的机会。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd41f-f1d2-7740-82d4-7588d940afdc
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260428-054554.766.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd41f-f1d2-7740-82d4-7588d940afdc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这张图的核心观点：**今天不是全面转强，而是“超大盘修复接近尾声 + 小票/科技继续承压 + 市场只适合做确定性机会”。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd41f-f1d2-7740-82d4-7588d940afdc
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+和今天前面几张图连起来看：  
+**ETF 资金在流出，超大盘在领涨，小票/科技分化，港股恒科不做左侧，整体策略就是收缩到确定性，别被局部弹性诱惑带偏。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3f2-90e7-7dc3-a1fd-8c79fa0b487a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+新增主库笔记：[2026-04-28胖哥观点：恒科左侧性价比与港股阴跌趋势.md](</Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat/2026-04/2026-04-28胖哥观点：恒科左侧性价比与港股阴跌趋势.md:1>)
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3f2-90e7-7dc3-a1fd-8c79fa0b487a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 原图已复制到：`/Users/zhangqilong/Desktop/知识库/Assets/WeChat/2026-04/20260428-034331.964.png`
+- 更新 sidecar：`/Users/zhangqilong/.weclaw/workspace/20260428-034331.964.png.sidecar.md`
+- 更新胖哥框架页：[胖哥-盘中策略框架.md](</Users/zhangqilong/Desktop/知识库/10 Knowledge/胖哥-盘中策略框架.md:21>)
+- 更新证据索引：[胖哥盘中策略证据索引.md](</Users/zhangqilong/Desktop/知识库/20 Sources/胖哥盘中策略证据索引.md:20>)
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3f2-90e7-7dc3-a1fd-8c79fa0b487a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+沉淀下来的规则是：**恒科左侧性价比不是估值问题，而是趋势问题；港股反弹高位后进入阴跌时，不做左侧逆势，等止跌、放量或右侧确认。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3af-e8c3-7f31-b47e-0aadd4684c9b
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260428-034331.964.png
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3af-e8c3-7f31-b47e-0aadd4684c9b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这张图的结论很明确：**胖哥不认为现在恒科有“左侧性价比”，至少不适合逆势抄底。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3af-e8c3-7f31-b47e-0aadd4684c9b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**恒科的问题不是便宜不便宜，而是趋势不站队。即使估值看起来有吸引力，只要港股还在阴跌结构里，就不做左侧；要等止跌、放量、重新站回关键均线或出现右侧确认。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd3af-e8c3-7f31-b47e-0aadd4684c9b
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+和今天前面几张图串起来看：A 股这边是“权重托指数 + ETF 赎回 + 结构轮动未结束”，港股则更弱，已经被定义成“反弹高点后阴跌”。所以如果要找性价比，优先级也不该先放恒科左侧抄底。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd30e-3bf9-77c2-8b1e-0a8db7bcb039
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260428-004656.757.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd30e-3bf9-77c2-8b1e-0a8db7bcb039
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260428-004656.858.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd30e-3bf9-77c2-8b1e-0a8db7bcb039
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这张补充后，结论更明确：**ETF 赎回不是单日扰动，而是今年以来持续的大规模流出，且最重的压力集中在宽基 ETF，尤其沪深300。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd30e-3bf9-77c2-8b1e-0a8db7bcb039
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 沪深300挂钩 ETF：今年以来申赎净流入约 `-6518.39 亿`
+- 中证1000：`-1609.22 亿`
+- 上证50：`-1118.01 亿`
+- 中证A500：`-1114.63 亿`
+- 中证500：`-1042.96 亿`
+- 创业板指：`-809.41 亿`
+- 科创50：`-621.05 亿`
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd30e-3bf9-77c2-8b1e-0a8db7bcb039
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+**如果盘面上超大盘、上证50、红利还在领涨，但 ETF 端却持续净赎回，那就不能简单理解成增量资金大举入场。更像是存量资金在弱环境里抱确定性、抱权重，指数被结构性托住，但市场广谱赚钱效应没有恢复。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd308-21fa-7ae3-955d-8410a78019bb
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260428-004016.829.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd308-21fa-7ae3-955d-8410a78019bb
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260428-004016.555.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd308-21fa-7ae3-955d-8410a78019bb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这张图的核心结论：**ETF 不是在吸资金，而是在连续被赎回；指数如果还能撑住，更像权重/政策预期托住，不是增量资金主动进场。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd308-21fa-7ae3-955d-8410a78019bb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 截止 `2026-04-27`，ETF 规模合计约 `30818.64 亿份`。
+- `2026-04-27` 单日 ETF 申赎净量合计 `-91.25 亿份`。
+- 4 月以来，截图表内几乎每天都是净赎回，粗算累计约 `-1189.65 亿份`。
+- 刚才另一张同组图显示，近 1 月挂钩沪深300、中证A500、中证500、科创50 的 ETF 申赎净流出合计约 `-2044.21`，其中沪深300和中证A500流出更明显。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd308-21fa-7ae3-955d-8410a78019bb
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+所以这张图可以接到前面那条结论里：**超大盘领涨不一定是全面行情启动，反而可能是在 ETF 赎回压力和风险偏好不足下，资金集中到更有容量的大票里避险。** 后面要验证的不是指数红不红，而是 ETF 赎回能不能停止、成交额能不能放大、中小盘能不能跟上。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2ca-471b-7a92-bc05-610d4617c436
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- 新增主库笔记：[2026-04-28盘中观察：超大盘领涨与政治局会议政策信号.md](</Users/zhangqilong/Desktop/知识库/10 Inbox/WeChat/2026-04/2026-04-28盘中观察：超大盘领涨与政治局会议政策信号.md:1>)
+- 两张原图已复制到主库资产目录：`/Users/zhangqilong/Desktop/知识库/Assets/WeChat/2026-04/`
+- 补齐了两张图的工作区 sidecar：`20260427-201841.183.jpg.sidecar.md`、`20260427-231027.264.jpg.sidecar.md`
+- 更新了总框架页：[市场框架.md](</Users/zhangqilong/Desktop/知识库/10 Knowledge/市场框架.md:23>)，加入“超大盘/上证50/红利领涨但中小盘未扩散时，按权重托指数、风格偏防守处理”的规则
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2ca-471b-7a92-bc05-610d4617c436
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这次归档的知识点是：**政策托底存在，指数不弱，但赚钱效应仍分化；超大盘领涨不能直接外推为全面行情，要等中证500/1000、创业板、成交额和涨跌家数扩散确认。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+1. **指数强不等于赚钱效应强**  
+   超大盘主要是沪市里市值和成交额最靠前的 20 只巨型公司，天然偏银行、保险、券商、运营商、建筑、医药龙头这类大权重。它领涨时，指数会好看，但中小票未必好做。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+2. **风格偏防守/偏权重**  
+   资金更愿意买确定性、流动性、红利或低估值资产，而不是去追小票弹性。这通常说明市场风险偏好没有真正扩散。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+简单说：**超大盘领涨 = 权重托指数、风格偏大票、个股赚钱效应可能并不友好。真正强势要看后面能不能扩散到中证500/1000、创业板、涨跌家数和成交量。**
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+参考：上证超级大盘指数官方编制说明显示，该指数代码 `000043`，选取沪市过去一年日均总市值和日均成交金额排名靠前的 20 只大盘公司，用来反映代表性超大型上市公司的整体表现。来源：中证指数编制方案 https://oss-ch.csindex.com.cn/static/html/csindex/public/uploads/indices/detail/files/zh_CN/40_000043_Index_Methodology_cn.pdf
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。
+/Users/zhangqilong/.weclaw/workspace/20260427-231027.264.jpg
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+4. **房地产是“稳”，不是重新走老路**  
+   表述是“努力稳定房地产市场，扎实推进城市更新”，说明地产更多是防风险和托底，弹性逻辑可能不如城市更新、管网、建材链局部修复。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd2b5-4d18-7db3-8f32-0bc56b960808
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我也顺手核验了当天新闻口径：新华社通稿确认 2026年4月28日政治局会议召开，主题为分析研究当前经济形势和经济工作；通稿中包含“主要指标好于预期”“更大力度和更实举措”“更加积极的财政政策和适度宽松的货币政策”“稳定和增强资本市场信心”等表述。来源：新浪财经转载新华社快讯 https://wap.cj.sina.cn/7x24/4845957
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd218-a258-7051-ae46-c88d2df6085a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+处理完了。核心结论：这张图是在提醒“当前盘中赚钱难度上升，大盘/超大盘相对占优，小票弹性未必好做，业绩期和亏钱效应要优先控制风险”。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd218-a258-7051-ae46-c88d2df6085a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前市场不是全面好做，而是风格明显偏大市值、红利和中军，超大盘相对强，中小盘和创业板偏弱。这里更像行情末端的容量票补涨，追着大市值涨完再去找小票弹性，胜率未必高。现在重点不是扩大进攻，而是审视交易计划、控制浮盈回撤和业绩披露风险，顺手就继续，不顺就该收手，别和市场硬扛。
+
+
+---
+来源：codex:019dd218-a246-73c2-a82c-44c04aad04d9#turn:019dd218-a258-7051-ae46-c88d2df6085a
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+图中指数大致显示：上证指数微跌，超大盘、上证50、红利指数上涨，中证500、创业板、中证1000、国证2000偏弱。该判断仅基于截图内容，未联网核验实时行情。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#first-request
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+重新跑一下 npm build longclaw agent os项目，记录当前日志存在的问题，提出优化方案
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+继续优化完成一项关键链路：`quote_snapshots` 已接入东财 `push2delay` 直连实时接口。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+signals-sync / quote_snapshots
+-> active market_pools
+-> Eastmoney push2delay realtime quote
+-> quote_snapshots fresh
+-> 单标失败才 fallback bars_latest stale
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+quote_snapshots: 50
+source: eastmoney_push2delay 全覆盖
+data_freshness.quote: fresh
+live_count: 50
+stale_count: 0
+provider_health.eastmoney.push2delay: ok
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+SH.601958 金钼股份: fresh, price=19.67, change_pct=1.24
+SH.000300 沪深300: fresh, price=4769.37, change_pct=-0.35
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已更新问题清单：[signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一项我建议继续修 `bars` freshness：当前 active pool 已覆盖 50/50，但 `stock_daily` 仍记录 `errors=5`，需要把“部分失败但覆盖已满足”和“真实缺数据”拆开，否则健康面板会继续把 `bars` 标成 stale。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- MongoDB 已从 Homebrew launchd 切到统一服务：`com.zhangqilong.ai.mongodb`
+- `weguard status` 已显示：
+  - `mongodb` running，PID `72794`
+  - `signals-sync` running，PID `72803`
+- 旧的 `homebrew.mxcl.mongodb-community` label 已卸载。
+- `127.0.0.1:27017` 正常监听，`db.runCommand({ping:1})` 返回 ok。
+- `signals-sync` 已 kickstart，日志显示新 daemon 在 `2026-04-25 02:59:46` 启动。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+signals: fresh, latest_dt=2026-04-24
+index_bars: fresh, latest_dt=2026-04-24
+market_pools: fresh
+quote_snapshots: stale, latest_dt=2026-04-24
+bars: stale, latest_dt=2026-04-24
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这里 `quote_snapshots` 标 stale 是正确的：当前还是基于最新日线生成的 snapshot，不是真实盘中 quote。东财 `push2delay` 直连可通，下一步应该把它接进 `quote_snapshots` sync，让盘中 quote 变成 true realtime，而不是 bars_latest。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已更新问题清单和状态：[signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc413-f93f-7802-9a9b-103493a018aa
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一项优先修：把东财 `push2delay` 实时 quote provider 接入 `signals/sync/modules/quote_snapshots.py`，只覆盖 `market_pools`，这样盘中交易链路的 realtime 输入才算闭环。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已按你刚才罗列的问题逐项记录并开始修。问题清单和每项方案在这里：[signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `stock_daily` 不再默认全市场长跑，改为活跃池补数；stale `running` 会自动释放为 `degraded/stale_running_timeout`。
+- `bars` 是 Mongo time-series collection，不能 upsert；已改成“查已存在 dt 后只 insert 缺失数据”。
+- 东财直连实测：`push2delay` 实时 quote 可通，`push2his` 历史 K 线仍 SSL failure。sync 里现在先走东财，失败后走 Sina 历史源写 canonical，runtime 不碰外部源。
+- `signal_pool` 已能基于 `market_pools + bars` 生成每日候选/预警，写入 Mongo `signals`。
+- `index_daily` 修了 yfinance MultiIndex/Series 问题，美股指数能写入 `index_bars`。
+- `/api/health/cache` 修了 `signals` 这类非 `dt` 集合 latest_dt 为空的问题。
+- `data_freshness` 统一回业务 domain，quote snapshot 明确标 `stale`，不再把 bars_latest 伪装成实时 fresh。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+```text
+signals=384，其中 generated_signals=13
+index_bars=3103
+quote_snapshots=50
+market_pools=2
+bars=29558
+active pool bars_covered=50/50
+active pool quote_covered=50/50
+```
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- MongoDB 的 Longclaw launchd 服务已准备好，也已加入 `~/.weclaw/services.json`。
+- 现在 `weguard status` 会显示 `mongodb missing`，因为还没有执行 launchd 切换。
+- 当前 Mongo 仍由 `homebrew.mxcl.mongodb-community` 跑着；要切到 `com.zhangqilong.ai.mongodb`，需要先停 Homebrew label，否则会抢 `27017`。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fe-18bd-7cf0-ae8b-c834f37e02b3
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步需要你确认我执行 launchd 切换和 signals-sync kickstart。确认后我会执行切换、重启 sync daemon，让新代码进入常驻进程，然后再跑一次 `weguard status` 和 Mongo freshness 验证。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已把问题清单记录到 [signals-data-ops-issue-log.md](/Users/zhangqilong/github代码仓库/Signals/docs/signals-data-ops-issue-log.md)。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- P0：MongoDB 没纳入 WeGuard/Longclaw 服务体系；`stock_daily` stale-running；`signals-sync` 需要重启加载新代码。
+- P1：最新交易日口径是 `2026-04-24`，但股票 bars/quote/signal pool 覆盖不完整；US 指数写入失败；Web1 默认启动旧引擎的问题已做代码修复但还要回归。
+- P2：freshness 命名重复、health latest_dt 解析不完整、Web2 兼容层后续还要继续下沉。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经准备好 P0-1 的文件级改动：`com.zhangqilong.ai.mongodb` LaunchAgent、`mongodb-service.sh`、`~/.weclaw/services.json` 的 mongodb 服务项，并完成 plist/json 校验。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc3fa-9cc7-7423-bcfc-1bae05bd50c1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+下一步需要你确认，因为会改变本机 launchd 服务状态：停止 `homebrew.mxcl.mongodb-community`，启动 `com.zhangqilong.ai.mongodb`，再验证 WeGuard。Mongo 会短暂断开几秒钟。确认后我继续执行切换。
+
+
+---
+来源：codex:019dbe71-b87d-7593-9e79-3408fe020047#turn:019dc330-5bfc-74d0-8c20-eb1d902616ab
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Signals 数据底座与 Web1/Web2 融合执行计划

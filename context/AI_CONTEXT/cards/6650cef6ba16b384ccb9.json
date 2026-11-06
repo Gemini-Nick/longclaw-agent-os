@@ -1,0 +1,125 @@
+{
+  "id": "019ebaae-42ca-7440-a4a7-8f216ffceb35",
+  "title": "排查微信未发送原因",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ebaae-42ca-7440-a4a7-8f216ffceb35",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "6cff3987437328d2f3ffe3a2818c73e512b755ca5de85d9be4c8de61828d9bdb",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#recent",
+      "timestamp": null,
+      "verbatim": "对比一下，1、和我的复盘skill差异在哪 2、和我signals系统识别到的大盘/行业/板块/标的/池子差别在哪"
+    },
+    {
+      "hash": "e890234117af0725baf2ff4237043abef434e1ad0338dacac1b4bba9129a03f6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebb13-a8d7-7973-b993-babc23de15b1",
+      "timestamp": null,
+      "verbatim": "发送结果：`Text sent`  \n正文来源：`/tmp/signals_postmarket_manual_20260612_resend_body.txt`"
+    },
+    {
+      "hash": "06c6843ca5d013a45341e714cd256938085ccfad31e200cd1528968fd192dd86",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:6b12118a-c0d8-4470-963c-80612ae5984c",
+      "timestamp": null,
+      "verbatim": "- [trading_workbench_summary.py](/Users/zhangqilong/github代码仓库/Signals/signals/notify/trading_workbench_summary.py:925)：复盘开头和结尾验证段改成交易复盘口吻，不再像字段汇总。\n- [market_replay.py](/Users/zhangqilong/github代码仓库/Signals/signals/replay/market_replay.py:2285)：板块段改成“强方向 / 压力线 / 修复验证”。\n- [market_replay.py](/Users/zhangqilong/github代码仓库/Signals/signals/replay/market_replay.py:2392)：高成交段改成“收红的是谁、拖累的是谁”，去掉成交额排名、翻红时间等过密字段。\n- [market_replay.py](/Users/zhangqilong/github代码仓库/Signals/signals/replay/market_replay.py:3145)：午后、尾盘、情绪、周期段降噪，去掉“崩塌点”“彻底崩溃”“可量化样本判断”等不自然表述。"
+    },
+    {
+      "hash": "18d8defb3aad3c8ad707359d7256b5479943eda5aa211898b60848a7da30c48c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:6b12118a-c0d8-4470-963c-80612ae5984c",
+      "timestamp": null,
+      "verbatim": "- `pytest tests/test_trading_workbench_summary.py tests/test_market_replay.py`：33 passed\n- 已生成新版本地预览：`/tmp/signals_postmarket_manual_20260612_style_rewrite_final2.txt`\n- 敏感词扫描为空：没有 `盘面看着热闹`、`科创500`、`受伤主线/压力锚=`、`pct`、`板块15`、`崩塌点` 等残留。\n- 没有发送新版复盘到微信，只做了本地预览。"
+    },
+    {
+      "hash": "d9291c2bedcfc6355cdd45b32020f6dbe980c49916cf61cde03fe0fbc5774d9c",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaf4-cb08-7b10-9394-cb2fcd55e83d",
+      "timestamp": null,
+      "verbatim": "1、你发送的复盘笔记，第一句永远是盘面看着热闹，尾盘一锅端。  2、科创500.06%这个数据是错误的  3、数字掩盖了真实杀伤力，强度链主弹性等等这段话是车轱辘话  4、受伤主线你是怎么判断的？"
+    },
+    {
+      "hash": "9f4f7b5139474ded1b0391ee08e8f3ba53c1d3fb5ee7169e9b42a586ee8a3f0c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaf4-cb08-7b10-9394-cb2fcd55e83d",
+      "timestamp": null,
+      "verbatim": "你开一个subagent，重点研究发送的复盘语句中的表述，目前非常工程化。一点不像交易复盘笔记，人类完全无法阅读"
+    },
+    {
+      "hash": "ed6ed955195faaeff9e90828fcec404fedfe4e929415fc082c5c1f9dd104e139",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaf4-cb08-7b10-9394-cb2fcd55e83d",
+      "timestamp": null,
+      "verbatim": "已按你说的开了 subagent 做语言审稿，并把结论落到代码里了。核心判断是：之前不是“文采差”，而是把 evidence package、字段名、角色标签、模板句直接发成了微信正文。"
+    },
+    {
+      "hash": "e3f14f01b6f6fa7865485ca8d88bd14b43d2cfd754bd9685826be09cfd36234c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaf4-cb08-7b10-9394-cb2fcd55e83d",
+      "timestamp": null,
+      "verbatim": "- 去掉固定开头“盘面看着热闹，尾盘一锅端”和“数字掩盖真实杀伤力”这类模板句：[trading_workbench_summary.py](/Users/zhangqilong/github代码仓库/Signals/signals/notify/trading_workbench_summary.py:925)\n- 修复 `科创500.06%`，现在写成 `科创50涨0.06%` / `科创50跌0.02%`：[trading_workbench_summary.py](/Users/zhangqilong/github代码仓库/Signals/signals/notify/trading_workbench_summary.py:685)\n- 微信正文不再输出 `受伤主线/压力锚=`、`压力锚=`、`修复/翻红锚=`、`pct`、`板块15/强度代理` 这类工程字段：[market_replay.py](/Users/zhangqilong/github代码仓库/Signals/signals/replay/market_replay.py:2285)\n- “受伤主线”不再硬贴。现在只有 evidence 里真的有压力证据，才写成“承压方向”；否则不输出这个判断。\n- 修了板块/个股错配问题，避免“油气开采方向承压”后面跟 CPO 个股：[market_replay.py](/Users/zhangqilong/github代码仓库/Signals/signals/replay/market_replay.py:2739)\n- 成交额前排改成人话：谁拖累、谁先修复、明天验证什么：[market_replay.py](/Users/zhangqilong/github代码仓库/Signals/signals/replay/market_replay.py:2389)"
+    },
+    {
+      "hash": "4c96890a4965f25aaff33d8c0cdf8e72d39b3a676f7ce4db8bc4d00d9bdd46bd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaf4-cb08-7b10-9394-cb2fcd55e83d",
+      "timestamp": null,
+      "verbatim": "- `pytest tests/test_trading_workbench_summary.py tests/test_market_replay.py`：33 passed\n- 重新生成了今天 `2026-06-12` 的复盘预览，没有发送微信。\n- 敏感词扫描为空：没有 `盘面看着热闹`、`科创500`、`受伤主线/压力锚=`、`pct`、`板块15`、`链主和弹性` 等残留。"
+    },
+    {
+      "hash": "4729c918cfcd0d9a8b1495477a8537670b9e0c4848f7ff1ac6e4748247d230f3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaf4-cb08-7b10-9394-cb2fcd55e83d",
+      "timestamp": null,
+      "verbatim": "预览文件在：\n`/tmp/signals_postmarket_manual_20260612_after_language_fix_final.txt`"
+    },
+    {
+      "hash": "d4a0b933649dc909a6a45beb1eb5a5551bebeb254d91615aa74623a228fd55ca",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebab4-ee9f-7bb3-a946-4ce26da09420",
+      "timestamp": null,
+      "verbatim": "结果：`NOTIFY` gate 通过，正文约 3004 字，直连 WeClaw 发送返回 `Text sent`。这次是你手动要求的窗口外发送，我已在 postmarket automation memory 里标记为 manual send，避免后面和正常 20:30 盘后定时任务混淆。"
+    },
+    {
+      "hash": "8e3cda5ba55c75619ccbaa5236288bd0b2d3d457e784b86987686db13b5780fd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaae-824b-7940-9602-619dc3e469f4",
+      "timestamp": null,
+      "verbatim": "结论：不是 WeClaw 第一故障，也不是正文生成失败。根因是 Codex cron 把 `BYHOUR` 当作本机 PDT 时间执行，而原配置按 UTC 写了。结果盘中/复盘任务都在北京交易窗口之后才启动，脚本首行返回 `DONT_NOTIFY outside_window:*`，按契约就不会调用 `weclaw send`。"
+    },
+    {
+      "hash": "992c8a0613cbb77088f7cc6ef568b382e195e8924410b6637d5103f32dc50e08",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaae-824b-7940-9602-619dc3e469f4",
+      "timestamp": null,
+      "verbatim": "- 盘前：周日到周四 18:15 PDT，对应北京交易日 09:15\n- 9:45：周日到周四 18:45 PDT\n- 午间：周日到周四 20:15 PDT\n- 13:45：周日到周四 22:45 PDT\n- 14:30：周日到周四 23:30 PDT\n- 盘后复盘：周一到周五 05:30 PDT，对应北京 20:30"
+    },
+    {
+      "hash": "310498abf77c8f3382832dd97fbea169b7a3ff3d274a8488c146932637c9ba30",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ebaae-42ca-7440-a4a7-8f216ffceb35#turn:019ebaae-824b-7940-9602-619dc3e469f4",
+      "timestamp": null,
+      "verbatim": "WeClaw 当前在跑，最新账号也能解析到目标 `o9cq807Zo-n55fMzg7XifEQg8IrU@im.wechat`。今天盘中窗口已经过了，不应自动补发；今天北京 20:30 的盘后复盘还没到点，现在配置已修正，后续会按新时间触发。"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

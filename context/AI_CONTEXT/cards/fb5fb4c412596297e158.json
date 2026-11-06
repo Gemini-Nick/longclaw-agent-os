@@ -1,0 +1,69 @@
+{
+  "id": "019e7676-3fbb-7991-8186-c54e1d8824b0",
+  "title": "修复回测记录抽屉行为",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e7676-3fbb-7991-8186-c54e1d8824b0",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "061865d24970e566c1163624d6a3d603fb809cdebb2e8c645e8c00925b3b2003",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#first-request",
+      "timestamp": null,
+      "verbatim": "/goal 点击左侧回测记录，我需要复原当时的多标的回测的图形结果，而不是点击以后出现一个抽屉"
+    },
+    {
+      "hash": "0f632bc80dab9fe3176ddcaa87bca672696a609bf717640a20e5f3d8d29b5caa",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#recent",
+      "timestamp": null,
+      "verbatim": "<appshot app=\"隆小侠 Agent OS\" bundle-identifier=\"com.zhangqilong.longclaw.agentos\" window-title=\"隆小侠 Agent OS\" image=\"隆小侠 Agent OS Appshot 2026-05-30T01-18-38.681Z.png\">\nWindow: \"隆小侠 Agent OS\", App: 隆小侠 Agent OS.\n标准窗口 隆小侠 Agent OS\n\tcontainer (settable, string) 隆小侠 Agent OS\n\t\tcontainer (settable, string)\n\t\t\tHTML 内容 Longclaw Trading Desk, URL: file:///Applications/%E9%9A%86%E5%B0%8F%E4%BE%A0%20Agent%20OS.app/Contents/Resources/app.asar/electron/dist/renderer/index.html\n\t\t\t\tcontainer\n\t\t\t\t\t文本 LC\n\t\t\t\t\t文本 隆小侠\n\t\t\t\t\t文本 个人金融交易台\n\t\t\t\t\tcontainer Primary navigation\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 策\n\t\t\t\t\t\t\t文本 策略\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 因\n\t\t\t\t\t\t\t文本 AI因子工厂\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 测\n\t\t\t\t\t\t\t文本 回测\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 执\n\t\t\t\t\t\t\t文本 执行\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 微\n\t\t\t\t\t\t\t文本 微信\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 插\n\t\t\t\t\t\t\t文本 插件\n\t\t\t\t\tcontainer 交易台状态\n\t\t\t\t\t\t文本 运行\n\t\t\t\t\t\t文本 数据\n\t\t\t\t\t\t文本 微信\n\t\t\t\t\tcontainer\n\t\t\t\t\t\t文本 标的篮子\n\t\t\t\t\t\t文本栏 (settable, string) 标的代码列表\n\t\t\t\t\t\t弹出式按钮 (settable, string) 日线\n\t\t\t\t\t\t\t(selected) 日线\n\t\t\t\t\t\t弹出式按钮 (settable, string) 全部信号\n\t\t\t\t\t\t\t(selected) 全部信号\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t文本 从下方选择动态产业链组合或勾选多只标的\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t文本 搜索\n\t\t\t\t\t\t文本栏 (settable, string) 搜索产业链、板块或标的\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t弹出式按钮 Description: 匹配来源, Value: 先搜索来源\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 样本来源 正在加载动态产业链组合… 已选池 选择组合、搜索板块，或勾选匹配标的。\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 模拟参数 止损%\n\t\t\t\t\t\t文本栏 (settable, string) 止损%, Value: 5\n\t\t\t\t\t\t文本 移动止盈%\n\t\t\t\t\t\t文本栏 (settable, string) 移动止盈%, Value: 50\n\t\t\t\t\t\t文本 持仓日\n\t\t\t\t\t\t文本栏 (settable, string) 持仓日, Value: 20\n\t\t\t\t\t\t文本 滑点%\n\t\t\t\t\t\t文本栏 (settable, string) 滑点%, Value: 0.1\n\t\t\t\t\t\t文本 固定止盈%\n\t\t\t\t\t\t文本栏 (settable, string) 固定止盈%, Value: 0\n\t\t\t\t\t\t文本 均线离场\n\t\t\t\t\t\t文本栏 (settable, string) 均线离场, Value: 0\n\t\t\t\t\t\t文本 利润回撤%\n\t\t\t\t\t\t文本栏 (settable, string) 利润回撤%, Value: 0\n\t\t\t\t\t\t文本 ATR周期\n\t\t\t\t\t\t文本栏 (settable, string) ATR周期, Value: 0\n\t\t\t\t\t\t文本 ATR倍数\n\t\t\t\t\t\t文本栏 (settable, string) ATR倍数, Value: 2.0\n\t\t\t\t\t\ttext 日期标签 运行后显示事件标签。 回测记录\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 strategy-snapshot-2026-05-29\n\t\t\t\t\t\t\t文本 completed\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 strategy-snapshot-2026-05-28\n\t\t\t\t\t\t\t文本 completed\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 strategy-snapshot-2026-05-27\n\t\t\t\t\t\t\t文本 completed\n\t\t\t\t\t\ttext 日线 待运行 收益 -- 回撤 -- 胜率 -- 成交 -- 夏普 -- 超额 --\n\t\t\t\t\t\tcontainer\n\t\t\t\t\t\t文本 运行分析后显示 K线、信号、MACD 与成交。\n\t\t\t\t\t\ttext 策略研发判定 先把盘中观察变成可验证样本 待建立样本 从买点池、盯盘池或产业链组合选标的，盘后用日线/周线验证，再用扫描看参数稳定性。 盘中观察 主线/买点/失效 盘后验证 收益/回撤/超额 研发推进 扫描参数稳定性 标的 1 周期 日线 成交 --\n\t\t\t\t\t\t内容列表\n\t\t\t\t\t\t\t文本 先运行当前单票，确认有K线、信号和成交。\n\t\t\t\t\t\t\t文本 再换成产业链组合，检查规则是否只对单票有效。\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 绩效总览 运行后显示绩效。\n\t\t\t\t\t\tcontainer 详情抽屉\n\t\t\t\t\t\t\t文本 选择一个运行、待处理项、发起记录或专业包记录，以查看详情、证据和下一步动作。"
+    },
+    {
+      "hash": "97b2ceb855a15bb68c7a50762f00cf073a1832f33f6a4b962d14680e99c56fda",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n/goal 点击左侧回测记录，我需要复原当时的多标的回测的图形结果，而不是点击以后出现一个抽屉"
+    },
+    {
+      "hash": "9b1a06c39977c4fc698120ad76634bb3345e1986c8ea9d6f30d326f53cca9c17",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#recent",
+      "timestamp": null,
+      "verbatim": "已完成。现在左侧“回测记录”不再用 `onOpenRecord` 打抽屉作为主行为，而是保存并恢复可复原的回测 payload："
+    },
+    {
+      "hash": "8fe2b48d40d8d9ee3367af533f8a2e14b2162b2cc2ba1f2c6ddf31718b27b8d7",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#recent",
+      "timestamp": null,
+      "verbatim": "- [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:976)：新增可复原历史记录结构，保存单票/多标的 `result` / `batchResult` 到 localStorage。\n- [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx:2552)：点击历史记录会回填 `batchResult` 或 `result`，恢复主图表/多标的复盘页。\n- [client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts:1439)：fallback dashboard 只把 capability 含 `backtest` 的 run 放入 `backtest_jobs`，避免 `strategy-snapshot-*` 误出现在回测记录里。\n- `main.js` 是本次 `electron:install:mac` 生成的已跟踪 bundle，也已更新。"
+    },
+    {
+      "hash": "96e7432ca71582babf9fb755f5df2d9ac99f94fd736dee12024b94fc45c1290b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#recent",
+      "timestamp": null,
+      "verbatim": "- `npm test -- --run electron/src/renderer/workspaces/BacktestWorkbench.test.tsx`\n- `npm test -- --run src/services/longclawControlPlane/client.test.ts`\n- `npm run lint`\n- `npm run electron:install:mac`"
+    },
+    {
+      "hash": "c1627bd9965331189ceb05bc4d50a83abb0e0d818ab774e1f9f1682ad92ccac5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7676-3fbb-7991-8186-c54e1d8824b0#recent",
+      "timestamp": null,
+      "verbatim": "已安装到 `/Applications/隆小侠 Agent OS.app`，并重新启动过安装后的 app。目标完成用量：399604 tokens，约 15 分钟。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

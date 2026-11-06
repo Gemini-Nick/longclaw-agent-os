@@ -1,0 +1,916 @@
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 2. 首页重定义为任务前门
+- 首页首屏结构固定为：
+  - 顶部：页面标题 + 当前上下文摘要
+  - 主区上半：任务发起器
+  - 主区中段：最近任务回执 / 最近继续入口
+  - 主区下半：待办事项摘要
+  - 右侧或抽屉：详情检查面
+- 删除或下沉首页上“治理概念说明型”空卡片、重复解释、长段业务宣言。
+- `Home` 不再同时承担“总览页 + 运行健康页 + 能力页”的职责，避免页面意图混杂。
+- 最近任务区默认展示用户最关心的 3 类对象：
+  - 最近发起
+  - 运行回执
+  - 需要继续的任务线程
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 3. 业务文案和命名体系重写
+- 用户可见的工作模式统一改成中文任务语言：
+  - `local` → `本机处理`
+  - `cloud_sandbox` → `云端执行`
+  - `weclaw_dispatch` → `微信接力`
+- `Runs / Work Items / Packs / Studio` 的页面级中文叙事统一改成：
+  - `记录`：看已发起、已执行、已产出的任务记录
+  - `待办`：看需要你决策、重试、复核的事项
+  - `专业`：进入 Signals / 尽调等专业工作面
+  - `能力`：看当前可用能力、运行环境、能力底座
+- 页面里保留英文 proper noun 只限：
+  - `Signals`
+  - 必要的底层系统名如 `Longclaw Core`
+- 其余英文技术词不直接暴露在首屏主叙事里；改成中文说明，技术名只在二级说明或详情中出现。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 4. 页面职责重新切清
+- `首页`：只负责发起、继续、分流。
+- `记录`：只负责看历史运行、证据、结果，不再承载发起入口。
+- `待办`：只负责需要人工介入的工作项，不混入系统介绍。
+- `专业`：只负责进入和查看专业包，不再像第二个首页。
+- `能力`：集中承接技能库存、插件/能力可见性、运行态健康、环境可用性。
+- 当前跨多页重复出现的“Longclaw Core 统一任务账本”“治理说明”等文案，收敛为每页一句明确定位，不再反复解释体系名词。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 5. 实现边界与接口约束
+- 不改后端 canonical 模型，不改 `LaunchIntent / Task / Run / Work Item` 语义。
+- 不改现有内部 `WorkMode` 枚举和值：
+  - `'local'`
+  - `'cloud_sandbox'`
+  - `'weclaw_dispatch'`
+- 只新增 renderer 层的展示映射和布局编排：
+  - 导航展示元数据
+  - 工作模式展示元数据
+  - 首页模块编排配置
+- 重点改动集中在 renderer 壳层与文案映射，主要涉及：
+  - `electron/src/renderer/App.tsx`
+  - `electron/src/renderer/i18n.ts`
+  - `electron/src/renderer/layout.ts` / `designSystem.ts`
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## Test Plan
+- 宽屏、中屏、窄屏下验证主栏：
+  - 标签不挤压
+  - 选中态清晰
+  - tooltip/短标签可辨识
+- 首页首屏验证：
+  - 首屏只看到“发起器 + 最近任务 + 待办摘要”
+  - 不再出现大段体系说明和冗余状态墙
+  - 零数据状态下也能一眼看懂下一步该做什么
+- 工作模式验证：
+  - 首页只出现 `本机处理 / 云端执行 / 微信接力`
+  - 技术模式值不直接暴露给普通操作路径
+- 页面职责验证：
+  - `记录` 与 `待办` 内容不重复
+  - `专业` 页不再承担首页职责
+  - `能力` 页集中承接环境与能力底座信息
+- 异常状态验证：
+  - 当本机运行态不可用时，首页只显示短告警，不恢复整块运行态信息墙
+  - 详细异常仍可在 `能力` 页或详情抽屉查看
+- 视觉验证：
+  - 用 Computer Use 对首页、记录、待办、专业、能力五页各截一轮图
+  - 对比默认窗口尺寸与窄窗口尺寸，确认没有压缩、冗余或语义混乱
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- 默认面向单人高频使用，不为多人分工设计。
+- 主导航保留 5 项，不做页面合并。
+- 首页默认不再长期显示运行态健康矩阵；健康信息下沉到 `能力` 页。
+- `Signals` 作为专业包品牌名保留英文；其余模式和业务动作尽量转成中文任务语言。
+- 左侧主栏默认采用“图标优先 + 极短标签”，而不是纯图标或状态混排。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已按这版方案把 Electron 前端壳层和首页前门重排落地，核心改动在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1632) 和 [i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts:206)。现在左侧主导航固定成 5 个短标签，首页只保留“当前上下文 / 发起任务 / 最近任务 / 继续中的任务 / 待办摘要”，运行态状态墙已经下沉到“能力”页；专业页把 `Due Diligence` 和原始 `fetch failed` 收口成中文工作面叙事；能力页里的模式说明、pack 标签和云端/微信 surface token 也基本收口成中文任务语言。首页默认处理方式不再落在微信接力，而是会按当前环境自动推荐，这里会直接落到可用的“云端执行”。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da98a-a5c8-7450-a1db-58780705c926
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我重新执行了 `npm run build:electron`，并用 Computer Use 验证了默认窗口和压窄后的窗口。首页、记录、待办、专业、能力五页都过了一轮，窄窗口下左侧导航没有再压扁，首页首屏骨架也还保持清楚。当前没有新的 renderer 报错；还存在的只有 Electron 开发态 CSP warning，这和这次前端信息架构调整无关。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da95a-28ca-7893-b621-41923d34784d
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 4f986c89-e4c6-47ef-8dbe-7bdc89c4ee9b.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/4f986c89-e4c6-47ef-8dbe-7bdc89c4ee9b.png
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da95a-28ca-7893-b621-41923d34784d
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+需要优化一下整个electron前端页面  1、左侧工具栏显示压缩，文字冗余  2、布局以及功能定位不清晰，需要重新梳理业务
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da8dd-8a46-7070-809e-4848c1a7bfc6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+改动在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:1592)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:2583) 和 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:103)。首页现在会根据窗口高度和断点切到紧凑零状态布局，不再把“模式发起器”区域挤成空白条；同时 Electron 初始窗口改成了 `1280x820`，避免一启动就落在容易扭曲的尺寸。
+
+
+---
+来源：codex:019da8dc-e4af-7d23-8b48-6147d1c4b37b#turn:019da8dd-8a46-7070-809e-4848c1a7bfc6
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已执行 `npm run build:electron`，重启应用后又用 Computer Use 验证了首页和“运行”页，默认窗口下布局正常。当前没有复现新的 renderer 报错；终端里还能看到的只有 Electron 开发态的 CSP warning，这和这次布局塌陷不是同一个问题。如果你要，我可以下一步继续把这个 warning 也处理掉。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#first-request
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+[$plan-ceo-review](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-plan-ceo-review/SKILL.md) 你需要制定一个详细的计划，如何整合目前仓库里面的longclaw agent os、影刀rpa的sandbox替代项目、weclaw、signals等。最终我需要把这些项目都整合在一个agent os里面，目前已经有一些整合成果，但是离整个工程化和产品化还有很长一段距离
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## f5dbd343-230c-4615-b44a-c5830321883f.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/f5dbd343-230c-4615-b44a-c5830321883f.png
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## My request for Codex:
+页面无法渲染，你用computer use 来测试一下整个页面点击事件
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#recent
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+我已经授权computer use了，为啥还是被拦截，你帮我重新设置一下
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+拦截原因已经定位了：不是你没授权 Electron，也不是 Longclaw 自己的问题，而是 **Codex 当前这条会话仍然跑在 `approval_policy = "never"`**。`Computer Use approval denied via MCP elicitation` 这类报错，本质上是插件想弹一次“允许控制这个 app 吗”的授权询问，但当前会话把这类询问直接自动拒绝了。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我已经替你做了两层重置：
+- 把全局 Codex 配置从 `never` 改成了 `on-request`【F:/Users/zhangqilong/.codex/config.toml†L1-L6】
+- 把当前线程在本地状态库里的 `approval_mode` 也改成了 `on-request`【F:/Users/zhangqilong/.codex/state_5.sqlite†L1】
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#recent
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+但**当前正在运行的这条桌面会话还是旧策略**，所以我刚重新测试 `com.github.Electron`，仍然会被拦。这个状态通常要等 **重开 Codex Desktop 或至少开一个新线程** 才会真正生效。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw Electron Chat-First 重布局计划
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Summary
+- 这轮按 **全壳层重写** 做，不是只改 `Home`。
+- 新布局明确采用 **Codex / Claude Code 的结构借鉴**，但继续保留 Longclaw 的 `Warm Industrial Command Center` 设计语言。
+- 结构锁定为：
+  - **双层左侧栏**
+    - 最左窄栏：全局状态控制 + 一级导航
+    - 第二侧栏：项目/线程列表
+  - **中间主区**：chat-first 对话工作区
+  - **右侧详情抽屉**：按需展开，继续承接 run / work item / artifact 详情
+- `work_mode` 改成 **composer 内下拉选择**，不再使用三张模式卡。
+- `Runs / Work Items / Packs / Studio` 继续保留为一级导航；`Home` 改成默认 chat-first 首页。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Key Changes
+### 1. 壳层重排
+- `layout.ts` 的 canonical shell 改成四区：
+  - `rail`：`72-80px`
+  - `thread_sidebar`：`280-320px`
+  - `main_workspace`：自适应
+  - `detail_drawer`：`380-420px`
+- 窄屏策略：
+  - `>=1360px`：双侧栏 + 主区 + 抽屉完整显示
+  - `1080-1359px`：详情抽屉 overlay
+  - `<1080px`：第二侧栏可折叠，详情抽屉 overlay
+- 保留系统标题栏，不做 frameless。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 2. 左侧双栏
+- **最左窄栏** 只放三类内容：
+  - 品牌与当前 workspace 状态
+  - 一级导航：`Home / Runs / Work Items / Packs / Studio`
+  - 状态控制：`Longclaw Core / Due Diligence / Signals / Local runtime seat / ACP bridge / Local Runtime API`
+- **第二侧栏** 改成 `项目 + 线程`：
+  - `项目` v1 只显示当前 workspace 和旗舰 pack 入口，不引入新的多项目存储
+  - `线程` 基于现有 `launchTasks + launches` 按 `session_id` 聚合，不新增后端协议
+  - 每条线程显示：标题、最近事件时间、mode、状态 badge
+- 线程列表是 UI 派生视图，不改 canonical ledger。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 3. Home 改成 chat-first
+- `Home` 不再显示当前的大块治理卡片和模式卡。
+- `Home` 固定为：
+  - 顶部轻量 thread header：当前线程、当前 mode、当前 runtime posture
+  - 中间 transcript：用户消息、系统事件、run/task/work-item receipt
+  - 底部 sticky composer
+- transcript 采用统一事件模型：
+  - `user_launch`
+  - `assistant_text`
+  - `system_status`
+  - `task_receipt`
+  - `run_receipt`
+  - `work_item_receipt`
+  - `degraded_notice`
+- 当前 `launches + launchTasks + recent_failures + selected task/run metadata` 合并成 `ConversationEvent[]`，只在 renderer 内派生，不改 API。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+### 4. Composer 重做
+- 底部 composer 结构固定为：
+  - 左侧 `work_mode` 下拉
+  - 中间多行输入框
+  - 下方或内联 capability hints：`@pack / @skill / @plugin`
+  - 右侧发送按钮
+- `work_mode` 文案固定：
+  - `Local Work`：本地环境，云端模型
+  - `Cloud Sandbox`：云端环境，云端模型
+  - `WeClaw Dispatch`：微信控制本地环境，云端模型
+- mode 切换后联动：
+  - placeholder
+  - launch hint
+  - readiness notice
+  - 推荐 capability
+- 现有三张 mode card 全部移除。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 5. 次级页面统一到新壳层
+- `Runs`：
+  - 保留列表页，但使用新的 chat-shell header 和线程侧栏
+  - 行点击继续打开右侧详情抽屉
+- `Work Items`：
+  - 保留队列页，不再用首页卡片预演
+- `Packs`：
+  - 继续是 specialist workspace 入口
+  - 页头风格与主壳一致，但不做第二首页
+- `Studio`：
+  - 保留 locale 切换和 capability posture
+  - 不再承担主工作流入口
+- 所有页面统一使用相同的左双栏 + 右抽屉骨架。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+### 6. 设计语言与文案同步
+- 保留现有字体、色板、工业风 tokens，不改品牌方向。
+- 视觉上借鉴 Codex/CC 的是：
+  - 中央对话流
+  - 窄左 rail
+  - mode-in-composer
+  - 安静的列表/状态 UI
+- 不借：
+  - 冷白极简到失去 Longclaw 识别度
+  - 大面积默认系统风
+- `DESIGN.md` 需要同步更新：
+  - `Home` 从 `Cowork Launch + Governance Snapshot` 改为 `chat-first workspace`
+  - `双层左侧栏` 成为新的 canonical shell
+  - `mode dropdown in composer` 取代 mode cards
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Important Interfaces / Derived UI Contracts
+- 不新增新的后端协议，继续复用：
+  - `/agent-os/overview`
+  - `/agent-os/tasks`
+  - `/agent-os/runs`
+  - `/agent-os/work-items`
+  - `/agent-os/packs/*`
+- 新增 renderer 内部派生模型：
+  - `ThreadSummary`
+  - `ConversationEvent`
+  - `SidebarStatusItem`
+- 线程聚合规则固定：
+  - 优先按 `session_id`
+  - 若无 `session_id`，退回 `launch_source + workspace_target`
+- `ConversationEvent` 必须能携带：
+  - `work_mode`
+  - `runtime_profile`
+  - `runtime_target`
+  - `interaction_surface`
+  - `local_runtime_seat`
+- 右侧详情抽屉继续是唯一详情入口，不把详情内联塞回 transcript。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Test Plan
+- 首页验收：
+  - 默认进入 `Home` 时看到的是 chat-first 主界面，不是卡片墙
+  - `work_mode` 是下拉框，不再是三张模式卡
+  - 中间主区是 transcript + composer
+- 壳层验收：
+  - 左侧是双栏，不是单栏混排
+  - 最左栏承担状态控制和一级导航
+  - 第二侧栏承担项目/线程列表
+- 线程与事件流：
+  - `weclaw_dispatch` 任务能在线程列表和 transcript 中留下可见记录
+  - `cloud_sandbox` run receipt 能在 transcript 中显示
+  - `local_runtime_seat` 能在侧栏状态和详情抽屉里看到
+- 次级页验收：
+  - `Runs / Work Items / Packs / Studio` 仍可进入
+  - 右侧详情抽屉仍可打开 run/work item/artifact
+- 视觉与交互：
+  - 中文默认，英文切换后新布局文案完整覆盖
+  - 小窗口下第二侧栏可折叠，详情抽屉 overlay 正常
+  - 键盘可完成线程切换、mode 切换、发起任务、打开详情
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## Assumptions
+- v1 不引入新的线程持久化后端；线程列表由现有 ledger 在 renderer 内派生。
+- v1 项目列表只围绕当前 workspace 和旗舰 pack 做轻量呈现，不做完整多项目管理。
+- 右侧详情抽屉保留，不改成全页详情。
+- 设计方向继续是 `Warm Industrial Command Center`，只是信息架构和交互布局向 Codex/CC 靠拢。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+新布局已经落下来了，核心改动在：
+- [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)
+- [layout.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/layout.ts)
+- [i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts)
+- [DESIGN.md](/Users/zhangqilong/github代码仓库/hermes-agent/docs/longclaw/DESIGN.md)
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在的壳层已经从旧的卡片式 `Home` 改成了 chat-first 结构：
+- 左侧窄 rail：一级导航 + 状态控制
+- 第二侧栏：workspace / flagship packs / 线程列表
+- 中间主区：thread header + transcript + 底部 sticky composer
+- 右侧：详情抽屉保留
+- `work_mode` 已改成 composer 内下拉，不再是三张模式卡
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我还把线程和对话流做成了 renderer 内派生：
+- 线程按 `session_id` 优先聚合，缺失时退回 `interaction_surface + workspace_target`
+- transcript 会显示 `launch / task receipt / run receipt / work item receipt`
+- 中英文文案补到了新壳层，默认仍是中文
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+验证结果：
+- `npm run lint` 通过
+- `npm run build:electron` 通过
+- Electron 已重新拉起，进程在跑
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c6-e224-7863-bcbf-398ecb2c9a1e
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+唯一没完成的是 `computer use` 的窗口内可视检查：这个 Electron 窗口被 MCP 权限拦住了，没法直接抓它的可访问树做自动验收。但代码和构建层已经过了。你现在可以直接看这版 Electron，如果你要，我下一步就按你实际看到的问题继续做第二轮视觉收口。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+## 476f9185-860f-412b-b5e1-3b91649680dc.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/476f9185-860f-412b-b5e1-3b91649680dc.png
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+## My request for Codex:
+ui的布局应该参考codex和cc。选择工作模式应该是一个下拉选项。中间是与ai对话和对话框，左侧侧边栏是状态控制
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+## Summary
+- 这次不再把 `Home` 做成卡片式控制台，而是改成 **Codex / Claude Code 风格的 chat-first 工作台**。
+- 核心结构固定为：
+  - **左侧侧边栏**：状态控制 + 导航
+  - **中间主区**：AI 对话流 + 对话框
+  - **右侧详情抽屉**：仅在查看 run / work item / artifact 时展开
+- `work_mode` 不再做三张大卡片，改成 **composer 内的下拉选择**。
+- 产品规则不变：
+  - `Chat launches, console governs.`
+  - 聊天负责发起
+  - canonical `Task / Run / Work Item` 仍归 Longclaw Core ledger
+  - `Runs / Work Items / Packs / Studio` 仍保留，但视觉优先级降到 chat 工作台之后
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+## Layout
+### 1. 左侧侧边栏
+- 固定宽度，参考 Codex/CC 的窄侧栏，不再承担大面积 dashboard 展示。
+- 从上到下分为 4 块：
+  - 品牌与当前 workspace
+  - 导航：`Home / Runs / Work Items / Packs / Studio`
+  - 状态控制：
+    - `Longclaw Core`
+    - `Due Diligence`
+    - `Signals`
+    - `Local runtime seat`
+    - `ACP bridge`
+    - `Local Runtime API`
+  - 快捷入口：
+    - 最近任务
+    - 最近失败
+    - 最近微信派发
+- 侧栏重点是 **状态可见性**，不是分析卡片墙。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### 2. 中间主区
+- `Home` 改成真正的 **聊天主界面**：
+  - 顶部轻量 header：当前 thread / 当前模式 / 当前 runtime posture
+  - 中间是 conversation transcript
+  - 底部是 sticky composer
+- transcript 的消息类型固定为：
+  - `user launch`
+  - `assistant response`
+  - `system status`
+  - `run receipt`
+  - `work item created`
+- 最近的 `weclaw_dispatch`、`cloud_sandbox`、`local` launch 都应以“对话事件”显示，而不是只显示在右侧 summary 卡里。
+- 中间主区是默认焦点，不再把用户注意力先拉到治理卡片。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### 3. 底部 composer
+- 参考 Codex/CC，做成统一底部输入条。
+- 结构固定为：
+  - 多行输入框
+  - 左侧下拉：`Local Work / Cloud Sandbox / WeClaw Dispatch`
+  - capability hints：`@pack / @skill / @plugin`
+  - 发送按钮
+- `work_mode` 下拉默认显示当前模式。
+- mode 文案固定为：
+  - `Local Work`：本地环境，云端模型
+  - `Cloud Sandbox`：云端环境，云端模型
+  - `WeClaw Dispatch`：微信控制本地环境，云端模型
+- 不再把 mode selector 做成大面积独立面板。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### 4. 右侧详情抽屉
+- 保留现在的 detail drawer，但从“默认并列信息面”改成“按需打开”。
+- 用途固定为：
+  - 查看 run metadata
+  - 查看 artifact preview
+  - 查看 work item 细节
+  - 执行 operator actions
+- 聊天本身不放进右侧抽屉。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+## Information Architecture
+### 1. Home
+- 重写为：
+  - `Chat transcript`
+  - `Sticky composer`
+  - 少量 inline status pills
+- 从 Home 去掉：
+  - 大块 `Governance Snapshot`
+  - 大块 `Environment Readiness` 网格
+  - mode cards
+- 这些信息迁到：
+  - 左侧侧栏
+  - 右侧详情抽屉
+  - 或简化为聊天中的 system rows
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### 2. Runs / Work Items / Packs / Studio
+- 保持存在，但作为次级页面。
+- `Runs`：
+  - 保持列表 + 详情抽屉
+- `Work Items`：
+  - 保持队列 + 动作
+- `Packs`：
+  - 继续是 specialist workspace 入口
+- `Studio`：
+  - 保持能力配置与 locale 切换，不做首页主视觉
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+## UI Rules
+### 1. 模式选择
+- 工作模式必须是 **下拉框**，不是 segmented cards。
+- 位置固定在 composer 左侧。
+- 切换 mode 后：
+  - placeholder
+  - launch hint
+  - readiness
+  - capability suggestions
+  都联动更新。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### 2. 对话视觉
+- 参考 Codex / CC：
+  - user message 简洁
+  - assistant/system message 更偏日志式、状态式
+  - 少用厚卡片
+  - 多用列表行、细边框、低噪声 panel
+- transcript 中允许插入：
+  - `Task created`
+  - `Run created`
+  - `Work item created`
+  - `Dispatch degraded`
+  这类系统事件块
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### 3. 状态表达
+- 左侧状态控制只显示：
+  - `connected`
+  - `degraded`
+  - `unavailable`
+  - `running`
+- 不再在首页塞大量 health explanation。
+- `local_runtime_seat`、`runtime_profile` 仍要保留，但放在：
+  - 侧栏状态区
+  - 详情抽屉
+  - Studio
+- 不让用户在首页一开始就看到过多内部字段。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+### Phase 2
+- 给 transcript 定义统一消息对象：
+  - launch
+  - result
+  - run receipt
+  - work item event
+  - degraded notice
+- 让 `launchTasks + launches + overview events` 合并成一个对话流
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+## Acceptance Criteria
+- 默认进入后，用户看到的是 **聊天主界面**，不是控制台卡片墙。
+- 工作模式是 **下拉选择**，不再是三张模式卡。
+- 左侧侧边栏承担 **状态控制**，中间承担 **对话与任务发起**。
+- `weclaw_dispatch`、`local`、`cloud_sandbox` 都能在中间 transcript 中留下可见记录。
+- 详情抽屉继续能打开 run/work item/artifact，但不抢首页主视觉。
+- 中英文两套文案都覆盖新布局。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8c2-9a19-7583-9205-23bc64e489fe
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+## Assumptions
+- 这轮只重构信息架构和交互布局，不新增新的 runtime 协议。
+- `Runs / Work Items / Packs / Studio` 保留，不会被 chat 首页替代。
+- Codex / Claude Code 的借鉴重点是：
+  - chat-first
+  - mode-in-composer
+  - narrow status sidebar
+  - quiet UI
+- 不复制它们的整套产品壳，只吸收最适合 Longclaw 的布局语言。
+</proposed_plan>
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8be-2833-7731-ad37-735c6900b8c2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+现在已经完成：
+- `Longclaw Core` 兼容了 `repair_required`，`/agent-os/runs` 和尽调工作面不再因为这个状态炸掉。见 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py) 和 [service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)。
+- `weclaw` adapter 会自动从 `WECLAW_API_URL`、`WECLAW_API_ADDR`、`~/.weclaw/config.json` 和本地开发默认值里发现 WeClaw API，不再卡在 adapter 404。见 [service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py) 和 [stack.env](/Users/zhangqilong/.longclaw/runtime-v2/stack.env)。
+- Electron 已补上 `local_runtime_seat` 的显示：`Home` 的最近发起、环境就绪度、`Studio` 上下文、详情抽屉都会显示本地 seat、ACP bridge 和 Local Runtime API 的状态。见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx) 和 [i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8be-2833-7731-ad37-735c6900b8c2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+联调状态现在是：
+- `Longclaw Core` 在 `127.0.0.1:8642` 正常。
+- `due-diligence-core` 在 `127.0.0.1:8001` 正常。
+- `Cloud Sandbox` 的尽调 run 还在账本里，状态是 `repair_required`，但现在可正常读取。
+- `WeClaw -> Longclaw Core` 的 dispatch 已经成功入账，当前可见：
+  - `task-3ffb5e3412a3`
+  - `run-a1bc54d4f664`
+  - `work_mode=weclaw_dispatch`
+  - `runtime_target=local_runtime`
+  - `interaction_surface=weclaw`
+  - `local_runtime_seat=unavailable`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8be-2833-7731-ad37-735c6900b8c2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+回归已过：
+- `hermes-agent` pytest
+- `weclaw` `go test ./...`
+- `longclaw-agent-os` `client.test.ts`
+- `longclaw-agent-os` `npm run lint`
+- `longclaw-agent-os` `npm run build:electron`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8be-2833-7731-ad37-735c6900b8c2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+Electron 也已经重新拉起了。你现在可以直接看客户端，重点看三处：
+- `Home > 最近发起`：应能看到一条 `WeClaw Dispatch`
+- `Home > 环境就绪度`：应能看到 `本地运行座位 / 本地 ACP 桥接 / 本地运行态 API`
+- 任一详情抽屉：应能看到 `local_runtime_seat`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8be-2833-7731-ad37-735c6900b8c2
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+还差的边界只有一个：真实微信消息我还没替你发出去。链路已经不再卡在 Core/adapter 这层了，下一步最值得做的是直接用你的真实微信发一条 smoke 消息，再看 Electron 是否出现对应记录。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b9-79fa-7772-8efe-84e677ff2f32
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+我修了两处核心问题：
+- `repair_required` 现在被 Longclaw Core 正式兼容，不会再把 `/agent-os/runs` 和 `Packs > Due Diligence` 直接打崩。改动在 [contracts.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/contracts.py) 和 [service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)。
+- `weclaw` adapter 现在会自动从 `WECLAW_API_URL`、`WECLAW_API_ADDR`、`~/.weclaw/config.json`，以及本地开发默认值里发现 WeClaw API，不再因为缺少单一环境变量返回 404。相关改动在 [service.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/service.py)、[integrations.py](/Users/zhangqilong/github代码仓库/hermes-agent/agent_core/integrations.py)，运行时配置也补进了 [stack.env](/Users/zhangqilong/.longclaw/runtime-v2/stack.env)。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b9-79fa-7772-8efe-84e677ff2f32
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+实际联调结果已经成立：
+- `Longclaw Core` 已在 `127.0.0.1:8642` 跑起来。
+- `Cloud Sandbox` 任务还在 ledger 里，`due_diligence` run `run-eaeaa4ec1a` 现在能正常列出，状态是 `repair_required`。
+- `WeClaw -> Longclaw Core` 的受控 dispatch 已成功入账。新建出来的是：
+  - task: `task-3ffb5e3412a3`
+  - run: `run-a1bc54d4f664`
+  - `work_mode=weclaw_dispatch`
+  - `runtime_target=local_runtime`
+  - `interaction_surface=weclaw`
+  - `model_plane=cloud_provider`
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b9-79fa-7772-8efe-84e677ff2f32
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+当前唯一没法在我这边替你代跑的是“真实微信发一条消息”这一步，因为那需要你真实微信侧产生入站消息。但链路本身已经不再卡在 404/validation 这两个阻塞点了。你现在可以直接在微信里发这条 smoke 消息试：
+```text
+@skill browse 检查 longclaw-agent-os 当前 Home 页面三种模式状态
+```
+如果你继续要我推进，我下一步会做两件事：
+1. 让 Electron 明确显示这条 `weclaw_dispatch` 任务的最近记录和状态。
+2. 收口 `Local Work` 的 seat 展示，把 `ACP bridge / local runtime api / unavailable` 在界面上表达得更清楚。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b1-5a7f-7de0-a901-189954e21b45
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+刚刚突然拉起了很多google浏览器，是不是触发了dd core的任务了
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b1-5a7f-7de0-a901-189954e21b45
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- `due-diligence-core` 在刚才收到了一个 `POST /runs`，时间点和你看到一堆 Chrome 弹出来基本一致。
+- 这次 run 已经落盘，ID 是 `run-eaeaa4ec1a`，输出目录在 [run-eaeaa4ec1a](/Users/zhangqilong/github代码仓库/due-diligence-core/runtime-state/runs/run-eaeaa4ec1a)。
+- 这次任务是尽调任务，查询词是“调查隆小侠示例公司”，跑了 36 个站点，最终状态是 `repair_required`。
+- 系统里在 `7:23 PM` 左右确实新出现了几组 `Google Chrome` 的 crashpad 进程；这和这次尽调 run 的启动时间对上了。
+- 不是 Electron 自己拉起的。Electron 只会带自己的 Electron/Chromium 进程，不会突然开很多 Google Chrome 窗口。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b1-5a7f-7de0-a901-189954e21b45
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+- **是我刚才为了验证 `Cloud Sandbox` 路径，触发了 `dd core` 的真实 run。**
+- **那些 Google Chrome 窗口就是这次尽调浏览器执行带出来的。**
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da8b1-5a7f-7de0-a901-189954e21b45
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+顺手还发现一个相关问题：
+- `Longclaw Core` 读取 runs 时，会被 `due-diligence-core` 返回的 `repair_required` 状态卡住，因为当前 `RunStatus` 里还没兼容这个值。这是个真实 bug，我下一步可以直接修掉。
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da86a-ace6-74e1-8c97-3e9fd6d1be69
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+1、local work如果本地有acp常驻system服务，直接指向本地运行地址环境，否则需要指定对应的api url地址  2、做成electron中英文双版本，默认中文版本。3、把 Longclaw Core 接起来，再用 Electron 实测 Cloud Sandbox / WeClaw Dispatch
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da860-c66b-7c12-8363-1684c5e318ff
+角色：user
+性质：用户约束或历史请求
+原文摘录：
+npm build起来看一下，检查日志和使用computer use来检查
+
+
+---
+来源：codex:019da384-6547-7dd0-a91a-36a2adbe2f73#turn:019da860-c66b-7c12-8363-1684c5e318ff
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+这次我顺手修了一个 computer-use 检出来的明显显示 bug：`Home` 上三种模式之前会在运行态已降级时还显示 `Available/Ready`，现在已经改成和真实 readiness 一致。改动在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx)。

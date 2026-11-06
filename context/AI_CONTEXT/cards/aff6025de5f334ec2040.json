@@ -1,0 +1,109 @@
+{
+  "id": "019ed4b5-147c-7b11-ba37-af8fdbb44d07",
+  "title": "优化左侧标的栏显示",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ed4b5-147c-7b11-ba37-af8fdbb44d07",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "a267d71daa4fc086e95b03798e6fdfda19575a15e45201eb9f54b8fc65abf718",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#first-request",
+      "timestamp": null,
+      "verbatim": "你检查一下左侧的标的栏，公司名称被压缩看不清。请再13寸和27寸下面进行调优显示"
+    },
+    {
+      "hash": "6c8657a10b3e6a8cc2d8fc59faac1dc5e5831b78009928469659366836824abe",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#recent",
+      "timestamp": null,
+      "verbatim": "运行站点、检查这些是金融从业会说的？主账本和金融什么关系？排查记录原始记录这些也不是吧？"
+    },
+    {
+      "hash": "a0f1f1dbb0d94fc79b90bf03df362fb2754b5a60395ec77e9f7440b9efb9c400",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#recent",
+      "timestamp": null,
+      "verbatim": "复盘底稿、交易台记录也很生硬啊。你能不能借鉴一下网上或者别的软件的叫法，重新设计我们的功能话术"
+    },
+    {
+      "hash": "19b84664e8047a7240700ed208675d865be2d2445bba372534c8ed689558e61f",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4c2-0dfe-7403-ab60-0d02f4eef210",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n只保留最新价格、涨幅、自xxx涨幅然后重新调整一下间距"
+    },
+    {
+      "hash": "b491504bfba581a1b1f7e804cfa0e48df8dc88a7046540ef040ebdcbffc7dbd4",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4c2-0dfe-7403-ab60-0d02f4eef210",
+      "timestamp": null,
+      "verbatim": "你再检查一下全局的表述，把证据这类工程化语言全部改成交易员话术。所有涉及到系统文字的都改"
+    },
+    {
+      "hash": "70dc211d8c90d6ec485b57b062be530c9c7f54aa6f37a8289d41be1ef0700321",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4c2-0dfe-7403-ab60-0d02f4eef210",
+      "timestamp": null,
+      "verbatim": "已改完并安装到 `/Applications/隆小侠 Agent OS.app`。"
+    },
+    {
+      "hash": "8ae884af4fcbb5140f1b41e409086811c7b87f112b0aa527ba571b34b349cf9f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4c2-0dfe-7403-ab60-0d02f4eef210",
+      "timestamp": null,
+      "verbatim": "主要变化：\n- 左侧股票标的栏只保留 `最新价 / 涨幅 / 自2026涨幅`，去掉原来的 `背景/动作`占位列，公司名称显示空间更大。\n- 13 寸 `1366×768` 和 27 寸 `2560×1440` 都做了截图验证，左栏公司名、代码、价格列没有再被明显压缩。\n- 全局可见中文文案已从工程口径改成交易员话术：`证据 -> 盘面依据/看盘依据`、`来源 -> 线索/入口`、`缓存/Mongo/网络源 -> 行情/日线覆盖/行情通道`、`setup_mode -> 交易角色`、`待处理 -> 待复核`。\n- 对后端返回的原始展示文本也加了清洗，例如 `terminal_manual_clues` 会显示成 `临时线索`，`图形证据走弱` 会显示成 `图形走弱`。"
+    },
+    {
+      "hash": "5ff00a533f3a0a2cda906fa3dd73376e2c85a784a279900d7fe14bc4a7cf8e77",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4c2-0dfe-7403-ab60-0d02f4eef210",
+      "timestamp": null,
+      "verbatim": "验证通过：\n- `npm run lint -- --pretty false`\n- `npm run test -- electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx electron/src/renderer/taskLaunchState.test.ts`，52 个测试通过\n- `npm run electron:install:mac` 成功\n- 已正常重启 App，调试端口已关闭"
+    },
+    {
+      "hash": "0baca2af22779b8002158c14d8fe5f90c5c8481b49fdb39eb69525f666125c10",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4b5-7f85-73f3-be96-d34debdcf064",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n你检查一下左侧的标的栏，公司名称被压缩看不清。请再13寸和27寸下面进行调优显示"
+    },
+    {
+      "hash": "aee06fb71c34a38fc2ccfc96f24f547ffa611b2fb20efcbdc1045964a5be0a63",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4b5-7f85-73f3-be96-d34debdcf064",
+      "timestamp": null,
+      "verbatim": "改动集中在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:627)："
+    },
+    {
+      "hash": "68baeef2a10a2ad3adfe9bc25ba15d6427677ff67a72efbfecbd4c83656a49bc",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4b5-7f85-73f3-be96-d34debdcf064",
+      "timestamp": null,
+      "verbatim": "- 左侧栏在 13 寸/27 寸模式下加宽：`desk` 起步到 `360px`，`cinema` 最高到 `456px`。\n- 股票池表格首列从 `108px` 提到 `150px`，区间/数值列压缩，给公司名让空间。\n- 标的行标题改成两层：公司名独占上方，最多两行；代码和临时线索删除按钮放到下一行，不再挤压名称。\n- 同步更新了 [StrategyChartTerminal.test.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx:63) 的布局断言。"
+    },
+    {
+      "hash": "8dfdb9cef68e9e2a9bc7a783243cf504668d2c6bfd547473cdc6cb0505923f02",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ed4b5-147c-7b11-ba37-af8fdbb44d07#turn:019ed4b5-7f85-73f3-be96-d34debdcf064",
+      "timestamp": null,
+      "verbatim": "- `npm run lint -- --pretty false` 通过\n- `npm run test -- electron/src/renderer/workspaces/StrategyChartTerminal.test.tsx` 通过，41 tests\n- `npm run electron:install:mac` 已重建并替换 `/Applications/隆小侠 Agent OS.app`\n- 已用已安装 App 验证 13 寸 `1366x768` 和 27 寸 `2560x1440` 视口，线索池里“中国核建 / 中核科技 / 亨通光电 / 王子新材”等名称可读，没有再被代码和删除按钮压缩"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

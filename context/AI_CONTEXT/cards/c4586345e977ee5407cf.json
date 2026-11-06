@@ -1,0 +1,461 @@
+{
+  "id": "019dd446-9183-7140-95b5-5a33beb68fd4",
+  "title": "排查数据源日志与图表指标",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019dd446-9183-7140-95b5-5a33beb68fd4",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "715fbe0d89f12c949f634cff9293451fcbcee2bbaa51f550400162e9436b0bd6",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#first-request",
+      "timestamp": null,
+      "verbatim": "1、检查一下网络数据源日志，为什么有16个报错，提出优化方案   2、检查目前chart的指标情况，为什么没有我自定义的回测信号指标，还有优化一下信号显示在chart上面的样式"
+    },
+    {
+      "hash": "9d4740b4dfada8c6f90784566a558f78bc26ca22e53dc461f7ad341bbca23abd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent",
+      "timestamp": null,
+      "verbatim": "已推进完成 chart 信号解释/样式和布局适配，改动集中在 [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx:387)。"
+    },
+    {
+      "hash": "07a4b4eac53ac695b0a3ce182cf5397906205b305dc0de782028552043f8d328",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent",
+      "timestamp": null,
+      "verbatim": "主要落地：\n- 左右栏改成 `clamp(...)` 响应式宽度，压缩侧栏和右侧任务区，给中间 chart 留更多空间。\n- 顶部缓存监控条压缩成 4 个紧凑状态块，网络源只展示真实 provider 状态，不再被 shard/task 数量撑大。\n- 自定义信号右侧解释拆成：`当前图可见`、`其它周期可用`、`关联标的信号`、`系统信号`。\n- 自定义回测 marker 增加“自定义”badge、周期 badge、竖线锚点；买卖/自定义和普通背离视觉上已区分。"
+    },
+    {
+      "hash": "6460792813061280aa302d0d34da815d3b429e4bd8147b73fd4c1b9b24b003c4",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- `npm run lint` 通过。\n- `npm run build:electron` 通过。\n- Electron 当前源码构建验证通过。\n- `SZ.002812 15min`：显示 `4自定义`，当前图可见 `2/4`，其它周期 `30M`。\n- `SZ.002812 30min`：当前图可见 `2/4`，其它周期 `15M`。\n- `SH.688802 30min`：API 返回 `custom_signal_count=2`、`visible_custom_signal_count=1`。\n- 指数/板块无直接自定义信号时，右侧明确显示“无直接自定义/关联入口”，不再像系统漏信号。"
+    },
+    {
+      "hash": "71f5ec5bf83605e8370bd6d77aa67f73287868863193c42d71361fb1c3346a23",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#recent",
+      "timestamp": null,
+      "verbatim": "注意：我验证的是当前源码编译出的 Electron，不是 `/Applications` 里的旧 packaged app。旧包要看到这些改动，需要后续执行安装/打包更新；我这轮没有做系统安装动作。临时 Electron 验证进程已停掉。"
+    },
+    {
+      "hash": "68b8f2ca6a0614b1122d3fdabb2399a549558932834ac2924cdf84e3e12eebf2",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727",
+      "timestamp": null,
+      "verbatim": "- 低延时源恢复：`quote_snapshots` 最新状态 `ok`，94 个 live，0 error，耗时约 42s。\n- `stock_minute` 已从盘中 216 次调用降到 72 次调用，只跑 `5分钟`，tail 从 240 降到 80；最新 `stock_minute:A:_meta` 为 `ok`，0 error，约 74s。\n- provider cooldown 时间基准已统一成北京时间，`tencent/eastmoney/sina` 日线源都从 active cooldown 清成 `cooldown_expired`，不会再假性延长 8 小时。\n- 网络源卡已改成只统计真实 `provider_health` 问题，不再把 `stock_daily shard/task` 当成网络源报错。\n- 旧的 878 个 `provider_cooling_down` shard error 已按新语义迁移成 `deferred/cooling_down`，不再算作 error；`stock_daily` 聚合进度现在是 `5510/5510`、`100%`、`errors=0`、`deferred=878`。\n- `market_pools` orphaned 状态已手动触发一次清掉，最新为 `ok`。"
+    },
+    {
+      "hash": "6268f5118676cf1bb8aa90cc0dfd9a496f6c5b2c7ee3656ae2db4e568512a11f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727",
+      "timestamp": null,
+      "verbatim": "验证已跑：\n- Signals 后端：`75 passed, 5 warnings`\n- Electron：`npm run lint` 通过\n- Runtime：web / quote / signal / workbench / board / postmarket 全部 running"
+    },
+    {
+      "hash": "0bee86ecaf91461c279552d5b1f9c052830427fa6a496ec8ef2cc45ea8fb5ea5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727",
+      "timestamp": null,
+      "verbatim": "主要改动落在：\n- [provider_limits.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/provider_limits.py)\n- [stock_minute.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/stock_minute.py)\n- [stock_daily.py](/Users/zhangqilong/github代码仓库/Signals/signals/sync/modules/stock_daily.py)\n- [domain_pack.py](/Users/zhangqilong/github代码仓库/Signals/signals/domain_pack.py)\n- [StrategyChartTerminal.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/StrategyChartTerminal.tsx)"
+    },
+    {
+      "hash": "7d506c11d8f9dd061c8d96789059d64c287eadfc1276d0091b3f2301f0d2466c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6e0-61db-7152-a624-3548b2869727",
+      "timestamp": null,
+      "verbatim": "还剩下一块我会接着推进的是 chart 信号解释/样式和整体布局适配，当前这轮先把开盘后的数据源刷新、cooldown、网络源误报处理干净了。"
+    },
+    {
+      "hash": "219509153c4448532980777f70b8d747eb8af99faea1ba9000189ef935832817",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "PLEASE IMPLEMENT THIS PLAN:\n# 网络数据源缓存到 Mongo 提速与 cooldown 治理计划"
+    },
+    {
+      "hash": "a50b9d26b201e533109dbd946f2f8a9bb8174fad7cc8cf1377cc926bd35b2935",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "当前根因不是 Mongo 写入慢，而是 `stock_daily` 高扇出抓取触发 provider 风控后，后续 shard 继续逐 symbol 尝试 Tencent/Eastmoney/Sina，产生大量 `provider_cooling_down` 和误报。现场数据也支持这一点：`sync_log` 已有 4477 个 `stock_daily` symbol 为 `ok`，其中 4459 个到 `2026-04-28`；`bars` 里 4468 个日线 symbol 已落到 `2026-04-28`。真正问题是后段 shard 被 provider cooldown 拖垮，且 aggregate progress 仍显示旧的 43% 状态。"
+    },
+    {
+      "hash": "703226a18ae987b2df53dda0b527a65b1355813a32d7526627eec281ec95ca07",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "目标：保持高速落库，但不靠硬冲 provider。通过“限流更聪明、失败少重试、只补缺口、Mongo 批量写”来提高有效吞吐。"
+    },
+    {
+      "hash": "ce405f84f88e83bdd1b4fc12084167a0545ef1aa4f5a3c831d747f84a896b205",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- Provider 调度改为 endpoint 级 token bucket：\n  - `stock_daily` 仍保留 16 个逻辑 shard，但并发运行维持 2。\n  - Tencent 日线默认 `2 concurrent / ~2 req/s`，Eastmoney `1 concurrent / ~0.5 req/s`，Sina `1 concurrent / ~0.3 req/s`。\n  - cooldown 不再让每个 shard 独立重复撞 provider；provider 不可用时立即跳过该 provider。"
+    },
+    {
+      "hash": "e8f9f21a2f71fa5232d1b2dd70e00b59d425e139c52512779c34ed465c30f2ab",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- 避免 cooldown 扩散：\n  - 如果单个 provider cooling down，只对该 provider 记录 `cooldown_hit`，继续尝试可用 provider。\n  - 如果所有日线 provider 都在 cooling down，当前 shard 剩余 symbol 直接标记 `deferred/cooling_down`，不继续逐个 symbol 生成 error。\n  - 保留 root error，比如 `RemoteDisconnected`、`429`、`403`、SSL EOF，`provider_cooling_down` 只作为派生状态。"
+    },
+    {
+      "hash": "9a5c15350016d96f4a491f1ddfd466a9a126e0b643dba2f46d8ba911785decfa",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- Mongo 落库提速：\n  - 先做 cache-first/delta-first：根据 `sync_log.last_dt` 和 `bars` 最新日期生成 missing symbol 集合，只补缺口。\n  - 正常 shard 内按 symbol 批量收集写入，按 chunk 写 Mongo，减少每 symbol 一次写入的开销。\n  - 暂不直接加唯一索引；先做重复审计。当前 `bars` 有 `(meta.symbol, meta.freq, dt)` 索引但不是 unique，贸然改索引有迁移风险。"
+    },
+    {
+      "hash": "86d15de0a41102c4d546302d3e4cc0f395a96d89ac8eb37f704584af075dd816",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- Progress 与面板修正：\n  - run 结束或 shard 完成时，从 per-shard progress/task summary 重算 `stock_daily:progress:_meta`。\n  - 新增展示字段：`landing_rate`、`inserted_per_min`、`missing_symbols`、`deferred_symbols`、`provider_attempts/success/risk_error/cooldown_hit`。\n  - 网络源面板只显示真实 provider 健康状态；`stock_daily shard degraded` 放到“数据落库进度/补数任务”区域，不混进网络源数量。"
+    },
+    {
+      "hash": "a9916169384b1f08721f394309db116af3ec27c88579d1a7e871ddbe8f456a31",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- 单测：\n  - provider cooling 时不会继续撞同 provider。\n  - all providers cooling 时 shard 剩余 symbol 进入 `deferred/cooling_down`，不计为大量 error。\n  - root error 不被 `provider_cooling_down` 覆盖。\n  - aggregate progress 能从 16 个 shard task/progress 正确重算。"
+    },
+    {
+      "hash": "792cd85db63876300b62dcd6ba9041a423d4e4c390971cc4cdd8ade8797b5b5c",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- 集成验证：\n  - 用 fake provider 模拟 `RemoteDisconnected/429`，确认不会出现 12 个 shard 级联 degraded。\n  - 跑一次 missing-only stock_daily 补数，确认只处理缺口 symbol。\n  - Mongo 验证：`sync_log` 最新日覆盖、`bars` 最新日覆盖、deferred symbol 数量、inserted_per_min。"
+    },
+    {
+      "hash": "09ba236c84aba7da4875d0c954f341ef423fe879b504a6029a05a25689ea6629",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- UI 验证：\n  - 网络源卡不再显示 16 个 shard 报错。\n  - 数据落库区域显示 stock_daily 真实进度、缺口数量和 deferred 数量。\n  - Electron 截图确认 13 寸和 27 寸布局下状态栏不挤压 chart。"
+    },
+    {
+      "hash": "60857da9585383527ecad4b0ef02e1861a2fd4326b6084715c1fd42b648556ce",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "- 不直接关闭 cooldown。目标是让正常路径不触发 cooldown；异常时只暂停 provider，不拖垮所有 shard。\n- “高速”定义为有效 Mongo 落库速度高，而不是 provider 请求数高。\n- 先补缺口，再考虑全量重跑。\n- 唯一索引必须等重复数据审计后再决定。"
+    },
+    {
+      "hash": "64175d2456c222e8f167e8b985270cde8689efca6d8adbc53f6e5fa7d428bd88",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d6-e913-7312-b4b3-e1cc31485358",
+      "timestamp": null,
+      "verbatim": "开盘了。低延时数据源是否有刷新，你监控一下开一个subagent研究如何优化"
+    },
+    {
+      "hash": "a2759f8f3cd4320d167e188462b5fed56d69f41772b79d529d45cd02c1af1d24",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6d3-778e-7cd3-8acb-0c63760463ea",
+      "timestamp": null,
+      "verbatim": "继续检查网络数据源缓存到mongo，研究一下合理并发情况下加快数据落地"
+    },
+    {
+      "hash": "a578e9009927c2467a2b54f9edf76fa2c8c51c2c97b3c0be542aa047b486f1d5",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "## 63470265-5e40-43d2-85fb-865c07b07fc9.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/63470265-5e40-43d2-85fb-865c07b07fc9.png"
+    },
+    {
+      "hash": "9d6431db30cbd2519d1184803fd21de970caeb7f41c52d41d350fb4ce51e464f",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n新增一个待处理任务，优化一下布局各模块的比例。View的上半部分比例太大，监控页panel也太大。中间的chart比例太小。左侧的比例需要考虑滚动条在mac air 13和 27寸屏幕上的适配，右侧字体太大，比例也不统一。你用frontdesign来重新设计一下，包括Index状态栏也失衡。整体上的适配你也需要考虑mac air 13和 27寸屏幕上的适配"
+    },
+    {
+      "hash": "0bb09540fc7be95556ef418750d019ee23db5e0c82f7b0bef52673d32e8dce53",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "你再新增一个任务，目前网络源缓存数据有16个报错，需要新增一个任务观察日志并且解决"
+    },
+    {
+      "hash": "f3c08eb207ebaa9ffaf20a37fb48b15367bbe8e9e89de02f27eb94e8d25076dd",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "这个问题：多个 stock_daily shard degraded 加上 provider 状态混在一起；真实 provider_health 只有 tencent/eastmoney/sina 这几个日线源在 cooldown 也需要新增一个任务解决"
+    },
+    {
+      "hash": "7107391db74db9461855380caa2bcb6990ac5bb00d4ff996c73500ca59c221e0",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "你需要新增一个任务，解决的是为什么cooldown，我不希望cooldown我要一直保持高速"
+    },
+    {
+      "hash": "5e66ab7d3580e98be9ae7b3f8255b14f4561d451a9d75874e14599dd6afff10c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "- Signals 后端：\n  - `stock_daily` 并发默认从 4 降到 2，provider cooldown 改成跨 shard 共享。\n  - Tencent primary 失败后不再重复打 Tencent fallback。\n  - cooldown 命中改为 `deferred/cooling_down`，不再直接扩大 error。\n  - provider cooldown 不再覆盖真实根因，新增保留 `cooldown_hit_type`；过期 cooldown 会被识别为 `cooldown_expired`。\n  - `cache_status` 不再把多个 `stock_daily` shard degraded 混算成 16 个网络源错误，shard 会聚合成一个 `stock_daily` 任务 blocker。\n  - web 概念成分股先走 Mongo `concept_constituents` 缓存，避免 Eastmoney 直连失败继续制造网络源噪音。"
+    },
+    {
+      "hash": "e88fdae78995a89b9de22fb5a6649361a370d7fd8f5b509fba7c285ccd5b8103",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "- Chart / Electron：\n  - symbol API 增加自定义信号诊断字段。\n  - `SZ.002812 15min` 验证：当前图可见 2 个自定义信号，总自定义 4 个，频率 `15min/30min`。\n  - `SH.688802 30min` 验证：当前图可见 1 个，总自定义 2 个。\n  - `深证成指` 验证：`direct_custom_signal_count=0`，并返回关联自定义信号入口，当前 related=12、candidates=10。\n  - 右侧信号区拆成“当前图可见 / 其它周期可用 / 关联标的信号”。\n  - 自定义 marker 加了 `自定义`、周期、来源区分、买卖不同颜色、竖线锚点。\n  - 布局比例已压缩顶部监控和右侧字号，左右栏收窄，中间 chart 区放大。"
+    },
+    {
+      "hash": "5b3896aeeaa59a38c6a48f8c2a6ff5df85e4726ae3bb363ea6ef0ecb220ee880",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "- `python3 -m py_compile ...` 通过。\n- `./.venv/bin/python -m pytest -q tests/test_provider_limits.py tests/test_postmarket_runner.py tests/test_stock_daily_progress.py tests/test_technical_signal_scan.py tests/test_workbench_watchlist_groups.py`：`26 passed`。\n- `npm run lint`：通过。\n- 源码 Electron 已启动验证过：开发版里网络源从旧的 `16` 降到 `2`，不再把 `stock_daily` shard 当网络源计数；布局已明显更紧凑，chart 区扩大。测试进程已关闭。"
+    },
+    {
+      "hash": "f830dc6b51f89209fd9f871bc314bfe12b782cdedf663ea3a07c181c9b659921",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd6bb-7933-7301-bd8f-9db8c344d743",
+      "timestamp": null,
+      "verbatim": "当前还没有把新版重新打包覆盖 `/Applications/隆小侠 Agent OS.app`，所以你常用的打包版入口仍可能显示旧 UI；源码开发版已经验证通过。"
+    },
+    {
+      "hash": "945edded0ba7964a29cfe5d55635717b79f0b744c3b09be3af12932da93e12d7",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "PLEASE IMPLEMENT THIS PLAN:\n# 拆解执行顺序：按 4 个小任务逐个解决"
+    },
+    {
+      "hash": "35830c517efa6b5fb5abde2f14693d0facf94e322da6f5dfb111cbf4941e7e5f",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "## Task 1：先修网络源 degraded 扩散\n目标：让 `stock_daily` cooldown 不再扩散成 12 个 shard 报错。"
+    },
+    {
+      "hash": "8104f9597c549f59f7c66777e22ecd45832160f9ad1bca9d87f123476ff8f4f5",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "改动：\n- `stock_daily` 并发从 4 降到 2。\n- provider cooldown 改成跨 shard 可共享。\n- Tencent primary 失败后不再重复走 Tencent fallback。\n- cooldown 命中时记录为 `deferred/cooling_down`，不要直接算大量 error。"
+    },
+    {
+      "hash": "4eb46fffdcaa096f6f2d12a5f5731731388608da2041c45a91f13c2e787ac157",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "验收：\n- `shard_00-shard_15` 最终不再出现大面积 `provider_cooling_down`。\n- 网络源卡显示真实 provider 状态，不再把 16 shard 当 16 个网络源。"
+    },
+    {
+      "hash": "383e496d712bbecc7e536f29e4611635507a1d0c75c77c286783fb8e91acface",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "## Task 2：修个股 chart 自定义信号缺失\n目标：个股有自定义回测信号时，chart 必须能看见。"
+    },
+    {
+      "hash": "37b369e8f3513316a927a7884cf7d0f6aa72bf702ce621a235186b7e325cd111",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "改动：\n- symbol API 增加 `custom_signal_count`、`available_custom_signal_freqs`、`hidden_reasons`。\n- 当前周期有信号时直接 overlay。\n- 当前周期没有但其它周期有时，显示可切换周期入口。\n- 修正 `15分钟 / 15min / 30分钟 / 30m` 频率归一。"
+    },
+    {
+      "hash": "ce1674db144a2e1c7d9017126ed9b05e9a49f49cab5fe441fcec4cff704f13d7",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "验收：\n- `SZ.002812 15min` 显示 2 个自定义信号。\n- `SH.688802 30min` 显示自定义信号。\n- 同一只股票切到无信号周期时，提示“其它周期有自定义信号”。"
+    },
+    {
+      "hash": "4045d003f27cdf71c6028fece48b12aa6d03d474963e4cd6aee5be9197d69d8f",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "## Task 3：修指数/板块 chart 的信号解释\n目标：指数没有直接自定义信号时，不再让用户误以为系统没信号。"
+    },
+    {
+      "hash": "628468966f66a661b1901671f866f6fb87252e7231197eb76e6580acd0b03e45",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "改动：\n- 指数 chart 明确返回 `direct_custom_signal_count=0`。\n- 展示关联候选股/成分股里的自定义信号入口。\n- 板块/概念热度图不硬叠个股信号；映射到 carrier 股票时显示 carrier 的自定义信号。"
+    },
+    {
+      "hash": "24f0b56e66a1199d813ea2b5c278d804a8cf2ce0ab15526325b9ee9524b9f8ff",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "验收：\n- `深证成指` 不再空白误导，显示“指数无直接自定义信号 + 关联个股信号”。\n- 概念映射到股票时，能看到对应 carrier 的信号。"
+    },
+    {
+      "hash": "79d47bed684fce8beb8122699ad08dbce33274062281cfeb1d33321e9d434acb",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "## Task 4：优化 chart 信号样式\n目标：自定义回测信号在图上足够醒目，且不和顶背/底背混在一起。"
+    },
+    {
+      "hash": "ad1c9e55fe31735a94629bc87e990e9cc75b5b1312f375cb4678857f38186932",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "改动：\n- 自定义信号 marker 增加 `自定义` badge、周期 badge、来源 tooltip。\n- 买入/卖出信号分别使用不同颜色和位置。\n- 加竖线锚点到对应 K 线。\n- 右侧信号区拆成：`当前图可见`、`其它周期可用`、`关联标的信号`。"
+    },
+    {
+      "hash": "4c5d86ea845c360c50b0a0eed8781bcbc6aada706522a5ed57331d18f5efb5d4",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "验收：\n- 自定义信号一眼能区分于普通背离标签。\n- marker 不遮挡 K 线主体，不和 MA/MACD/背离标签冲突。\n- Electron 截图验证通过。"
+    },
+    {
+      "hash": "671ead85347d93a0f43a8e59bb743d3a8500a46ec5900b93b367ee7f5c8e2cd7",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "## 执行默认顺序\n先做 Task 1，因为它影响数据稳定；再做 Task 2 和 Task 3，因为它们决定信号是否能被解释；最后做 Task 4，因为样式依赖前面的 payload 字段。"
+    },
+    {
+      "hash": "3f086bf8f6978bbfb0acaba171a4a5e22bc95c48dc0d1e02662924159d4fc0e5",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd456-e7b7-75a1-a361-e0ab39285a25",
+      "timestamp": null,
+      "verbatim": "你开个subagent继续检查网络源报错和degrade问题，现在又产生新增了"
+    },
+    {
+      "hash": "7fc659d61a25d37572327ba94502581b4879a66497fd93e944c28b7383c789af",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-e2f0-7422-b933-d29e62741dfb",
+      "timestamp": null,
+      "verbatim": "当前还在 Plan Mode，我不能直接改文件、改配置、重启服务或触发补数任务。等切到执行模式后，我会按这个顺序实施："
+    },
+    {
+      "hash": "6dee52230ed5803832632bc6fc87bf50ea1d8f5cb6ed5ca52ce8e91327b06813",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-e2f0-7422-b933-d29e62741dfb",
+      "timestamp": null,
+      "verbatim": "1. 先处理 `Signals` 数据源稳定性：降低 `stock_daily` 并发、修 provider cooldown 跨 shard 共享、跳过重复 Tencent fallback、把 cooldown 状态改成 deferred 而不是批量 degraded。\n2. 再处理 chart 后端信号诊断：给 symbol API 增加 `custom_signal_count / hidden_reasons / available_custom_signal_freqs / related_custom_signals`。\n3. 再处理 Electron chart 展示：自定义信号独立 marker 样式、其它周期入口、指数/板块无直接信号时的明确说明。\n4. 最后跑 targeted tests 和本地 UI 验证，确认 `SZ.002812` 有自定义信号 marker，指数 chart 不再误导为空。"
+    },
+    {
+      "hash": "bb6448788d42bbc36ab8a9f103bf8a012ef05fd89cf4b6028bff3353ba33469d",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd455-00ff-7b01-b6b6-1e2e0e3dae27",
+      "timestamp": null,
+      "verbatim": "2、你需要检查为什么别的指数数据或者个股数据chart上面也没有标识我的自定义信号 3、你需要优化chart上面信号的展示方式 这两个问题你没有涵盖"
+    },
+    {
+      "hash": "a9fc4085bc79b104db59a738a5be93efbf48b6e9bb991056153bb489f59de07f",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208",
+      "timestamp": null,
+      "verbatim": "1、你需要分析网络源被degrade或者报错的原因 2、你需要检查为什么别的指数数据或者个股数据chart上面也没有标识我的自定义信号 3、你需要优化chart上面信号的展示方式"
+    },
+    {
+      "hash": "4e5792aea9e0103b83e330fdc0499d7ac9c84f0a108a65e5de5dc8407d665963",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208",
+      "timestamp": null,
+      "verbatim": "后 12 个 shard 在 provider cooling-down 状态下继续跑这个为什么会被cool down，你开个subagent研究一下，看看能不能恢复"
+    },
+    {
+      "hash": "6f27e5e88ad2631e849a430c8fc704b58f3b131180f0e3140a0668a62e308b23",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208",
+      "timestamp": null,
+      "verbatim": "先结论：能恢复，而且已经在恢复。`cool down` 是内部保护机制被触发，不是 12 个 shard 永久坏了。"
+    },
+    {
+      "hash": "ea72e6b55890362349612d0705d6b892e55e41a251c361f82c50c75dd09a1e87",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208",
+      "timestamp": null,
+      "verbatim": "1. `stock_daily` 被拆成 16 个 shard，postmarket 同时跑 4 个。\n2. 前一波 `shard_04-shard_07` 跑到 21:22 左右时，Eastmoney/Sina/Tencent 出现 `RemoteDisconnected`、`SSLError`、连接中断。\n3. `provider_limits.py` 把这些错误识别成高风险错误，然后给 provider 设置 `120-300s` cooldown。\n4. 后续 `shard_08-shard_15` 启动时没有真正打外部源，而是直接命中内部 cooldown，所以 0.2-0.3 秒就失败，表现成大量 `provider_cooling_down`。\n5. 到 21:32 自动重试后，`shard_04-shard_07` 已成功，`shard_08-shard_11` 正在无错误恢复，`shard_12-shard_15` 等当前 4 个跑完后继续调度。"
+    },
+    {
+      "hash": "06e172ecc25afeb638dc1f6d0b1efd11aff6e10f3731cec7a937cf98e0e5053c",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd44e-6bce-7111-92a3-98cfd2b12208",
+      "timestamp": null,
+      "verbatim": "当前不建议手动清 cooldown，也不建议重启。让 postmarket 自动跑完最稳。真正要修的是后续策略：把 `stock_daily` 并发从 4 降到 1 或 2，或者把 16 shard 降到 8，并避免 Tencent primary 失败后 fallback 又重复打 Tencent。这样不会再把正常降级误放大成 12 个 shard 报错。"
+    },
+    {
+      "hash": "34d7280e91540ad4e9b4bc40a42bb6c92ce37233e7803160cea671334b12ea87",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd447-5b12-7500-87a3-a649895df2dc",
+      "timestamp": null,
+      "verbatim": "## 1a36e35e-708a-4b9a-96a1-9fdc232cf60d.png: /Users/zhangqilong/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/zhangqilong773619_6f6c/temp/InputTemp/1a36e35e-708a-4b9a-96a1-9fdc232cf60d.png"
+    },
+    {
+      "hash": "ce048cac286b1044a378e36861a4a91d83c13e728fe67d9049ef52de7b502f99",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019dd446-9183-7140-95b5-5a33beb68fd4#turn:019dd447-5b12-7500-87a3-a649895df2dc",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n1、检查一下网络数据源日志，为什么有16个报错，提出优化方案   2、检查目前chart的指标情况，为什么没有我自定义的回测信号指标，还有优化一下信号显示在chart上面的样式"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

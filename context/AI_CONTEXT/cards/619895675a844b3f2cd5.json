@@ -1,0 +1,101 @@
+{
+  "id": "019d86dc-4ce9-7742-80be-ef9ef5e9c048",
+  "title": "解释 environment_missing",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019d86dc-4ce9-7742-80be-ef9ef5e9c048",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "32d55d8657946227fa3a06bc854b31e9bb467c7d2afaef6052c875c4e2f5a602",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#first-request",
+      "timestamp": null,
+      "verbatim": "我从微信收到这个Longclaw Runtime 摘要\n时间: 2026-04-13T05:39:53.626346-07:00\n整体: 当前有 6 个待处理问题，最高风险 ⚠️\n主备: codex (primary=codex, backup=claude)\n送达模式: summary=background_summary, conversation=reply, reliable_local\n最值得盯: knowledge-base/environment_missing: Missing path: CLAUDE.md\n阻塞/待审阅: 3/2\n微信任务队列: pending=0, running=0\n下一步: knowledge-base: 人工审阅 environment_missing  是什么意思，可以解决么？需要我做什么？"
+    },
+    {
+      "hash": "268e8dcf2411f505f5a126f3a12629308b00c55718f26193b09cf09571b40066",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#recent",
+      "timestamp": null,
+      "verbatim": "帮我评估一下，我怎么把这个用起来？因为知识库是需要我在微信里面输入的，很难自动loop吧？"
+    },
+    {
+      "hash": "92f9880aeab5268b52fce9e0e30563b0d6123b92cce459e23c9ede7a0ae3d5c1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b",
+      "timestamp": null,
+      "verbatim": "`knowledge-base` 在你这套 Longclaw 里，具体作用是“被 runtime 当成一个可巡检、可检索、可整理的本地知识库项目”。不是抽象概念，是一个被正式注册进 harness 的本地对象，根目录配置为 `/Users/zhangqilong/Desktop/知识库`。"
+    },
+    {
+      "hash": "e09f49d0237c79d198bd09978ecafcc3c836f281f2b0f8a82aa774fc6d1627a8",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b",
+      "timestamp": null,
+      "verbatim": "- 存放知识内容本身  \n  目录设计里至少有 `10 Inbox/WeChat`、`20 Knowledge`、`00 Dashboard`，说明它既接收微信/收件箱笔记，也沉淀整理后的知识，还产出 dashboard 类汇总。\n- 提供知识库工具链  \n  它预期有 `search.py`、`promote.py`、`rebuild_index.py`，分别对应“搜索”“把 inbox 笔记提升为正式知识”“重建索引”。\n- 做知识库质量检查  \n  `lint_notes.py` 和 `eval_notes.py` 说明 runtime 会把它当成一个可评估系统，检查笔记格式、结构、内容质量或规则一致性。\n- 做低风险自动整理  \n  `autofix_notes.py` 和 `autorefactor knowledge-base` 说明系统允许对知识条目做有限、可回滚的结构修复，而不是随便改任何内容。\n- 给 Longclaw Runtime 提供知识面板/输入源  \n  你的 runtime 还有 `00 Dashboard/Longclaw Runtime.md` 这类输出，说明这个知识库很可能也是 Longclaw 状态、周报、知识沉淀的落点之一。"
+    },
+    {
+      "hash": "ab2c84d5ab595495f9ed39b5e43cdb4e9a8f9e235c6b7a8604ea94c8d96863e1",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b",
+      "timestamp": null,
+      "verbatim": "现在的问题不是它“坏了”，而是它“被注册为应该存在，但实际还没初始化完成”。"
+    },
+    {
+      "hash": "af8495ee628943b557d4a7e7e7b8f41d47f5744d23d058ba3a70226b51f9e72b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86e7-67ee-7310-bfe0-f49fc517144b",
+      "timestamp": null,
+      "verbatim": "如果你愿意，我下一条可以继续帮你判断：\n- 这东西对你现在是不是必要\n- 如果不要，最干净的停用方式是什么\n- 如果要，最小可用版本该补哪些文件才够用"
+    },
+    {
+      "hash": "cb8a39057766a2425eedcc3a7d4cd3bc627f2d69b8df3627b90925b6dba71b2f",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976",
+      "timestamp": null,
+      "verbatim": "`Longclaw Runtime` 正在把你登记过的几个本地项目当成“可巡检对象”做健康检查。  \n`knowledge-base/environment_missing` 的意思是：它期望某个本地知识库目录具备一套最小可用环境，但检查时发现缺文件，所以把它标成“需要人工审阅”。"
+    },
+    {
+      "hash": "476d2a9fffe63347951792a6b60c30744a84d42183ce1b84e609da18871250a9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976",
+      "timestamp": null,
+      "verbatim": "- `knowledge-base` 被注册成目录 `/Users/zhangqilong/Desktop/知识库`\n- 这套检查要求它至少存在：\n  - `CLAUDE.md`\n  - `tools/lint_notes.py`\n  - `tools/eval_notes.py`\n  - `tools/autofix_notes.py`\n  - `tools/search.py`\n  - `tools/promote.py`\n  - `tools/rebuild_index.py`\n- 现在这些文件都不存在，不只是 `CLAUDE.md`"
+    },
+    {
+      "hash": "27ddd261b009a27aafc40c8dff4ceb5cd843b2c7c4bb4ee042d6ffc926b8aeda",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976",
+      "timestamp": null,
+      "verbatim": "- 如果你根本没有在维护 `/Users/zhangqilong/Desktop/知识库`，这更像是“陈旧注册项”\n- 如果你本来就想让它成为微信/知识整理的正式知识库，那这是“未初始化项目”"
+    },
+    {
+      "hash": "33d3d112b9dcd7dcc1e14005a0e02fa35a7e376010f20ba1411e5c0138e03285",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976",
+      "timestamp": null,
+      "verbatim": "我建议按最小成本理解：\n这条通知本质上是在提醒你“有一个被系统当真了的知识库项目，其实还没落地完成”。"
+    },
+    {
+      "hash": "0f4608abf678f6c7d626a0337aecdb36189ff2c6a4a585769706248620d79915",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d86dc-4ce9-7742-80be-ef9ef5e9c048#turn:019d86dc-8f85-7f91-976d-1d458f0d3976",
+      "timestamp": null,
+      "verbatim": "如果你愿意，我下一步可以直接给你一个决策完整的处理方案，分成两条：\n- `保留 knowledge-base 并补齐`\n- `停用 knowledge-base 并清理告警`"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

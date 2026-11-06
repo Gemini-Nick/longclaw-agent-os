@@ -1,0 +1,77 @@
+{
+  "id": "019e7644-94c9-76f1-85e1-12a542fc343f",
+  "title": "同步日期标签和回测区间",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e7644-94c9-76f1-85e1-12a542fc343f",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "b57c9810d63a349f9871dd42d78e14745c8feff605e76252d2a1fe9039bce5d1",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#first-request",
+      "timestamp": null,
+      "verbatim": "1、日期标签没有跟策略的日期区间进行同步  2、回测的时候默认全部，点击标签我希望弹出详细的k线图和对应标签，目前是全局时间区间不方便阅读查看。同时，右侧的交易/信号都需要对应到时间区间"
+    },
+    {
+      "hash": "beb1c202593437bb7653ca2b21c11f77d4bd96b90e95843b538998b87e0767e0",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-29 下午5.24.22.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_qtmwW0/截屏2026-05-29 下午5.24.22.png"
+    },
+    {
+      "hash": "82c00dafc6cc74a0774691bf46d3de4d7ab1c217746bde8fae064f41163a904e",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "<appshot app=\"隆小侠 Agent OS\" bundle-identifier=\"com.zhangqilong.longclaw.agentos\" window-title=\"隆小侠 Agent OS\" image=\"隆小侠 Agent OS Appshot 2026-05-30T00-25-09.859Z.png\">\nWindow: \"隆小侠 Agent OS\", App: 隆小侠 Agent OS.\n标准窗口 隆小侠 Agent OS\n\tcontainer (settable, string) 隆小侠 Agent OS\n\t\tcontainer (settable, string)\n\t\t\tHTML 内容 Longclaw Trading Desk, URL: file:///Applications/%E9%9A%86%E5%B0%8F%E4%BE%A0%20Agent%20OS.app/Contents/Resources/app.asar/electron/dist/renderer/index.html\n\t\t\t\tcontainer\n\t\t\t\t\t文本 LC\n\t\t\t\t\t文本 隆小侠\n\t\t\t\t\t文本 个人金融交易台\n\t\t\t\t\tcontainer Primary navigation\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 策\n\t\t\t\t\t\t\t文本 策略\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 因\n\t\t\t\t\t\t\t文本 AI因子工厂\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 测\n\t\t\t\t\t\t\t文本 回测\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 执\n\t\t\t\t\t\t\t文本 执行\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 微\n\t\t\t\t\t\t\t文本 微信\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 插\n\t\t\t\t\t\t\t文本 插件\n\t\t\t\t\tcontainer 交易台状态\n\t\t\t\t\t\t文本 运行\n\t\t\t\t\t\t文本 数据\n\t\t\t\t\t\t文本 微信\n\t\t\t\t\tcontainer (showing 0-139 of 140 items)\n\t\t\t\t\t\t文本 标的篮子\n\t\t\t\t\t\t文本栏 (settable, string) Description: 标的代码列表, Value: 300394\n\t\t\t\t\t\t弹出式按钮 (settable, string) 日线\n\t\t\t\t\t\t\t(selected) 日线\n\t\t\t\t\t\t弹出式按钮 (settable, string) 全部信号\n\t\t\t\t\t\t\t(selected) 全部信号\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t文本 SZ.300394 · 116信号 · 24笔交易 · 300394 daily MongoDB bars\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t文本 搜索\n\t\t\t\t\t\t文本栏 (settable, string) 搜索产业链、板块或标的\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t弹出式按钮 Description: 匹配来源, Value: 先搜索来源\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 动态组合 8 个 · 自建产业链图谱 样本来源\n\t\t\t\t\t\t切换按钮\n\t\t\t\t\t\t切换按钮\n\t\t\t\t\t\t切换按钮\n\t\t\t\t\t\t切换按钮\n\t\t\t\t\t\t切换按钮\n\t\t\t\t\t\t切换按钮\n\t\t\t\t\t\t文本 已选池\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t\t文本 300394 天孚通信\n\t\t\t\t\t\t\t文本  ×\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 模拟参数 止损%\n\t\t\t\t\t\t文本栏 (settable, string) 止损%, Value: 5\n\t\t\t\t\t\t文本 移动止盈%\n\t\t\t\t\t\t文本栏 (settable, string) 移动止盈%, Value: 50\n\t\t\t\t\t\t文本 持仓日\n\t\t\t\t\t\t文本栏 (settable, string) 持仓日, Value: 20\n\t\t\t\t\t\t文本 滑点%\n\t\t\t\t\t\t文本栏 (settable, string) 滑点%, Value: 0.1\n\t\t\t\t\t\t文本 固定止盈%\n\t\t\t\t\t\t文本栏 (settable, string) 固定止盈%, Value: 0\n\t\t\t\t\t\t文本 均线离场\n\t\t\t\t\t\t文本栏 (settable, string) 均线离场, Value: 0\n\t\t\t\t\t\t文本 利润回撤%\n\t\t\t\t\t\t文本栏 (settable, string) 利润回撤%, Value: 0\n\t\t\t\t\t\t文本 ATR周期\n\t\t\t\t\t\t文本栏 (settable, string) ATR周期, Value: 0\n\t\t\t\t\t\t文本 ATR倍数\n\t\t\t\t\t\t文本栏 (settable, string) ATR倍数, Value: 2.0\n\t\t\t\t\t\t文本 日期标签\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 日线 · 300394 DAILY MONGODB BARS 300394 天孚通信 300394 daily MongoDB bars 最新 数据源: 300394 daily MongoDB bars 已就绪 截至 2026-05-29 · 500根K线 · 最新 收益 +15.15% 回撤 -18.16% 胜率 +50.00% 成交 24 夏普 1.64 超额 -510.43%\n\t\t\t\t\t\tcontainer\n\t\t\t\t\t\ttext 策略研发判定 收益 +15.15% · 回撤 -18.16% · 超额 -510.43% 谨慎推进 研发判断优先看样本厚度、回撤、超额收益和数据健康；单票好看但超额为负时不能直接升级为策略。 盘中观察 116个信号 盘后验证 24笔成交 研发推进 先修约束 收益 +15.15% 回撤 -18.16% 胜率 +50.00% 成交 24 Sharpe 1.64 超额 -510.43% 未跑赢基准 -510.43% 数据源: 300394 daily MongoDB bars\n\t\t\t\t\t\t内容列表\n\t\t\t\t\t\t\t文本 把同一主线强势股一起回测，确认是不是选股弱于基准。\n\t\t\t\t\t\t\t文本 进入参数扫描，检查收益是否对单一参数过敏。\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\t按钮\n\t\t\t\t\t\ttext 绩效总览 绩效 总收益 +15.15% 基准收益 +525.58% 超额收益 -510.43% 年化收益 +7.37% 风险 最大回撤 +18.16% 波动率 +81.06% Sharpe 1.64 Calmar 0.41 交易质量 成交 24 胜率 +50.00% 盈亏比 1.41 期望 +0.74% 平均盈利 +5.07% 平均亏损 -3.60% 执行体验 平均持仓 1.6D 连续亏损 3 资金暴露 +7.60% 信号质量 信号 116 已评估 113 T+5 +3.10% T+10 +8.52% MFE +31.03% MAE -9.90%"
+    },
+    {
+      "hash": "32fb41c71d93995a4624a614c2e2dfddaae0a20efb1484b5826c30219c1e994f",
+      "role": "user",
+      "kind": "用户纠正、要求或决定（保留原时点）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n1、日期标签没有跟策略的日期区间进行同步  2、回测的时候默认全部，点击标签我希望弹出详细的k线图和对应标签，目前是全局时间区间不方便阅读查看。同时，右侧的交易/信号都需要对应到时间区间"
+    },
+    {
+      "hash": "afbed3c5cc54214cfc42ab3ba9727f3f77639df1fd280584a04ff038151c9dd9",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "改动在 [BacktestWorkbench.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.tsx)：日期标签现在只显示当前回测 K 线区间内的事件；默认是“全部”。点击事件标签后，会切到事件前 30 天到后 60 天的详情窗口，主 K 线、图上事件标记、右侧信号表和交易表都会同步到这个时间区间。"
+    },
+    {
+      "hash": "0accd7f803e13d21d4ffda50477f721e54e475f91b377086371278624f48de18",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "补了测试在 [BacktestWorkbench.test.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/BacktestWorkbench.test.tsx)，覆盖标签区间过滤和信号/交易联动过滤。"
+    },
+    {
+      "hash": "19ba100092a47824bd7993c4a63484a26339c2cb9599167dded122595dc226db",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "- `npm test -- --run electron/src/renderer/workspaces/BacktestWorkbench.test.tsx`\n- `npm run lint`\n- `npm run build:electron`\n- `npm run electron:install:mac`\n- 已重启 `隆小侠 Agent OS`，安装包路径是 `/Applications/隆小侠 Agent OS.app`"
+    },
+    {
+      "hash": "fc5cde50596505b4feb706aa2b3fbb38d0c640bfdcd3b6eac279ba2dcab54c0e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e7644-94c9-76f1-85e1-12a542fc343f#recent",
+      "timestamp": null,
+      "verbatim": "注意：当前工作树里还有 `src/services/longclawControlPlane/client.ts` 和 `client.test.ts` 的改动，不属于我这次回测标签改动，我保留未动。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

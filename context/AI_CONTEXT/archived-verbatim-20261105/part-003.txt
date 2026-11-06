@@ -1,0 +1,715 @@
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `manifest` 预声明边界  
+   `openclaw.plugin.json` 只声明静态合同：身份、配置 schema、激活提示、拥有的 channel/provider、可选 skills 根目录。文档明确说 runtime 行为不该写在这里，见 [manifest.md](/tmp/codex-openclaw-research/openclaw/docs/plugins/manifest.md:30) 和 [architecture.md](/tmp/codex-openclaw-research/openclaw/docs/plugins/architecture.md:25)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `activation` 激活边界  
+   真正是否激活一个 plugin，先看 manifest 里的 trigger 和 contracts，再决定要不要加载 runtime。也就是说它先做“控制面判定”，再做“运行时导入”，见 [activation-planner.ts](/tmp/codex-openclaw-research/openclaw/src/plugins/activation-planner.ts:17) 和 [manifest-registry.ts](/tmp/codex-openclaw-research/openclaw/src/plugins/manifest-registry.ts:320)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. `skill` 指令边界  
+   `skill` 在 openclaw 里是说明书/指令包，不是可执行能力。它会从 workspace、`~/.agents/skills`、plugin skill roots 等多个目录加载，但只是进入 skill catalog，模型按需再读 `SKILL.md`，见 [skills.md](/tmp/codex-openclaw-research/openclaw/docs/tools/skills.md:15) 和 [workspace.ts](/tmp/codex-openclaw-research/openclaw/src/agents/skills/workspace.ts:720)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+4. `tool` 可执行边界  
+   真正能干活的是 `tool`，而且是每次 run 动态算出来的 effective toolset。它会按 session、agent、provider、group、sandbox 多层 policy 过滤，所以工具权限是运行时算出来的，不是 skill 直接带执行权，见 [tools/index.md](/tmp/codex-openclaw-research/openclaw/docs/tools/index.md:12) 和 [tool-policy-pipeline.ts](/tmp/codex-openclaw-research/openclaw/src/agents/tool-policy-pipeline.ts:39)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+5. `session/run/task` 工作边界  
+   普通聊天是 `session-first`，正式结构化工作才进 `run/task`。普通 chat 走 session transcript；ACP、subagent、cron、CLI agent 才会创建 task ledger，见 [session.md](/tmp/codex-openclaw-research/openclaw/docs/concepts/session.md:11), [chat.ts](/tmp/codex-openclaw-research/openclaw/src/gateway/server-methods/chat.ts:3), [tasks.md](/tmp/codex-openclaw-research/openclaw/docs/automation/tasks.md:14), [agent.ts](/tmp/codex-openclaw-research/openclaw/src/gateway/server-methods/agent.ts:229)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `openclaw` 支持“普通聊天”和“正式工作对象”分层，不支持把它们揉成一个入口语义。
+- `skill/plugin/tool` 是能力层，不是产品级工作类型。
+- 如果 Longclaw 要保留 `pack`，它应该放在 **官方工作编排层**，而不是降成 direct-agent 的能力包。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 微信普通文本 -> `direct local session`
+- `@skill/@plugin` -> 只是 capability hint
+- `@pack ...` -> 才是 Longclaw 的 official work envelope，必须 `Hermes-first`
+- Electron `local/cloud` -> 继续 `Hermes-first`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daffa-7ad4-7ee2-8fc2-4a126531e109
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+一句话压缩：**OpenClaw 的答案不是“pack 怎么加载”，而是“pack 不该放在能力加载层”。** 它把“能力加载”和“正式工作对象”切得比 Hermes 还硬，这反而支持你把 `pack` 留在 Longclaw 产品层。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我觉得你思路不错，但是你在多开subagent去调研一下https://github.com/NousResearch/hermes-agent最新的hermes项目，看看他们是如何定义pack这种级别的能力的，然后返回主线程来做为最终决策
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论先说：**不要把 `pack` 按最新 Hermes 的语义来设计。**
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+最新 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 在我核到的 `HEAD`，`c6974043eff246274a8079466a3a4d22ab13ee6c`，**没有把 `pack` 做成一等产品对象**。主线程加 2 个 subagent 的结果是一致的：
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- Hermes 的一等能力分层是 `toolset / skill / plugin`
+- `toolset` 才是最接近“能力打包”的概念，不是 `pack`
+- `skill` 是按需注入的指令/知识包，不是运行时工作类型
+- `plugin` 是扩展包，可以加 tools/hooks/commands，也可以顺带带 namespaced skills
+- 前门是 `CLI / Gateway / ACP / API Server`
+- 普通聊天是 `session` 驱动
+- 官方/结构化工作更接近 `run / job / detached background session`
+- 我没找到 Hermes 里的 first-class `pack_id / packs / launch->pack governance` 这一层
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- [README.md](/tmp/codex-hermes-agent-research/hermes-agent/README.md:67)
+- [website/docs/developer-guide/architecture.md](/tmp/codex-hermes-agent-research/hermes-agent/website/docs/developer-guide/architecture.md:11)
+- [website/docs/developer-guide/gateway-internals.md](/tmp/codex-hermes-agent-research/hermes-agent/website/docs/developer-guide/gateway-internals.md:7)
+- [website/docs/reference/toolsets-reference.md](/tmp/codex-hermes-agent-research/hermes-agent/website/docs/reference/toolsets-reference.md:7)
+- [website/docs/user-guide/features/tools.md](/tmp/codex-hermes-agent-research/hermes-agent/website/docs/user-guide/features/tools.md:7)
+- [website/docs/user-guide/features/skills.md](/tmp/codex-hermes-agent-research/hermes-agent/website/docs/user-guide/features/skills.md:7)
+- [website/docs/user-guide/features/plugins.md](/tmp/codex-hermes-agent-research/hermes-agent/website/docs/user-guide/features/plugins.md:8)
+- [gateway/platforms/api_server.py](/tmp/codex-hermes-agent-research/hermes-agent/gateway/platforms/api_server.py:2259)
+- [cron/jobs.py](/tmp/codex-hermes-agent-research/hermes-agent/cron/jobs.py:389)
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. **`pack` 继续保留为 Longclaw 自己的产品级正式工作语义。**
+   它不是 direct agent 的普通 capability，也不要为了“对齐 Hermes”把它降成 toolset。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. **Hermes 在 Longclaw 里扮演的是 official launch / governed work 的编排层。**
+   这点反而和 Hermes 最新项目的 `run/job/background` 思路一致，普通 chat 和结构化工作是分开的。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+3. **微信触发合同就按这版定：**
+   - 普通文本 -> `direct local agent`
+   - `@pack ...` -> `Hermes-first official launch`
+   - 单独 `@skill/@plugin` -> 不算官方 launch，只算 direct-agent hint
+   - Electron local/cloud -> `always Hermes-first`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+4. **如果以后真要“像 Hermes 一样”给 direct agent 做能力打包，应该引入的是 `toolset` 层，不是拿 `pack` 去做。**
+   也就是：
+   - `pack = governed work type`
+   - `toolset/skill/plugin = execution capability`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daff3-e5c7-7433-82b1-a437e0209726
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+一句话压缩：**Hermes 最新项目证明了“普通聊天”和“官方运行对象”应该分开，但没有证明 Longclaw 应该取消 `pack`。恰恰相反，它说明 `pack` 更应该留在 Longclaw 的产品编排层，而不是塞回 direct agent 能力层。**
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafed-22be-7661-84ff-c995dbfc0eb5
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+微信普通文本：direct agent 
+微信显式官方 launch：Hermes success ，必须要显示指定hermes通道才会走hermes agent
+Electron local/cloud launch：always Hermes-first
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafed-22be-7661-84ff-c995dbfc0eb5
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`@pack` 和 `skill/plugin` 不是同一层，所以 `cc/codex` 没有原生 “load pack mode” 反而是合理的。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafed-22be-7661-84ff-c995dbfc0eb5
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`cc/codex` 原生擅长的是本地执行和能力加载，也就是 `skill/plugin`。  
+`pack` 是 Longclaw 自己的产品级工作语义，决定这是不是一个正式工作类型、归哪个 `pack_id`、进不进 `Runs / Work Items / Packs` 治理链。repo 里 `Packs` 和 `Studio` 本来就是分开的，[README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md:11)；`Studio` 管 `skills / plugins`，`Hermes` 才是 canonical orchestration，[README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md:5)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafed-22be-7661-84ff-c995dbfc0eb5
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `direct agent` 原生只认 `skill/plugin`
+- `Hermes` 原生认 `pack`，并可附带 `skill/plugin`
+- Hermes launch 成功后，再把 `pack + capability hints` 下发给本地 `cc/codex`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafed-22be-7661-84ff-c995dbfc0eb5
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这样 `pack` 不会退化成一段 prompt 模板，也不会出现本地 agent 和 Hermes 各自解释同一个 pack 的分叉。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafed-22be-7661-84ff-c995dbfc0eb5
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 普通微信文本 -> `direct agent`
+- `@pack ...` -> `official Hermes launch`
+- 单独的 `@skill/@plugin` -> 仍算 direct-agent hint，不算官方 launch
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafeb-2f26-7351-893b-6c914c2a8aa3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+微信普通文本算聊天，每次官方launch必须经过hermes，是这样划分么？
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafeb-2f26-7351-893b-6c914c2a8aa3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+对，**产品规则应该这样划分**，但要区分“目标规则”和“当前代码”。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafeb-2f26-7351-893b-6c914c2a8aa3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `微信普通文本 = 聊天`
+  走 WeClaw 直连本地绑定 agent，Hermes 只做异步 `ingress` 记账，不该卡在回复链路上。Hermes 在这里不是中间 agent。
+- `官方 launch = 必须先过 Hermes`
+  只有 Hermes 成功创建 canonical `LaunchIntent -> Task / Run / Work Item`，这件事才算 Longclaw 里的正式工作。
+- `Electron local/cloud = 都是 Hermes-first`
+  这个现在已经是这样，[main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:1876) 先 `launch(intent)`，再决定本地或云端执行。
+- `WeChat 官方 launch = 也应该 Hermes-first，但执行目标只能是 local`
+  这是你刚刚定下的产品边界。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafeb-2f26-7351-893b-6c914c2a8aa3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+关键补一句：**当前 WeClaw 代码还没把这条边界硬执行**。  
+现在 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:704) 的 `reportAgentOSLaunch()` 是异步 best-effort，上报失败也不会阻止后面的直连 agent 执行；所以今天它更像“边聊边尝试记账”，还不是“官方 launch 必须 Hermes 成功才成立”。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dafeb-2f26-7351-893b-6c914c2a8aa3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 微信普通文本：`direct agent + async ingress`
+2. 微信显式官方 launch：`Hermes success or it is not an official launch`
+3. Electron local/cloud launch：`always Hermes-first`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daed2-df85-7682-9ed2-8665b3a30341
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还有一个疑问，需不需要每次都经过hermes。目前的微信执行策略是直接进入到claude code或者codex这种通用agent，有必要中间假设一道agent么？包括本地local work或者云端沙盒，都是否有必要？
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daec5-7aa2-78b1-bcb7-c04ec4ffa6ad
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+[$plan-eng-review](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-plan-eng-review/SKILL.md) 继续帮我明确这三种模式，我应该怎么锁定成一个工程计划
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb5-b64a-7c63-84a4-e177be216fe0
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+[$plan-ceo-review](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-plan-ceo-review/SKILL.md) 帮我设计一个三种模式的架构图，我需要具体走了哪条路径和函数和系统，这样我才能更好做产品决策
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb5-b64a-7c63-84a4-e177be216fe0
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+决策基线已经定下来了，文档在 [zhangqilong-main-design-20260420-233227.md](</Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-design-20260420-233227.md>)。  
+核心结论只有一句：**产品上不要再把 `local / cloud_sandbox / weclaw_dispatch` 当三个平级产品看，而要按“两轴模型”理解，`local vs cloud` 是执行语义，`weclaw` 是入口表面。**
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb5-b64a-7c63-84a4-e177be216fe0
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这份文档现在已经包含：
+- 三个当前支持组合，加上第四个未支持组合 `weclaw + cloud_runtime`
+- 从 Electron / WeClaw 到 Hermes 再到 runtime 的系统图
+- 每条真实函数路径，包含 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:2969), [preload.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/preload.ts:59), [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:1876), [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go:50)
+- 决策镜头：`weclaw_dispatch` 应不应该继续是一等 mode，还是降为入口能力
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb5-b64a-7c63-84a4-e177be216fe0
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我按你的要求跑了 subagent review loop。3 轮冷审，一共抓到 15 个问题，修掉了大部分结构问题，最后把剩余 5 个 reviewer concerns 固化进文档尾部，而不是假装已经完美。质量分还在 `7/10`，原因不是核心判断错了，而是这份稿子现在同时带一点“实施附录”的味道。这个状态我认为是可以接受的，适合拿来做产品决策，不适合直接当最终工程 spec。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb5-b64a-7c63-84a4-e177be216fe0
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你下一步最该跑的是 `/plan-eng-review`。  
+原因很直接，这份稿子已经把“该怎么理解模式”定住了，下一步该把“怎么迁移、哪层拒绝 unsupported combo、哪些 `work_mode` 读者要改”锁成工程计划。  
+如果你准备顺手改 Home 的 mode picker 文案或交互，再补一个 `/plan-design-review`。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+什么叫显示pack，显式 @pack ...：同时有 ingress 和 launch，且 work_mode=weclaw_dispatch？什么叫普通微信聊天，你是怎么区分我在微信端口的一个消息或者文本或者附件是否进入hermes
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我前一句说得不够严谨。更准确地说，`进入 Hermes` 现在有两层，不是一层：
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. `ingress`
+   走 `/agent-os/adapters/weclaw/ingest`
+   这表示“微信里来了一个事件，先记到 Hermes 里”。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. `launch`
+   走 `/agent-os/launches`
+   这表示“把这条微信消息当成一次正式任务启动”。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `@pack <名字>`
+- `@skill <名字>`
+- `@plugin <名字>`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+判断逻辑在 [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go:254)。  
+比如这句会被识别成显式 launch 提示：
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```text
+@pack signals.review 请给我一份盘前摘要
+```
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```text
+请先 @pack signals.review 再用 @skill morning_brief
+```
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `work_mode = weclaw_dispatch`
+- `launch_surface = weclaw`
+- `interaction_surface = weclaw`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+见 [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go:159) 和测试 [agent_os_test.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os_test.go:61)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 没有 `@pack/@skill/@plugin`
+- 只是普通文本，比如“帮我看一下这个”“今天怎么走”“/runtime”
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+不是说它完全不进 Hermes。按现在代码，很多普通文本还是会进 `ingress`。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+因为 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:443) 在真正分支处理前，先做了一次：
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `h.reportAgentOSIngress(msg, text)`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+只要这条微信消息最终能提取出非空 `text`，就会尝试发 `ingress`。  
+真正的 `launch` 则另外看策略和显式标记，见 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:704)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `agent_os_launch_policy = null`
+- `default_launch_pack = null`
+- `agent_input_policy = "canonical"`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+而配置默认值里 `agent_os_launch_policy` 是 `off`，见 [config.go](/Users/zhangqilong/github代码仓库/weclaw/config/config.go:95) 和 [config.go](/Users/zhangqilong/github代码仓库/weclaw/config/config.go:155)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 文本消息：通常会尝试 `ingress`
+- 自动 `launch`：默认不会
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+也就是说，当前 live 状态下，微信消息“进 Hermes”主要是指进 `ingress`，不是自动变成 task launch。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 纯文本
+  - 有非空文本就会 `ingress`
+  - 只有当策略允许，并且有显式 `@pack/@skill/@plugin` 或配置了 `default_launch_pack`，才会 `launch`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 文本 + 附件
+  - 也会 `ingress`
+  - `ingress` payload 里会带 `attachments.kind`，见 [agent_os.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/agent_os.go:76)
+  - 是否 `launch` 仍然只看文本里的 launch 标记和策略，不看附件本身
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 纯图片 / 纯文件 / 纯视频
+  - 当前不会进 Hermes
+  - 现在的代码是先本地保存，然后直接走 WeClaw 默认 agent 处理或只回保存结果
+  - 图/文件在 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:424)
+  - 视频在 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:405)
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 语音
+  - 如果 WeChat 给了转写文本，转写会当作 `text`，所以会 `ingress`
+  - 如果没有可用转写，只是保存了音频文件，目前是本地 prompt 给默认 agent，不会进 Hermes
+  - 见 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:411) 和 [handler.go](/Users/zhangqilong/github代码仓库/weclaw/messaging/handler.go:433)
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 能抽出非空文本 -> 进 `ingress`
+- 文本里有显式 `@pack/@skill/@plugin`，并且 launch policy 允许 -> 再进 `launch`
+- 纯附件没有文本 -> 通常不进 Hermes，只在 WeClaw 本地处理
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daeb3-9e9a-79a2-96e7-166693844cd3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以直接给你画一版“微信消息 -> ingress / launch / 仅本地处理”的决策表，把现在这套边界整理成你能直接改的产品规则。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019daea0-a484-7b01-aeda-f0da327f95e8
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+[$autoplan](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-autoplan/SKILL.md) 如果我提供一个本地url的api接口，云端沙盒vps、以及微信输入。这三种模式都可以模拟跑通么？
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+## Longclaw Electron 下一阶段优化目标
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### Summary
+- 下一阶段不要再优先做页面样式微调，重点转到“发起链路可靠性 + 回归兜底”。
+- 当前 UI 误导问题已经修复，后续目标应分成两条线并行推进：一条是启动前健康探针和错误可解释性，一条是把这次手工回归变成自动化测试。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### Key Changes
+- 用现有 `runtime_status` 字段做发起前预检，不新增外部协议。
+  直接复用 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:764) 采集的 `longclaw_core_connected`、`longclaw_core_base_url`、`local_runtime_available`、`local_runtime_api_url`、`stack_env_path`，在进入任务页、切换模式、点击发起前各刷新一次，避免状态陈旧导致按钮看起来可发起但实际报 transport error。
+- 把 `launch:submit` 的底层网络错误改成可执行的运行时提示。
+  对 `fetch failed`、`ECONNREFUSED` 这类错误做分类，直接告诉用户“控制面地址是什么、当前没连通、应该启动哪个服务或检查哪个 env 文件”，而不是只抛原始异常。
+- 为这次 CTA 回归补 renderer 自动化测试。
+  新增覆盖 `selectedModeNotice -> launchDisabled`、disabled primary 样式、`aria-describedby`、`Cmd/Ctrl+Enter` 禁止提交且复用 disabled reason 的测试，锁住 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:2357) 这条 gating 逻辑。
+- 在环境恢复后做一次真正的闭环验证。
+  按 [VALIDATION_WECLAW_TO_CLIENT.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/VALIDATION_WECLAW_TO_CLIENT.md:100) 的流程，补齐 `Hermes /agent-os/overview`、`/agent-os/tasks?limit=5`、Electron 首页/任务页截图、WeClaw 日志证据，确认不是“UI 通了、后面全断”。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### Test Plan
+- 保留 `npm run build:electron` 作为最小构建回归。
+- 新增 renderer/Vitest 用例，至少覆盖：
+  local 模式不可用时 CTA 明确 disabled；
+  disabled reason 同时出现在页面提示和键盘提交反馈；
+  cloud/weclaw 模式在控制面断开时不会进入实际 launch。
+- 手工回归继续保留一条 Computer Use 路径：
+  `任务 -> 本机处理 -> 输入草稿 -> Cmd/Ctrl+Enter -> 清空草稿 -> 云端执行`。
+- 环境恢复后补一条真实 launch 路径：
+  `curl /agent-os/overview` 成功，Electron 发起成功，任务列表可见新增 task/run/work item。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### Interfaces
+- 不做新的外部 API 或 schema 设计。
+- 优先复用现有 renderer 已能读取的 `runtime_status` 摘要；新增内容只允许是内部 helper 或测试夹具，不扩散协议面。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### Assumptions
+- `launchDisabled` 的业务规则保持不变，不放宽本机模式的可用性判断。
+- `LONGCLAW_AGENT_OS_BASE_URL` 继续由 `~/.longclaw/runtime-v2/stack.env` 提供；当前 `127.0.0.1:8642` 不通属于环境问题，下一阶段只把它暴露得更清楚。
+- 当前 3 个 renderer 修改先视为下一阶段的基线，不和后续 runtime 联调改动混在一起。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论：这轮把“发起链路可靠性 + 回归兜底”真正落下来了。现在 `runtime_status` 会基于真实控制面探测更新，云端模式在 `127.0.0.1:8642` 不通时会直接显示不可用并保持 CTA disabled，不再等用户输入后掉进 `fetch failed`。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+改动在 [main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:764)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:960)、[TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:182) 和新增的 [taskLaunchState.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/taskLaunchState.test.ts:1)。核心点是：
+- `collectRuntimeStatus()` 不再把本地 fallback overview 误判成 “Longclaw Core 已连接”，而是直接 probe `/agent-os/overview`。
+- `submitLaunch()` 现在会先刷新一次 substrate/runtime 状态，再决定能不能发起；云端/微信接力在控制面断开时会直接被 gating。
+- transport error 会被格式化成可执行提示，带出 control plane base URL 和 `~/.longclaw/runtime-v2/stack.env` 检查点。
+- 补了 6 个 Vitest 用例，锁住 `selectedModeNotice -> launchDisabled`、disabled primary 样式、`aria-describedby`、`Cmd/Ctrl+Enter` 禁提交流程，以及控制面断开时的 gating/错误提示。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证结果：
+- `npm test` 通过，`5` 个 test files、`18` 个 tests 全绿。
+- `npm run build:electron` 通过。
+- Computer Use 实测 Electron：切到 `云端执行` 后，即使输入“调查这家公司”，页面仍显示 `云端执行需要先连接 Longclaw Core。`，`发起云端任务` 保持 disabled，没有再进入真实提交路径。
+- 当前环境下没法把“本机 runtime 可用但 core 不通”的交互错误提示完整点出来，因为本机 seat 本身就不可用；这条分支我用单测锁住了，但没做 live 演示。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae95-4292-7be3-806c-07e2416d17b3
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前工作树里还保留着上一轮 CTA 样式修复的修改；这轮新增的是 runtime 探测、发起前预检和测试兜底。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae90-5188-7310-bbf1-b185a56600bd
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+[$qa](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-qa/SKILL.md) 总结一下目前的测试情况，制定下一阶段优化目标
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dae90-5188-7310-bbf1-b185a56600bd
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论：到 `2026-04-20` 这一步，`longclaw-agent-os` 的 Electron QA 已经从“renderer 白屏/按钮假可用”推进到“核心页面稳定，但发起链路还被运行时可用性卡住”。这轮最明确的产品问题已经修掉了，当前最大 blocker 不是 renderer，而是控制面和本地 runtime 没有形成可用闭环。

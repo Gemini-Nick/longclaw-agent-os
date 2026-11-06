@@ -1,0 +1,69 @@
+{
+  "id": "019ef718-e30c-7ae0-8d31-3d095f8921d7",
+  "title": "优化首页全链路更新的懒加载，各个模块都是异步多线程跑满cpu的数据计算和效率利用",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019ef718-e30c-7ae0-8d31-3d095f8921d7",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "9fe9071107dc9981f6e0fe3dc61273f6094f0a8ff8e2ce2102226c896d491b96",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#first-request",
+      "timestamp": null,
+      "verbatim": "优化首页全链路更新的懒加载，各个模块都是异步多线程跑满cpu的数据计算和效率利用"
+    },
+    {
+      "hash": "6fbbd958604542f0b63af8b459d30e04fec3a5d9b77c3531d7ab2ce3f611c775",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#recent",
+      "timestamp": null,
+      "verbatim": "核心改动：\n- Agent OS 打开后默认异步触发 `pack:signals:prewarm`，不阻塞首屏。\n- 首页/策略页刷新拆成“关键路径 + 后台任务”，先显示可用状态，再后台补齐 runs/work items/tasks/capability。\n- Signals dashboard 的独立模块改为并发线程执行。\n- `/api/workbench/shell` 冷启动 cache miss 现在直接返回轻量 `building` payload，不再同步读 engine status 或 DB stock pool，后台再填充完整数据。"
+    },
+    {
+      "hash": "c97fbfb433a2de3aa4888ece2211b6ddda4cd2beb6e1871483371980309d2ee5",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#recent",
+      "timestamp": null,
+      "verbatim": "验证结果：\n- 已验证安装版 `/Applications/隆小侠 Agent OS.app`：冷启动 `process=0.064s`，窗口出现 `0.512s`。\n- 安装版 observation 记录到 `signals.prewarm.startup`；当时后台刷新已在跑，所以返回 `refresh_already_running`，这是预期去重。\n- 直接 prewarm 调用 `0.499s`，触发 `refresh_started`。\n- backend 日志确认 `workers=10` 并行刷新。\n- 最终接口耗时：descriptor `0.010s`，cache-status `0.190s`，dashboard `0.096s`，shell `0.091s`。\n- 测试通过：Signals shell 相关测试、`tests/test_domain_pack.py`、`py_compile`、Agent OS client vitest、`npm run lint -- --pretty false`。"
+    },
+    {
+      "hash": "a551b2456321c8542a2ecef1d21c24cbb244a99d5e1dacd40460f96a2fbdce0e",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#turn:019ef719-60cc-70c3-a8d8-1914f1509b48",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n/goal 优化首页全链路更新的懒加载，各个模块都是异步多线程跑满cpu的数据计算和效率利用"
+    },
+    {
+      "hash": "a30b3c259407522cdbd6de6b273d559024efd16ae3cb5e15e7ba23094a9549ee",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#turn:019ef719-60cc-70c3-a8d8-1914f1509b48",
+      "timestamp": null,
+      "verbatim": "改动点：\n- [Signals/signals/domain_pack.py](/Users/zhangqilong/github代码仓库/Signals/signals/domain_pack.py)：`SignalsPack.dashboard()` 改为并发组装策略快照、connector、backtest、pending backlog、cache-status，只保留写入 strategy snapshot run 后再读 recent runs 的必要顺序。\n- [client.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/client.ts)：`getPackDashboard('signals')` 增加 750ms 首屏预算；canonical dashboard 超预算时，用 `/api/pack/cache-status` 先合成轻量 dashboard，让首页先可用，后续轮询再补完整数据。\n- 补了对应回归测试，覆盖 dashboard 模块并发和慢 canonical/快 cache-status 的懒加载路径。"
+    },
+    {
+      "hash": "40107adc88af25239d03dd3ebcfed23209c885d5a5c605de1a9b9ebfeb653d22",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#turn:019ef719-60cc-70c3-a8d8-1914f1509b48",
+      "timestamp": null,
+      "verbatim": "验证：\n- `Signals`: `pytest tests/test_domain_pack.py -q` 通过，25 passed。\n- `longclaw-agent-os`: `npm test -- src/services/longclawControlPlane/client.test.ts` 通过，12 passed；`npm run lint -- --pretty false` 通过。\n- 已重启 Signals web 子进程，runtime 当前 web/postmarket/quote/signal/workbench/board 全部 running。\n- 已执行 `npm run electron:install:mac`，并打开 `/Applications/隆小侠 Agent OS.app` 验证前台窗口和页面渲染。\n- 当前接口：dashboard `0.282s healthy`，shell `0.169s session_ready=true`。"
+    },
+    {
+      "hash": "cc8ff58c2544aa0088765209bbea05100ac31d183e27758851c92a70cd66557d",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019ef718-e30c-7ae0-8d31-3d095f8921d7#turn:019ef719-60cc-70c3-a8d8-1914f1509b48",
+      "timestamp": null,
+      "verbatim": "截图里顶部还有 `行情通道 BLOCKED`，我查了 cache-status：live 低延迟 8/8 OK，BLOCKED 来自外部行情源 cooldown 和一个 postmarket stale blocker，不是本次懒加载改动引入的。Goal 已标记完成，用时约 8 分 42 秒，tokensUsed=205661。"
+    }
+  ],
+  "room": "evidence-20261105-ui-and-packaging"
+}

@@ -1,0 +1,8 @@
+{
+  "wing": "longclaw-agent-os",
+  "rooms": [
+    "archived-evidence-20261105",
+    "evidence-20261105-runtime-and-messaging",
+    "evidence-20261105-ui-and-packaging"
+  ]
+}

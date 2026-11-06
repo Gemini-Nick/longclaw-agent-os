@@ -1,0 +1,727 @@
+
+
+---
+来源：codex:019eede1-b9e4-7343-819e-75cdc881ed1a#turn:019eed3b-94a7-7d30-aff2-bfcb782749f9
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+注意：实机触发后后台断点续跑仍在进行，当前看到 `postmarket:2026-06-18` 在 `market_data` 阶段 running，critical progress 约 `66.67%`。我没有强杀它，避免留下更脏的 running 状态。
+
+
+---
+来源：codex:019eede1-b9e4-7343-819e-75cdc881ed1a#turn:019eed3b-94a7-7d30-aff2-bfcb782749f9
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+Goal 用量：290,332 tokens，约 11 分 37 秒。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```text
+接手 `/Users/zhangqilong/github代码仓库/longclaw-agent-os` 的 Electron 中文 IA 重构，并重新制定一个更稳的开发计划。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+先读：
+- `/Users/zhangqilong/github代码仓库/AGENTS.md`
+- `/Users/zhangqilong/github代码仓库/agent-collab-ops/AGENTS.md`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+背景：
+我正在把 Longclaw Electron 从旧 IA 迁到新 IA：
+- 主导航：`策略 / 回测 / 执行`
+- 次级固定区：`微信 / 工厂`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已有代码改动已经存在于 worktree，请先检查当前实现，不要假设是干净仓库，也不要回滚 unrelated changes。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你要做的事：
+1. 先检查当前代码和 git 状态
+2. 基于现状重新制定一个“可执行的工程计划”
+3. 重点回答：
+   - 哪些改动已经做了
+   - 哪些地方实现得还不稳
+   - 下一步最合理的开发顺序是什么
+   - 哪些验证应该先做
+4. 如果你判断当前实现方向有问题，可以直接修正计划，但要基于本地代码证据，不要空谈
+5. 输出要非常直接，先结论后补充
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+硬约束：
+- renderer-first
+- 不改 control-plane schema
+- 不把中文 IA 写进 `work_mode / interaction_surface / runtime_target`
+- 用 `apply_patch` 改文件
+- 先写假设、复现、最小改动和验证
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd35-4186-7611-a43a-45819724ee51
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+不要先长篇 brainstorming。先读代码，再给我新的工程计划。
+```
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我打算新开一个session来继续完善这个工程，你需要给我一段5.5模型的开场提示词来帮助我接力开发
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```text
+继续接力开发 `/Users/zhangqilong/github代码仓库/longclaw-agent-os` 的 Electron 中文 IA 迁移。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+先读并遵守：
+- `/Users/zhangqilong/github代码仓库/AGENTS.md`
+- `/Users/zhangqilong/github代码仓库/agent-collab-ops/AGENTS.md`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+目标：
+把 Longclaw Electron renderer 收敛到新的中文 IA：
+- 主导航：`策略 / 回测 / 执行`
+- 次级固定区：`微信 / 工厂`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经完成的实现：
+1. renderer 顶层 page model 已改成 renderer-only `SurfaceId = strategy | backtest | execution | wechat | factory`
+2. 默认第一页已改成 `策略`
+3. `TaskWorkspace` 已拆出可复用的：
+   - `GlobalLauncher`
+   - `ExecutionConsole`
+4. `PackWorkspace` 已按新 surface 渲染：
+   - `execution` -> due diligence / RPA 控制台
+   - `strategy` -> signals chart/watchlist/buy/sell/light connector summary
+   - `backtest` -> web2 backtest backlog/input/jobs
+   - `factory` -> diagnostics / connector health / deep links
+5. `WeChatWorkspace` 已补：
+   - `linkedWorkItems`
+   - `onOpenLinkedWorkItem`
+   - 微信 linked task/run/work item 会切到 `执行`
+   - 会保留 canonical jump context
+6. 新中文 IA 文案已补到 i18n
+7. 没有改 control-plane schema，也没有把中文 IA 写进 `work_mode / interaction_surface / runtime_target`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+本轮主要改过的文件：
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx`
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx`
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx`
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/WeChatWorkspace.tsx`
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts`
+- `/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/taskLaunchState.test.ts`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已通过验证：
+- `cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm test -- taskLaunchState.test.ts`
+- `cd /Users/zhangqilong/github代码仓库/longclaw-agent-os && npm run build:electron`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前 blocker：
+- Computer Use 在上一条线程里被当前 Codex session 拦住，报：
+  `Computer Use approval denied via MCP elicitation for app 'com.github.Electron'`
+- 新 session 里优先重新尝试 Computer Use，直接对 Electron 做桌面验证
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在应该做的事情：
+1. 先检查 git worktree，注意不要回滚已有脏改动
+2. 读以上文件，确认当前实现状态
+3. 优先做一轮真实 Electron 验证：
+   - 左侧导航是否为 `策略 / 回测 / 执行 / 微信 / 工厂`
+   - 默认打开是否为 `策略`
+   - `策略` 是否不再暴露重型 diagnostics
+   - `回测` 是否只保留 web2 backtest 内容
+   - `执行` 是否同时包含 RPA 控制台和 canonical task/run/work item 治理
+   - `微信` linked task/run/work item 是否跳到 `执行`
+4. 如果发现问题，直接修代码并重新验证
+5. 若桌面验证通过，再补更强的测试，优先覆盖：
+   - 默认页 = `策略`
+   - `微信 -> 执行` jump
+   - `策略 / 回测` 内容边界
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+实现约束：
+- 继续遵守 renderer-first
+- 不改 control-plane schema
+- 用 `apply_patch` 改文件
+- 不要回滚 unrelated changes
+- 先写假设、复现、最小改动和验证
+- 先结论，后补充，少废话
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+请直接开始，不要先做大段计划。先检查代码和当前运行状态，然后继续实现和验证。
+```
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dbd33-8c95-7553-957c-d717ead6c839
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我也可以再给你一版更短的“超精简 handoff prompt”。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba5d-b867-77d0-aaa0-4a57e4c45da7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结果是：
+- 对 `Electron` 调 `Computer Use.get_app_state`
+- 返回：`Computer Use approval denied via MCP elicitation for app 'com.github.Electron'`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba5d-b867-77d0-aaa0-4a57e4c45da7
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这不是我没继续点，而是这条线程当前根本拿不到 Electron 窗口控制权。现在要继续只有一个解法：
+- 重启 Codex Desktop，或开一个新线程
+- 然后你再发一句“继续跑 computer use”
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba58-fa1d-7f40-a2a2-2ae1b12107ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+具体卡点是：
+- 对 `com.github.Electron` 调 `get_app_state`，返回 `Computer Use approval denied via MCP elicitation`
+- 这不是 Longclaw 页面本身报错，而是当前 Codex Desktop 会话把 Computer Use 拦住了
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba58-fa1d-7f40-a2a2-2ae1b12107ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以这轮我只能确认到：
+- Electron 应用我已经拉起来了
+- 代码级验证已通过：`npm test -- taskLaunchState.test.ts` 和 `npm run build:electron`
+- 但桌面级点击验证现在被会话授权挡住，没法继续点导航和跑 `微信 -> 执行`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba58-fa1d-7f40-a2a2-2ae1b12107ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+最短恢复路径：
+1. 确认 Codex Desktop 里 Computer Use 对 Electron 是允许的
+2. 全量重启 Codex Desktop，或者直接开一个新线程
+3. 你回我一句“现在重新测”，我就立刻再用 Computer Use 跑完整验证
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba58-fa1d-7f40-a2a2-2ae1b12107ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你不想先重启，我也可以先继续做一轮非 Computer Use 的补充验证，比如把 `App` 的 surface 路由和 `微信 -> 执行` jump 再补成更强的单测。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba56-7913-7d92-880b-ee178871c37e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我补了两个关键回归面：
+- `策略 / 回测` 的内容边界测试，确保 `策略` 保留 chart/watchlist/signal，`回测` 只保留 web2 backtest backlog/input/jobs，见 [taskLaunchState.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/taskLaunchState.test.ts:160)。
+- `微信 linked work item` 的展示测试，确保微信详情里已经能看到 canonical linked `work item`，见 [taskLaunchState.test.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/taskLaunchState.test.ts:229)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba56-7913-7d92-880b-ee178871c37e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+同时把类型口补齐了，新增了你计划里要求的 `FactoryVM` alias，并保留了 `GlobalLauncher / ExecutionConsole / SignalsStrategyVM / SignalsBacktestVM` 这套 renderer 内部模型，见 [PackWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx:889) 和 [TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:110)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba56-7913-7d92-880b-ee178871c37e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证通过：
+- `npm test -- taskLaunchState.test.ts`，`8` 个测试全部通过
+- `npm run build:electron`，构建通过
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba56-7913-7d92-880b-ee178871c37e
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+未动你原本就脏的 [electron/src/main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:1) 和 [electron/src/renderer/designSystem.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.ts:1)。如果继续，我建议下一步直接做一轮真实 Electron 视觉验收，把左侧导航、`微信 -> 执行` 跳转、`策略/回测` 页面内容再过一遍。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Longclaw 中文 IA 迁移计划 v2
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 主导航锁定为 `策略 / 回测 / 执行`，次级固定区锁定为 `微信 / 工厂`。
+- `策略` 是默认第一页，承接看盘、chart、信号、买卖点解释。
+- `执行` 的定位正式锁定为 **RPA 控制台**。它不是交易执行页，不再作为待定命名处理。
+- `回测` 的定位正式锁定为 **web2 里的回测功能页**。它不再承接广义研究、weekly、复盘工作台。
+- 这次迁移仍然遵守 renderer-first 原则：先改页面 ownership 和 view-model，再翻导航和文案；不改 control-plane 运行时枚举和 schema。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 新增 renderer-side `surfaceId = strategy | backtest | execution | wechat | factory`，只在 Electron renderer 使用，不写入 `work_mode / interaction_surface / runtime_target`。
+- 保留 control-plane 现有 wire shape，包括 `SignalsDashboardSchema`、`DueDiligenceDashboardSchema`、`work_mode`、`interaction_surface`、`runtime_target`，只在 renderer 加 selector / view-model 映射层。
+- 拆分当前 `TaskWorkspace`：
+  - 抽出 `GlobalLauncher`，作为全局发起器。
+  - 抽出 `ExecutionConsole`，作为 `执行` 页的 RPA 控制台和 canonical 治理真源。
+- `执行` 页统一承接：
+  - 现有 `RPA / due_diligence` pack 内容
+  - `task flow`
+  - `continue threads`
+  - `pending queue`
+  - `runs / work items / retry / repair`
+  - 从 `微信`、`策略`、`回测` 进入的正式工作详情
+- `策略` 页只承接 `Signals` 的交易判断面：
+  - `overview`
+  - `buy_candidates`
+  - `sell_warnings`
+  - `chart_context`
+  - 轻量 `connector_health` 摘要 badge
+- `回测` 页只承接 web2 回测相关内容：
+  - `backtest_summary`
+  - `backtest_jobs`
+  - `pending_backlog_preview`
+  - `review_runs` 仅作为回测输入候选队列，不作为广义研究页
+  - 不放 `weekly / research recap / general review workspace`
+- `工厂` 页承接：
+  - `skills`
+  - `plugins`
+  - `MCP`
+  - `runtime posture`
+  - `connector_health` 详细视图
+  - `diagnostics`
+- `微信` 页继续沿用现有 `WeChatWorkspace`，但接口要补上 `linkedWorkItems` 和 execution jump：
+  - linked task/run/work item 点击后进入 `执行` 页
+  - 跳转后保留 canonical session/user/context 可见性
+- 顶层 renderer page model 从旧的 `wechat / tasks / capabilities / rpa / signals` 迁到新 surface model，并保留一小段 alias 兼容期。
+- 文案切换顺序固定为：
+  1. 先改 route 和 ownership
+  2. 再改默认页和导航层级
+  3. 再改 `nav.* / page.* / section.*`
+  4. 最后删除 `Home / Runs / Work Items / Packs / Studio / Signals / RPA` 这批旧顶层词
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 新增 renderer 内部类型：
+  - `SurfaceId`
+  - `ExecutionConsoleVM`
+  - `SignalsStrategyVM`
+  - `SignalsBacktestVM`
+  - `FactoryVM`
+- `TaskWorkspace` 不再作为一级页面组件存在，改为被拆出的 `GlobalLauncher` 和 `ExecutionConsole` 复用。
+- `WeChatWorkspaceProps` 需要扩展：
+  - `linkedWorkItems`
+  - `onOpenLinkedWorkItem`
+  - 可选 canonical jump context
+- `PackWorkspace` 不再直接代表最终用户页，而是过渡实现来源；最终 `Signals` pack 数据通过 view-model 分发给 `策略 / 回测 / 工厂`。
+- 不新增、不修改 control-plane schema 字段，不把中文 IA 名字写进运行时兼容字段。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 冷启动默认进入 `策略`，不再进入旧 `tasks`。
+- 全局发起器可正常发起 local/cloud 工作，即使独立 `tasks` 页被移除。
+- `执行` 页能同时展示 RPA 控制台内容和 canonical `task/run/work item` 治理视图。
+- `执行` 页内的 retry / repair / pending / continue threads 仍能打开正确详情。
+- `策略` 页不再暴露重型 connectors/diagnostics/operator console 内容。
+- `回测` 页只显示 web2 回测相关数据，不再包含 weekly/research recap。
+- `微信` 中 linked task/run/work item 点击后进入 `执行`，且 canonical session/user/context 不丢失。
+- 旧历史记录仍通过原有 `work_mode / interaction_surface / runtime_target` 正常推断，不受新 surface 命名影响。
+- `工厂` 仍能展示 plugin、skill、runtime、diagnostics，且与 `策略` 的轻量摘要分层明确。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `执行` 这个名字按产品决定锁定，不再作为 review 未决项处理。
+- `回测` 的范围按产品决定收窄到 web2 backtest，不再承接广义研究和 weekly。
+- 广义研究、复盘、weekly 不属于这次 IA 迁移的主页面目标；需要时以后再单独设计。
+- `执行` 虽然定位为 RPA 控制台，但仍承担正式工作的 canonical 治理入口，这是该页的工程真源角色。
+- 本次迁移优先级固定：
+  - 先 `surfaceId + view-model`
+  - 再 `GlobalLauncher + ExecutionConsole`
+  - 再 `Signals -> 策略 / 回测`
+  - 再 `微信 -> 执行`
+  - 最后改导航和文案
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经落地到 Electron renderer 了，核心改动在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:41)、[TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:251)、[PackWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx:29)、[WeChatWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/WeChatWorkspace.tsx:99)、[i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts:18)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这版实现了 5 件事：
+- 顶层 page model 已改成 renderer-only `SurfaceId = strategy | backtest | execution | wechat | factory`，冷启动默认进 `策略`，主导航和固定工具区也切成新 IA，[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:41)。
+- `TaskWorkspace` 先拆成了可复用的 `GlobalLauncher` 和 `ExecutionConsole`，旧默认组件保留兼容；`策略` 页挂全局发起器，`执行` 页挂 canonical 治理台，[TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:251)。
+- `PackWorkspace` 不再按 `rpa/signals` 顶层页渲染，而是按 `execution / strategy / backtest / factory` 分发 `due_diligence` 和 `signals` 数据；`策略` 只保留 chart/watchlist/signal/light connector summary，`回测` 只保留 web2 backtest 面，`工厂` 承接 connector diagnostics，[PackWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx:907)。
+- `微信` 现在补了 `linkedWorkItems` 和 execution jump，点击 task/run/work item 会切到 `执行`，并保留 canonical session/user/context 的跳转上下文，[WeChatWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/WeChatWorkspace.tsx:528)、[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:3769)。
+- 新中文 IA 文案已经补齐，旧 key 暂时保留兼容，没有动 control-plane schema，[i18n.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/i18n.ts:18)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证通过了：
+- `npm test -- taskLaunchState.test.ts`
+- `npm run build:electron`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2c-2d5f-73c3-9655-2ecfebabe1ba
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我没有动你工作区里原本就脏的 [electron/src/main.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/main.ts:1) 和 [electron/src/renderer/designSystem.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/designSystem.ts:1)。下一步如果继续，我建议直接补 2 类测试：`默认进入策略` 和 `微信 linked work item -> 执行 jump`。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019dba2a-8dff-7811-8609-50c6213ec117
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1、执行的定位就是RPA控制台  2、回测的定位就是web2里面的回测功能
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+[$plan-eng-review](/Users/zhangqilong/github代码仓库/gstack/.agents/skills/gstack-plan-eng-review/SKILL.md) 继续执行计划
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`/plan-eng-review` 已经跑完，并且我把结果固化了，不只是口头结论。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+产物：
+- 工程评审已写回设计稿：[zhangqilong-main-design-20260421-060219.md](</Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-design-20260421-060219.md>)
+- 测试计划已生成：[zhangqilong-main-eng-review-test-plan-20260421-182906.md](</Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-eng-review-test-plan-20260421-182906.md>)
+- gstack review log 已写入，当前状态是 `issues_open`，`unresolved=2`，`critical_gaps=2`
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `[P1]` 旧 IA 不是文案层，是页面和数据 ownership 合同。当前 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:41) 里的 `page = wechat/tasks/capabilities/rpa/signals` 不能直接改中文名了事。
+- `[P1]` `TaskWorkspace` 还没有完成“全局发起器 + 执行治理真源”的拆分，见 [TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:203)。
+- `[P1]` `微信 -> 执行` 这条 canonical jump 还不存在。现在 linked task/run 只是开详情，不会进入治理页，见 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:3268) 和 [WeChatWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/WeChatWorkspace.tsx:625)。
+- `[P1]` `SignalsDashboardSchema` 可以拆，但必须先做 view-model，不能直接 rename，见 [models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts:835) 和 [PackWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx:852)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 冻结 control-plane 语义，不改 `work_mode / interaction_surface / runtime_target`。
+2. 先加 renderer-side `surfaceId + view-model`。
+3. 先拆 `TaskWorkspace` 成 `GlobalLauncher + ExecutionGovernance`。
+4. 先让 `执行` 真正成为 `runs / work items / retry / repair` 的统一真源。
+5. 再拆 `Signals -> 策略 / 回测 / 工厂`。
+6. 最后才翻导航和中文文案。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还没完全锁死的两个点：
+- `执行` 这个名字可能过于像“交易执行”，但当前页实际上更像自动化治理台。
+- `回测` 这个名字可能过窄，因为你已经想让它承接 review / 复盘 / weekly。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2cc-cccd-71e1-9eee-819e4aa5562d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你现在要我继续，我建议下一步不要再审了，直接进入实现的 **Lane A**：
+- `surfaceId`
+- `GlobalLauncher`
+- `ExecutionGovernance`
+- `微信 -> 执行` jump
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+先结论：**如果只选一个，现在最适合的是 `plan-eng-review`。**  
+不是 `office-hours builder mode`，也不是 `plan-ceo-review` 的 `SCOPE EXPANSION`。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+原因很直接。你现在的核心问题已经不是“这东西值不值得做”，而是**怎么把旧 IA 真正迁到新 IA**。当前卡点都在工程 ownership 上，不在脑暴上，见 [设计稿](</Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-design-20260421-060219.md>) 和 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:41)。现在继续用 builder / scope expansion，只会把问题重新拉回抽象层。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **主模式：`/plan-eng-review`**
+  - 用来锁迁移顺序、ownership、view-model、canonical jump。
+  - 这是你当前最缺的。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **辅助模式：`/plan-ceo-review` 的 `HOLD SCOPE`**
+  - 只用来审两个命名风险：`执行`、`回测`。
+  - 不要再用 `SCOPE EXPANSION`，现在再扩只会发散。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **补充模式：`/office-hours` 的 `Startup mode`**
+  - 仅在你要重新判断产品词时再开。
+  - 比如你要决定 `执行` 是否改成 `自动化`，`回测` 是否改成更宽的词。
+  - 不是默认主模式。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **收尾模式：`/autoplan`**
+  - 只在你把设计稿或工程计划改完一版之后再跑，做最终 gate。
+  - 不要把它当日常主工作流。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2c4-fee0-7c73-96a2-5041433edc53
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **现在主打 `plan-eng-review`**
+- **CEO 只做 `HOLD SCOPE`**
+- **office-hours 只在命名和 wedge 摇摆时用 `Startup mode`**
+- **不要再用 Builder mode**
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2be-9dcc-7662-88a9-77700690ee63
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+取消所有历史subagent，重新执行计划，开启多个subagent并发
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2be-9dcc-7662-88a9-77700690ee63
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经按你的要求重跑了。旧 subagent 都不存在了，新开了 4 个并发 reviewer，结果也都收敛完并关闭了。更新后的设计稿在 [zhangqilong-main-design-20260421-060219.md](</Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-design-20260421-060219.md>)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2be-9dcc-7662-88a9-77700690ee63
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结论很清楚。`策略 / 回测 / 执行 / 微信 / 工厂` 这套骨架可以保留，但**不是“改中文文案”就能落地**。当前代码里的旧 IA 其实是页面和数据装配合同，不是皮肤层，关键卡点在 [App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:41)、[TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:203)、[PackWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx:852)、[models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts:835)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2be-9dcc-7662-88a9-77700690ee63
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `执行` 这个一级词现在最危险。你页里承接的其实是自动化作业、重试修复、队列治理，不是狭义“交易执行”。
+- `回测` 也偏窄，因为你已经想把 review、复盘、weekly 一起放进去。
+- 最大工程风险是“先改导航词，再补 ownership”。那会变成旧 page contract 换中文皮。
+- 正确顺序已经锁定到稿子里了：先冻结 control-plane 语义，再加 renderer-side `surfaceId` 和 view-model；先拆 `TaskWorkspace`，先把 `执行` 做成真正治理真源，再拆 `Signals`，最后才翻导航和文案。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db2be-9dcc-7662-88a9-77700690ee63
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我还把这些新结论直接写回了设计稿，旧的“没有结构性问题”表述已经删掉了。现在这份稿子可以直接拿去做下一步实现，不需要再二次翻译。下一步如果你要，我可以直接按这个顺序开始改 Electron：先落 `surfaceId + GlobalLauncher + ExecutionGovernance`。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db021-c0d5-7f33-ab0a-49bb21c313e2
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+策略 / 回测 / 执行 / 微信 / 工厂
+然后再跑一次 /autoplan，看 CEO/Eng 视角下还有没有结构性问题。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db021-c0d5-7f33-ab0a-49bb21c313e2
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+设计稿已经重写并收敛到 [zhangqilong-main-design-20260421-060219.md](</Users/zhangqilong/.gstack/projects/Gemini-Nick-longclaw-agent-os/zhangqilong-main-design-20260421-060219.md>)。这轮 `autoplan` 结论是：**没有需要推翻这套中文 IA 的结构性问题，但有 3 个必须锁死的实现约束**，`策略` 是默认第一页，`TaskWorkspace` 不再保留为独立一级页，`执行` 成为 `Runs / Work Items` 的治理真源。现有代码里的主要改动点也已经对上了，[App.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/App.tsx:41)、[TaskWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/TaskWorkspace.tsx:17)、[PackWorkspace.tsx](/Users/zhangqilong/github代码仓库/longclaw-agent-os/electron/src/renderer/workspaces/PackWorkspace.tsx:27)、[models.ts](/Users/zhangqilong/github代码仓库/longclaw-agent-os/src/services/longclawControlPlane/models.ts:835)。
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db019-7033-7f01-938b-dc3b5b07cdc2
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这里面有点问题，因为我希望把RPA能力也加入到里面，二级金融主要用rpa来爬取资料，一级金融也是做一些业务自动化操作
+
+
+---
+来源：codex:019dae0a-8316-7d83-bc4b-3f157902762a#turn:019db019-7033-7f01-938b-dc3b5b07cdc2
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+最大修正已经出来了。Longclaw 不是“交易版通用 agent OS”，也不是“替代行情软件的第一屏”。  
+它更像一个**中国金融语境下的 AI 辅助工作台**，先贴着行情软件活，核心卖点是两条：

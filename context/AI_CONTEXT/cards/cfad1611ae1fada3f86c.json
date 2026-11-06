@@ -1,0 +1,29 @@
+{
+  "id": "019d65a9-b470-7f20-bf5f-c68108ca37bf",
+  "title": "收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。\n/Users/zhangqilong/.weclaw/workspace/20260406-185831.jpg",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019d65a9-b470-7f20-bf5f-c68108ca37bf",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "d4770e14f6733a75f36d453ac895038c9ae783b924044b8bd629f1f84a14752d",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d65a9-b470-7f20-bf5f-c68108ca37bf#first-request",
+      "timestamp": null,
+      "verbatim": "收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。\n/Users/zhangqilong/.weclaw/workspace/20260406-185831.jpg"
+    },
+    {
+      "hash": "229e89ce0669bfe154c89f3f3f602ef044361321bab02c0d983efcd84fae7698",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d65a9-b470-7f20-bf5f-c68108ca37bf#recent",
+      "timestamp": null,
+      "verbatim": "1. 提取成结构化文本或 JSON\n2. 整理成一段可发送的总结\n3. 帮你判断这是不是交易/收益截图并做风险分析\n4. 裁剪图片里的核心区域\n5. 做 OCR 后导出为表格格式"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

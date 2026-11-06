@@ -1,0 +1,77 @@
+{
+  "id": "019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6",
+  "title": "检查一下目前weclaw这个通道微信发送消息的状态和日志并且修复",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "ce976b17744aece8eecf3bf7d246969d9ab04b5de32843e82d462a117573e304",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "## 截屏2026-05-24 上午5.09.56.png: /var/folders/vx/97ktt6n96w146cyyt3n23mwr0000gn/T/TemporaryItems/NSIRD_screencaptureui_8sjWbo/截屏2026-05-24 上午5.09.56.png"
+    },
+    {
+      "hash": "451a630f605fef4019e86a7624e1219bff782b1662bfe9844f8337706e8324cb",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "## My request for Codex:\n检查一下目前weclaw这个通道微信发送消息的状态和日志并且修复"
+    },
+    {
+      "hash": "6d248d54b483209259b11d617bafa9738e940072e220d56585235f4168212890",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "已修复并验证。微信发送链路本身没有断：`launchd`、`18011` listener、上游探测都是正常的；真正问题是 WeClaw 把 Codex app-server 的临时状态 `Reconnecting... 2/5` 当成了致命 turn error，提前结束了这次回复，所以后面 Codex 实际生成出的结果没有再发回微信。"
+    },
+    {
+      "hash": "178602ccad05dc9f4ff7bee7951e1cbb387fc4106d7b0f02a8cd7868a86317b6",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "- [acp_agent.go](/Users/zhangqilong/github代码仓库/weclaw/agent/acp_agent.go:908)：把 `Reconnecting...`、`stream disconnected - retrying`、`Falling back from WebSockets...` 这类 Codex 传输层临时状态识别为非致命，只记录日志，不结束 turn。\n- [acp_agent_test.go](/Users/zhangqilong/github代码仓库/weclaw/agent/acp_agent_test.go:49)：补了回归测试，确保先收到 `Reconnecting... 2/5` 后仍能继续接收最终回复。"
+    },
+    {
+      "hash": "b1d43c5bb7898f6554a3db80d0ac3bd0383f46dde0a6c19221b78d71489dfc21",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "```bash\ncd /Users/zhangqilong/github代码仓库/weclaw\ngo test ./...\n```"
+    },
+    {
+      "hash": "dde3bf61c9c244a2f0a828f30148795c153073844f8ebfa2a14e77f9c6d2f727",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "```text\n/Users/zhangqilong/.weclaw/bin/weclaw-real.bak-20260524-051648\n```"
+    },
+    {
+      "hash": "8a605a910909818f58d1d993769474eb76acdd483ed3ab3d249b4d12f66ed8fd",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "随后重启了 bridge，并做了真实链路自检：通过 `http://127.0.0.1:18011/api/task-dispatch` 发送给微信通道，Codex 回复 `WECLAW_OK`，日志确认已发送到微信。自检期间同样出现了 `Reconnecting... 2/5` 到 `5/5`，但这次被正确忽略，最终消息成功送达。"
+    },
+    {
+      "hash": "fc94ce9bdf3dbad8fa2d7cdc87158c47a2586ab2ca776908c0477d3ade909129",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019e59e4-6517-7ba3-ae17-bfd7b5cdc9f6#recent",
+      "timestamp": null,
+      "verbatim": "```text\nM agent/acp_agent.go\nM agent/acp_agent_test.go\n```"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

@@ -1,0 +1,71 @@
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+你问的“usage 用完怎么切换和修复”，按 weclaw 应该这样落地：
+1. 在 watchdog 增加 `usage_exhausted` 专门匹配（`You've hit your usage limit|Upgrade to Plus|429|Rate limited`）。  
+2. 若当前是 `codex` 且命中 `usage_exhausted`，立即切回 `claude`，并给 `codex` 加冷却窗口（避免重启风暴）。  
+3. 若当前是 `claude` 且命中配额/限流，切到 `codex`，同样加冷却与恢复探测。  
+4. 切换时保留一次用户提示，但不重复刷屏（沿用现有 notify cooldown）。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53bd-036f-7f63-97b4-467287d845d1
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你同意，我下一步就直接改 [session-watchdog.sh](/Users/zhangqilong/.weclaw/session-watchdog.sh) 并给你跑一轮 weclaw 双 agent 的 corner case 演练清单（含通过/失败判定）。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：user
+性质：用户纠正、要求或决定（保留原时点）
+原文摘录：
+可以进行corner case的测试么？我希望完整的过一遍他的修复能力，包括cc和codex切换。例如当某个agent usage用完的时候，怎么处理切换和修复呢？
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+已确认的真实错误：
+1. `codex` 配额耗尽（硬失败）在 2026-04-02 和 2026-04-03 都出现过，且切到 `gpt-5.1-codex-mini` 仍失败，说明是账号/产品层限制，不是单模型问题。见 [codex-tui.log](/Users/zhangqilong/.codex/log/codex-tui.log:6977) 和 [codex-tui.log](/Users/zhangqilong/.codex/log/codex-tui.log:7158)  
+2. `cc` 出现过 `429 Rate limited`（更像瞬时限流）。见 [684e6a74...txt](/Users/zhangqilong/.claude/debug/684e6a74-e2b3-496b-9cfe-585ffe72c3bc.txt:82)
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+建议的“切换+修复”判定与动作：
+1. 命中 `You've hit your usage limit`：立即停止同平台重试，直接切换到另一 agent（`codex -> cc` 或 `cc -> codex`）。
+2. 命中 `429/overloaded`：先退避重试（10s/30s/60s），再决定是否切换。
+3. 切换时必须带状态包：目标、当前分支、已改文件、失败命令和原始报错、下一步待办，避免修复中断。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+完整 corner-case 测试矩阵（你要的“过一遍修复能力”）：
+1. `codex` 硬配额耗尽 -> 60 秒内切到 `cc`，并继续同一修复任务。  
+2. `codex` 换模型仍失败 -> 验证“防抖策略”不死循环切模型。  
+3. `cc` 429 -> 退避后恢复同任务。  
+4. 切换发生在“已改未提交”状态 -> patch 不丢失、diff 可继续。  
+5. 子 agent 失败/超时 -> 主 agent 接管并完成修复。  
+6. 切换后修复质量 -> 测试通过、回归点关闭、日志留痕完整。
+
+
+---
+来源：codex:019d539f-0cdb-7960-9705-e1a269c19b9d#turn:019d53ba-59ea-77b2-877b-00b931953ee0
+角色：assistant
+性质：历史回复所报告结果（未作当前复验）
+原文摘录：
+如果你要，我下一步可以直接给你一份可执行的 `runbook`（含每条 case 的命令、预期输出、通过/失败判定）。

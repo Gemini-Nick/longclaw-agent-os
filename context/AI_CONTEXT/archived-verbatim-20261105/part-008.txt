@@ -1,0 +1,986 @@
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 自动归档触发不稳定
+  你的“知识库图片需要归档”没有被识别成归档意图，直接走了普通 agent 对话。
+- 会话归档窗口不稳
+  触发归档时，当前 session window 里没有关联到最近媒体，导致即使有归档意图，也可能拿不到正确附件。
+- 测试数据污染正式库
+  我之前为了验证链路，把一份手工测试归档写进了正式 Obsidian vault，所以你在 UI 里看到的是测试件，不是你刚发的业务内容。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 归档触发必须稳定命中  
+2. 归档对象必须稳定绑定“你刚发的那轮图文/语音/文件/视频”  
+3. 测试数据与正式知识库彻底隔离，不能再污染正式 vault 视图
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 修正自动归档触发模型
+- 显式归档触发从“固定短语匹配”升级成“意图语义识别 + 明确命令词优先”。
+- 显式触发最少支持这些表达：
+  - `归档到知识库`
+  - `收录到知识库`
+  - `加入 Obsidian`
+  - `知识库图片需要归档`
+  - `把这个存到知识库`
+- 判定规则改成：
+  - 只要文本同时包含“知识库/Obsidian”与“归档/收录/保存/存档/加入”等动作词，就视为显式触发
+  - 不再依赖某一条完整短语精确匹配
+- 高置信自动判断继续保留，但只作为补充，不抢显式触发优先级
+- 命中显式触发时，必须在日志里明确打印：
+  - `archive trigger matched`
+  - `trigger_reason=explicit`
+  - `conversation_id`
+  - `selected_media_count`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. 会话归档对象绑定改成“最近一轮媒体快照”
+- 归档不再只依赖当前 session window 内存状态，而是引入一层稳定的“最近媒体索引”。
+- 每次收到图片、文件、语音、视频时，都写入一份统一的媒体记录：
+  - `message_id`
+  - `wechat_user_id`
+  - `media_type`
+  - `saved_path`
+  - `created_at`
+  - `conversation_id`
+  - 语音转写、原始文件名等附加字段
+- 当收到归档意图时，选择归档对象的顺序固定为：
+  1. 当前会话窗口里最近一轮的媒体
+  2. 若当前窗口无媒体，则回补同一用户在归档窗口期内最近保存的媒体
+  3. 若仍没有媒体，则只归档文本会话并明确提示“本轮无附件”
+- 归档任务必须把“所选媒体列表”固化进 pending manifest，后续后台不再重新猜测
+- 同一轮内容一旦生成 pending 任务，就冻结输入，避免 scheduler 执行时拿到另一批文件
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. 测试数据与正式库隔离
+- 以后所有调试/仿真归档禁止直接写正式 vault 根目录。
+- 新增明确隔离策略，默认选其中一种并全仓统一：
+  - 调试目录前缀：`Inbox/WeChat/_debug/`
+  - 或独立测试 vault：`~/Documents/Obsidian Vault Debug`
+- 正式用户路径固定只写：
+  - `Inbox/WeChat/YYYY-MM/`
+  - `Assets/WeChat/YYYY-MM/`
+- 历史测试件清理方案：
+  - 扫描 note frontmatter 和 remark
+  - 若命中 `codex 调试归档流程`、`微信图片测试` 等测试标识，则移出正式目录
+  - 迁到 `_debug` 或单独 debug vault
+- 后续任何手工验证必须带 `debug=true` 标记，避免再进入正式知识库
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. 归档输出改成可审计
+- 每次成功归档后，在微信回执里至少给出：
+  - note 标题
+  - note 相对路径
+- scheduler 日志增加：
+  - `task queued`
+  - `task archived`
+  - `note_path`
+  - `asset_paths`
+  - `source_message_ids`
+- Obsidian note frontmatter 增加：
+  - `archive_scope: session`
+  - `trigger_reason`
+  - `conversation_id`
+  - `source_message_ids`
+  - `debug: false`
+- 这样用户看到一篇 note 时，可以直接反查它是不是正式归档、来源于哪轮微信会话
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 运行时默认值修正
+- 运行时默认写入的 vault 改成“当前 Obsidian 已打开 vault 优先，其次用户主 vault 配置”，这一点已部分具备，但要补成完整规则。
+- 安装脚本与运行时配置要统一：
+  - 正式 vault
+  - debug vault 或 debug 子目录
+  - 自动归档窗口期
+- 不再把历史 `LongclawVault` 测试路径当默认正式输出
+- `weclaw obsidian ...` CLI 保留给运维，但默认写 debug 目标，除非显式声明走正式库
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 显式触发回归：
+  - 发送图片后发“知识库图片需要归档”
+  - 必须创建 pending task
+  - 不应再走普通 agent 对话分支
+- 同义表达回归：
+  - “把这个加入 Obsidian”
+  - “收录到知识库”
+  - “这个需要存档”
+  - 都应命中显式触发
+- 回补最近媒体验证：
+  - 归档意图消息本身不带附件
+  - 当前 window 无 media
+  - 仍能正确绑定同一用户最近一轮附件
+- 纯文本会话验证：
+  - 无附件时也可生成 note
+  - note 中明确“本轮无附件”
+- 语音/视频验证：
+  - 语音 note 包含原始音频链接和转写
+  - 视频 note 包含原始视频链接和说明
+- 测试隔离验证：
+  - 调试归档不得出现在正式 `Inbox/WeChat`
+  - debug note 只能进入 `_debug` 或 debug vault
+- 历史污染清理验证：
+  - `微信图片测试.md` 和对应附件迁出正式目录
+  - 正式 vault 中只剩真实业务归档
+- 可观测性验证：
+  - 日志能看到 `trigger matched -> task queued -> task archived`
+  - 微信回执包含 note 标题或路径
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 正式知识库必须与调试数据隔离，不能共用同一视图目录
+- 自动归档的主对象仍是“最近一轮会话快照”，不是单文件
+- 显式触发优先级高于自动判断
+- 若当前没有可绑定附件，允许退化为纯文本归档，但必须在 note 与回执里说清楚
+- 正式 vault 以你当前使用的 `/Users/zhangqilong/Documents/Obsidian Vault` 为准，不再把 `LongclawVault` 当正式输出
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我做了这些修复：
+- 扩大了显式归档意图识别，像“知识库图片需要归档”这类表达不再漏判
+- 会话窗口没有媒体时，会回补同一用户最近一轮媒体，避免只剩文本上下文
+- 正式 session note 增加了审计字段：`archive_scope`、`trigger_reason`、`conversation_id`、`source_message_ids`、`debug`
+- `weclaw obsidian ...` 现在默认写到 `Inbox/WeChat/_debug` / `Assets/WeChat/_debug`
+- runtime scheduler 改成显式走 `--formal`，正式自动归档不会落到 `_debug`
+- 之前那份测试件已经从正式目录挪走了
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前你正式 Obsidian 库里的状态已经变成：
+- 正式目录为空
+- 测试件只在：
+  - [微信图片测试.md](/Users/zhangqilong/Documents/Obsidian Vault/Inbox/WeChat/_debug/微信图片测试.md)
+  - [20260406-185831.jpg](/Users/zhangqilong/Documents/Obsidian Vault/Assets/WeChat/_debug/20260406-185831.jpg)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证结果：
+- `go test ./obsidian ./messaging ./cmd` 通过
+- runtime 已重装
+- `weguard status` 全绿
+- `weclaw obsidian maintain --formal` 正常执行
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e4-431a-7d32-ab0a-ba900bf28759
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在还差最后一轮真实验证：你再从微信发一次“媒体 + 归档口令”，这次如果成功，内容应该直接进正式目录，而不是 `_debug`。  
+你发完我继续帮你盯日志和 Obsidian 落盘结果。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我看到你刷新了Inbox/WeChat和Assets/WeChat，但是不是我发送的图片，是你测试的？而且是一张收益截图。为什么呢？
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 当前你在 Obsidian 里看到的是：
+  - [微信图片测试.md](/Users/zhangqilong/Documents/Obsidian Vault/Inbox/WeChat/微信图片测试.md)
+  - [20260406-185831.jpg](/Users/zhangqilong/Documents/Obsidian Vault/Assets/WeChat/20260406-185831.jpg)
+- 这篇 note 里明确写着：
+  - `title: "微信图片测试"`
+  - `remark: "codex 调试归档流程"`
+- 这两份文件写入时间是 `2026-04-06 19:17:31`
+- 它来自更早的一次手工归档调试：
+  - 日志显示那张图在 `2026-04-06 18:58:31` 被保存到 workspace
+- 后来我把 `LongclawVault` 迁到你当前正在看的 `Obsidian Vault` 时，把这份旧的测试归档一起拷过来了
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以你现在看到的不是“刚刚自动归档的结果”，而是“我之前验证链路时成功写进去的一份测试样本”。这也是为什么内容不对。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+反过来，你刚刚真正想归档的那轮并没有成功写入 Obsidian。原因我前面也查到了：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `2026-04-06 19:43:55` 你发了“知识库图片需要归档”
+- 但那次没有生成 `pending` 归档任务
+- 它直接被当成普通对话发给了 `codex`
+- 所以 vault 里没有新增你想要的那篇 note
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 你现在看到的文件是我早前测试件，不是你当前业务数据  
+2. 你这次真实归档当时确实失败了，所以没有新的正确内容顶上来
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65e1-6bb0-7153-81c1-017301d36a30
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 不再把“历史测试归档”混进正式 vault 视图
+- 给测试归档单独前缀或单独目录
+- 修正自动归档触发后，再用你最新那张图片重新验证一次
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65df-a131-7130-a4ba-56622b99b25b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在 `weclaw` 的运行时配置已经改成写你当前正在看的 vault：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65df-a131-7130-a4ba-56622b99b25b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `obsidian_vault_dir`: `/Users/zhangqilong/Documents/Obsidian Vault`
+- `obsidian_vault_name`: `Obsidian Vault`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65df-a131-7130-a4ba-56622b99b25b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我还做了两件事：
+- 把之前已经归档在 `LongclawVault` 的现有 note 和 asset 迁到了你当前 UI 使用的库里
+- 把安装脚本改成优先读取 Obsidian 当前打开的 vault，后面重装也不会默认切回 `LongclawVault`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65df-a131-7130-a4ba-56622b99b25b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在在这个库里已经能看到：
+- [微信图片测试.md](/Users/zhangqilong/Documents/Obsidian Vault/Inbox/WeChat/微信图片测试.md)
+- [20260406-185831.jpg](/Users/zhangqilong/Documents/Obsidian Vault/Assets/WeChat/20260406-185831.jpg)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65df-a131-7130-a4ba-56622b99b25b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+并且服务状态正常：
+- `codex` running
+- `claude` running
+- `repo-scheduler` running
+- `weclaw` running
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65df-a131-7130-a4ba-56622b99b25b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以从现在开始，后续微信自动归档会直接进你眼前这个 `Obsidian Vault`。如果 UI 还没刷新，切一下左侧文件树或重开一下 vault 就能看到 `Inbox/WeChat` 和 `Assets/WeChat`。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+原因很直接：你现在 Obsidian UI 打开的不是我写入的那个 vault。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 实际归档文件已经在这里：
+  - [微信图片测试.md](/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat/微信图片测试.md)
+  - [20260406-185831.jpg](/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat/20260406-185831.jpg)
+- 但 Obsidian 当前打开的 vault 是：
+  - `/Users/zhangqilong/Documents/Obsidian Vault`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这个信息直接来自：
+- `~/Library/Application Support/obsidian/obsidian.json`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+```json
+{"vaults":{"652311908a47dedf":{"path":"/Users/zhangqilong/Documents/Obsidian Vault","ts":1775528315240,"open":true}}}
+```
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以不是“没归档进去”，而是“归档进了 `LongclawVault`，但 UI 现在看的是另一个库”。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 直接在 Obsidian 里打开这个 vault  
+   `/Users/zhangqilong/Documents/LongclawVault`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. 把运行时配置改成写入你当前正在用的 vault  
+   `/Users/zhangqilong/Documents/Obsidian Vault`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65de-e5ad-7810-bf9c-d2505c1dde1d
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我现在可以直接帮你切到第 2 种，把 `weclaw` 的 Obsidian 输出改到你当前 UI 正在使用的 vault，这样后续微信归档会直接出现在你眼前这个库里。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65d5-6a45-70f2-888f-85eedc7e60b8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `19:43:55` 这条“知识库图片需要归档”没有被识别成显式归档口令
+- 所以它直接走了普通 agent 对话路径，日志里能看到：
+  - `received from ... "知识库图片需要归档"`
+  - 然后立刻 `dispatching to agent`
+- 同时当前会话窗口文件里只有这条文本和 agent 回复，`media` 是空的：
+  - [o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json](/Users/zhangqilong/.weclaw/workspace/.obsidian/sessions/o9cq807Zo-n55fMzg7XifEQg8IrU_im.wechat.json)
+- 所以不会生成 `pending_obsidian_session`，后台自然也就无事可做
+- 这也解释了为什么 `obsidian maintain` 现在还是：
+  - `sessions_archived=0`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65d5-6a45-70f2-888f-85eedc7e60b8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 显式归档识别放宽了  
+现在不只认“归档到知识库”，像“知识库图片需要归档”这种 `知识库 + 归档/收录/存到` 的表达，也会直接命中显式触发。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65d5-6a45-70f2-888f-85eedc7e60b8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+2. 当前窗口没媒体时，会自动回补最近媒体  
+如果你发归档口令时当前 session window 没带媒体，它会自动从 `workspace` 里回补最近 30 分钟内、同一微信用户发来的媒体，不再要求“图片和口令必须在同一个新 session 文件里”。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65d5-6a45-70f2-888f-85eedc7e60b8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前运行态正常：
+- `codex` running
+- `claude` running
+- `repo-scheduler` running
+- `weclaw` running
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65d5-6a45-70f2-888f-85eedc7e60b8
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这次正确结果应该是：
+- 微信先收到“已收录，正在整理进知识库”
+- `workspace/.obsidian/tasks/` 里出现一个 pending task
+- 下一轮后台处理后，内容进入：
+  - `/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat`
+  - `/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# 微信全媒体自动归档到 Obsidian 方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+目标是把当前依赖 bash 的 `weclaw obsidian mark/maintain`，升级成纯微信侧可触发的自动化归档流程，并且覆盖微信常见可保存媒体类型：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 触发方式采用 `hybrid`
+  - 显式归档口令必触发
+  - 高置信自动判断可触发
+- 归档对象固定为“最近一轮会话快照”，而不是单个文件
+- 执行方式采用“双阶段”
+  - 会话里先立刻创建待归档任务并回简短确认
+  - 后台异步整理并写入 Obsidian
+- 标题默认由 AI 生成
+- 语音默认归档“原始音频 + 转写文本”
+- 视频默认归档“原始视频 + 简短说明”
+- 各类文件保留原始附件，并在 note 中建立知识库关联
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 入站采集层扩成全媒体会话窗口
+- 在 `weclaw` handler 中新增统一媒体采集层，覆盖：
+  - `image`
+  - `file`
+  - `voice`
+  - `video`
+  - `text`
+- 当前图片/文件保存逻辑保留，但统一抽象成“媒体落盘 + sidecar”流程。
+- 新增语音落盘：
+  - 从 `VoiceItem.Media` 下载原始语音
+  - 生成稳定扩展名，优先按编码推断，如 `amr/mp3/silk`
+  - sidecar 写入 `media_type=voice`
+  - 同时保存微信已有转写文本
+- 新增视频落盘：
+  - 从 `VideoItem.Media` 下载原始视频
+  - sidecar 写入 `media_type=video`
+- 每条用户消息进入一个“会话窗口缓存”，记录：
+  - 消息 ID
+  - 用户原文
+  - agent 回复
+  - 本轮媒体列表
+  - 媒体类型与本地路径
+  - 语音转写
+- 窗口默认按最近一轮交互维护，供后续归档任务引用
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. 自动归档触发改成微信内原生流程
+- 不再要求用户跑 bash，也不要求用户知道文件路径。
+- 显式触发规则：
+  - 默认识别固定归档意图词，如“归档到知识库”“收录到知识库”“加入 Obsidian”“存到知识库”
+- 自动判断规则：
+  - 只在 `hybrid` 模式启用
+  - 必须命中高置信知识沉淀语义
+  - 且最近会话窗口中存在媒体或完整问答
+- 触发后只生成一条 `pending_obsidian_session` 任务，不在当前微信消息里直接写 vault
+- 若同一轮会话已存在 `pending` 或 `archived` 任务，则幂等处理，不重复建任务
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. Obsidian 输出改成“知识库 note + 附件集”
+- 后台归档器消费 `pending_obsidian_session`，输出一篇完整 note，而不是只处理单个 sidecar。
+- note 内容固定包含：
+  - AI 生成标题
+  - 归档时间
+  - 触发原因：显式或自动
+  - 用户归档意图原话
+  - 本轮会话摘要
+  - 关键对话摘录
+  - 附件区
+- 附件落位规则：
+  - 图片进入 `Assets/WeChat/YYYY-MM/`
+  - 文件进入 `Assets/WeChat/YYYY-MM/`
+  - 语音进入 `Assets/WeChat/YYYY-MM/`
+  - 视频进入 `Assets/WeChat/YYYY-MM/`
+- note 落位规则：
+  - `Inbox/WeChat/YYYY-MM/`
+- note 内引用规则：
+  - 图片：Obsidian embed
+  - 文件：wiki link 或 markdown link
+  - 语音：附件 link + 转写文本块
+  - 视频：附件 link + 简短说明块
+- 若一轮会话包含多附件，统一归入同一篇 note，避免碎片化
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. 状态机与后台处理
+- 媒体 sidecar 保留，但增加一层 session manifest 作为归档主状态：
+  - `archive_scope=session`
+  - `archive_state=pending|archived|failed`
+  - `conversation_id`
+  - `trigger_reason=explicit|auto_inferred`
+  - `note_path`
+  - `asset_paths`
+  - `message_ids`
+- 后台处理顺序：
+  1. 先消费 `pending_obsidian_session`
+  2. 成功后写 note 和附件
+  3. 更新 session manifest 为 `archived`
+  4. 关联的 workspace 原件转入“已归档可清理”
+- 清理规则：
+  - 已归档媒体从 workspace 删除
+  - `active` 且超过保留期但未归档的媒体照常清理
+  - `failed` 任务保留原件等待重试
+- 现有 scheduler 继续承载后台归档与清理，但它只负责后台执行，不再是用户入口
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 对外行为与配置
+- 微信端行为：
+  - 用户发图片/文件/语音/视频后正常收到回执与 agent 回复
+  - 当命中归档意图时，额外收到一条简短回执，如“已收录，正在整理进知识库”
+  - 成功归档后可选再回一条极简完成回执，包含 note 标题
+- 新增配置：
+  - `obsidian_auto_archive_enabled`
+  - `obsidian_auto_archive_mode=explicit|hybrid`
+  - `obsidian_archive_window_minutes`
+  - `obsidian_archive_reply_enabled`
+  - `obsidian_voice_archive_mode=audio+transcript`
+  - `obsidian_video_archive_mode=asset+summary`
+- 保留现有 Obsidian 配置：
+  - `obsidian_enabled`
+  - `obsidian_vault_dir`
+  - `obsidian_vault_name`
+  - `obsidian_notes_dir`
+  - `obsidian_assets_dir`
+  - `obsidian_open_after_archive`
+- `weclaw obsidian ...` CLI 保留为调试与运维入口，但不再是正常使用路径
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 图片 + 显式归档口令：
+  - 生成 session pending 任务
+  - note 写入 vault
+  - 图片进入 assets
+  - workspace 原图清理
+- 文件 + 显式归档口令：
+  - 原始文件进入 assets
+  - note 中有文件链接和会话说明
+- 语音 + 显式归档口令：
+  - 原始语音进入 assets
+  - note 中包含语音链接和微信转写
+- 视频 + 显式归档口令：
+  - 原始视频进入 assets
+  - note 中包含视频链接和会话说明
+- 混合会话：
+  - 一轮里有文本、图片、文件、语音或视频时，统一进一篇 note
+- 高置信自动归档：
+  - 在 hybrid 模式下能自动生成 pending 任务
+  - 普通聊天和普通图片不应误触发
+- 重复归档口令：
+  - 不重复生成 note
+  - 微信只回“已在归档中/已归档”
+- 失败场景：
+  - vault 不可写或附件复制失败时，任务变 `failed`
+  - 原件保留
+  - 后续可重试
+- 清理回归：
+  - 未归档过期媒体仍会被清理
+  - 已归档媒体从 workspace 清掉，但 vault 内容不动
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 自动归档的主对象是“最近一轮会话快照”，不是单文件
+- 语音默认保留原始音频和转写
+- 视频默认保留原始视频和说明
+- 文件类型不做白名单裁剪，按微信实际可落盘附件统一处理
+- Obsidian 仍采用文件系统 + `obsidian://` 主链路，未来接 MCP 时只替换后台 sink，不改触发与状态机
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+自动化归档已经接上了，本机运行时也更新好了。核心改动在 [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)、[session.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian/session.go)、[archive.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian/archive.go) 和 [install-v2.sh](/Users/zhangqilong/Desktop/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh)。现在 `weclaw` 会把图片、文件、语音、视频纳入会话窗口；当你在微信里发“归档到知识库”“加入 Obsidian”这类话，或命中高置信知识沉淀语义时，会生成 session 级 pending 任务，再由后台异步写入 Obsidian，而不是要求你跑 bash。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我已经做了这几项验证：
+- `go test ./obsidian ./messaging ./cmd` 通过
+- 重新构建并安装了 `~/.weclaw/bin/weclaw-real`
+- 重新跑了 runtime 安装脚本，当前 `~/.weclaw/config.json` 已带上新的自动归档配置
+- `~/.weclaw/bin/weguard status` 现在全绿
+- `~/.weclaw/bin/weclaw obsidian maintain` 能正常跑，输出里已经有 `sessions_archived/sessions_failed/...` 这些新指标
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在可以直接做真实测试，不需要命令行触发。建议这样测：
+1. 在微信里发一张图片、一个文件，或者一条语音/视频
+2. 等正常回执和 agent 回复完成
+3. 再发一句：`归档到知识库，这是我们未来知识库的架构`
+4. 看微信是否收到“已收录，正在整理进知识库”
+5. 去看：
+   - `/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat`
+   - `/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+需要说明两点：
+- 图片/文件的真实链路我已经多次验证过；语音/视频这轮是代码和测试已接上，但还没拿你真实微信消息现场走一遍
+- 这次还没替你提交 Git。当前待提交改动主要在 `weclaw` 和 `longclaw-agent-os` 两个仓库，另外两边还有一些你原来就存在的未跟踪文件，我没碰
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65ca-a316-7980-a3a3-7ac89d86f339
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在直接发一轮“媒体 + 归档口令”，我可以继续盯日志，确认它是否真的自动进了 Obsidian。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c6-2b69-7353-bca9-7c2798fa296b
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我未来不希望通过bash来进行归档，你看看日志反馈的。我希望把这个做成自动化流程
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c4-cdae-70f0-a61e-dd39f619d2a1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+日志里看到：
+- `19:27:14` 收到图片
+- `19:27:17` 保存到了 [20260406-192717.jpg](/Users/zhangqilong/.weclaw/workspace/20260406-192717.jpg)
+- sidecar 也生成了：[20260406-192717.jpg.sidecar.md](/Users/zhangqilong/.weclaw/workspace/20260406-192717.jpg.sidecar.md)
+- `19:27:18` 已回微信“已收到图片”
+- `19:27:33` `codex` 已完成回复并发回微信
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c4-cdae-70f0-a61e-dd39f619d2a1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+所以当前状态是：
+- `weclaw` 正常
+- `codex` 正常
+- 图片保存正常
+- 现在这张图已经满足“可归档进 Obsidian”的条件
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c4-cdae-70f0-a61e-dd39f619d2a1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+但有一个边界要说清楚：
+你后面发的“归档到知识库，这是我们未来知识库的架构”这句文本，当前还没有接成“自动触发 Obsidian 归档”的能力。也就是说，目前是：
+- 图片已经落到 workspace
+- 归档能力可用
+- 但还需要显式执行 `mark + maintain`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c4-cdae-70f0-a61e-dd39f619d2a1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你这张图如果现在就要归档，我可以直接替你执行这两步：
+```bash
+~/.weclaw/bin/weclaw obsidian mark --path /Users/zhangqilong/.weclaw/workspace/20260406-192717.jpg --title "未来知识库架构" --remark "来自微信，用户要求归档到知识库"
+~/.weclaw/bin/weclaw obsidian maintain
+```
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c4-cdae-70f0-a61e-dd39f619d2a1
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+执行完后它会进入：
+- `/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat`
+- `/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c1-9ea0-7c70-8984-018e452ed8ff
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我现在可以测试一下么？目前满足条件么？看看能否归档进入obsidian？
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c1-9ea0-7c70-8984-018e452ed8ff
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+可以，现在已经满足测试条件，而且我已经验证过一次真实归档，能进 Obsidian。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c1-9ea0-7c70-8984-018e452ed8ff
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你现在这套环境已经具备：
+- Obsidian 已安装：`/Applications/Obsidian.app`
+- Vault 已就绪：`/Users/zhangqilong/Documents/LongclawVault`
+- `weclaw` 已接入 Obsidian 配置
+- `obsidian://` 打开链路可用
+- 我已经成功把一张微信图片归档进了：
+  - [微信图片测试.md](/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat/微信图片测试.md)
+  - [20260406-185831.jpg](/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat/20260406-185831.jpg)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c1-9ea0-7c70-8984-018e452ed8ff
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+1. 先从微信再发一张图片或文件，让它落到 `~/.weclaw/workspace`
+2. 找到对应文件后执行：
+```bash
+~/.weclaw/bin/weclaw obsidian mark --path /绝对路径/文件名 --title "你想要的标题" --remark "可选备注"
+~/.weclaw/bin/weclaw obsidian maintain
+```
+3. 然后去看：
+- `/Users/zhangqilong/Documents/LongclawVault/Inbox/WeChat`
+- `/Users/zhangqilong/Documents/LongclawVault/Assets/WeChat`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c1-9ea0-7c70-8984-018e452ed8ff
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+成功的话会出现：
+- 一篇 note
+- 一个 asset 文件
+- workspace 里的原件会被清掉
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65c1-9ea0-7c70-8984-018e452ed8ff
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你愿意，最省事的方式是你现在直接发一张图，我来帮你盯日志并替你执行这次归档。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# Obsidian 文件系统/URI 直连方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前环境里没有现成的 Obsidian app、vault、或 MCP 配置，所以首版不走 MCP，直接采用“文件系统写 vault + `obsidian://` URI 打开”的方案。这样可以立刻安装、调试、上线，不把主链路绑死在 MCP 稳定性上；未来若要接 Obsidian MCP，只需要替换归档 sink，不改微信侧和 sidecar 状态机。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 安装 Obsidian Desktop
+- 新建标准 vault：`~/Documents/LongclawVault`
+- 微信媒体缓存仍保留在 `~/.weclaw/workspace`
+- 显式归档的媒体写入 Obsidian vault：
+  - 资源文件进 `Assets/WeChat/`
+  - 笔记文件进 `Inbox/WeChat/`
+- 写完后可选触发 `obsidian://open` 或 `obsidian://advanced-uri` 打开对应 note
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 运行时配置补齐 Obsidian sink
+- 在 `weclaw` 配置中新增一组 Obsidian 字段：
+  - `obsidian_enabled`
+  - `obsidian_vault_dir`
+  - `obsidian_vault_name`
+  - `obsidian_notes_dir`
+  - `obsidian_assets_dir`
+  - `obsidian_open_after_archive`
+- 默认值固定为：
+  - `obsidian_enabled=true`
+  - `obsidian_vault_dir=~/Documents/LongclawVault`
+  - `obsidian_vault_name=LongclawVault`
+  - `obsidian_notes_dir=Inbox/WeChat`
+  - `obsidian_assets_dir=Assets/WeChat`
+  - `obsidian_open_after_archive=false`
+- runtime 安装脚本负责把这些默认值写进 `~/.weclaw/config.json`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. sidecar 升级为归档状态机
+- 微信图片/文件 sidecar 从极简 `id` 升级为最小归档元数据：
+  - `id`
+  - `source: wechat`
+  - `media_type`
+  - `created_at`
+  - `retention_days: 7`
+  - `archive_state: active|pending_obsidian|archived_obsidian|failed_obsidian`
+  - `obsidian_note_path`
+  - `obsidian_asset_path`
+  - `title`
+  - `remark`
+- 显式归档入口只做一件事：把目标文件 sidecar 改成 `pending_obsidian`
+- scheduler 负责消费 `pending_obsidian`，而不是在用户指令当场直接写 vault
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d65b1-6d00-75f3-9c2d-45f7181c0b0c
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. 新增 Obsidian 归档器
+- 在 `weclaw` 或 runtime 侧新增一个独立归档器模块，职责是：
+  - 读取 workspace 文件和 sidecar
+  - 把原文件复制到 Obsidian assets 目录
+  - 生成对应 markdown note
+  - 更新 sidecar 状态
+- note 模板固定为 Obsidian 友好格式，至少包含：
+  - 标题
+  - `source: wechat`
+  - `created_at`
+  - `media_type`
+  - `original_filename`
+  - `wechat_user_id`
+  - `asset_path`
+  - 可选 `remark`
+- note 正文固定包含：
+  - 一段简短归档说明
+  - 一个到本地资源的 Obsidian 引用或相对链接
+- 图片优先用 Obsidian 图片嵌入语法
+- 文件优先用标准 wiki link 或 markdown link

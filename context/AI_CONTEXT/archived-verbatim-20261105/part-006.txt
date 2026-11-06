@@ -1,0 +1,947 @@
+
+
+---
+来源：codex:019d6a93-0a99-7c93-8d2d-24a0256dc6fa#turn:019d6a94-090d-73d0-9c9f-31a96973625a
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你检查一下目前最新的系统级别service日志，以及harness项目的运行态，我昨天晚上微信收到多条一样的信息以及loop失效，请给我一个解释并提出优化方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# `weclaw` 追上游且保住本地能力的维护方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `fork-core`：未来继续留在 `Gemini-Nick/weclaw`、且值得长期继承的能力
+- `downstream/runtime`：应留在 `longclaw-agent-os` 的安装、策略、编排能力
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+然后用“上游小步同步 + 本地能力分层提交 + 集成分支验证”这三步来维持。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+最终目标是：
+- `Gemini-Nick/weclaw` 持续跟 `fastclaw-ai/weclaw` 保持清晰 fork 关系
+- 你的增强能力不再只存在于本地工作区
+- `longclaw-agent-os` 只消费经过验证的 `weclaw-real`，不承担追上游实验风险
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 先把现有能力正式分层
+- 留在 `weclaw` 的 `fork-core`：
+  - 微信媒体事实层
+  - transcript-first 语音输入模型
+  - sidecar / session / media index
+  - archive tool contract
+  - formal/debug archive boundary
+- 留在 `longclaw-agent-os` 的 `runtime/product`：
+  - install / uninstall
+  - guardian / scheduler / launchd
+  - TLS preflight
+  - config 注入
+  - vault 路径发现
+  - GUI / 桌面体验
+- 任何还停留在本地未提交工作区、但属于 `fork-core` 的能力，都要先整理进 `Gemini-Nick/weclaw`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. 把 `Gemini-Nick/weclaw` 主线改成“小步线性提交”
+- 不再长期积压大量未提交核心改动
+- 每次只提交一个主题：
+  - 语音输入模型
+  - 媒体 sidecar/session
+  - archive tool
+  - formal/debug policy
+- 每个主题提交都要满足：
+  - 能单独解释
+  - 能单独测试
+  - 将来 merge upstream 时冲突边界清晰
+- 禁止再让“运行中的关键能力”只存在于本地未提交状态
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. 上游同步固定走“集成分支”
+- 不要在 `main` 上直接 merge upstream
+- 固定流程：
+  1. 从你的 `main` 拉一个集成分支
+  2. merge 或 rebase `upstream/main`
+  3. 先解决编译和测试
+  4. 再跑微信链路验证
+  5. 通过后再合回 `main`
+- 这样你任何时候都能明确知道：
+  - 哪些是 upstream 带来的变化
+  - 哪些是你自己的 fork-core 适配
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. 运行时只跟“已验证 commit/tag”走
+- `longclaw-agent-os` 不直接追 upstream 仓库
+- 它只消费你 fork 里某个已验证的 commit 或 tag 构建出来的 `weclaw-real`
+- 推荐固定策略：
+  - `agent-os` 开发版：指向 `Gemini-Nick/weclaw` 的集成分支验证产物
+  - `agent-os` 稳定版：只指向 fork 上已验证 tag
+- 这样上游同步失败，不会直接污染你当前正在跑的微信服务
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 建立明确的验证门槛
+- 每次追 upstream，至少要过两层验证：
+  - 代码验证：
+    - `go build ./...`
+    - `go test ./config ./obsidian ./messaging ./cmd`
+  - 行为验证：
+    - 文本消息
+    - 图片
+    - 文件
+    - 语音 transcript-first
+    - Obsidian formal/debug
+- 只有这两层都过，才允许更新本机 `weclaw-real`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 6. 未来长期维护策略
+- `weclaw`：
+  - 尽量保持桥接核心纯净
+  - 未来值得继承的增强优先留这里
+- `agent-os`：
+  - 明确走桌面产品主线
+  - 吸收 runtime / GUI / 策略 / 编排
+- `fastclaw`：
+  - 先作为 runtime/gateway 参考系
+  - 中期再考虑抽 runtime adapter，对齐其 memory / scheduler / plugin / hook 概念
+- 这样你不会陷入：
+  - 一边想追 upstream
+  - 一边又因为本地魔改太重而不敢同步
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 先把当前未提交但关键的 `fork-core` 能力整理成独立提交
+- 建立一次完整的集成分支验证：
+  - merge `upstream/main`
+  - 跑 `go build ./...`
+  - 跑 `go test ./config ./obsidian ./messaging ./cmd`
+  - 用真实微信测文本、图片、文件、语音、归档
+- 验证通过后：
+  - 合回 `Gemini-Nick/weclaw main`
+  - 再让 `longclaw-agent-os` 使用该 commit 构建 `weclaw-real`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `Gemini-Nick/weclaw` 是你长期保留 fork 继承关系的主线
+- `longclaw-agent-os` 是产品和 runtime 主线，不直接承担 upstream 同步实验
+- 当前最危险的不是“没追上游”，而是“关键能力还停留在本地未提交工作区”
+- 所以第一优先级不是直接替换最新版 upstream，而是先把你已经形成的桥接核心能力沉淀进 fork 历史
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这套“追上游但不丢能力”的维护机制已经落地了，而且我把它拆成了两次清晰提交。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`weclaw` 这边新增了可执行的 fork 维护入口：
+- [FORK_MAINTENANCE.md](/Users/zhangqilong/Desktop/github代码仓库/weclaw/docs/FORK_MAINTENANCE.md)
+- [verify-fork-core.sh](/Users/zhangqilong/Desktop/github代码仓库/weclaw/scripts/verify-fork-core.sh)
+- [upstream-integration-check.sh](/Users/zhangqilong/Desktop/github代码仓库/weclaw/scripts/upstream-integration-check.sh)
+- [Makefile](/Users/zhangqilong/Desktop/github代码仓库/weclaw/Makefile) 里也补了 `verify-fork-core` 和 `upstream-check`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我已经实际跑过：
+- `bash scripts/upstream-integration-check.sh`
+- `bash scripts/verify-fork-core.sh`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结果很关键：
+- 你当前本地 `weclaw` 相对 upstream `main` 是 `3` 个本地提交、`0` 个上游未吸收提交
+- fork-core 验证通过：
+  - `go build ./...`
+  - `go test ./config ./messaging ./cmd ./obsidian`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+`longclaw-agent-os` 这边我补了“只消费已验证 weclaw 构建”的运行时机制：
+- [WECLAW_CONSUMPTION.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/WECLAW_CONSUMPTION.md)
+- [install-v2.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/install-v2.sh) 现在会记录 `runtime-manifest.json`
+  - 来源类型：`bundle/repo/existing/fallback-wrapper`
+  - repo commit
+  - 可选 `WECLAW_VERIFIED_REF`
+  - 可选 `WECLAW_RELEASE_CHANNEL`
+- [verify-v2.sh](/Users/zhangqilong/github代码仓库/longclaw-agent-os/scripts/guardian/verify-v2.sh) 会把这份 manifest 打出来做审计
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这两次提交是：
+- `weclaw`: `eafa4bb` `docs(maintenance): add fork-core upstream sync workflow`
+- `longclaw-agent-os`: `01b4ae7` `chore(runtime): record verified weclaw consumption metadata`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+另外，之前已经有两次边界提交：
+- `weclaw`: `8701aaa`
+- `longclaw-agent-os`: `d852a0c`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+现在这套机制已经满足你要的方向：
+- `Gemini-Nick/weclaw` 继续保住对 `fastclaw-ai/weclaw` 的继承关系
+- 你的增强能力不再只靠本地工作区记忆维护
+- `agent-os` 开始以“已验证构建产物消费者”的方式使用 `weclaw`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前还没提交的是你那批更重的语音/archive 逻辑工作区改动，主要还在：
+- [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)
+- [handler_test.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler_test.go)
+- 以及未跟踪的 [cmd/obsidian.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/cmd/obsidian.go)、[obsidian](/Users/zhangqilong/Desktop/github代码仓库/weclaw/obsidian)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果继续往下做，下一步最合理的是把这批 `fork-core` 真正拆成小步提交，而不是再继续堆在工作区里。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+::git-stage{cwd="/Users/zhangqilong/Desktop/github代码仓库/weclaw"}
+::git-commit{cwd="/Users/zhangqilong/Desktop/github代码仓库/weclaw"}
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667c-fb1a-7b43-bd4d-2f68e30e9d68
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+::git-stage{cwd="/Users/zhangqilong/github代码仓库/longclaw-agent-os"}
+::git-commit{cwd="/Users/zhangqilong/github代码仓库/longclaw-agent-os"}
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667a-0f46-7b41-8eba-a02d461430ae
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+可以测试验证一下，拉取最新的weclaw测试一下稳定程度么？https://github.com/fastclaw-ai/weclaw，目前我有项目是直接fork这个最新的
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667a-0f46-7b41-8eba-a02d461430ae
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 你当前本地 fork 是 [Gemini-Nick/weclaw](https://github.com/Gemini-Nick/weclaw)，本地 `main` 在 `/Users/zhangqilong/Desktop/github代码仓库/weclaw`
+- 上游最新 `fastclaw-ai/weclaw` 的 `main` 我刚用 `ls-remote` 确认是 `10711d0c6b7e2b0a784f808ef2f07ba83c2b9023`
+- 我在临时目录 `/tmp/weclaw-upstream-check.z6mklA/repo` 拉了上游最新代码并验证：
+  - `go build ./...` 通过
+  - `go test ./...` 基本没有有效测试覆盖，只有 `? ... [no test files]`
+- 上游 README 仍明确把 `weclaw` 定位成 WeChat bridge，并写明微信语音是直接用 `VoiceItem.Text` 转写转发给 agent，见 [README.md](https://raw.githubusercontent.com/fastclaw-ai/weclaw/main/README.md)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d667a-0f46-7b41-8eba-a02d461430ae
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 上游最新 `weclaw` 目前仍是“桥接核心”形态
+  - 有基本语音转写
+  - 有图片保存
+  - sidecar 仍然非常轻
+  - 没有你本地这套更完整的 session/media index、Obsidian formal/debug、AI-native archive tool、统一语音输入模式
+- 你本地工作区还没沉淀进提交的大改，主要集中在：
+  - [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go)
+  - [handler_test.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler_test.go)
+- 所以如果“直接切到上游最新源码/二进制”，会发生的不是小回退，而是明显丢功能：
+  - 语音 transcript-first 的细化控制会回退
+  - 图片/文件/语音/视频的更完整 sidecar/session 语义会回退
+  - Obsidian 归档链会回退
+  - 你最近做的 archive tool / formal write policy / runtime policy 注入也会失配
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665f-d12f-7352-bc60-fe8777426115
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+已经提交了两次“边界收口”提交，并继续把 `weclaw` 的语音默认输入改成了真正的 transcript-first。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665f-d12f-7352-bc60-fe8777426115
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw`: `8701aaa` `docs(config): define bridge-core architecture boundary`
+- `longclaw-agent-os`: `d852a0c` `docs(runtime): define product-runtime layering`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665f-d12f-7352-bc60-fe8777426115
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+我后面继续做的实现是：
+- 在 [handler.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler.go) 里把语音默认输入改成 transcript-first
+- 默认只把“微信转写”作为 agent 主输入，不再默认把本地音频路径暴露给 agent
+- 只有配置成 `audio_analysis_requested` 时，才把原始音频路径提升为主输入
+- 补了两条回归测试到 [handler_test.go](/Users/zhangqilong/Desktop/github代码仓库/weclaw/messaging/handler_test.go)
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665f-d12f-7352-bc60-fe8777426115
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+验证已经跑过：
+- `go test ./messaging ./config` 通过
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665f-d12f-7352-bc60-fe8777426115
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+当前状态也需要你知道：
+- 上面两次 commit 已经落下来了
+- 最新这轮“统一语音输入模型”修改还没提交
+- `weclaw` 工作区里还有你之前那批未提交的大改，包括 `obsidian/`、`cmd/obsidian.go`、`cmd/start.go`、`messaging/handler.go` 等，所以我这次没有继续把它们混成一个大提交
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665f-d12f-7352-bc60-fe8777426115
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果继续往下做，我建议下一步直接收口两个点：
+1. 把这轮 transcript-first 改动单独提交
+2. 再开始做 `agent-os` 的 runtime adapter 边界，而不是继续把语义逻辑往下游迁
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# `weclaw` / `longclaw-agent-os` 未来架构分层方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+基于现状和你给出的目标，推荐采用“三层架构”，而不是把能力继续混在 `weclaw` 里，也不是把微信语义一次性整体搬进 `agent-os`。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- [fastclaw-ai/weclaw](https://github.com/fastclaw-ai/weclaw) 的天然定位是“渠道桥接核心”
+  - 它上游 README 已明确把自己定义为 WeChat AI bridge，负责消息接入、agent mode 路由、媒体收发、微信语音转写前置
+- [fastclaw-ai/fastclaw](https://github.com/fastclaw-ai/fastclaw) 的定位是“通用 agent runtime / gateway”
+  - 单二进制、多 agent、memory、cron、plugin system、web dashboard、OpenAI-compatible API
+- [workany-ai/workany](https://github.com/workany-ai/workany) 的定位是“桌面 agent 产品”
+  - 前端、后端、桌面容器一体，强调任务执行、工具、预览、MCP、workspace 管理
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+结合你当前代码库状态：
+- 本地 `weclaw` 已经开始承载：
+  - 微信媒体事实层
+  - session/media index
+  - 语音转写桥接
+  - Obsidian archive tool 协议
+- 本地 `longclaw-agent-os` 已经开始承载：
+  - install/runtime
+  - guardian/scheduler
+  - launchd/service orchestration
+  - config 注入
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw`：保留为微信桥接产品核心，持续继承上游
+- `longclaw-agent-os`：逐步进化成你自己的桌面 agent 产品层，方向上接近 `workany`
+- `fastclaw`：作为未来可对齐的 runtime/gateway 参考层，而不是当前立即并入主线
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 1. 固定三层职责，不再混层
+- `weclaw` 层：
+  - 微信消息协议与媒体解析
+  - `VoiceItem.Text` transcript-first 语音规范化
+  - sidecar/session/media index
+  - agent 输入 canonicalization
+  - Obsidian archive tool 协议与 formal note 协议
+- `agent runtime` 层：
+  - 统一 agent 生命周期
+  - tool runtime / memory / scheduler / failover
+  - MCP/tool provider 编排
+  - 未来可逐步向 `fastclaw` 的 runtime 能力对齐
+- `desktop product` 层：
+  - GUI / workspace / artifacts / settings / observability
+  - 用户配置、产品策略、跨渠道体验
+  - 这一层由 `longclaw-agent-os` 继续演化，方向接近 `workany`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 2. `weclaw` 只保留“未来 fork 也值得继承”的能力
+- 必须留在 `weclaw`：
+  - 微信消息语义
+  - 图片/文件/语音/视频的标准落盘
+  - 语音 canonical input model
+  - archive tool contract
+  - formal/debug archive boundary
+- 不再继续把这些产品逻辑迁到 `agent-os`：
+  - `VoiceItem.Text -> agent prompt` 规则
+  - sidecar/session schema
+  - Obsidian formal note frontmatter 协议
+  - 微信归档工具协议
+- 原因：
+  - 这些能力直接决定 `Gemini-Nick/weclaw <- fastclaw-ai/weclaw` 的 fork 价值
+  - 一旦迁走，`weclaw` 会退化成 transport，后续无法稳健继承上游
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 3. `longclaw-agent-os` 明确转向“桌面产品壳 + runtime 编排”
+- 适合继续沉到 `agent-os`：
+  - install/uninstall
+  - guardian / scheduler / launchd / TLS preflight
+  - config 注入与环境策略
+  - vault 路径发现
+  - formal archive 开关、auto-archive 开关、默认 agent 策略
+  - GUI、桌面控制面板、调试面板、任务中心
+- 未来新增能力也优先放这里：
+  - 多 workspace 管理
+  - 桌面通知与任务流
+  - 归档审计 UI
+  - agent profile / environment preset
+  - 与 Obsidian MCP、desktop tools、artifact viewer 的产品整合
+- 这一层要学 `workany` 的是产品边界，不是照搬其实现栈
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 4. `fastclaw` 作为中期对齐目标，而不是当前替换目标
+- 当前不建议把 `fastclaw` 直接替换成本地主 runtime
+- 更合理的路线是“能力对齐”：
+  - 统一 agent runtime 抽象
+  - 统一 plugin/tool/provider/hook 概念
+  - 统一 schedule/memory/failover 接口
+- 对齐方式：
+  - 在 `agent-os` 内部先定义独立 runtime boundary
+  - 让 `weclaw` 只消费稳定的 agent runtime 接口，而不是耦合到当前某个 agent 实现
+- 这样未来可以：
+  - 继续用现在的 codex/claude runtime
+  - 或平滑切到更接近 `fastclaw` 的通用 runtime
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 5. 未来代码组织建议
+- `Gemini-Nick/weclaw`
+  - 继续保持桥接核心仓
+  - 只收敛“跨下游都通用”的微信能力
+  - 提交策略保持小步、线性、贴近 upstream
+- `longclaw-agent-os`
+  - 明确作为产品主仓
+  - runtime、GUI、策略、桌面交互都放这里
+  - 消费 `weclaw` 的稳定二进制/稳定协议
+- 两仓之间的接口收敛到三类：
+  - config.json 的稳定配置项
+  - `weclaw` CLI / archive tool / status 等命令接口
+  - workspace/session/sidecar 的稳定文件协议
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` 脱离 `agent-os` 单独运行时，仍应具备：
+  - 微信文本/图片/文件/语音/视频接入
+  - transcript-first 语音行为
+  - sidecar/session/media index
+  - Obsidian archive tool formal/debug 逻辑
+- `longclaw-agent-os` 不解析微信原始 item，也能完成：
+  - runtime 安装与拉起
+  - 配置注入
+  - 健康检查
+  - scheduler/补偿执行
+  - GUI/桌面产品控制
+- 后续引入更强 runtime 时：
+  - `weclaw` 不需要重写微信语义层
+  - `agent-os` 只需要替换 runtime adapter
+- future fork 验证：
+  - `Gemini-Nick/weclaw` 单仓就能解释“微信消息如何被规范化”
+  - 不需要依赖 `agent-os` 才能理解桥接核心
+- desktop product 验证：
+  - `agent-os` 能逐步扩成 `workany` 风格桌面产品
+  - 但不反向侵蚀 `weclaw` 的桥接边界
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 你的主目标不是把 `weclaw` 做成最终产品主仓，而是保住它对上游的可继承性
+- `longclaw-agent-os` 才是未来完整产品主线，方向上接近 `workany`
+- `fastclaw` 的价值主要在 runtime/gateway 架构参考，不是当前直接替换方案
+- 下一步若继续演化，应优先做：
+  - `weclaw` 统一语音输入模型重构
+  - `agent-os` 统一 runtime/config/policy adapter
+  - 然后再规划 GUI 和 desktop product 层
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw`：
+  - 新增 [docs/ARCHITECTURE.md](/Users/zhangqilong/Desktop/github代码仓库/weclaw/docs/ARCHITECTURE.md)
+  - 更新 [README.md](/Users/zhangqilong/Desktop/github代码仓库/weclaw/README.md)
+  - 明确它只负责微信桥接核心：消息语义、媒体规范化、transcript-first、session/media facts、archive tool contract
+  - 同时把 runtime 可注入的稳定配置项写清楚了：`voice_input_mode_default`、`archive_tool_enabled`、`obsidian_formal_write_enabled`、`agent_input_policy`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `longclaw-agent-os`：
+  - 新增 [docs/ARCHITECTURE.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/docs/ARCHITECTURE.md)
+  - 更新 [README.md](/Users/zhangqilong/github代码仓库/longclaw-agent-os/README.md)
+  - 明确它未来是桌面产品壳 + runtime 编排层，方向对齐 `workany`
+  - 但不重写 `weclaw` 的微信语义，只通过 `weclaw-real`、CLI、`~/.weclaw/config.json`、workspace/session/sidecar 这些稳定接口消费能力
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` 继续保持对 `fastclaw-ai/weclaw` 的 fork 继承价值
+- `longclaw-agent-os` 承接 install、guardian、scheduler、TLS preflight、策略注入和未来 GUI/桌面产品能力
+- `fastclaw` 作为未来 runtime/gateway 对齐参考，而不是当前直接替换目标
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665e-6bd3-7e52-961c-3cbc93805e05
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+还没替你提交 Git。两边工作区本来就有其他未提交改动，我这次只新增了架构文档并更新了 README。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d665a-8417-70f2-bd0b-dfffbea627cc
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+你需要更仔细的去考虑，未来的架构设计，作者目前除了https://github.com/fastclaw-ai/weclaw这个项目，也有agent项目https://github.com/fastclaw-ai/fastclaw，还有成熟的agent desktop https://github.com/workany-ai/workany项目，需要跟我目前的情况进行对比分析
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果原有的weclaw工程没有拆分，你这次拆分了去agent os会造成影响么？可以对比一下给我看看
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+会有影响，但这次我做的是“职责边界显式化”，不是把核心语义从 `weclaw` 挖走，所以影响主要在可维护性和运行时控制，不在产品能力本身。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 优点
+  - 单仓开发快
+  - 调试路径短
+  - 本地验证方便
+- 风险
+  - `Gemini-Nick/weclaw` 会越来越像“你的整套产品实现”，而不是一个可持续 fork 上游的桥接核心
+  - 安装、launchd、TLS preflight、scheduler、vault 路径、formal/debug 策略这些运行时问题会不断污染 `weclaw`
+  - 以后 sync `fastclaw-ai/weclaw` 时，冲突会混在语义层和部署层里，很难收敛
+  - 其他下游如果想复用 `weclaw`，会被你本机 runtime 假设绑住
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 留在 `weclaw`
+  - 微信消息解析
+  - 语音输入模型
+  - sidecar/session/media index
+  - Obsidian archive tool 协议和 formal note 协议
+  - agent 输入构造
+- 下沉到 `longclaw-agent-os`
+  - config 注入
+  - formal/debug 开关
+  - vault 默认路径
+  - scheduler/guardian/launchd/TLS preflight
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` fork 继承关系更稳
+  - 上游同步时，核心冲突集中在消息桥接和产品协议，不会掺杂你本机部署细节
+- `agent-os` 变成真正的 runtime 层
+  - 你可以换策略、换环境、换 vault，而不需要改 `weclaw` 语义代码
+- 语义与部署解耦
+  - 以后你就能明确判断一个问题到底是：
+    - `weclaw` 的输入建模问题
+    - 还是 `agent-os` 的运行时编排问题
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 配置面变复杂了
+  - 现在有些能力是否开启，要看 `~/.weclaw/config.json` 是怎么被 runtime 注入的
+- 调试时要分两层看
+  - `weclaw` 逻辑对不对
+  - `agent-os` 有没有把策略写对
+- 如果边界划错，会造成双边耦合
+  - 比如把 `VoiceItem.Text` 规则迁去 `agent-os`，那就会变坏
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `VoiceItem.Text` 到 agent 输入的映射
+- 媒体 sidecar/session 结构
+- Obsidian formal note 协议
+- archive tool 的正式落盘逻辑
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 默认配置值
+- 是否允许 formal archive
+- scheduler 什么时候跑 `maintain --formal`
+- runtime 对 Obsidian 当前 vault 的发现和注入
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` 保持产品核心
+- `agent-os` 接管“怎么把它跑成一个稳定系统”
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果原来完全不拆，短期更省事；但长期会伤 fork 继承性。  
+这次这种拆法是相对稳妥的，因为迁走的是运行时策略，不是消息语义核心。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6657-43fc-7b11-aa02-e1ca27661f6b
+角色：assistant
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果你要，我下一步可以直接给你列一张更具体的表：  
+“当前哪些文件/能力应该永远留在 `weclaw`，哪些以后都应该只放在 `longclaw-agent-os`”。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+PLEASE IMPLEMENT THIS PLAN:
+# `weclaw` / `longclaw-agent-os` 职责迁移评估方案
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- **不适合迁到 `longclaw-agent-os` 的职责**  
+  任何依赖微信原始消息结构、媒体 item、`VoiceItem.Text`、CDN 下载、sidecar/session 事实源的能力，都应留在 `weclaw`
+- **适合迁到 `longclaw-agent-os` 的职责**  
+  安装、运行时托管、配置注入、策略开关、健康检查、调度、外部工具编排，这些更适合下沉到 `longclaw-agent-os`
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+原因不是抽象偏好，而是上下文边界已经决定了：
+- `weclaw` 直接处理 `getupdates` 消息、`VoiceItem`、`ImageItem`、`FileItem`、媒体下载和 agent 输入构造
+- `longclaw-agent-os` 当前只负责启动 `weclaw-real`、launchd 管理、TLS preflight、scheduler/guardian 编排，本身看不到微信原始消息体
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+因此，若目标是“既保证 `weclaw` fork 可继承，又保证本地系统稳定”，推荐架构是：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` = 微信桥接核心 + 输入规范化核心
+- `longclaw-agent-os` = 运行时编排层 + 策略注入层
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+## Recommended Responsibility Split
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 留在 `weclaw`
+- 微信消息语义解析
+  - `VoiceItem.Text`、图片/文件/视频/语音 item 解析
+- 统一输入模型
+  - 语音 canonicalization
+  - 媒体到 agent 的输入建模
+- 会话与媒体事实存储
+  - workspace sidecar
+  - session window
+  - media index
+- 归档核心抽象
+  - Obsidian archive tool 接口
+  - formal/debug 写入边界
+  - audit frontmatter 协议
+- agent 输入构造
+  - transcript-first / audio-analysis-requested 模式
+  - 归档工具协议注入
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这些留在 `weclaw`，能保证未来 fork 仍然是一个完整的“微信桥接产品核心”，不会变成只剩下 transport 的空壳。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+### 迁到 `longclaw-agent-os`
+- 运行时配置注入
+  - 默认 agent
+  - vault 路径
+  - auto-archive 开关
+  - voice mode 默认值
+- 策略编排
+  - 哪些环境启用归档
+  - 是否允许 formal archive
+  - scheduler 触发时机
+- 服务托管
+  - `weclaw.bridge`
+  - `repo-scheduler`
+  - `guardian.monitor`
+- 健康检查与运维
+  - TLS preflight
+  - launchd 状态
+  - 监控/重启
+- 补偿任务
+  - 清理 workspace
+  - 定期维护/补跑 archive maintain
+  - 故障恢复和告警摘要
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+这些迁到 `longclaw-agent-os`，能提升系统稳定性，但不会破坏 `weclaw` 的 fork 可继承性。
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- 语音输入模型本身
+- 微信转写优先级规则
+- `VoiceItem.Text` 到 agent prompt 的映射
+- 媒体 sidecar/session 结构定义
+- Obsidian formal note 协议
+- 归档工具的正式落盘逻辑
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+如果这些迁到 `longclaw-agent-os`，会出现三个长期问题：
+
+
+---
+来源：codex:019d6313-1daf-7c21-b402-ade6f97d7f27#turn:019d6652-657b-7553-a836-7ed52bea7617
+角色：user
+性质：归档聊天原文；用户历史要求或代理当时报告，非当前事实复验
+原文摘录：
+- `weclaw` fork 退化成“只负责收发消息”，产品语义能力散落到下游
+- 未来 sync upstream 时，你需要同时维护 `weclaw` 和 `agent-os` 两边的耦合协议
+- 其他消费 `weclaw` 的下游将无法继承这些能力，导致 fork 价值下降

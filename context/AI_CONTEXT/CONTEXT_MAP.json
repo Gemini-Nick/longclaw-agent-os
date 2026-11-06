@@ -1,0 +1,10 @@
+[
+  {
+    "topic": "隆小侠｜Agent OS",
+    "projectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+    "role": "daily",
+    "wing": "longclaw-agent-os",
+    "start_here": "/Users/zhangqilong/github代码仓库/longclaw-agent-os/context/AI_CONTEXT/START_HERE.md",
+    "memory_rooms_file": "/Users/zhangqilong/github代码仓库/longclaw-agent-os/context/AI_CONTEXT/MEMORY_ROOMS.json"
+  }
+]

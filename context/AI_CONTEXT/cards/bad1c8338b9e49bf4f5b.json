@@ -1,0 +1,69 @@
+{
+  "id": "019f3b8b-a51b-7b11-a2e2-da16ebac4d3e",
+  "title": "排查微信复盘未发送",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "56cd39bdb9996787a54834c6831ee27dd8561174186d3fdaaa90607170df8f7b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#recent",
+      "timestamp": null,
+      "verbatim": "7月6日 `05:09:17 PDT`，macOS 电源日志显示进入 `Clamshell Sleep`，原因是合盖且电池供电。`05:44:07` 和 `06:36:17` 只有短暂 `DarkWake`，所以 Codex 自动化线程虽然被创建、部分 prompt 被注入，但没有足够的唤醒时间继续执行。直到 `17:48:11 PDT` 用户开盖/HID 唤醒后，Codex 才在 `17:49` 继续跑门禁。"
+    },
+    {
+      "hash": "ed5e737131258eab9af0023170fdccdfa904ecf5b413d6ef5dd13e12703e9eb0",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#recent",
+      "timestamp": null,
+      "verbatim": "- 自动化 DB：盘后复盘线程 `2026-07-06 12:44:09 UTC` 创建，`2026-07-07 00:50:12 UTC` 完成，耗时 `726` 分钟。\n- rollout：`13:36Z` 收到自动化 prompt 后，到 `00:49Z` 才第一次实际执行工具。\n- 门禁执行时已经是中国市场盘后窗口外，返回 `DONT_NOTIFY，outside_window:postmarket:08:49`，所以按规则没有调用 MCP，也没有发送微信。\n- rate limit 记录没有显示触顶；WeClaw 也不是这次主因，因为根本没走到发送路径。"
+    },
+    {
+      "hash": "9dfaec88099f4eed051ea9cdd67b2da072d42bf49f156d854675a6413b6be0a0",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#recent",
+      "timestamp": null,
+      "verbatim": "避免方式：这类时间敏感微信自动化不能依赖会合盖睡眠的本机。至少要保证那段时间插电、开盖或有效防睡眠；更稳的是把 gate+send 做成 launchd/常驻主机的确定性任务，Codex 只负责后续复盘增强。"
+    },
+    {
+      "hash": "162623d783bc2eab0e6e774347a9895694c650116af8b711cb0aa8fc43fef6f0",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#turn:019f3b8b-e973-7ed3-b87c-dfdb00a0a78b",
+      "timestamp": null,
+      "verbatim": "`signals-postmarket-strategy-review` 配置是本机 `05:30 PDT` 跑，相当于北京时间 `20:30`。7 月 6 日这次线程在 `05:44 PDT` 创建，`06:36 PDT` 注入自动化 prompt，但真正开始执行门禁命令已经是 `17:49 PDT`，也就是北京时间 `08:49`。门禁输出是："
+    },
+    {
+      "hash": "9876a267cd62420e3c8d439772a06f1158cd6a795c889e0e50bde7d3bb7d091e",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#turn:019f3b8b-e973-7ed3-b87c-dfdb00a0a78b",
+      "timestamp": null,
+      "verbatim": "```text\nDONT_NOTIFY\n[Signals 工作台 | 20:30 盘后复盘]\n原因：outside_window:postmarket:08:49\n```"
+    },
+    {
+      "hash": "18be4736ea233256c32bb1b9c9c4aa42caede9d4547038930828b1c132cce31b",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#turn:019f3b8b-e973-7ed3-b87c-dfdb00a0a78b",
+      "timestamp": null,
+      "verbatim": "所以流程按契约停止：没调用 MCP、没生成正文、没调用 `$HOME/.weclaw/bin/weclaw send`。我也查了 WeClaw bridge 日志，7 月 6 日对应时段没有这条复盘的 `sendmessage` 记录，只有 `GetUpdates` 超时监控日志。那些说明 WeClaw 通道当时也不稳，但不是这次没发的直接原因。"
+    },
+    {
+      "hash": "506eb59975adf6565de2954caeaacc5c4fcb8b4114d6847555dbca92d59fb2bf",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019f3b8b-a51b-7b11-a2e2-da16ebac4d3e#turn:019f3b8b-e973-7ed3-b87c-dfdb00a0a78b",
+      "timestamp": null,
+      "verbatim": "结论：直接原因是 `DONT_NOTIFY outside_window`；上游原因是 Codex automation 线程从计划窗口延迟到窗口外才真正执行。建议把 postmarket 这条 automation 的执行可靠性单独修一下，比如降到稳定的 `gpt-5.3-codex-spark`/降低 reasoning，或加一个窗口内 watchdog，避免任务排队后在次日早上才跑门禁。"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}

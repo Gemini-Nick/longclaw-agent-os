@@ -1,0 +1,45 @@
+{
+  "id": "019d6324-28c3-70e2-a8cc-feba5a38ff3c",
+  "title": "收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。\n/Users/zhangqilong/.weclaw/workspace/20260406-071325.jpg",
+  "source_backend": "codex",
+  "ownerProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "entryProjectId": "fd855365-ec3b-44c2-8393-38a99874558a",
+  "wing": "longclaw-agent-os",
+  "source_scope": "codex-thread:019d6324-28c3-70e2-a8cc-feba5a38ff3c",
+  "review_status": "extracted-evidence; not blanket factual verification",
+  "quotes": [
+    {
+      "hash": "356d5f7adf80a1bf0c4b950aa173f8a2443aef82e8bae7f05e6282714e749bdf",
+      "role": "user",
+      "kind": "用户约束或历史请求",
+      "source": "codex:019d6324-28c3-70e2-a8cc-feba5a38ff3c#first-request",
+      "timestamp": null,
+      "verbatim": "收到一个来自微信的图片，已保存到本地。请基于该文件继续处理。\n/Users/zhangqilong/.weclaw/workspace/20260406-071325.jpg"
+    },
+    {
+      "hash": "672bbe78447c6d40102c9e326b946dc5cb3dbf05ed60fdf56a0af8eaa56b54e3",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d6324-28c3-70e2-a8cc-feba5a38ff3c#recent",
+      "timestamp": null,
+      "verbatim": "1. 每月提交进度报告，由部长设立的委员会监督。  \n2. 在未来 `3` 个月内于各生产矿山建立化验室。  \n3. 在各矿山设立安全、健康与环境（`SHE`）部门，处理工伤和环境问题。"
+    },
+    {
+      "hash": "e6dccdf9a19f1452d016875e2446aa41687dea8a87c2924064bc6eccbf980272",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d6324-28c3-70e2-a8cc-feba5a38ff3c#recent",
+      "timestamp": null,
+      "verbatim": "后面还写明：未来在锂行业的新投资，将按个案附加条件审批。落款人为：\n`Hon. Dr. P. Kambamura [MP]`\n`MINISTER OF MINES AND MINING DEVELOPMENT`"
+    },
+    {
+      "hash": "a6a4ca206132a04b802a9758f08d09662561a247828400f85f1643b74b5be526",
+      "role": "assistant",
+      "kind": "历史回复所报告结果（未作当前复验）",
+      "source": "codex:019d6324-28c3-70e2-a8cc-feba5a38ff3c#recent",
+      "timestamp": null,
+      "verbatim": "如果你要继续处理，我可以直接做其中一种：\n1. 提取成完整可复制文字版\n2. 翻译成中文\n3. 总结这份文件对锂矿企业的影响\n4. 判断图片真伪/来源线索\n5. 整理成正式情报简报格式"
+    }
+  ],
+  "room": "evidence-20261105-runtime-and-messaging"
+}
