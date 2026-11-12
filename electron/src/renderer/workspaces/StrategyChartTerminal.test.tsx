@@ -1416,6 +1416,19 @@ describe('source health governance', () => {
 
 
 describe('quote source recovery display', () => {
+  it('shows complete fresh quote coverage independently from failing source modules', () => {
+    const status = incompleteCacheStatus() as any
+    status.live_low_latency.modules = [
+      { module: 'quote_snapshots', status: 'ok', freshness: 'fresh', result: { count: 440, live: 440, missing_current: 0 } },
+      { module: 'fullmarket_spot_snapshot', status: 'degraded' },
+    ]
+    const render = () => renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="focus" cacheStatus={status} />)
+    expect(render()).toContain('440/440')
+    expect(render()).not.toContain('部分可用')
+    status.live_low_latency.modules[0].freshness = 'stale'
+    expect(render()).toContain('部分可用')
+  })
+
   it('separates current usable quotes from network and locally reused quotes', () => {
     const status = incompleteCacheStatus() as any
     status.live_low_latency.modules = [{ module: 'quote_snapshots', status: 'partial',
@@ -1587,6 +1600,18 @@ describe('actual client acceptance regressions', () => {
     expect(markup).toContain('5,218/5,219')
     expect(markup).toContain('有缺口')
     expect(markup).toContain('未计入原生覆盖')
+  })
+  it('keeps the verified previous close visible during the next trading session', () => {
+    const status = verifiedLocalStatus()
+    status.trade_date = '2026-11-12'
+    status.daily_coverage_date = '2026-11-11'
+    status.daily_reconciliation.trade_date = '2026-11-11'
+    expect(dailyLocalReconciliation(status)).not.toBeNull()
+    const markup = renderToStaticMarkup(<CacheMonitorStrip locale="zh-CN" mode="desk" cacheStatus={status} />)
+    expect(markup).toContain('本地日线核验')
+    expect(markup).toContain('2026-11-11')
+    status.daily_reconciliation.trade_date = '2026-11-12'
+    expect(dailyLocalReconciliation(status)).toBeNull()
   })
   it.each([{ trade_date: '2026-10-22' }, { scope_verified: false }, { native_confirmed: 5220 }, { source_proof: {} }])('rejects unproved or inconsistent local coverage %o', change => {
     const status = verifiedLocalStatus()

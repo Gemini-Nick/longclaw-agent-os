@@ -11494,13 +11494,16 @@ export function dailyBriefForShell(fallback: StrategyDashboard['daily_brief'], i
 
 export function dailyLocalReconciliation(cacheStatus: StrategyDashboard['cache_status']): Record<string, unknown> | null {
   const row = recordValue(recordValue(cacheStatus).daily_reconciliation ?? recordValue(cacheStatus.mongo_stock_cache.summary).daily_reconciliation)
+  const coverageDate = compactText(cacheStatus.daily_coverage_date)
+    || compactText(recordValue(cacheStatus.mongo_stock_cache.summary).daily_coverage_date)
+    || cacheStatus.trade_date
   const required = numberValue(row.required_daily)
   const native = numberValue(row.native_confirmed)
   const snapshot = numberValue(row.snapshot_confirmed)
   const missing = numberValue(row.missing_required)
   const members = numberValue(row.scope_members)
   const noTrade = numberValue(row.source_reported_no_trade)
-  if (row.schema !== 'daily-local-reconciliation-v1' || row.trade_date !== cacheStatus.trade_date || !compactText(row.scope_id)
+  if (row.schema !== 'daily-local-reconciliation-v1' || row.trade_date !== coverageDate || !compactText(row.scope_id)
     || row.scope_verified !== true || row.coverage_evidence_kind !== 'historical_native_only'
     || !Object.keys(recordValue(row.source_proof)).length || required === undefined || required <= 0
     || native === undefined || snapshot === undefined || missing === undefined || members === undefined || noTrade === undefined
@@ -11551,6 +11554,11 @@ export function CacheMonitorStrip({
   const quoteMissing = numberValue(quoteResult.missing_current) ?? numberValue(quoteResult.errors) ?? 0
   const quoteNetwork = numberValue(quoteResult.network_quotes)
   const quoteReused = numberValue(quoteResult.cache_reused)
+  const quoteCellStatus = quoteCount !== undefined && quoteLive !== undefined
+    ? cacheStatus.available && quoteCount > 0 && quoteLive === quoteCount && quoteMissing === 0
+      && cacheModuleOk(recordValue(quoteModule)) && compactText(quoteModule?.freshness) === 'fresh'
+      ? 'ok' : 'partial'
+    : liveStatus
   const quoteOrigins = quoteNetwork !== undefined && quoteReused !== undefined
     ? (locale === 'zh-CN' ? ` · 网络 ${countText(quoteNetwork)} · 本地复用 ${countText(quoteReused)}` : ` · network ${countText(quoteNetwork)} · cached ${countText(quoteReused)}`)
     : ''
@@ -11684,7 +11692,7 @@ export function CacheMonitorStrip({
 
   if (compact) {
     const summaryLine = locale === 'zh-CN'
-      ? (!cacheStatus.available ? '行情暂未就绪，等待读取已存数据' : local ? `关注报价 ${liveValue} · 沪深本地范围 ${countText(localCovered)}/${countText(localRequired)} · 在线来源${sourceSummary.statusLabel}` : `关注列表行情 ${liveValue} · 历史任务 ${Math.round(postPct)}% · ${mongoCoverage.detail} · 来源${sourceSummary.statusLabel}`)
+      ? (!cacheStatus.available ? '行情暂未就绪，等待读取已存数据' : local ? `关注报价 ${liveValue} · 本地核验范围 ${countText(localCovered)}/${countText(localRequired)} · 在线来源${sourceSummary.statusLabel}` : `关注列表行情 ${liveValue} · 历史任务 ${Math.round(postPct)}% · ${mongoCoverage.detail} · 来源${sourceSummary.statusLabel}`)
       : `live ${liveStatusLabel} · post ${postStatusLabel} · mongo ${mongoCoverage.compactLabel} · sources ${sourceSummary.statusLabel}`
     return (
       <div style={cacheMonitorStripStyle}>
@@ -11727,8 +11735,8 @@ export function CacheMonitorStrip({
           title={locale === 'zh-CN' ? '关注列表行情' : 'Intraday live'}
           value={liveValue}
           progress={quoteCount !== undefined && quoteLive !== undefined ? (quoteCount > 0 ? (quoteLive / quoteCount) * 100 : null) : liveTotal ? livePct : null}
-          status={liveStatus}
-          statusLabel={locale === 'zh-CN' ? (!cacheStatus.available ? '不可用' : liveStatus === 'ok' ? '可查看' : '部分可用') : liveStatusLabel}
+          status={quoteCellStatus}
+          statusLabel={locale === 'zh-CN' ? (!cacheStatus.available ? '不可用' : quoteCellStatus === 'ok' ? '可查看' : '部分可用') : quoteCellStatus === 'ok' ? 'OK' : liveStatusLabel}
           detail={locale === 'zh-CN' ? (quoteCount !== undefined && quoteLive !== undefined ? '关注列表中可查看的报价' : liveTotal ? '可用数据类别数' : '数据可用情况待确认') : liveDetail}
           subdetail={locale === 'zh-CN' ? [quoteNetwork !== undefined ? `本次获取 ${countText(quoteNetwork)} 只` : '', quoteReused !== undefined ? `读取已存 ${countText(quoteReused)} 只` : '', quoteMissing > 0 ? `${countText(quoteMissing)} 只未更新` : '', liveNotReady > 0 ? `${countText(liveNotReady)} 只缺少分钟数据` : ''].filter(Boolean).join(' · ') : liveSubdetail}
         />
