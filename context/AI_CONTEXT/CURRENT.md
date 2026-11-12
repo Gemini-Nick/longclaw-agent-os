@@ -25,3 +25,9 @@
 - Signals用户授权修复续跑至完成，后又指出仍未完全更新。数据侧已补11/11原生OHLCVA5574只、带日期停牌6只，本地范围5580；实时关注报价批处理修复后440/440。证据在Signals/outputs/remaining-update-20261112/。
 - StrategyChartTerminal.tsx修复dailyLocalReconciliation跨日判断，按daily_coverage_date核验前一收盘日，不能用当前交易日误拒。紧凑摘要改“本地核验范围”，避免含北交所却称沪深。报价卡以该报价模块完整且fresh为可查看，不被其他来源失败误标部分可用；保持来源错误单独显示。136项终端测试通过。
 - 首个候选已安装实测5574/5574与440/440，最终报价卡修正包正在构建，待安装与原生完整验收。原安装及前一候选保存在Signals/outputs/remaining-update-20261112/app-rollback/，未使用会删除其他同名应用的install脚本。暂未声明全部完成。
+
+### 2026-11-12 12:05最终验收
+
+- 最终应用包已安装并实际验证：427/427关注报价、本地核验5574/5574、买点8、盯盘39；对应Signals第7版generation ef189a40ff914cd9a4c2c65dab530674、base11/11。已等待完整shell缓存从旧9/48真正对齐后收尾，未以metadata revision替代名单验收。
+- 改动仅StrategyChartTerminal.tsx与同名测试：跨日证据按daily_coverage_date、紧凑摘要范围文案、完整fresh报价独立状态。UI136测试通过，electron:package:mac构建签名校验通过，diff检查通过。安装与release app.asar SHA256=7bc90e030199de9c90b7d37403789b488b79d0f5cc04fd4d7e4cb8ee9507f314。
+- 仍保留东财部分接口告警与历史93.02%采集回执；不等于当前本地核验缺口。午间复用最后可用报价，不伪造新tick。完整证据与回滚在Signals/outputs/remaining-update-20261112/，正式报告数据完整性修复与三池复核_张启隆_20261112_V1.md。未微信、未持久开关变更。
